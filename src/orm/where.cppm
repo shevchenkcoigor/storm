@@ -155,7 +155,11 @@ export namespace storm::orm::where {
         template <typename StmtType, typename ErrorType>
         [[nodiscard]] __attribute__((hot)) auto bind_impl(StmtType* stmt, int& param_index) const
                 -> std::expected<void, ErrorType> {
-            for (const auto& value : values_) {
+            // `const ValueType&`, not `const auto&`: for bool, values_ is the std::vector<bool>
+            // bitset specialization, whose __bit_const_reference proxy is not a BindableType.
+            // Naming the type converts it once into a lifetime-extended bool; every other
+            // ValueType binds the existing reference unchanged, so this hot loop is untouched.
+            for (const ValueType& value : values_) {
                 if (auto result = utilities::bind_filter_value<StmtType, ErrorType>(*stmt, param_index++, value);
                     !result) {
                     return result;
@@ -205,6 +209,7 @@ export namespace storm::orm::where {
                                        BetweenExpr<std::chrono::system_clock::time_point>,
                                        InExpression<int>,
                                        InExpression<std::int64_t>,
+                                       InExpression<bool>,
                                        InExpression<double>,
                                        InExpression<float>,
                                        InExpression<std::string>,
@@ -390,6 +395,12 @@ export namespace storm::orm::where {
         requires(std::constructible_from<TargetType, Values> && ...)
     [[nodiscard]] auto make_in_expr(const std::string& field_name, Values&&... values) -> Expr {
         using StoredType = decltype(normalize_operand(std::declval<TargetType>()));
+        // Also checked HERE, not only in in()'s requires-clause: this function is exported, so a
+        // direct make_in_expr<std::filesystem::path>(...) would otherwise still hard-error below.
+        static_assert(
+                std::is_constructible_v<ExpressionVariant, InExpression<StoredType>>,
+                "no InExpression arm exists for this target type — see InStorableTarget"
+        );
         return Expr(
                 std::make_shared<ExpressionVariant>(InExpression<StoredType>{
                         .field_name_ = std::move(field_name),
@@ -398,9 +409,23 @@ export namespace storm::orm::where {
         );
     }
 
-    // in_target_pk_info/HasInTargetType/InTargetType (#610) and ComparisonColumnType/ColumnIsUuid
+    // in_target_pk_info/HasInTargetType/InTargetType/InOperandFor (#610/#625) and ComparisonColumnType/ColumnIsUuid
     // (#622) now live in storm_orm_where_operand — split out to keep this module under its line
     // budget. Same storm::orm::where namespace, so callers below reach them unqualified.
+
+    // The normalized IN target must name an InExpression arm that EXISTS in ExpressionVariant —
+    // the invariant #578, #610 and #625 each violated differently (a Field/CollatedField body
+    // drift, an FK member whose FieldType is the related struct, a nullable column typed
+    // std::optional<T>). Naming it makes that failure mode structurally impossible: in() fails
+    // at its requires-clause, not inside make_shared<ExpressionVariant>. Declared here rather
+    // than in the where_operand leaf, which cannot see ExpressionVariant; a requires-expression
+    // rather than a bare decltype so a non-BindableType target substitutes to false instead of
+    // hard-erroring on normalize_operand's constraint. Widening the arm set needs no edit here
+    // or at either call site.
+    template <std::meta::info MemberInfo>
+    concept InStorableTarget = HasInTargetType<MemberInfo> && requires {
+        ExpressionVariant{InExpression<decltype(normalize_operand(std::declval<InTargetType<MemberInfo>>()))>{}};
+    };
 
     // Shared gate for WHERE's value-comparing operators: one column + an operand normalize_operand
     // can bind. std::optional operands are rejected here (#622): BindableType recurses through
@@ -445,10 +470,10 @@ export namespace storm::orm::where {
 
         // in() routes the operand through the FK TARGET's primary-key type (InTargetType)
         // instead of FieldType — FieldType for an FK member is the RELATED MODEL TYPE, and
-        // normalize_operand can never bind a struct. HasInTargetType still guards a
+        // normalize_operand can never bind a struct. InStorableTarget still guards a
         // PK-less FK target (SingleColumnMember is the class-level gate now).
         template <typename... Values>
-            requires HasInTargetType<MemberInfo> && (std::constructible_from<InTargetType<MemberInfo>, Values> && ...)
+            requires InStorableTarget<MemberInfo> && (InOperandFor<MemberInfo, Values> && ...)
         auto in(Values&&... values) const {
             return where::make_in_expr<InTargetType<MemberInfo>>(collated_name_, std::forward<Values>(values)...);
         }
@@ -522,8 +547,8 @@ export namespace storm::orm::where {
         // InTargetType is the FK TARGET's primary-key type, not FieldType (#610). A composite
         // (or PK-less) FK target stays rejected — see CollatedField::in's twin comment above.
         template <typename... Values>
-            requires storm::meta::SingleColumnMember<MemberInfo> && HasInTargetType<MemberInfo> &&
-                     (std::constructible_from<InTargetType<MemberInfo>, Values> && ...)
+            requires storm::meta::SingleColumnMember<MemberInfo> && InStorableTarget<MemberInfo> &&
+                     (InOperandFor<MemberInfo, Values> && ...)
         auto in(Values&&... values) const {
             return where::make_in_expr<InTargetType<MemberInfo>>(
                     std::string(field_name_sv), std::forward<Values>(values)...

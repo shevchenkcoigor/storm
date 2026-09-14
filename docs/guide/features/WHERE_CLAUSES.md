@@ -73,21 +73,27 @@ only a subset is **filterable in a WHERE clause** — the expression system stor
 closed `std::variant`, so a type needs a variant arm to appear in `where()`. The two sets are
 no longer the same width by accident; this table is the contract (#407).
 
+A ❌ row means *not supported yet*, not *deliberately forbidden* — the arm set grew by
+accumulation, so treat these as gaps to close rather than decisions to defend. (The one genuine
+restriction is `storm::UUID`'s exclusion from ordering, which is argued in #609/#407.) Since #625
+an unsupported type is **rejected at the call site** by the `InStorableTarget` constraint instead
+of hard-erroring inside the variant construction, and adding an arm needs no change to `in()`.
+
 | Field type | Filterable? | Operators | Notes |
 |---|---|---|---|
 | `int`, `int64_t`, `long`, `long long` | ✅ | all 6, `BETWEEN`, `IN` | |
 | `short`, `unsigned` (`short`/`int`/`long`/…), `char`, `signed`/`unsigned char` | ✅ | all 6, `BETWEEN`, `IN` | Fold to `int` / `int64_t` (like enums) |
 | `double`, `float` | ✅ | all 6, `BETWEEN`, `IN` | |
-| `bool` | ✅ | `==`, `!=` | |
+| `bool` | ✅ | `==`, `!=`, `IN` | `IN` added in #625 — degenerate over a two-value domain (always reducible to `==`/`!=`), but there was no reason for the gap: `ComparisonExpr<bool>` was an arm and `InExpression<bool>` simply was not, so `.in()` hard-errored rather than being rejected. **The operand must be spelled `bool`**: unlike every other target type, `bool` is constructible from essentially every scalar and pointer, so `.in("yes", nullptr, 3.7)` would otherwise compile and bind `1, 0, 1` — discarding the string's contents. `InOperandFor` rejects those at compile time. Implementation note: `values_` is then the `std::vector<bool>` bitset specialization, whose proxy references are not `BindableType`, so `InExpression::bind_impl` binds through `static_cast<const ValueType&>` (an identity cast for every other arm) |
 | `std::string`, `std::string_view` | ✅ | all 6, `BETWEEN`, `IN`, `LIKE`, `COLLATE` | |
 | enum | ✅ | all 6, `IN` | Folds to underlying `int` |
 | `std::chrono::year_month_day` | ✅ | all 6, `BETWEEN`, `IN` | Compared as `"YYYY-MM-DD"` TEXT (lexicographic == chronological) |
 | `std::chrono::system_clock::time_point` | ✅ | all 6, `BETWEEN`, `IN` | Compared as `"YYYY-MM-DD HH:MM:SS"` TEXT |
 | `storm::UUID` | ✅ | `==`, `!=`, `IN` | Equality/IN only — ordering/`BETWEEN` rejected at compile time (#609/#407), including a string-spelled operand against a UUID column (#622, **BREAKING**: this used to compile as a plain TEXT compare). Applies to a direct column or a single-column FK to a UUID-PK model alike. An unset (empty) `==`/`!=`/`IN` comparison value is rejected at bind time rather than silently matching nothing, and a non-empty value is validated as RFC-4122 text. For `==`/`!=` (not yet `IN`/`BETWEEN` via the YAML/JSON query builder), a plain string/string_view operand is accepted and converted to `storm::UUID` before that same validation (#622); a non-UUID-constructible operand (e.g. `== 5`) is rejected at compile time |
-| `std::optional<T>` | ✅ | `is_null()`, `is_not_null()`, `== nullopt`, `!= nullopt` | Plus any operator `T` itself supports |
+| `std::optional<T>` | ✅ | `is_null()`, `is_not_null()`, `== nullopt`, `!= nullopt` | Plus any operator `T` itself supports — including `IN`, which before #625 hard-errored on a nullable NON-FK column (nullable FK columns already worked). A NULL row never matches `IN`: `NULL IN (…)` is NULL, not TRUE, so `WHERE` excludes it on both backends. To include NULL rows, compose `f.col.is_null() \|\| f.col.in(…)`. `.in(std::nullopt)` is rejected at compile time — SQL's `IN (1, NULL)` cannot match NULL rows, so it could only ever be a query that silently matches nothing |
 | `std::chrono::duration` | ❌ | — | Persistable/readable, not yet filterable |
-| `std::filesystem::path` | ❌ | — | Persistable/readable, not yet filterable |
-| BLOB (`std::vector<uint8_t>` / `std::vector<std::byte>`) | ❌ | — | Persistable/readable; byte-blob comparison is not exposed |
+| `std::filesystem::path` | ❌ | — | Persistable/readable, not yet filterable. An accidental gap rather than a decision: `normalize_operand`'s text fold tests `is_convertible_v<D, string_view>`, which `path` fails only because that conversion needs two user-defined steps — everything else already treats it as text. Tracked separately |
+| BLOB (`std::vector<uint8_t>` / `std::vector<std::byte>`) | ❌ | — | Persistable/readable; byte-blob comparison is not exposed — it needs cross-backend semantics settled first (SQLite blob vs PG `bytea`) |
 
 Temporal comparisons sort correctly because both serializations are zero-padded and
 lexicographically ordered, so `>`, `<`, and `BETWEEN` on a date/datetime match chronological order.
