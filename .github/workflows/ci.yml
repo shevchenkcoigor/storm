@@ -212,6 +212,23 @@ jobs:
       - name: Self-test the SessionStart hook
         run: ./scripts/tests/test_session_start_hook.sh
 
+  # The default STORM_PG_CONNSTR is chosen per host OS by scripts/pg-default-connstr.sh
+  # (Linux /var/run/postgresql, macOS /tmp). CI itself never calls it: both jobs that
+  # use PostgreSQL export their own connection string for the service container. So
+  # without this job a broken Linux or Darwin branch ships green and only a developer's
+  # machine notices, as a coverage gate stuck at ~99.8% with every PG test skipped.
+  # The helper takes the OS name as an argument, so this Linux runner exercises the
+  # Darwin branch too. Pure bash, no docker or toolchain, runs on every PR.
+  pg-default-connstr:
+    name: default STORM_PG_CONNSTR per host OS
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Self-test the per-OS PostgreSQL socket default
+        run: ./scripts/tests/test_pg_default_connstr.sh
+
   # cmake/clang_p2996_host.cmake resolves clang-p2996's on-disk layout
   # (Linux/amd64 Docker vs. native macOS/arm64) for CMAKE_CXX_STDLIB_MODULES_JSON
   # and cmake/libcxx.cmake's compile/link flags. Nothing else in CI exercises
@@ -419,7 +436,8 @@ jobs:
   # #528 originally proposed running coverage WITHOUT one, on the premise that
   # the local 100% did not depend on a live server. That premise was wrong: the
   # local number was measured on a machine running PG at /var/run/postgresql,
-  # which is exactly the socket coverage-run-batched.sh defaults to, so PG tests
+  # which is exactly the socket coverage-run-batched.sh defaults to on Linux (macOS
+  # defaults to /tmp, see scripts/pg-default-connstr.sh), so PG tests
   # were quietly running and their lines were quietly counted. With PG genuinely
   # absent the same tree measures ~99.8-99.9% (functions drop 80.6% -> 48.7%),
   # because the PG Connection's constexpr transaction-nesting methods and part of
@@ -690,6 +708,7 @@ jobs:
       - agent-frontmatter
       - clang-tidy-skiplist
       - githooks-wiring
+      - pg-default-connstr
       - clang-p2996-host-layout
       - test
       - coverage

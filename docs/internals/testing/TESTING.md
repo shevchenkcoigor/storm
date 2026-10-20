@@ -37,11 +37,13 @@ See [benchmarks/README.md](https://github.com/spiritEcosse/storm/blob/develop/be
 
 ```bash
 # SQLite + PostgreSQL — fast path, run the binary directly (see "Local Test
-# Suite Speed" below for why this beats `ctest --preset ninja-debug`)
+# Suite Speed" below for why this beats `ctest --preset ninja-debug`).
+# The socket is Linux's; macOS (Homebrew PostgreSQL) listens in /tmp: use host=/tmp.
 STORM_PG_CONNSTR="host=/var/run/postgresql dbname=storm_db user=storm_db" \
     ./build/debug/tests/storm_tests
 
-# Same, via ctest (slower, but gives per-test filtering/listing via -R/-N)
+# Same, via ctest (slower, but gives per-test filtering/listing via -R/-N).
+# The preset pins the Linux socket, so on macOS use the direct-binary command above.
 ctest --preset ninja-debug
 
 # SQLite only

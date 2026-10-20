@@ -95,8 +95,10 @@ connection. `tests/mock_libpq/` does not reach them. With PG absent the tree
 measures **~99.8-99.9%**, and function coverage drops from **80.6% to 48.7%** —
 that second number is the quickest way to recognize this situation.
 
-`scripts/coverage-run-batched.sh` defaults `STORM_PG_CONNSTR` to the local unix
-socket (`host=/var/run/postgresql`); an already-exported value wins. That is how
+`scripts/coverage-run-batched.sh` (and `commit.sh`) default `STORM_PG_CONNSTR` to the
+local unix socket, chosen per host OS by `scripts/pg-default-connstr.sh`:
+`host=/var/run/postgresql` on Linux, `host=/tmp` on macOS (Homebrew PostgreSQL). Any
+other OS fails with a message naming it. An already-exported value wins. That is how
 the CI coverage job points the tests at its `postgres` service container.
 
 **Which entry point you use matters.** The `ninja-debug-coverage` *build preset*

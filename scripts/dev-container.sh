@@ -35,7 +35,7 @@
 # Postgres is reached over a shared unix-socket volume
 # (storm-dev-pgsock:/var/run/postgresql on both containers), matching
 # CMakePresets.json's own `host=/var/run/postgresql` testPreset value
-# exactly — ctest/coverage presets need no override. A shared volume (rather
+# exactly — ctest/coverage presets need no override inside the container. A shared volume (rather
 # than sharing a network namespace) means the two containers can be stopped,
 # restarted, and recreated independently without ever silently breaking
 # connectivity between them.
@@ -55,7 +55,13 @@ PG_IMAGE="postgres:17"
 CA_BUNDLE="/root/.ccr/ca-bundle.crt"
 LOCK_FILE="/tmp/storm-dev-container.lock"
 
-export STORM_PG_CONNSTR="host=/var/run/postgresql dbname=storm_db user=storm_db"
+# The connstr for commands run INSIDE the container. The container is always
+# Linux, so this socket path is fixed — unlike the host default, which is per-OS
+# (scripts/pg-default-connstr.sh). Deliberately NOT exported: `exec` falls through
+# to a native run when ../clang-p2996 exists, and exporting a Linux path there
+# overwrote the caller's own value, so on macOS the coverage gate saw
+# /var/run/postgresql and every PG test skipped.
+CONTAINER_PG_CONNSTR="host=/var/run/postgresql dbname=storm_db user=storm_db"
 
 native_toolchain_present() {
     [[ -e "$REPO_ROOT/../clang-p2996" ]]
@@ -173,7 +179,7 @@ cmd_up() {
         start_build_container
         start_pg_container
     ) 9>"$LOCK_FILE"
-    echo "dev-container: ready — STORM_PG_CONNSTR=\"$STORM_PG_CONNSTR\"" >&2
+    echo "dev-container: ready — STORM_PG_CONNSTR=\"$CONTAINER_PG_CONNSTR\"" >&2
 }
 
 cmd_exec() {
@@ -182,7 +188,7 @@ cmd_exec() {
         exec "$@"
     fi
     cmd_up
-    docker exec -w "$REPO_ROOT" -e STORM_PG_CONNSTR="$STORM_PG_CONNSTR" \
+    docker exec -w "$REPO_ROOT" -e STORM_PG_CONNSTR="$CONTAINER_PG_CONNSTR" \
         "$BUILD_CONTAINER" "$@"
 }
 
