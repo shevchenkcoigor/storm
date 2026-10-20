@@ -292,7 +292,7 @@ jobs:
         env:
           POSTGRES_DB: storm_db
           POSTGRES_USER: storm_db
-          POSTGRES_PASSWORD: storm_db
+          POSTGRES_HOST_AUTH_METHOD: trust
         options: >-
           --health-cmd "pg_isready -U storm_db"
           --health-interval 10s
@@ -397,7 +397,7 @@ jobs:
       - name: Test
         if: env.RUN_HEAVY != 'false'
         env:
-          STORM_PG_CONNSTR: "host=postgres port=5432 dbname=storm_db user=storm_db password=storm_db"
+          STORM_PG_CONNSTR: "host=postgres port=5432 dbname=storm_db user=storm_db"
         run: ctest --test-dir build/${{ matrix.build_dir }} --output-on-failure --no-tests=error
 
       - name: Atlas integration test
@@ -484,7 +484,7 @@ jobs:
         env:
           POSTGRES_DB: storm_db
           POSTGRES_USER: storm_db
-          POSTGRES_PASSWORD: storm_db
+          POSTGRES_HOST_AUTH_METHOD: trust
         options: >-
           --health-cmd "pg_isready -U storm_db"
           --health-interval 10s
@@ -547,7 +547,7 @@ jobs:
           # Points coverage-run-batched.sh at the service container above,
           # overriding its local-socket default. Same value the `test` job uses.
           # Without this the PG-only lines are uncovered and the gate fails.
-          STORM_PG_CONNSTR: "host=postgres port=5432 dbname=storm_db user=storm_db password=storm_db"
+          STORM_PG_CONNSTR: "host=postgres port=5432 dbname=storm_db user=storm_db"
         run: |
           set -o pipefail
           # Drop stale profraw/profdata — same as commit.sh, prevents a partial
