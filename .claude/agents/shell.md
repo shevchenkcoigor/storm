@@ -110,7 +110,8 @@ These scripts have project-specific conventions — understand them before modif
   (the libpq mock does not reach them). Without one the tree measures ~99.8-99.9% and
   function coverage drops 80.6% → 48.7%; the script prints a `WARN: PostgreSQL unreachable`
   line so the failure is self-diagnosing.
-- Defaults `STORM_PG_CONNSTR` to `host=/var/run/postgresql`; an exported value wins — that
+- Defaults `STORM_PG_CONNSTR` per host OS via `scripts/pg-default-connstr.sh` (Linux
+  `host=/var/run/postgresql`, macOS `host=/tmp`; `commit.sh` uses the same helper); an exported value wins — that
   is how CI targets its `postgres` service container. But the `ninja-debug-coverage` **build
   preset** nulls the variable, so `cmake --build --preset ninja-debug-coverage --target
   coverage` always uses the default; invoke the script directly to override locally.

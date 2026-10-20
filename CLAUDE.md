@@ -301,8 +301,9 @@ denominator — not of every line in the tree.
 methods and part of `pool.cppm` are instantiated only by a live connection (the libpq mock does not
 reach them). Without a server the tree measures **~99.8-99.9%** and the gate fails; function coverage
 dropping from 80.6% to **48.7%** is the tell, and the run prints a `WARN: PostgreSQL unreachable`
-line. `scripts/coverage-run-batched.sh` defaults `STORM_PG_CONNSTR` to `host=/var/run/postgresql`;
-an exported value wins, which is how CI targets its `postgres` service container. Note the
+line. `scripts/coverage-run-batched.sh` (and `commit.sh`) default `STORM_PG_CONNSTR` per host OS via
+`scripts/pg-default-connstr.sh` — `host=/var/run/postgresql` on Linux, `host=/tmp` on macOS (Homebrew),
+anything else fails loudly; an exported value wins, which is how CI targets its `postgres` service container. Note the
 `ninja-debug-coverage` **build preset** nulls the variable, so the documented local command always
 uses the script's default — invoke the script directly to point elsewhere. If coverage fails just
 under 100%, check PG is up before suspecting your code.
@@ -836,12 +837,14 @@ auto r = storm::transaction(conn, [&](auto& txn) -> std::expected<int, Error> {
 
 ```bash
 # SQLite + PostgreSQL — fast path, run the binary directly (~33s vs ~260s via
-# ctest — see docs/internals/testing/TESTING.md#local-test-suite-speed)
+# ctest — see docs/internals/testing/TESTING.md#local-test-suite-speed).
+# macOS (Homebrew PostgreSQL) listens in /tmp: use host=/tmp instead.
 STORM_PG_CONNSTR="host=/var/run/postgresql dbname=storm_db user=storm_db" \
     ./build/debug/tests/storm_tests
 
 # Same, via ctest (slower; gives per-test filtering/listing via -R/-N). CI also
-# uses ctest, but via `--test-dir` with its own connstr, not this preset.
+# uses ctest, but via `--test-dir` with its own connstr, not this preset. The
+# preset pins the Linux socket, so on macOS use the direct-binary command above.
 ctest --preset ninja-debug
 
 # SQLite only
