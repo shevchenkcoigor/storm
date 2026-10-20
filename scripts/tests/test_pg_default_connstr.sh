@@ -91,6 +91,7 @@ run_default_block() { # <script> <start-regex> <setup command>
     bash -c "set -e; $setup; f() {
 $block
 }; f; printf '%s' \"\${STORM_PG_CONNSTR-<unset>}\""
+    return $?
 }
 
 COVERAGE_START='^if \[\[ -z "\${STORM_PG_CONNSTR+set}" \]\]'
@@ -145,6 +146,7 @@ cp "$REPO_ROOT/scripts/dev-container.sh" "$DEV_TMP/repo/scripts/"
 native_exec_connstr() {
     env "$@" bash "$DEV_TMP/repo/scripts/dev-container.sh" exec \
         bash -c 'printf %s "${STORM_PG_CONNSTR-<unset>}"'
+    return $?
 }
 
 check "dev-container: native exec leaves an unset value unset" "<unset>" \
