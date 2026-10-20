@@ -165,39 +165,29 @@ namespace {
 
 namespace {
 
-    template <typename T> auto insert_void_sql() -> std::string {
-        return storm::orm::statements::InsertStatement<T, storm::db::sqlite::Connection>::VoidQuery::sql();
-    }
-
-    template <typename T> auto default_insert_sql() -> std::string {
-        using storm::orm::statements::default_return_id;
-        using storm::orm::statements::ReturnId;
-        using Stmt = storm::orm::statements::InsertStatement<T, storm::db::sqlite::Connection>;
-        if constexpr (default_return_id<T>() == ReturnId::Yes) {
-            return Stmt::SingleQuery::sql();
-        } else {
-            return Stmt::VoidQuery::sql();
-        }
+    template <typename T, ReturnId R = default_return_id<T>()> auto insert_sql() -> std::string {
+        return storm::orm::statements::InsertStatement<T, storm::db::sqlite::Connection>::template SingleInsertQuery<
+                R>::sql();
     }
 
 } // namespace
 
 TEST(CallerAssignedPkSqlTest, InsertEmitsPkColumnAndNoReturning) {
-    const std::string& sql = insert_void_sql<AssignedIdRec>();
+    const std::string& sql = insert_sql<AssignedIdRec, ReturnId::No>();
     EXPECT_TRUE(sql.starts_with("INSERT INTO AssignedIdRec (ext_id, label) VALUES (?, ?)"))
             << "PK column must be present in the INSERT column list: " << sql;
     EXPECT_FALSE(sql.contains("RETURNING")) << "no RETURNING for a caller-assigned key: " << sql;
 }
 
 TEST(CallerAssignedPkSqlTest, InsertWithNonIdPkNameEmitsCorrectColumn) {
-    const std::string& sql = insert_void_sql<AssignedRefRec>();
+    const std::string& sql = insert_sql<AssignedRefRec, ReturnId::No>();
     EXPECT_TRUE(sql.starts_with("INSERT INTO AssignedRefRec (ref_code, description) VALUES (?, ?)"))
             << "PK column name must be the real identifier, not a hardcoded 'id': " << sql;
     EXPECT_FALSE(sql.contains("RETURNING")) << "no RETURNING for a caller-assigned key: " << sql;
 }
 
 TEST(CallerAssignedPkSqlTest, AutoIdInsertStillReturnsId) {
-    const std::string& sql = default_insert_sql<AutoIdRec>();
+    const std::string& sql = insert_sql<AutoIdRec>();
     EXPECT_TRUE(sql.ends_with("RETURNING id")) << "plain primary INSERT must still RETURN id: " << sql;
 }
 

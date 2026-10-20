@@ -16,6 +16,10 @@ import storm_orm_statements_erase_grammar;
 // Must follow person.h: StockEntry's FK part names Person.
 #include "test_composite_pk_models.h" // NOSONAR cpp:S954
 
+using storm::orm::statements::default_return_id;
+using storm::orm::statements::ReturnId;
+using storm::orm::statements::ReturnIdSupported;
+
 // ── #501: composite PK — compile-time gates and generated SQL text ───────────
 // Step 2 of #90, on top of #500 (annotation + DDL). Widens the by-key WHERE
 // clause from "pk = ?" to "a = ? AND b = ?", with the bind arithmetic and the
@@ -225,44 +229,49 @@ TEST(CompositePkChunking, RowCapacityStaysWithinTheParameterBudget) {
 
 namespace {
 
-    // VoidQuery::sql()/SingleQuery::sql() are static: the text derives purely
+    // SingleInsertQuery<R>::sql() is static: the text derives purely
     // from reflection, so no live connection is involved (same rationale as the
     // EraseGrammar asserts above).
-    template <typename T> auto insert_void_sql() -> std::string {
-        return storm::orm::statements::InsertStatement<T, storm::db::sqlite::Connection>::VoidQuery::sql();
-    }
-    template <typename T> auto insert_returning_sql() -> std::string {
-        return storm::orm::statements::InsertStatement<T, storm::db::sqlite::Connection>::SingleQuery::sql();
+    template <typename T, ReturnId R = default_return_id<T>()> auto insert_sql() -> std::string {
+        return storm::orm::statements::InsertStatement<T, storm::db::sqlite::Connection>::template SingleInsertQuery<
+                R>::sql();
     }
 
 } // namespace
 
 TEST(CompositePkInsertSql, EveryKeyPartJoinsTheColumnList) {
     EXPECT_EQ(
-            insert_void_sql<OrderLine>(),
+            (insert_sql<OrderLine, ReturnId::No>()),
             "INSERT INTO OrderLine (order_id, product_id, quantity, note) VALUES (?, ?, ?, ?)"
     );
 }
 
 TEST(CompositePkInsertSql, ThreePartKeyInDeclarationOrder) {
-    EXPECT_EQ(insert_void_sql<Ledger>(), "INSERT INTO Ledger (region, account, period, balance) VALUES (?, ?, ?, ?)");
+    EXPECT_EQ(
+            (insert_sql<Ledger, ReturnId::No>()),
+            "INSERT INTO Ledger (region, account, period, balance) VALUES (?, ?, ?, ?)"
+    );
 }
 
 // An FK part's COLUMN is "<name>_id" — emitting the bare member would INSERT
 // into a column that does not exist. Same reason #500 asserts this for DDL.
 TEST(CompositePkInsertSql, FkKeyPartUsesColumnNameNotIdentifier) {
-    EXPECT_EQ(insert_void_sql<StockEntry>(), "INSERT INTO StockEntry (warehouse_id, sku, qty) VALUES (?, ?, ?)");
+    EXPECT_EQ(
+            (insert_sql<StockEntry, ReturnId::No>()), "INSERT INTO StockEntry (warehouse_id, sku, qty) VALUES (?, ?, ?)"
+    );
 }
 
 TEST(CompositePkInsertSql, MixedTypeKeyParts) {
-    EXPECT_EQ(insert_void_sql<Inventory>(), "INSERT INTO Inventory (warehouse, sku, on_hand) VALUES (?, ?, ?)");
+    EXPECT_EQ(
+            (insert_sql<Inventory, ReturnId::No>()), "INSERT INTO Inventory (warehouse, sku, on_hand) VALUES (?, ?, ?)"
+    );
 }
 
 // Single-PK INSERT text must be byte-identical to before this issue, on both
 // the void and the RETURNING variants.
 TEST(CompositePkInsertSql, SinglePkTextIsByteIdentical) {
-    EXPECT_EQ(insert_void_sql<Widget>(), "INSERT INTO Widget (name, weight) VALUES (?, ?)");
-    EXPECT_EQ(insert_returning_sql<Widget>(), "INSERT INTO Widget (name, weight) VALUES (?, ?) RETURNING id");
+    EXPECT_EQ((insert_sql<Widget, ReturnId::No>()), "INSERT INTO Widget (name, weight) VALUES (?, ?)");
+    EXPECT_EQ(insert_sql<Widget>(), "INSERT INTO Widget (name, weight) VALUES (?, ?) RETURNING id");
 }
 
 // ── (#502) ReturnId gate ─────────────────────────────────────────────────────
@@ -274,10 +283,6 @@ TEST(CompositePkInsertSql, SinglePkTextIsByteIdentical) {
 // call it asserts about).
 
 namespace {
-
-    using storm::orm::statements::default_return_id;
-    using storm::orm::statements::ReturnId;
-    using storm::orm::statements::ReturnIdSupported;
 
     static_assert(!ReturnIdSupported<OrderLine, ReturnId::Yes>, "a composite model has no DB-generated key to return");
     static_assert(ReturnIdSupported<OrderLine, ReturnId::No>, "opting OUT of the id is valid on every model shape");

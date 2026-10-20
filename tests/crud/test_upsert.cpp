@@ -154,6 +154,17 @@ template <typename ConnType> auto seed_zed(storm::QuerySet<Person, ConnType>& qs
     return first_id.value().value();
 }
 
+template <typename ConnType> constexpr bool on_conflict_is_rvalue_only() {
+    using Proxy = decltype(std::declval<storm::QuerySet<Person, ConnType>&>().insert(std::declval<const Person&>()));
+    return !requires(Proxy& p) { p.template on_conflict<fields::Person.name>(); }&&
+        requires(Proxy && p)
+    {
+        std::move(p).template on_conflict<fields::Person.name>();
+    };
+}
+
+static_assert(on_conflict_is_rvalue_only<storm::db::sqlite::Connection>());
+
 // DO NOTHING via the fluent proxy: first insert lands, the conflicting second
 // insert is skipped (no row touched), leaving the original row untouched.
 TYPED_TEST(UpsertTest, DoNothingSkipsOnConflict) {

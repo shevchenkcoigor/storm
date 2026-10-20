@@ -34,6 +34,10 @@ import std;
 
 namespace {
 
+    using storm::orm::statements::default_return_id;
+    using storm::orm::statements::ReturnId;
+    using storm::orm::statements::ReturnIdSupported;
+
     // Single UUID PK, no other relation machinery — the minimal shape the defect
     // needs. A distinct model from test_junction_column_type.cpp's UuidDoc so
     // this TU owns its own tables.
@@ -77,22 +81,11 @@ namespace {
     constexpr std::string_view kNoteUuid2  = "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb";
     constexpr std::string_view kTicketUuid = "cccccccc-cccc-4ccc-8ccc-cccccccccccc";
 
-    // VoidQuery::sql()/SingleQuery::sql() are static — the text derives purely
+    // SingleInsertQuery<R>::sql() is static — the text derives purely
     // from the model, so no connection is needed (same helper as #502's TU).
-    template <typename T> auto insert_void_sql() -> std::string {
-        return storm::orm::statements::InsertStatement<T, storm::db::sqlite::Connection>::VoidQuery::sql();
-    }
-
-    // What plain insert() — i.e. the default_return_id<T>() proxy — actually emits.
-    template <typename T> auto default_insert_sql() -> std::string {
-        using storm::orm::statements::default_return_id;
-        using storm::orm::statements::ReturnId;
-        using Stmt = storm::orm::statements::InsertStatement<T, storm::db::sqlite::Connection>;
-        if constexpr (default_return_id<T>() == ReturnId::Yes) {
-            return Stmt::SingleQuery::sql();
-        } else {
-            return Stmt::VoidQuery::sql();
-        }
+    template <typename T, ReturnId R = default_return_id<T>()> auto insert_sql() -> std::string {
+        return storm::orm::statements::InsertStatement<T, storm::db::sqlite::Connection>::template SingleInsertQuery<
+                R>::sql();
     }
 
 } // namespace
@@ -127,10 +120,6 @@ namespace fields {
 // ============================================================================
 
 namespace {
-
-    using storm::orm::statements::default_return_id;
-    using storm::orm::statements::ReturnId;
-    using storm::orm::statements::ReturnIdSupported;
 
     // (1) The default plain insert() resolves to.
     static_assert(
@@ -198,7 +187,7 @@ namespace {
     );
     static_assert(
             !BulkInsertYesCallable<UuidNoteRec, Sqlite>,
-            "the bulk overload routes to BulkReturningQuery — it must be gated too"
+            "the bulk overload routes to BulkInsertQuery<ReturnId::Yes> — it must be gated too"
     );
     static_assert(
             SingleInsertYesCallable<IntNoteRec, Sqlite>, "a single-integer-PK model's insert<Yes> still compiles"
@@ -260,13 +249,13 @@ namespace {
 // The whole defect, in one line of text: no RETURNING, and the caller's key
 // column IS in the INSERT (it is data, per #565).
 TEST(UuidPkReturningSql, PlainInsertEmitsNoReturningAndIncludesTheKey) {
-    const std::string sql = default_insert_sql<UuidNoteRec>();
+    const std::string sql = insert_sql<UuidNoteRec>();
     EXPECT_EQ(sql, "INSERT INTO UuidNoteRec (id, title) VALUES (?, ?)");
     EXPECT_FALSE(sql.contains("RETURNING")) << sql;
 }
 
 TEST(UuidPkReturningSql, KeyMemberNotNamedIdIsAlsoCovered) {
-    const std::string sql = default_insert_sql<UuidTicketRec>();
+    const std::string sql = insert_sql<UuidTicketRec>();
     EXPECT_EQ(sql, "INSERT INTO UuidTicketRec (ticket_uuid, code) VALUES (?, ?)");
     EXPECT_FALSE(sql.contains("RETURNING")) << sql;
 }
@@ -274,13 +263,13 @@ TEST(UuidPkReturningSql, KeyMemberNotNamedIdIsAlsoCovered) {
 // Explicit ReturnId::No was already valid on a UUID model and its text is
 // unchanged — the default now simply resolves to the same statement.
 TEST(UuidPkReturningSql, ExplicitNoMatchesTheNewDefault) {
-    EXPECT_EQ(insert_void_sql<UuidNoteRec>(), default_insert_sql<UuidNoteRec>());
+    EXPECT_EQ((insert_sql<UuidNoteRec, ReturnId::No>()), insert_sql<UuidNoteRec>());
 }
 
 // Regression anchor: the shape a DB really does generate keeps RETURNING.
 TEST(UuidPkReturningSql, SingleIntegerPkTextIsByteIdentical) {
-    EXPECT_EQ(insert_void_sql<IntNoteRec>(), "INSERT INTO IntNoteRec (title) VALUES (?)");
-    EXPECT_EQ(default_insert_sql<IntNoteRec>(), "INSERT INTO IntNoteRec (title) VALUES (?) RETURNING id");
+    EXPECT_EQ((insert_sql<IntNoteRec, ReturnId::No>()), "INSERT INTO IntNoteRec (title) VALUES (?)");
+    EXPECT_EQ(insert_sql<IntNoteRec>(), "INSERT INTO IntNoteRec (title) VALUES (?) RETURNING id");
 }
 
 // The upsert half of the same defect: DO UPDATE / DO NOTHING both echoed the
