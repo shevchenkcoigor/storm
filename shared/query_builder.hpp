@@ -369,12 +369,12 @@ namespace storm::orm::query_builder {
         static consteval auto resolve_setop() -> std::meta::info {
             constexpr std::string_view type = spec.setop.type.view();
             if (type == "union")
-                return ^^QuerySet<Model>::template union_<>;
+                return ^^QuerySet<Model, ConnType>::template union_<>;
             if (type == "union_all")
-                return ^^QuerySet<Model>::template union_all<>;
+                return ^^QuerySet<Model, ConnType>::template union_all<>;
             if (type == "except")
-                return ^^QuerySet<Model>::template except_<>;
-            return ^^QuerySet<Model>::template intersect_<>;
+                return ^^QuerySet<Model, ConnType>::template except_<>;
+            return ^^QuerySet<Model, ConnType>::template intersect_<>;
         }
 
         struct SetOpThresholds {

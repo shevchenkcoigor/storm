@@ -5,6 +5,7 @@
 
 // NOLINTBEGIN(misc-const-correctness)
 
+import storm_defaults;
 import storm_db_postgresql;
 import storm_db_sqlite;
 import storm_meta;

@@ -161,7 +161,7 @@ qs.insert(objects).execute();
 
 ```cpp
 // FAST: ~1.7M ops/sec - single commit at end
-auto conn = DefaultConnection<>::get();
+auto conn = DefaultConnection<>::get();   // storm_defaults alias → BasicDefaultConnection<sqlite::Connection>
 auto txn  = storm::begin(conn);          // RAII guard (#415)
 for (auto& obj : objects) {
     qs.insert(obj).execute();

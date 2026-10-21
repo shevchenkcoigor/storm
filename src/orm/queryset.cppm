@@ -9,7 +9,6 @@ export module storm_orm_queryset;
 import std;
 
 import storm_db_concept;
-import storm_db_sqlite;
 import storm_orm_field_attr;
 import storm_orm_statements_base;
 import storm_orm_statements_erase;
@@ -28,22 +27,22 @@ export namespace storm {
 
     template <
             class T,
-            storm::db::DatabaseConnection ConnType   = storm::db::sqlite::Connection,
+            storm::db::DatabaseConnection ConnType,
             bool                          Finalized_ = false>
         requires storm::meta::Entity<T>
-    class QuerySet { // NOSONAR(cpp:S1448) — ORM facade class; method count grows with supported operations
+    class BasicQuerySet { // NOSONAR(cpp:S1448) — ORM facade class; method count grows with supported operations
         using Error     = typename ConnType::Error;
         using Statement = typename ConnType::Statement;
-        using Select    = orm::statements::SelectStatement<T, ConnType>;
+        using Select    = orm::statements::BasicSelectStatement<T, ConnType>;
         using Query     = typename Select::Query;
 
         template <class U, storm::db::DatabaseConnection C, bool F>
             requires storm::meta::Entity<U>
-        friend class QuerySet;
+        friend class BasicQuerySet;
 
       public:
         // Default constructor using default connection
-        QuerySet() : q_(Select{}.all()) {}
+        BasicQuerySet() : q_(Select{}.all()) {}
 
         // LCOV_EXCL_START — compile-time only, used in static_assert
         static constexpr auto is_finalized() -> bool {
@@ -53,12 +52,12 @@ export namespace storm {
 
         // Erase single object - returns proxy with .execute() and .to_sql()
         [[nodiscard]] auto erase(const T& obj [[clang::lifetimebound]]) {
-            return orm::statements::EraseStatement<T, ConnType>(conn()).query(obj);
+            return orm::statements::BasicEraseStatement<T, ConnType>(conn()).query(obj);
         }
 
         // Bulk erase - returns proxy with .execute() and .to_sql()
         [[nodiscard]] auto erase(std::span<const T> objects [[clang::lifetimebound]]) {
-            return orm::statements::EraseStatement<T, ConnType>(conn()).query(objects);
+            return orm::statements::BasicEraseStatement<T, ConnType>(conn()).query(objects);
         }
 
         // Conditional bulk DELETE (#198) — deletes rows matching the current where().
@@ -66,12 +65,12 @@ export namespace storm {
         // With NO where() set, .execute()/.to_sql() return std::unexpected and refuse
         // to wipe the table; call erase_all() for an explicit full-table delete.
         [[nodiscard]] auto erase() {
-            return orm::statements::EraseStatement<T, ConnType>(conn()).query_where(q_.where_expr);
+            return orm::statements::BasicEraseStatement<T, ConnType>(conn()).query_where(q_.where_expr);
         }
 
         // Erase all rows — executes DELETE FROM <table> with no WHERE clause
         [[nodiscard]] auto erase_all() {
-            return orm::statements::EraseStatement<T, ConnType>(conn()).query_all();
+            return orm::statements::BasicEraseStatement<T, ConnType>(conn()).query_all();
         }
 
         // Insert single object - returns proxy with .execute() and .to_sql()
@@ -84,7 +83,7 @@ export namespace storm {
         template <orm::statements::ReturnId R = orm::statements::default_return_id<T>(), typename U = T>
             requires std::same_as<std::remove_cvref_t<U>, T> && orm::statements::ReturnIdSupported<T, R>
         [[nodiscard]] auto insert(const U& obj [[clang::lifetimebound]]) {
-            return orm::statements::InsertStatement<T, ConnType>(conn()).template query<R>(obj);
+            return orm::statements::BasicInsertStatement<T, ConnType>(conn()).template query<R>(obj);
         }
 
         // Bulk insert - returns proxy with .execute() and .to_sql()
@@ -93,14 +92,14 @@ export namespace storm {
         [[nodiscard]] auto
         insert(std::span<const T>                            objects [[clang::lifetimebound]],
                std::optional<orm::statements::InsertOptions> opts = std::nullopt) {
-            return orm::statements::InsertStatement<T, ConnType>(conn()).query(objects, opts);
+            return orm::statements::BasicInsertStatement<T, ConnType>(conn()).query(objects, opts);
         }
         template <orm::statements::ReturnId R>
             requires orm::statements::ReturnIdSupported<T, R>
         [[nodiscard]] auto
         insert(std::span<const T>                            objects [[clang::lifetimebound]],
                std::optional<orm::statements::InsertOptions> opts = std::nullopt) {
-            return orm::statements::InsertStatement<T, ConnType>(conn()).template query<R>(objects, opts);
+            return orm::statements::BasicInsertStatement<T, ConnType>(conn()).template query<R>(objects, opts);
         }
 
         // WHERE clause support - builder pattern with method chaining using type-safe expressions
@@ -120,14 +119,14 @@ export namespace storm {
         //   queryset.where(fields::Person.age > 25 && fields::Person.is_active == true).select()
         //   queryset.where((fields::Person.age > 25) || (fields::Person.name.like("A%"))).select()
         //
-        [[nodiscard]] auto where(orm::where::ExpressionVariantPtr expr) const -> QuerySet {
-            return QuerySet{q_.where(std::move(expr))};
+        [[nodiscard]] auto where(orm::where::ExpressionVariantPtr expr) const -> BasicQuerySet {
+            return BasicQuerySet{q_.where(std::move(expr))};
         }
 
         // LIMIT clause support - returns finalized QuerySet (prevents use as set-op operand)
         // Usage: queryset.limit(10).select()
         //        queryset.where(age > 25).limit(10).select()
-        [[nodiscard]] constexpr auto limit(int n) -> QuerySet<T, ConnType, true> {
+        [[nodiscard]] constexpr auto limit(int n) -> BasicQuerySet<T, ConnType, true> {
             // Precondition: LIMIT must be non-negative (issue #362, item C).
             // Tracked by #225: becomes a P2900 `pre(n >= 0)` contract once clang-p2996 supports it.
             assert(n >= 0 && "limit() requires a non-negative value");
@@ -139,7 +138,7 @@ export namespace storm {
         // OFFSET clause support - returns finalized QuerySet (prevents use as set-op operand)
         // Usage: queryset.offset(5).select()
         //        queryset.limit(10).offset(5).select()
-        [[nodiscard]] constexpr auto offset(int n) -> QuerySet<T, ConnType, true> {
+        [[nodiscard]] constexpr auto offset(int n) -> BasicQuerySet<T, ConnType, true> {
             // Precondition: OFFSET must be non-negative (issue #362, item C).
             // Tracked by #225: becomes a P2900 `pre(n >= 0)` contract once clang-p2996 supports it.
             assert(n >= 0 && "offset() requires a non-negative value");
@@ -156,7 +155,7 @@ export namespace storm {
         // also covers SetOpBuilder::order_by.
         template <auto... Args>
             requires orm::statements::OrderBySelectorsAreSingleColumn<Args...>
-        [[nodiscard]] constexpr auto order_by() -> QuerySet<T, ConnType, true> {
+        [[nodiscard]] constexpr auto order_by() -> BasicQuerySet<T, ConnType, true> {
             auto result = to_finalized();
             result.q_   = std::move(result.q_).template order_by<Args...>();
             return result;
@@ -233,8 +232,8 @@ export namespace storm {
         // Mixed FK + m2m in one call is rejected (out of scope, #392).
         template <auto... S>
             requires orm::statements::JoinableFields<T, storm::meta::selector_info<S>()...>
-        [[nodiscard]] auto join() const -> QuerySet {
-            return QuerySet{q_.template join<S...>()};
+        [[nodiscard]] auto join() const -> BasicQuerySet {
+            return BasicQuerySet{q_.template join<S...>()};
         }
 
         // LEFT JOIN support for FK fields or many-to-many fields (#203, #392).
@@ -248,8 +247,8 @@ export namespace storm {
         //   Multi M2M: member_qs.left_join<fields::Member.courses, fields::Member.clubs>().select()
         template <auto... S>
             requires orm::statements::JoinableFields<T, storm::meta::selector_info<S>()...>
-        [[nodiscard]] auto left_join() const -> QuerySet {
-            return QuerySet{q_.template left_join<S...>()};
+        [[nodiscard]] auto left_join() const -> BasicQuerySet {
+            return BasicQuerySet{q_.template left_join<S...>()};
         }
 
         // Update single object - returns proxy with .execute() and .to_sql()
@@ -257,12 +256,12 @@ export namespace storm {
         template <typename U = T>
             requires std::same_as<std::remove_cvref_t<U>, T>
         [[nodiscard]] auto update(const U& obj [[clang::lifetimebound]]) {
-            return orm::statements::UpdateStatement<T, ConnType>(conn()).query(obj);
+            return orm::statements::BasicUpdateStatement<T, ConnType>(conn()).query(obj);
         }
 
         // Bulk update - returns proxy with .execute() and .to_sql()
         [[nodiscard]] auto update(std::span<const T> objects [[clang::lifetimebound]]) {
-            return orm::statements::UpdateStatement<T, ConnType>(conn()).query(objects);
+            return orm::statements::BasicUpdateStatement<T, ConnType>(conn()).query(objects);
         }
 
         // Conditional bulk UPDATE (#403) — updates rows matching the current where() filter.
@@ -273,7 +272,7 @@ export namespace storm {
         template <auto... S>
             requires(sizeof...(S) > 0 && (storm::meta::ValidSelector<S> && ...))
         [[nodiscard]] auto update(const T& proto [[clang::lifetimebound]]) {
-            return orm::statements::UpdateStatement<T, ConnType>(conn())
+            return orm::statements::BasicUpdateStatement<T, ConnType>(conn())
                     .template query_where<storm::meta::selector_info<S>()...>(proto, q_.where_expr);
         }
 
@@ -283,7 +282,7 @@ export namespace storm {
         template <auto... S>
             requires(sizeof...(S) > 0 && (storm::meta::ValidSelector<S> && ...))
         [[nodiscard]] auto update_all(const T& proto [[clang::lifetimebound]]) {
-            return orm::statements::UpdateStatement<T, ConnType>(conn())
+            return orm::statements::BasicUpdateStatement<T, ConnType>(conn())
                     .template query_all<storm::meta::selector_info<S>()...>(proto);
         }
 
@@ -313,28 +312,28 @@ export namespace storm {
         // =====================================================================
 
         template <bool F_ = Finalized_>
-        [[nodiscard]] auto union_(const QuerySet<T, ConnType, false>& other)
+        [[nodiscard]] auto union_(const BasicQuerySet<T, ConnType, false>& other)
             requires(!F_)
         {
             return make_setop_builder(other, orm::statements::SetOpType::Union);
         }
 
         template <bool F_ = Finalized_>
-        [[nodiscard]] auto union_all(const QuerySet<T, ConnType, false>& other)
+        [[nodiscard]] auto union_all(const BasicQuerySet<T, ConnType, false>& other)
             requires(!F_)
         {
             return make_setop_builder(other, orm::statements::SetOpType::UnionAll);
         }
 
         template <bool F_ = Finalized_>
-        [[nodiscard]] auto except_(const QuerySet<T, ConnType, false>& other)
+        [[nodiscard]] auto except_(const BasicQuerySet<T, ConnType, false>& other)
             requires(!F_)
         {
             return make_setop_builder(other, orm::statements::SetOpType::Except);
         }
 
         template <bool F_ = Finalized_>
-        [[nodiscard]] auto intersect_(const QuerySet<T, ConnType, false>& other)
+        [[nodiscard]] auto intersect_(const BasicQuerySet<T, ConnType, false>& other)
             requires(!F_)
         {
             return make_setop_builder(other, orm::statements::SetOpType::Intersect);
@@ -421,18 +420,18 @@ export namespace storm {
             return q_.template count_distinct<S>();
         }
 
-        [[nodiscard]] auto to_finalized() const -> QuerySet<T, ConnType, true> {
-            return QuerySet<T, ConnType, true>{q_};
+        [[nodiscard]] auto to_finalized() const -> BasicQuerySet<T, ConnType, true> {
+            return BasicQuerySet<T, ConnType, true>{q_};
         }
 
       private:
-        explicit QuerySet(Query query) : q_(std::move(query)) {}
+        explicit BasicQuerySet(Query query) : q_(std::move(query)) {}
 
         [[nodiscard]] auto conn() const -> const std::shared_ptr<ConnType>& {
             return q_.stmt.connection();
         }
 
-        auto make_setop_builder(const QuerySet<T, ConnType, false>& other, orm::statements::SetOpType op)
+        auto make_setop_builder(const BasicQuerySet<T, ConnType, false>& other, orm::statements::SetOpType op)
                 -> orm::statements::SetOpBuilder<T, ConnType> {
             auto                                          left  = capture_operand();
             auto                                          right = other.capture_operand();

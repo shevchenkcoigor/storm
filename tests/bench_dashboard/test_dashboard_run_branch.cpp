@@ -15,6 +15,7 @@
 
 #include <gtest/gtest.h>
 
+import storm_defaults;
 import storm_db_default_connection;
 import storm_db_sqlite;
 import storm_meta;
@@ -53,7 +54,9 @@ class DashboardRunBranch : public ::testing::Test {
   public:
     void SetUp() override {
         ASSERT_TRUE(DefaultConnection<>::set(":memory:").has_value());
-        ASSERT_TRUE((SchemaStatement<bench_dashboard::BenchRun>::create_table_if_not_exists()));
+        ASSERT_TRUE((
+                SchemaStatement<bench_dashboard::BenchRun>::create_table_if_not_exists<storm::db::sqlite::Connection>()
+        ));
     }
 
     void TearDown() override {

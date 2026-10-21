@@ -18,6 +18,7 @@
 #include <gtest/gtest.h>
 #include <span>
 #include <vector>
+import storm_defaults;
 import storm_orm_statements_update;
 import storm_orm_statements_erase;
 using storm::orm::statements::EraseStatement;

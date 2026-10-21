@@ -7,17 +7,16 @@ export module storm_db_default_connection;
 
 import std;
 import storm_db_concept;
-import storm_db_sqlite;
 import storm_db_pool;
 
 export namespace storm::db {
 
-    template <DatabaseConnection ConnType = sqlite::Connection> class DefaultConnection {
+    template <DatabaseConnection ConnType> class BasicDefaultConnection {
       public:
         using Error = typename ConnType::Error;
         using Pool  = ConnectionPool<ConnType>;
 
-        DefaultConnection() = delete; // static-only facade
+        BasicDefaultConnection() = delete; // static-only facade
 
         // Open a new connection on the calling thread and make it the default.
         [[nodiscard]] static auto set(std::string_view db_path) -> std::expected<void, Error> {

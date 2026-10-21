@@ -4,6 +4,7 @@
 
 // NOLINTBEGIN(misc-const-correctness,performance-unnecessary-copy-initialization)
 
+import storm_defaults;
 import storm_db_default_connection;
 import storm_db_pool;
 import storm_db_postgresql;

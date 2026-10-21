@@ -13,7 +13,6 @@ import storm_orm_indexes;
 import storm_orm_utilities;
 import storm_orm_field_attr;
 import storm_db_concept;
-import storm_db_sqlite;
 import storm_db_default_connection;
 
 export namespace storm::orm::schema {
@@ -1867,9 +1866,9 @@ export namespace storm::orm::schema {
 
         // Execute all CREATE INDEX IF NOT EXISTS statements on the given connection.
         // Defaults to the calling thread's default connection for ConnType.
-        template <db::DatabaseConnection ConnType = db::sqlite::Connection>
+        template <db::DatabaseConnection ConnType>
         [[nodiscard]] static auto
-        create_indexes_if_not_exist(std::shared_ptr<ConnType> conn = db::DefaultConnection<ConnType>::get())
+        create_indexes_if_not_exist(std::shared_ptr<ConnType> conn = db::BasicDefaultConnection<ConnType>::get())
                 -> std::expected<void, typename ConnType::Error> {
             for (const auto& sql : index_sql_strings_) {
                 auto result = conn->execute(sql);
@@ -1973,9 +1972,9 @@ export namespace storm::orm::schema {
         // Selects the appropriate dialect at compile time. FK-referenced parent tables
         // are created first so always-on referential integrity (#412) is satisfied.
         // Defaults to the calling thread's default connection for ConnType.
-        template <db::DatabaseConnection ConnType = db::sqlite::Connection>
+        template <db::DatabaseConnection ConnType>
         [[nodiscard]] static auto
-        create_table_if_not_exists(std::shared_ptr<ConnType> conn = db::DefaultConnection<ConnType>::get())
+        create_table_if_not_exists(std::shared_ptr<ConnType> conn = db::BasicDefaultConnection<ConnType>::get())
                 -> std::expected<void, typename ConnType::Error> {
             std::set<std::string, std::less<>> done;
             return create_table_if_not_exists(conn, done);

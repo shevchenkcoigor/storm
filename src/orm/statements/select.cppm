@@ -25,7 +25,6 @@ import storm_orm_utilities;
 import storm_orm_where;
 import storm_db_concept;
 import storm_db_default_connection;
-import storm_db_sqlite;
 
 export namespace storm::orm::statements {
 
@@ -42,8 +41,8 @@ export namespace storm::orm::statements {
             (storm::meta::ValidSelector<S> && ...) && AllNumericAggregateable<storm::meta::selector_info<S>()...>;
 
     // Statement class for ORM select operations
-    template <typename T, storm::db::DatabaseConnection ConnType = storm::db::sqlite::Connection>
-    class SelectStatement : private BaseStatement<T> {
+    template <typename T, storm::db::DatabaseConnection ConnType>
+    class BasicSelectStatement : private BaseStatement<T> {
         friend class BaseStatement<T>; // Allow BaseStatement to access protected/private members
         using Base      = BaseStatement<T>;
         using Error     = typename ConnType::Error;
@@ -92,7 +91,9 @@ export namespace storm::orm::statements {
             return select_sql_string;
         }
 
-        explicit SelectStatement(std::shared_ptr<ConnType> conn = storm::db::DefaultConnection<ConnType>::get())
+        explicit BasicSelectStatement(
+                std::shared_ptr<ConnType> conn = storm::db::BasicDefaultConnection<ConnType>::get()
+        )
             : conn_(std::move(conn)) {}
 
         [[nodiscard]] auto connection() const -> const std::shared_ptr<ConnType>& {
@@ -188,7 +189,7 @@ export namespace storm::orm::statements {
         // derived Query/FirstQuery/GetQuery don't each spell the field list out — that
         // five-line forwarding block used to repeat four times.
         struct QueryBase {
-            SelectStatement                                stmt;
+            BasicSelectStatement                           stmt;
             std::optional<JoinStatementWrapper<PkKeyType>> join_wrapper;
             orm::where::ExpressionVariantPtr               where_expr;
             std::optional<int>                             limit_value;
@@ -586,7 +587,7 @@ export namespace storm::orm::statements {
                 std::optional<int>               offset,
                 std::optional<OrderByWrapper>    order_by_wrapper
         ) -> storm::generator<std::expected<T, Error>&&> {
-            SelectStatement                                self{std::move(conn)};
+            BasicSelectStatement                           self{std::move(conn)};
             std::optional<JoinStatementWrapper<PkKeyType>> wrapper_opt{join_wrapper};
             QueryClauses const clauses{wrapper_opt, where_expr, limit, offset, order_by_wrapper};
             auto               rows = self.execute_m2m_2query(clauses);

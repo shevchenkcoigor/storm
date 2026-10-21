@@ -8,6 +8,7 @@ import std;
 
 export import storm_meta;
 export import storm_db_default_connection;
+export import storm_defaults;
 export import storm_orm_generator;
 export import storm_orm_utilities;
 export import storm_orm_transaction;

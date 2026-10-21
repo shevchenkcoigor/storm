@@ -23,6 +23,12 @@ DefaultConnection<>::set(":memory:");
 QuerySet<Person> qs;
 ```
 
+`QuerySet<T>` and `DefaultConnection<>` are aliases (module `storm_defaults`, re-exported by
+`import storm;`) that default the backend to `sqlite::Connection`. Name another backend explicitly —
+`QuerySet<Person, db::postgresql::Connection>` — or, to avoid the SQLite backend entirely, use the
+generic `BasicQuerySet<T, ConnType>` / `db::BasicDefaultConnection<ConnType>` without importing
+`storm_defaults`.
+
 ## INSERT
 
 ```cpp

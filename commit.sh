@@ -421,6 +421,29 @@ if [[ -n "$STAGED_FILES" ]] \
     echo -e "${DIM}✓ per-OS PostgreSQL socket default self-test passed${RESET}"
 fi
 
+# --- ORM backend-neutrality guard ---
+# src/orm/** and the generic db facades must name no concrete backend; the
+# SQLite default lives only in src/storm_defaults.cppm. A stray
+# `import storm_db_sqlite;` compiles cleanly, so nothing else catches it. Cheap
+# pure-bash grep, run whenever a module unit or the checker itself is staged.
+# Placed BEFORE the TOTAL_STEPS==0 early exit, same reasoning as the guards
+# above: a commit touching only the checker or its self-test skips every step.
+if [[ -n "$STAGED_FILES" ]] \
+   && grep -qE '^(src/.*\.cppm|scripts/check-orm-backend-imports\.sh|scripts/tests/test_check_orm_backend_imports\.sh)$' <<< "$STAGED_FILES"; then
+    if ! "$(dirname "${BASH_SOURCE[0]}")/scripts/check-orm-backend-imports.sh"; then
+        echo ""
+        echo -e "${RED}${BOLD} COMMIT BLOCKED — backend-neutral ORM module names a concrete backend${RESET}"
+        exit 1
+    fi
+    if grep -qE '^scripts/(check-orm-backend-imports|tests/test_check_orm_backend_imports)\.sh$' <<< "$STAGED_FILES" \
+       && ! "$(dirname "${BASH_SOURCE[0]}")/scripts/tests/test_check_orm_backend_imports.sh"; then
+        echo ""
+        echo -e "${RED}${BOLD} COMMIT BLOCKED — ORM backend-neutrality checker self-test failed${RESET}"
+        exit 1
+    fi
+    echo -e "${DIM}✓ ORM backend-neutrality guard passed${RESET}"
+fi
+
 # --- Count total steps ---
 TOTAL_STEPS=0
 [[ "$RUN_FORMAT" == true ]] && ((TOTAL_STEPS++))

@@ -17,7 +17,6 @@ import storm_orm_utilities;
 import storm_orm_transaction;
 import storm_db_concept;
 import storm_db_default_connection;
-import storm_db_sqlite;
 
 export namespace storm::orm::statements {
 
@@ -53,7 +52,7 @@ export namespace storm::orm::statements {
     template <typename T, ReturnId R>
     concept ReturnIdSupported = (R == ReturnId::No) || BaseStatement<T>::pk_is_db_generated_();
 
-    template <typename T, storm::db::DatabaseConnection ConnType> class InsertStatement;
+    template <typename T, storm::db::DatabaseConnection ConnType> class BasicInsertStatement;
 
     // Upsert proxy chain (#205): lifted OUT of InsertStatement so their sql()/execute()/to_sql()
     // methods don't count toward InsertStatement's method total (cpp:S1448 — mirrors the
@@ -80,8 +79,8 @@ export namespace storm::orm::statements {
                 std::meta::info... SetCols>
         struct UpdateUpsertQuery<T, ConnType, ConflictTargetTag<Target...>, SetCols...> {
             using Error = typename ConnType::Error;
-            InsertStatement<T, ConnType> stmt;
-            const T&                     obj;
+            BasicInsertStatement<T, ConnType> stmt;
+            const T&                          obj;
             // DO UPDATE always touches a row, but only a DB-generated key has a
             // value to RETURN (#502/#503/#572), so the proxy resolves to void on
             // a composite- or UUID-PK model instead of the id.
@@ -105,8 +104,8 @@ export namespace storm::orm::statements {
         template <typename T, storm::db::DatabaseConnection ConnType, std::meta::info... Target>
         struct NothingUpsertQuery {
             using Error = typename ConnType::Error;
-            InsertStatement<T, ConnType> stmt;
-            const T&                     obj;
+            BasicInsertStatement<T, ConnType> stmt;
+            const T&                          obj;
             // A key that is not DB-generated (#502/#503/#572) omits RETURNING, so
             // there is no id to report and no way to tell "inserted" from
             // "skipped" — the proxy resolves to void on a composite- or UUID-PK
@@ -125,8 +124,8 @@ export namespace storm::orm::statements {
 
         // Intermediate: carries the conflict target, offers update<>/nothing().
         template <typename T, storm::db::DatabaseConnection ConnType, std::meta::info... Target> struct ConflictTarget {
-            InsertStatement<T, ConnType> stmt;
-            const T&                     obj;
+            BasicInsertStatement<T, ConnType> stmt;
+            const T&                          obj;
             template <auto... S>
                 requires UpsertSettable<T, storm::meta::selector_info<S>()...>
             [[nodiscard]] auto update() && -> UpdateUpsertQuery<
@@ -144,8 +143,8 @@ export namespace storm::orm::statements {
     } // namespace detail
 
     // Statement class for ORM insert operations
-    template <typename T, storm::db::DatabaseConnection ConnType = storm::db::sqlite::Connection>
-    class InsertStatement : private BaseStatement<T> {
+    template <typename T, storm::db::DatabaseConnection ConnType>
+    class BasicInsertStatement : private BaseStatement<T> {
         friend class BaseStatement<T>; // Allow BaseStatement to access protected/private members
         using Base       = BaseStatement<T>;
         using Grammar    = UpsertGrammar<T>;
@@ -338,7 +337,9 @@ export namespace storm::orm::statements {
         }
 
       public:
-        explicit InsertStatement(std::shared_ptr<ConnType> conn = storm::db::DefaultConnection<ConnType>::get())
+        explicit BasicInsertStatement(
+                std::shared_ptr<ConnType> conn = storm::db::BasicDefaultConnection<ConnType>::get()
+        )
             : conn_(std::move(conn)) {}
 
         // Single-row insert proxy. R selects RETURNING (execute() yields the generated id)
@@ -346,8 +347,8 @@ export namespace storm::orm::statements {
         // INSERT ... ON CONFLICT (Target...) DO {UPDATE|NOTHING}; it is rvalue-only
         // because it consumes the statement.
         template <ReturnId R> struct SingleInsertQuery {
-            InsertStatement stmt;
-            const T&        obj;
+            BasicInsertStatement stmt;
+            const T&             obj;
 
             using Result = std::
                     conditional_t<R == ReturnId::Yes, std::expected<std::int64_t, Error>, std::expected<void, Error>>;
@@ -372,7 +373,7 @@ export namespace storm::orm::statements {
 
         // Bulk insert proxy. R = Yes: execute() yields the generated ids; R = No: void.
         template <ReturnId R> struct BulkInsertQuery {
-            InsertStatement              stmt;
+            BasicInsertStatement         stmt;
             std::span<const T>           objects;
             std::optional<InsertOptions> opts;
 
@@ -583,7 +584,7 @@ export namespace storm::orm::statements {
         // omits RETURNING for a composite or storm::UUID key, so run() resolves
         // to std::expected<void, Error> there instead of the generated id.
         template <std::meta::info... Target> struct UpsertUpdateRunner {
-            InsertStatement*                                         self;
+            BasicInsertStatement*                                    self;
             template <std::meta::info... SetCols> [[nodiscard]] auto run(const T& obj) {
                 using Result = std::conditional_t<
                         Base::pk_is_db_generated_(),
@@ -608,7 +609,7 @@ export namespace storm::orm::statements {
                 }
 
                 if constexpr (!Base::pk_is_db_generated_()) {
-                    return InsertStatement::finish_void_step(stmt);
+                    return BasicInsertStatement::finish_void_step(stmt);
                 } else {
                     const int rc = stmt->step_raw();
                     if (rc == Statement::ROW_AVAILABLE) {
@@ -617,7 +618,7 @@ export namespace storm::orm::statements {
                         return Result(id);
                     }
                     stmt->reset();
-                    return Result(InsertStatement::make_error(rc, stmt));
+                    return Result(BasicInsertStatement::make_error(rc, stmt));
                 }
             }
         };

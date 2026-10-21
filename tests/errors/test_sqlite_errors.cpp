@@ -13,6 +13,7 @@
 // NOLINTBEGIN(readability-identifier-length,cppcoreguidelines-init-variables) // NOSONAR
 // NOLINTBEGIN(bugprone-implicit-widening-of-multiplication-result) // NOSONAR
 
+import storm_defaults;
 import storm_db_sqlite;
 import storm_db_default_connection;
 import storm_orm_statements_insert;
@@ -864,11 +865,11 @@ class ORMErrorTest : public ::testing::Test {
         auto result = DefaultConnection<>::set(":memory:");
         ASSERT_TRUE(result.has_value()) << "Failed to open database";
 
-        auto create_result = SchemaStatement<Person>::create_table_if_not_exists();
+        auto create_result = SchemaStatement<Person>::create_table_if_not_exists<Connection>();
         ASSERT_TRUE(create_result.has_value()) << "Failed to create table";
 
         // Create table with UNIQUE constraint via unique on email field
-        auto create_unique = SchemaStatement<UniqueTestPerson>::create_table_if_not_exists();
+        auto create_unique = SchemaStatement<UniqueTestPerson>::create_table_if_not_exists<Connection>();
         ASSERT_TRUE(create_unique.has_value()) << "Failed to create UniqueTestPerson table";
     }
 

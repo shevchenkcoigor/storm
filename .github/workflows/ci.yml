@@ -212,6 +212,27 @@ jobs:
       - name: Self-test the SessionStart hook
         run: ./scripts/tests/test_session_start_hook.sh
 
+  # The generic ORM layer (src/orm/**, src/db/default_connection.cppm,
+  # src/db/pool.cppm) must name no concrete backend: the SQLite default lives
+  # only in the storm_defaults alias module, so a PostgreSQL-only program never
+  # depends on the SQLite backend. A stray `import storm_db_sqlite;` compiles
+  # cleanly and looks harmless in a diff — the coupling it reintroduces is
+  # invisible until someone tries to build without SQLite. commit.sh runs the
+  # same script pre-commit; this job covers the paths that bypass the hook.
+  # Pure bash (grep), no toolchain, so it runs on every PR.
+  orm-backend-imports:
+    name: ORM layer names no concrete backend
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Check backend-neutral modules
+        run: ./scripts/check-orm-backend-imports.sh
+
+      - name: Self-test the checker
+        run: ./scripts/tests/test_check_orm_backend_imports.sh
+
   # The default STORM_PG_CONNSTR is chosen per host OS by scripts/pg-default-connstr.sh
   # (Linux /var/run/postgresql, macOS /tmp). CI itself never calls it: both jobs that
   # use PostgreSQL export their own connection string for the service container. So
@@ -708,6 +729,7 @@ jobs:
       - agent-frontmatter
       - clang-tidy-skiplist
       - githooks-wiring
+      - orm-backend-imports
       - pg-default-connstr
       - clang-p2996-host-layout
       - test
