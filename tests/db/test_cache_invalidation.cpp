@@ -2,9 +2,10 @@
 
 // NOLINTBEGIN(cppcoreguidelines-non-private-member-variables-in-classes,misc-non-private-member-variables-in-classes)
 
-import storm;
+import storm_db_sqlite;
 import std;
 import storm_db_sqlite;
+import storm_db_concept;
 
 using storm::db::sqlite::Connection;
 using storm::db::sqlite::Statement;

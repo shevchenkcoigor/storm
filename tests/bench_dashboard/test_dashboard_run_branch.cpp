@@ -15,21 +15,30 @@
 
 #include <gtest/gtest.h>
 
-import storm;
+import storm_db_default_connection;
+import storm_db_sqlite;
+import storm_meta;
+import storm_orm_queryset;
+import storm_orm_schema;
+import storm_orm_statements_insert;
+import storm_orm_statements_select;
 import std;
 import storm.bench_dashboard.wire;
 
 #include "../../benchmarks/dashboard/models.hpp" // NOSONAR cpp:S954
 #include "../../benchmarks/dashboard/args.hpp"
 #include "../../benchmarks/dashboard/db.hpp"
+using storm::orm::schema::SchemaStatement;
+using storm::orm::statements::SelectStatement;
 
 namespace {
+    using storm::db::DefaultConnection;
 
     // Materialise every BenchRun row ordered by id, ascending.
     auto all_runs() -> std::vector<bench_dashboard::BenchRun> {
-        auto rows = storm::QuerySet<bench_dashboard::BenchRun>()
-                            .order_by<bench_dashboard::fields::BenchRun.id>()
-                            .select()
+        auto rows = (SelectStatement<bench_dashboard::BenchRun>{})
+                            .all()
+                            .template order_by<bench_dashboard::fields::BenchRun.id>()
                             .execute()
                             .transform([](auto&& hive) {
                                 return std::forward<decltype(hive)>(hive) | std::views::as_rvalue |
@@ -43,13 +52,12 @@ namespace {
 class DashboardRunBranch : public ::testing::Test {
   public:
     void SetUp() override {
-        ASSERT_TRUE(storm::QuerySet<bench_dashboard::BenchRun>::set_default_connection(":memory:").has_value());
-        const auto& conn = storm::QuerySet<bench_dashboard::BenchRun>::get_default_connection();
-        ASSERT_TRUE((storm::orm::schema::SchemaStatement<bench_dashboard::BenchRun>::create_table_if_not_exists(conn)));
+        ASSERT_TRUE(DefaultConnection<>::set(":memory:").has_value());
+        ASSERT_TRUE((SchemaStatement<bench_dashboard::BenchRun>::create_table_if_not_exists()));
     }
 
     void TearDown() override {
-        storm::QuerySet<bench_dashboard::BenchRun>::clear_default_connection();
+        DefaultConnection<>::clear();
     }
 };
 

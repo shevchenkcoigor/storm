@@ -26,9 +26,9 @@ model's table (the FK field's C++ type, optional-unwrapped) and primary key `id`
 
 ```cpp
 struct Message {
-    [[= storm::primary]] int    id{};
+    [[= primary]] int    id{};
     std::string                                  content;
-    [[= storm::fk<>]] Person               sender;  // → sender_id
+    [[= fk<>]] Person               sender;  // → sender_id
 };
 ```
 
@@ -70,10 +70,10 @@ The referenced column is each model's **actual primary-key member**, resolved pe
 is referenced by that name:
 
 ```cpp
-struct Badge { [[= storm::primary]] int badge_id{}; std::string label; };
+struct Badge { [[= primary]] int badge_id{}; std::string label; };
 struct Hero {
-    [[= storm::primary]] int hero_id{};
-    [[= storm::many_to_many<>]] std::vector<Badge> badges;
+    [[= primary]] int hero_id{};
+    [[= many_to_many<>]] std::vector<Badge> badges;
 };
 ```
 
@@ -97,10 +97,10 @@ column is. An integer PK gives `INTEGER` (SQLite) / `BIGINT` (PostgreSQL); a `st
 gives `TEXT` / `UUID`:
 
 ```cpp
-struct Tag { [[= storm::primary]] storm::UUID id{}; std::string label; };
+struct Tag { [[= primary]] storm::UUID id{}; std::string label; };
 struct Doc {
-    [[= storm::primary]] storm::UUID id{};
-    [[= storm::many_to_many<>]] std::vector<Tag> tags;
+    [[= primary]] storm::UUID id{};
+    [[= many_to_many<>]] std::vector<Tag> tags;
 };
 ```
 
@@ -141,9 +141,9 @@ template argument. `RefAction` is one of `Cascade`, `SetNull`, `Restrict`, `NoAc
 
 ```cpp
 struct Comment {
-    [[= storm::primary]] int                          id{};
-    [[= storm::fk<storm::RefAction::Cascade>]] Post         post;     // delete post → delete comments
-    [[= storm::fk<storm::RefAction::SetNull>]] std::optional<User> author;  // delete user → author_id = NULL
+    [[= primary]] int                          id{};
+    [[= fk<storm::RefAction::Cascade>]] Post         post;     // delete post → delete comments
+    [[= fk<storm::RefAction::SetNull>]] std::optional<User> author;  // delete user → author_id = NULL
 };
 ```
 
@@ -173,9 +173,9 @@ it for soft-delete/archival, audit trails of links, or through-data you do not w
 
 ```cpp
 struct Member {
-    [[= storm::primary]] int id{};
+    [[= primary]] int id{};
     // both Member_id and Club_id sides emit ON DELETE RESTRICT instead of CASCADE
-    [[= storm::many_to_many<storm::RefAction::Restrict>]] std::vector<Club> clubs;
+    [[= many_to_many<storm::RefAction::Restrict>]] std::vector<Club> clubs;
 };
 ```
 

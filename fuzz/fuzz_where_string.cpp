@@ -27,20 +27,11 @@ extern "C" int LLVMFuzzerTestOneInput(const uint8_t* data, size_t size) {
 
     try {
         // Equal
-        (void)storm::QuerySet<FuzzModel>()
-                .where(storm::orm::where::field<^^FuzzModel::name>() == input)
-                .select()
-                .execute();
+        (void)QuerySet<FuzzModel>().where(storm::orm::where::field<^^FuzzModel::name>() == input).select().execute();
         // Not equal
-        (void)storm::QuerySet<FuzzModel>()
-                .where(storm::orm::where::field<^^FuzzModel::name>() != input)
-                .select()
-                .execute();
+        (void)QuerySet<FuzzModel>().where(storm::orm::where::field<^^FuzzModel::name>() != input).select().execute();
         // LIKE
-        (void)storm::QuerySet<FuzzModel>()
-                .where(storm::orm::where::field<^^FuzzModel::name>().like(input))
-                .select()
-                .execute();
+        (void)QuerySet<FuzzModel>().where(storm::orm::where::field<^^FuzzModel::name>().like(input)).select().execute();
     } catch (...) { // NOSONAR cpp:S2486 — SQL errors expected; only ASAN/crash = bug
     }
     return 0;

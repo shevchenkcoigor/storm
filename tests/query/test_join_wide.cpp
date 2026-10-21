@@ -11,6 +11,8 @@ using storm::QuerySet;
 
 #include "../../shared/models/person.h" // NOSONAR cpp:S954
 #include "test_fixture.h"
+using storm::field_specs_for;
+using storm::primary;
 
 // ============================================================================
 // Regression #358 — table aliases are t<Is+2>, so a model with 9 FK fields
@@ -20,7 +22,7 @@ using storm::QuerySet;
 
 // Local model with 9 FK fields to Person — exercises the 8th+ joined FK (t10).
 struct WideJoin {
-    [[= storm::primary]] int id{};
+    [[= primary]] int        id{};
     [[= storm::fk<>]] Person fk1;
     [[= storm::fk<>]] Person fk2;
     [[= storm::fk<>]] Person fk3;
@@ -37,7 +39,7 @@ namespace fields {
 
     struct WideJoinT;
     consteval {
-        std::meta::define_aggregate(^^WideJoinT, storm::field_specs_for(^^WideJoin));
+        std::meta::define_aggregate(^^WideJoinT, field_specs_for(^^WideJoin));
     }
     inline constexpr WideJoinT WideJoin{};
 

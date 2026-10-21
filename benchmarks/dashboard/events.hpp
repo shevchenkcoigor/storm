@@ -1,5 +1,7 @@
 #pragma once
 
+using storm::QuerySet;
+
 // Event dispatch + state rebuild for storm_bench_dashboard (Issue #247).
 //
 // Textual header — #included after db.hpp from main.cpp's anonymous
@@ -182,7 +184,7 @@ namespace {
 
     auto load_results_for_run(int run_id) -> std::vector<bench_dashboard::BenchResult> {
         return materialise_select<bench_dashboard::BenchResult>(
-                storm::QuerySet<bench_dashboard::BenchResult>()
+                QuerySet<bench_dashboard::BenchResult>()
                         .where(bench_dashboard::fields::BenchResult.run_id == run_id)
                         .order_by<bench_dashboard::fields::BenchResult.id>()
         );
@@ -205,7 +207,7 @@ namespace {
     auto rebuild_state_from_db(bench_dashboard::tui::DashboardState& state) -> void {
         state.sessions.clear();
 
-        auto runs = storm::QuerySet<bench_dashboard::BenchRun>()
+        auto runs = QuerySet<bench_dashboard::BenchRun>()
                             .order_by<bench_dashboard::fields::BenchRun.id, false>()
                             .select()
                             .execute()

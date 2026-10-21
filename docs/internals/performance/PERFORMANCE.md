@@ -161,7 +161,7 @@ qs.insert(objects).execute();
 
 ```cpp
 // FAST: ~1.7M ops/sec - single commit at end
-auto conn = QuerySet<Person>::get_default_connection();
+auto conn = DefaultConnection<>::get();
 auto txn  = storm::begin(conn);          // RAII guard (#415)
 for (auto& obj : objects) {
     qs.insert(obj).execute();
@@ -212,7 +212,7 @@ This optimization is **universal** - it works for PostgreSQL, MySQL, SQLite, and
 #### Error Handling with Manual Transactions
 
 ```cpp
-const auto& conn = QuerySet<Person>::get_default_connection();
+const auto& conn = DefaultConnection<>::get();
 
 if (auto result = conn->execute("BEGIN TRANSACTION"); !result) {
     // Handle error

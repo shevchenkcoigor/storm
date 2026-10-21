@@ -6,16 +6,24 @@
 
 // NOLINTBEGIN(cppcoreguidelines-non-private-member-variables-in-classes,misc-non-private-member-variables-in-classes,readability-identifier-length,cppcoreguidelines-special-member-functions) // GTest fixtures use protected connstr_; tests use short connection names c1/c2/c3; MockConfigGuard is RAII-only. Pre-existing; tracked under #262/#264.
 
-import storm;
+import storm_db_concept;
+import storm_db_default_connection;
+import storm_db_pool;
+import storm_db_postgresql;
+import storm_db_sqlite;
+import storm_meta;
+import storm_orm_indexes;
 import std;
 
 #include "../../shared/models/person.h" // NOSONAR cpp:S954
+using storm::db::ConnectionPool;
 
 // ============================================================================
 // Mock connection for testing pool error/edge-case paths
 // ============================================================================
 
 namespace {
+    using storm::db::DefaultConnection;
 
     // Controls MockPoolConnection behavior.
     //
@@ -205,8 +213,7 @@ template <typename ConnType> class PoolCreateTest : public ::testing::Test {
 TYPED_TEST_SUITE(PoolCreateTest, DatabaseTypes);
 
 TYPED_TEST(PoolCreateTest, CreatePool_ValidConfig) {
-    auto pool =
-            storm::db::ConnectionPool<TypeParam>::create(this->connstr_, {.min_connections = 2, .max_connections = 5});
+    auto pool = ConnectionPool<TypeParam>::create(this->connstr_, {.min_connections = 2, .max_connections = 5});
     ASSERT_TRUE(pool.has_value()) << pool.error().message();
     EXPECT_EQ(pool->size(), 2);
     EXPECT_EQ(pool->available(), 2);
@@ -214,26 +221,22 @@ TYPED_TEST(PoolCreateTest, CreatePool_ValidConfig) {
 }
 
 TYPED_TEST(PoolCreateTest, CreatePool_BadConfig_MinGreaterThanMax) {
-    auto pool =
-            storm::db::ConnectionPool<TypeParam>::create(this->connstr_, {.min_connections = 10, .max_connections = 5});
+    auto pool = ConnectionPool<TypeParam>::create(this->connstr_, {.min_connections = 10, .max_connections = 5});
     EXPECT_FALSE(pool.has_value());
 }
 
 TYPED_TEST(PoolCreateTest, CreatePool_BadConfig_NegativeMin) {
-    auto pool =
-            storm::db::ConnectionPool<TypeParam>::create(this->connstr_, {.min_connections = -1, .max_connections = 5});
+    auto pool = ConnectionPool<TypeParam>::create(this->connstr_, {.min_connections = -1, .max_connections = 5});
     EXPECT_FALSE(pool.has_value());
 }
 
 TYPED_TEST(PoolCreateTest, CreatePool_BadConfig_ZeroMax) {
-    auto pool =
-            storm::db::ConnectionPool<TypeParam>::create(this->connstr_, {.min_connections = 0, .max_connections = 0});
+    auto pool = ConnectionPool<TypeParam>::create(this->connstr_, {.min_connections = 0, .max_connections = 0});
     EXPECT_FALSE(pool.has_value());
 }
 
 TYPED_TEST(PoolCreateTest, CreatePool_ZeroMin) {
-    auto pool =
-            storm::db::ConnectionPool<TypeParam>::create(this->connstr_, {.min_connections = 0, .max_connections = 3});
+    auto pool = ConnectionPool<TypeParam>::create(this->connstr_, {.min_connections = 0, .max_connections = 3});
     ASSERT_TRUE(pool.has_value()) << pool.error().message();
     EXPECT_EQ(pool->size(), 0);
     EXPECT_EQ(pool->available(), 0);
@@ -241,15 +244,14 @@ TYPED_TEST(PoolCreateTest, CreatePool_ZeroMin) {
 
 TYPED_TEST(PoolCreateTest, CreatePool_InvalidConnstring) {
     if constexpr (storm::test::is_postgresql<TypeParam>()) {
-        auto pool = storm::db::ConnectionPool<TypeParam>::create(
+        auto pool = ConnectionPool<TypeParam>::create(
                 "host=invalid_host_that_does_not_exist port=99999 dbname=nonexistent connect_timeout=1",
                 {.min_connections = 1, .max_connections = 5}
         );
         EXPECT_FALSE(pool.has_value());
     } else {
         // SQLite :memory: always succeeds; verify the API works
-        auto pool =
-                storm::db::ConnectionPool<TypeParam>::create(":memory:", {.min_connections = 1, .max_connections = 5});
+        auto pool = ConnectionPool<TypeParam>::create(":memory:", {.min_connections = 1, .max_connections = 5});
         EXPECT_TRUE(pool.has_value());
     }
 }
@@ -272,8 +274,7 @@ template <typename ConnType> class PoolCheckoutTest : public ::testing::Test {
 TYPED_TEST_SUITE(PoolCheckoutTest, DatabaseTypes);
 
 TYPED_TEST(PoolCheckoutTest, Checkout_ReturnsValid) {
-    auto pool =
-            storm::db::ConnectionPool<TypeParam>::create(this->connstr_, {.min_connections = 1, .max_connections = 3});
+    auto pool = ConnectionPool<TypeParam>::create(this->connstr_, {.min_connections = 1, .max_connections = 3});
     ASSERT_TRUE(pool.has_value()) << pool.error().message();
 
     auto conn = pool->checkout();
@@ -283,8 +284,7 @@ TYPED_TEST(PoolCheckoutTest, Checkout_ReturnsValid) {
 }
 
 TYPED_TEST(PoolCheckoutTest, Checkout_ReturnOnRelease) {
-    auto pool =
-            storm::db::ConnectionPool<TypeParam>::create(this->connstr_, {.min_connections = 1, .max_connections = 3});
+    auto pool = ConnectionPool<TypeParam>::create(this->connstr_, {.min_connections = 1, .max_connections = 3});
     ASSERT_TRUE(pool.has_value()) << pool.error().message();
 
     {
@@ -298,8 +298,7 @@ TYPED_TEST(PoolCheckoutTest, Checkout_ReturnOnRelease) {
 }
 
 TYPED_TEST(PoolCheckoutTest, Checkout_Multiple) {
-    auto pool =
-            storm::db::ConnectionPool<TypeParam>::create(this->connstr_, {.min_connections = 1, .max_connections = 5});
+    auto pool = ConnectionPool<TypeParam>::create(this->connstr_, {.min_connections = 1, .max_connections = 5});
     ASSERT_TRUE(pool.has_value()) << pool.error().message();
 
     auto c1 = pool->checkout();
@@ -313,8 +312,7 @@ TYPED_TEST(PoolCheckoutTest, Checkout_Multiple) {
 }
 
 TYPED_TEST(PoolCheckoutTest, Checkout_CachePreserved) {
-    auto pool =
-            storm::db::ConnectionPool<TypeParam>::create(this->connstr_, {.min_connections = 1, .max_connections = 3});
+    auto pool = ConnectionPool<TypeParam>::create(this->connstr_, {.min_connections = 1, .max_connections = 3});
     ASSERT_TRUE(pool.has_value()) << pool.error().message();
 
     TypeParam* raw_ptr = nullptr;
@@ -334,8 +332,7 @@ TYPED_TEST(PoolCheckoutTest, Checkout_CachePreserved) {
 }
 
 TYPED_TEST(PoolCheckoutTest, Checkout_GrowsOnDemand) {
-    auto pool =
-            storm::db::ConnectionPool<TypeParam>::create(this->connstr_, {.min_connections = 0, .max_connections = 3});
+    auto pool = ConnectionPool<TypeParam>::create(this->connstr_, {.min_connections = 0, .max_connections = 3});
     ASSERT_TRUE(pool.has_value()) << pool.error().message();
     EXPECT_EQ(pool->size(), 0);
 
@@ -349,8 +346,7 @@ TYPED_TEST(PoolCheckoutTest, Checkout_GrowsOnDemand) {
 }
 
 TYPED_TEST(PoolCheckoutTest, Checkout_ReusesReturnedConnection) {
-    auto pool =
-            storm::db::ConnectionPool<TypeParam>::create(this->connstr_, {.min_connections = 1, .max_connections = 1});
+    auto pool = ConnectionPool<TypeParam>::create(this->connstr_, {.min_connections = 1, .max_connections = 1});
     ASSERT_TRUE(pool.has_value()) << pool.error().message();
 
     TypeParam const* first_raw = nullptr;
@@ -382,7 +378,7 @@ template <typename ConnType> class PoolExhaustionTest : public ::testing::Test {
 TYPED_TEST_SUITE(PoolExhaustionTest, DatabaseTypes);
 
 TYPED_TEST(PoolExhaustionTest, Checkout_ExhaustedImmediate) {
-    auto pool = storm::db::ConnectionPool<TypeParam>::create(
+    auto pool = ConnectionPool<TypeParam>::create(
             this->connstr_, {.min_connections = 1, .max_connections = 1, .checkout_timeout_ms = 0}
     );
     ASSERT_TRUE(pool.has_value()) << pool.error().message();
@@ -394,7 +390,7 @@ TYPED_TEST(PoolExhaustionTest, Checkout_ExhaustedImmediate) {
 }
 
 TYPED_TEST(PoolExhaustionTest, Checkout_WaitsForReturn) {
-    auto pool = storm::db::ConnectionPool<TypeParam>::create(
+    auto pool = ConnectionPool<TypeParam>::create(
             this->connstr_, {.min_connections = 1, .max_connections = 1, .checkout_timeout_ms = 2000}
     );
     ASSERT_TRUE(pool.has_value()) << pool.error().message();
@@ -421,7 +417,7 @@ TYPED_TEST(PoolExhaustionTest, Checkout_WaitsForReturn) {
 
 TYPED_TEST(PoolExhaustionTest, Checkout_NeverExceedsMax) {
     constexpr int max  = 3;
-    auto          pool = storm::db::ConnectionPool<TypeParam>::create(
+    auto          pool = ConnectionPool<TypeParam>::create(
             this->connstr_, {.min_connections = 1, .max_connections = max, .checkout_timeout_ms = 0}
     );
     ASSERT_TRUE(pool.has_value()) << pool.error().message();
@@ -444,7 +440,7 @@ TYPED_TEST(PoolExhaustionTest, Checkout_NeverExceedsMax) {
 }
 
 TYPED_TEST(PoolExhaustionTest, Checkout_WaitsAndReusesReturned) {
-    auto pool = storm::db::ConnectionPool<TypeParam>::create(
+    auto pool = ConnectionPool<TypeParam>::create(
             this->connstr_, {.min_connections = 1, .max_connections = 1, .checkout_timeout_ms = 2000}
     );
     ASSERT_TRUE(pool.has_value()) << pool.error().message();
@@ -475,7 +471,7 @@ TYPED_TEST(PoolExhaustionTest, Checkout_WaitsAndReusesReturned) {
 }
 
 TYPED_TEST(PoolExhaustionTest, Checkout_TimesOut) {
-    auto pool = storm::db::ConnectionPool<TypeParam>::create(
+    auto pool = ConnectionPool<TypeParam>::create(
             this->connstr_, {.min_connections = 1, .max_connections = 1, .checkout_timeout_ms = 50}
     );
     ASSERT_TRUE(pool.has_value()) << pool.error().message();
@@ -510,8 +506,7 @@ template <typename ConnType> class PoolShutdownTest : public ::testing::Test {
 TYPED_TEST_SUITE(PoolShutdownTest, DatabaseTypes);
 
 TYPED_TEST(PoolShutdownTest, Shutdown_RejectsNew) {
-    auto pool =
-            storm::db::ConnectionPool<TypeParam>::create(this->connstr_, {.min_connections = 1, .max_connections = 3});
+    auto pool = ConnectionPool<TypeParam>::create(this->connstr_, {.min_connections = 1, .max_connections = 3});
     ASSERT_TRUE(pool.has_value()) << pool.error().message();
 
     pool->shutdown();
@@ -520,8 +515,7 @@ TYPED_TEST(PoolShutdownTest, Shutdown_RejectsNew) {
 }
 
 TYPED_TEST(PoolShutdownTest, Shutdown_WaitsForReturns) {
-    auto pool =
-            storm::db::ConnectionPool<TypeParam>::create(this->connstr_, {.min_connections = 1, .max_connections = 3});
+    auto pool = ConnectionPool<TypeParam>::create(this->connstr_, {.min_connections = 1, .max_connections = 3});
     ASSERT_TRUE(pool.has_value()) << pool.error().message();
 
     auto conn = pool->checkout();
@@ -574,7 +568,7 @@ TYPED_TEST(PoolThreadSafetyTest, ConcurrentCheckoutCheckin) {
         }
     }();
 
-    auto pool = storm::db::ConnectionPool<TypeParam>::create(
+    auto pool = ConnectionPool<TypeParam>::create(
             connstr, {.min_connections = 2, .max_connections = 5, .checkout_timeout_ms = 5000}
     );
     ASSERT_TRUE(pool.has_value()) << pool.error().message();
@@ -619,7 +613,7 @@ template <typename ConnType> class PoolQuerySetTest : public ::testing::Test {
     }
 
     auto TearDown() -> void override {
-        storm::QuerySet<Person, ConnType>::clear_default_connection();
+        DefaultConnection<ConnType>::clear();
     }
 
     std::string connstr_;
@@ -628,18 +622,17 @@ template <typename ConnType> class PoolQuerySetTest : public ::testing::Test {
 TYPED_TEST_SUITE(PoolQuerySetTest, DatabaseTypes);
 
 TYPED_TEST(PoolQuerySetTest, QuerySet_FromPool) {
-    auto pool =
-            storm::db::ConnectionPool<TypeParam>::create(this->connstr_, {.min_connections = 1, .max_connections = 3});
+    auto pool = ConnectionPool<TypeParam>::create(this->connstr_, {.min_connections = 1, .max_connections = 3});
     ASSERT_TRUE(pool.has_value()) << pool.error().message();
 
-    auto result = storm::QuerySet<Person, TypeParam>::set_default_connection(*pool);
+    auto result = DefaultConnection<TypeParam>::set(*pool);
     ASSERT_TRUE(result.has_value()) << result.error().message();
-    EXPECT_TRUE((storm::QuerySet<Person, TypeParam>::has_default_connection()));
+    EXPECT_TRUE((DefaultConnection<TypeParam>::has()));
     EXPECT_EQ(pool->in_use(), 1);
 }
 
 TYPED_TEST(PoolQuerySetTest, QuerySet_SetDefaultConnection_PoolExhausted) {
-    auto pool = storm::db::ConnectionPool<TypeParam>::create(
+    auto pool = ConnectionPool<TypeParam>::create(
             this->connstr_, {.min_connections = 1, .max_connections = 1, .checkout_timeout_ms = 0}
     );
     ASSERT_TRUE(pool.has_value()) << pool.error().message();
@@ -648,21 +641,20 @@ TYPED_TEST(PoolQuerySetTest, QuerySet_SetDefaultConnection_PoolExhausted) {
     auto held = pool->checkout();
     ASSERT_TRUE(held.has_value());
 
-    // set_default_connection should fail — pool exhausted
-    auto result = storm::QuerySet<Person, TypeParam>::set_default_connection(*pool);
+    // DefaultConnection::set should fail — pool exhausted
+    auto result = DefaultConnection<TypeParam>::set(*pool);
     EXPECT_FALSE(result.has_value());
 }
 
 TYPED_TEST(PoolQuerySetTest, QuerySet_ClearReturnsToPool) {
-    auto pool =
-            storm::db::ConnectionPool<TypeParam>::create(this->connstr_, {.min_connections = 1, .max_connections = 3});
+    auto pool = ConnectionPool<TypeParam>::create(this->connstr_, {.min_connections = 1, .max_connections = 3});
     ASSERT_TRUE(pool.has_value()) << pool.error().message();
 
-    auto result = storm::QuerySet<Person, TypeParam>::set_default_connection(*pool);
+    auto result = DefaultConnection<TypeParam>::set(*pool);
     ASSERT_TRUE(result.has_value());
     EXPECT_EQ(pool->in_use(), 1);
 
-    storm::QuerySet<Person, TypeParam>::clear_default_connection();
+    DefaultConnection<TypeParam>::clear();
     EXPECT_EQ(pool->in_use(), 0);
     EXPECT_EQ(pool->available(), 1);
 }
@@ -685,8 +677,7 @@ template <typename ConnType> class PoolHandleTest : public ::testing::Test {
 TYPED_TEST_SUITE(PoolHandleTest, DatabaseTypes);
 
 TYPED_TEST(PoolHandleTest, CopyHandle_SharesCore) {
-    auto pool1 =
-            storm::db::ConnectionPool<TypeParam>::create(this->connstr_, {.min_connections = 1, .max_connections = 3});
+    auto pool1 = ConnectionPool<TypeParam>::create(this->connstr_, {.min_connections = 1, .max_connections = 3});
     ASSERT_TRUE(pool1.has_value()) << pool1.error().message();
 
     auto pool2 = *pool1; // Copy handle
@@ -713,7 +704,7 @@ template <typename ConnType> class PoolLifetimeTest : public ::testing::Test {
 TYPED_TEST_SUITE(PoolLifetimeTest, DatabaseTypes);
 
 TYPED_TEST(PoolLifetimeTest, MaxLifetime_EvictsExpiredOnCheckout) {
-    auto pool = storm::db::ConnectionPool<TypeParam>::create(
+    auto pool = ConnectionPool<TypeParam>::create(
             this->connstr_, {.min_connections = 1, .max_connections = 3, .max_lifetime_ms = 100, .idle_timeout_ms = 0}
     );
     ASSERT_TRUE(pool.has_value()) << pool.error().message();
@@ -739,7 +730,7 @@ TYPED_TEST(PoolLifetimeTest, MaxLifetime_EvictsExpiredOnCheckout) {
 }
 
 TYPED_TEST(PoolLifetimeTest, IdleTimeout_EvictsIdleOnCheckout) {
-    auto pool = storm::db::ConnectionPool<TypeParam>::create(
+    auto pool = ConnectionPool<TypeParam>::create(
             this->connstr_, {.min_connections = 2, .max_connections = 5, .max_lifetime_ms = 0, .idle_timeout_ms = 100}
     );
     ASSERT_TRUE(pool.has_value()) << pool.error().message();
@@ -763,7 +754,7 @@ TYPED_TEST(PoolLifetimeTest, IdleTimeout_EvictsIdleOnCheckout) {
 }
 
 TYPED_TEST(PoolLifetimeTest, NoExpiry_ConnectionsLiveForever) {
-    auto pool = storm::db::ConnectionPool<TypeParam>::create(
+    auto pool = ConnectionPool<TypeParam>::create(
             this->connstr_, {.min_connections = 1, .max_connections = 3, .max_lifetime_ms = 0, .idle_timeout_ms = 0}
     );
     ASSERT_TRUE(pool.has_value()) << pool.error().message();
@@ -783,7 +774,7 @@ TYPED_TEST(PoolLifetimeTest, NoExpiry_ConnectionsLiveForever) {
 }
 
 TYPED_TEST(PoolLifetimeTest, InUseConnections_NotEvicted) {
-    auto pool = storm::db::ConnectionPool<TypeParam>::create(
+    auto pool = ConnectionPool<TypeParam>::create(
             this->connstr_, {.min_connections = 1, .max_connections = 2, .max_lifetime_ms = 100, .idle_timeout_ms = 0}
     );
     ASSERT_TRUE(pool.has_value()) << pool.error().message();
@@ -800,7 +791,7 @@ TYPED_TEST(PoolLifetimeTest, InUseConnections_NotEvicted) {
 }
 
 TYPED_TEST(PoolLifetimeTest, MaxLifetime_ClosedAfterReturnAndRecheckout) {
-    auto pool = storm::db::ConnectionPool<TypeParam>::create(
+    auto pool = ConnectionPool<TypeParam>::create(
             this->connstr_, {.min_connections = 1, .max_connections = 1, .max_lifetime_ms = 100, .idle_timeout_ms = 0}
     );
     ASSERT_TRUE(pool.has_value()) << pool.error().message();
@@ -826,7 +817,7 @@ TYPED_TEST(PoolLifetimeTest, MaxLifetime_ClosedAfterReturnAndRecheckout) {
 
 TYPED_TEST(PoolLifetimeTest, BothEnabled_IdleTimeoutFiresFirst) {
     // idle_timeout=100ms fires before max_lifetime=500ms
-    auto pool = storm::db::ConnectionPool<TypeParam>::create(
+    auto pool = ConnectionPool<TypeParam>::create(
             this->connstr_, {.min_connections = 1, .max_connections = 3, .max_lifetime_ms = 500, .idle_timeout_ms = 100}
     );
     ASSERT_TRUE(pool.has_value()) << pool.error().message();
@@ -851,7 +842,7 @@ TYPED_TEST(PoolLifetimeTest, BothEnabled_IdleTimeoutFiresFirst) {
 }
 
 TYPED_TEST(PoolLifetimeTest, InUseConnections_NotEvictedByIdleTimeout) {
-    auto pool = storm::db::ConnectionPool<TypeParam>::create(
+    auto pool = ConnectionPool<TypeParam>::create(
             this->connstr_, {.min_connections = 1, .max_connections = 2, .max_lifetime_ms = 0, .idle_timeout_ms = 100}
     );
     ASSERT_TRUE(pool.has_value()) << pool.error().message();
@@ -868,7 +859,7 @@ TYPED_TEST(PoolLifetimeTest, InUseConnections_NotEvictedByIdleTimeout) {
 }
 
 TYPED_TEST(PoolLifetimeTest, ActiveUse_ResetsIdleTimer) {
-    auto pool = storm::db::ConnectionPool<TypeParam>::create(
+    auto pool = ConnectionPool<TypeParam>::create(
             this->connstr_, {.min_connections = 1, .max_connections = 1, .max_lifetime_ms = 0, .idle_timeout_ms = 150}
     );
     ASSERT_TRUE(pool.has_value()) << pool.error().message();
@@ -900,7 +891,7 @@ TYPED_TEST(PoolLifetimeTest, ActiveUse_ResetsIdleTimer) {
 }
 
 TYPED_TEST(PoolLifetimeTest, MixedExpiry_OnlyExpiredEvicted) {
-    auto pool = storm::db::ConnectionPool<TypeParam>::create(
+    auto pool = ConnectionPool<TypeParam>::create(
             this->connstr_, {.min_connections = 2, .max_connections = 3, .max_lifetime_ms = 100, .idle_timeout_ms = 0}
     );
     ASSERT_TRUE(pool.has_value()) << pool.error().message();
@@ -932,9 +923,7 @@ TYPED_TEST(PoolHandleTest, PoolDestroyed_ConnectionStillWorks) {
     // Connection remains valid because PoolCore (and its PoolEntry unique_ptrs) survive.
     std::shared_ptr<TypeParam> surviving_conn;
     {
-        auto pool = storm::db::ConnectionPool<TypeParam>::create(
-                this->connstr_, {.min_connections = 1, .max_connections = 3}
-        );
+        auto pool = ConnectionPool<TypeParam>::create(this->connstr_, {.min_connections = 1, .max_connections = 3});
         ASSERT_TRUE(pool.has_value()) << pool.error().message();
         auto conn = pool->checkout();
         ASSERT_TRUE(conn.has_value());
@@ -955,7 +944,7 @@ class MockPoolTest : public ::testing::Test {
 // Lines 276-277, 53-54, 244-245: create() fails when init()/create_entry()/open() fails
 TEST_F(MockPoolTest, Create_FailsWhenOpenFails) {
     mock_config().open_should_fail = true;
-    auto pool = storm::db::ConnectionPool<MockPoolConnection>::create("mock://db", {.min_connections = 1});
+    auto pool                      = ConnectionPool<MockPoolConnection>::create("mock://db", {.min_connections = 1});
     EXPECT_FALSE(pool.has_value());
     EXPECT_EQ(pool.error().code_, -1);
 }
@@ -963,9 +952,7 @@ TEST_F(MockPoolTest, Create_FailsWhenOpenFails) {
 // Lines 87-88: checkout grow path — open() fails during growth
 TEST_F(MockPoolTest, Checkout_GrowFails) {
     mock_config().open_fail_after = 1; // First open (init) succeeds, second (grow) fails
-    auto pool                     = storm::db::ConnectionPool<MockPoolConnection>::create(
-            "mock://db", {.min_connections = 1, .max_connections = 3}
-    );
+    auto pool = ConnectionPool<MockPoolConnection>::create("mock://db", {.min_connections = 1, .max_connections = 3});
     ASSERT_TRUE(pool.has_value());
 
     auto c1 = pool->checkout(); // Gets pre-created connection
@@ -977,7 +964,7 @@ TEST_F(MockPoolTest, Checkout_GrowFails) {
 
 // Lines 118-119: shutdown during wait loop
 TEST_F(MockPoolTest, Checkout_ShutdownDuringWait) {
-    auto pool = storm::db::ConnectionPool<MockPoolConnection>::create(
+    auto pool = ConnectionPool<MockPoolConnection>::create(
             "mock://db", {.min_connections = 1, .max_connections = 1, .checkout_timeout_ms = 5000}
     );
     ASSERT_TRUE(pool.has_value());
@@ -1020,7 +1007,7 @@ TEST_F(MockPoolTest, Checkout_ShutdownDuringWait) {
 
 // Lines 232-234: find_idle() erases stale connection (is_open() == false)
 TEST_F(MockPoolTest, Checkout_EvictsStaleConnection) {
-    auto pool = storm::db::ConnectionPool<MockPoolConnection>::create(
+    auto pool = ConnectionPool<MockPoolConnection>::create(
             "mock://db", {.min_connections = 1, .max_connections = 3, .validate_on_checkout = true}
     );
     ASSERT_TRUE(pool.has_value());
@@ -1051,9 +1038,7 @@ TEST_F(MockPoolTest, Checkout_ShutdownDuringGrow) {
     auto&      cfg   = mock_config();
     cfg.open_entered = &in_open;
     cfg.open_release = &open_release;
-    auto pool        = storm::db::ConnectionPool<MockPoolConnection>::create(
-            "mock://db", {.min_connections = 0, .max_connections = 3}
-    );
+    auto pool = ConnectionPool<MockPoolConnection>::create("mock://db", {.min_connections = 0, .max_connections = 3});
     ASSERT_TRUE(pool.has_value());
 
     // grower: checkout → try_grow releases lock → open() signals in_open, then blocks
@@ -1078,7 +1063,7 @@ TEST_F(MockPoolTest, Checkout_ShutdownDuringGrow) {
 
 // Lines 92-97: race condition — pool reached max after relock
 TEST_F(MockPoolTest, Checkout_RaceConditionMaxReached) {
-    auto pool = storm::db::ConnectionPool<MockPoolConnection>::create(
+    auto pool = ConnectionPool<MockPoolConnection>::create(
             "mock://db", {.min_connections = 0, .max_connections = 2, .checkout_timeout_ms = 0}
     );
     ASSERT_TRUE(pool.has_value());
@@ -1149,7 +1134,7 @@ TEST_F(MockPoolTest, Checkout_RaceMaxReachedWithIdle) {
     cfg.open_release   = &open_release;
     cfg.open_gate_call = 1; // only the grower's open() parks
 
-    auto pool = storm::db::ConnectionPool<MockPoolConnection>::create(
+    auto pool = ConnectionPool<MockPoolConnection>::create(
             "mock://db", {.min_connections = 0, .max_connections = 1, .checkout_timeout_ms = 0}
     );
     ASSERT_TRUE(pool.has_value());
@@ -1202,7 +1187,7 @@ TEST_F(MockPoolTest, Checkout_RaceMaxReachedNoIdle) {
     cfg.open_release   = &open_release;
     cfg.open_gate_call = 1; // only the grower's open() parks
 
-    auto pool = storm::db::ConnectionPool<MockPoolConnection>::create(
+    auto pool = ConnectionPool<MockPoolConnection>::create(
             "mock://db", {.min_connections = 0, .max_connections = 1, .checkout_timeout_ms = 0}
     );
     ASSERT_TRUE(pool.has_value());
@@ -1233,13 +1218,13 @@ TEST_F(MockPoolTest, Checkout_RaceMaxReachedNoIdle) {
 
 // Bad config: negative timeouts
 TEST_F(MockPoolTest, Create_BadConfig_NegativeTimeouts) {
-    auto p1 = storm::db::ConnectionPool<MockPoolConnection>::create("mock://db", {.checkout_timeout_ms = -1});
+    auto p1 = ConnectionPool<MockPoolConnection>::create("mock://db", {.checkout_timeout_ms = -1});
     EXPECT_FALSE(p1.has_value());
 
-    auto p2 = storm::db::ConnectionPool<MockPoolConnection>::create("mock://db", {.max_lifetime_ms = -1});
+    auto p2 = ConnectionPool<MockPoolConnection>::create("mock://db", {.max_lifetime_ms = -1});
     EXPECT_FALSE(p2.has_value());
 
-    auto p3 = storm::db::ConnectionPool<MockPoolConnection>::create("mock://db", {.idle_timeout_ms = -1});
+    auto p3 = ConnectionPool<MockPoolConnection>::create("mock://db", {.idle_timeout_ms = -1});
     EXPECT_FALSE(p3.has_value());
 }
 

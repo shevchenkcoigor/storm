@@ -3,13 +3,21 @@
 
 // NOLINTBEGIN(misc-const-correctness,performance-unnecessary-value-param)
 
-import storm;
+import storm_db_default_connection;
+import storm_db_postgresql;
+import storm_db_sqlite;
+import storm_meta;
+import storm_orm_schema;
+import storm_orm_statements_insert;
+import storm_orm_statements_select;
+import storm_orm_transaction;
+import storm_orm_utilities;
 import std;
 
 #include "../../shared/models/extended_types.h" // NOSONAR cpp:S954
 #include "test_fixture.h"
-
-using storm::QuerySet;
+using storm::orm::statements::InsertStatement;
+using storm::orm::statements::SelectStatement;
 
 // Verifies that WHERE filters on narrow / unsigned integer fields fold to the
 // existing int / int64_t variant arms (the same fold enums already use). Before
@@ -22,18 +30,16 @@ using storm::QuerySet;
 template <typename ConnType> class WhereIntegerFoldTest : public StormTestFixture<ExtendedTypes, ConnType> {
   protected:
     auto on_after_setup(const std::shared_ptr<ConnType>&) -> void override {
-        QuerySet<ExtendedTypes, ConnType> qs;
-        std::vector<ExtendedTypes>        batch = {
+        std::vector<ExtendedTypes> batch = {
                 {.u_int = 10U, .ll_signed = 100LL, .label = "r1", .tiny_unsigned = 1},
                 {.u_int = 20U, .ll_signed = 200LL, .label = "r2", .tiny_unsigned = 2},
                 {.u_int = 30U, .ll_signed = 300LL, .label = "r3", .tiny_unsigned = 3},
         };
-        ASSERT_TRUE(qs.insert(batch).execute().has_value());
+        ASSERT_TRUE((InsertStatement<ExtendedTypes, ConnType>{}).query(batch).execute().has_value());
     }
 
     static auto count_where(auto expr) -> std::size_t {
-        QuerySet<ExtendedTypes, ConnType> qs;
-        auto                              result = qs.where(expr).select().execute();
+        auto result = (SelectStatement<ExtendedTypes, ConnType>{}).where(expr).execute();
         EXPECT_TRUE(result.has_value()) << "WHERE failed: " << result.error().message();
         return result.has_value() ? result.value().size() : 0;
     }

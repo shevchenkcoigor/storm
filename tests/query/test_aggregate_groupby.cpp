@@ -1,10 +1,18 @@
 #include <gtest/gtest.h>
 #include "test_db_helpers.h"
 
-import storm;
+import storm_db_default_connection;
+import storm_db_pool;
+import storm_db_postgresql;
+import storm_db_sqlite;
+import storm_meta;
+import storm_orm_indexes;
+import storm_orm_queryset;
+import storm_orm_schema;
+import storm_orm_statements_erase;
+import storm_orm_statements_insert;
+import storm_orm_statements_update;
 import std;
-
-using storm::QuerySet;
 
 #include "../../shared/models/message.h" // NOSONAR cpp:S954
 #include "../../shared/models/person.h"

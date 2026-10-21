@@ -185,7 +185,7 @@ Default connection is thread-safe via `thread_local`:
 // ✅ SAFE: Each thread gets its own connection
 void worker_thread() {
     // Initialize thread-local connection
-    QuerySet<Person>::set_default_connection(":memory:");
+    DefaultConnection<>::set(":memory:");
 
     // Each thread has isolated connection + QuerySet
     QuerySet<Person> qs;

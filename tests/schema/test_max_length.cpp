@@ -3,17 +3,28 @@
 
 #include "test_db_helpers.h"
 
-import storm;
+import storm_db_default_connection;
+import storm_db_postgresql;
+import storm_db_sqlite;
+import storm_meta;
+import storm_orm_schema;
+import storm_orm_statements_insert;
+import storm_orm_statements_select;
 import std;
+import storm_orm_statements_base;
 
 #include "test_fixture.h"
+using storm::create_table_sql;
+using storm::max_length;
+using storm::primary;
+using storm::orm::statements::InsertStatement;
+using storm::orm::statements::ModelMaxLengthValid;
+using storm::orm::statements::SelectStatement;
 
 // Tests for the max_length<N> field annotation (#493): a DB-enforced text-length
 // bound. SQLite emits TEXT ... CHECK(length(col) <= N); PostgreSQL emits VARCHAR(N).
 // Both dialects genuinely enforce the bound on every write path. A compile-time
 // concept rejects max_length on non-text fields.
-
-using storm::QuerySet;
 using storm::orm::schema::Dialect;
 using storm::orm::schema::SchemaStatement;
 
@@ -25,32 +36,32 @@ namespace {
 
     // A plain bounded text field, NOT NULL.
     struct BoundedName {
-        [[= storm::primary]] int                id{};
-        [[= storm::max_length<50>]] std::string name;
+        [[= primary]] int                id{};
+        [[= max_length<50>]] std::string name;
     };
 
     // A nullable bounded text field: CHECK passes on NULL (standard SQL); PG omits NOT NULL.
     struct BoundedOptional {
-        [[= storm::primary]] int                               id{};
-        [[= storm::max_length<20>]] std::optional<std::string> nickname;
+        [[= primary]] int                               id{};
+        [[= max_length<20>]] std::optional<std::string> nickname;
     };
 
     // max_length combined with unique.
     struct BoundedUnique {
-        [[= storm::primary]] int                                   id{};
-        [[ = storm::max_length<30>, = storm::unique ]] std::string code;
+        [[= primary]] int                                   id{};
+        [[ = max_length<30>, = storm::unique ]] std::string code;
     };
 
     // max_length combined with a C++ default member initializer (#413).
     struct BoundedDefault {
-        [[= storm::primary]] int                id{};
-        [[= storm::max_length<10>]] std::string status = "new";
+        [[= primary]] int                id{};
+        [[= max_length<10>]] std::string status = "new";
     };
 
     // string_view text field also accepts the annotation.
     struct BoundedView {
-        [[= storm::primary]] int                     id{};
-        [[= storm::max_length<15>]] std::string_view label;
+        [[= primary]] int                     id{};
+        [[= max_length<15>]] std::string_view label;
     };
 
 } // namespace
@@ -66,42 +77,38 @@ namespace {
 // harness (mirrors the full_unsigned / SET NULL negative tests in test_types.cpp).
 namespace {
     struct MaxLengthOnInt {
-        [[= storm::primary]] int       id{};
-        [[= storm::max_length<5>]] int age{}; // non-text → invalid
+        [[= primary]] int       id{};
+        [[= max_length<5>]] int age{}; // non-text → invalid
     };
     struct MaxLengthOnDouble {
-        [[= storm::primary]] int          id{};
-        [[= storm::max_length<5>]] double score{}; // non-text → invalid
+        [[= primary]] int          id{};
+        [[= max_length<5>]] double score{}; // non-text → invalid
     };
     struct MaxLengthOnText {
-        [[= storm::primary]] int               id{};
-        [[= storm::max_length<5>]] std::string name;
+        [[= primary]] int               id{};
+        [[= max_length<5>]] std::string name;
     };
     struct MaxLengthOnOptionalText {
-        [[= storm::primary]] int                              id{};
-        [[= storm::max_length<5>]] std::optional<std::string> name;
+        [[= primary]] int                              id{};
+        [[= max_length<5>]] std::optional<std::string> name;
     };
 
     static_assert(
-            !storm::orm::statements::ModelMaxLengthValid<MaxLengthOnInt>,
-            "max_length on an int field must NOT satisfy ModelMaxLengthValid"
+            !ModelMaxLengthValid<MaxLengthOnInt>, "max_length on an int field must NOT satisfy ModelMaxLengthValid"
     );
     static_assert(
-            !storm::orm::statements::ModelMaxLengthValid<MaxLengthOnDouble>,
-            "max_length on a double field must NOT satisfy ModelMaxLengthValid"
+            !ModelMaxLengthValid<MaxLengthOnDouble>, "max_length on a double field must NOT satisfy ModelMaxLengthValid"
     );
     static_assert(
-            storm::orm::statements::ModelMaxLengthValid<MaxLengthOnText>,
-            "max_length on a std::string field must satisfy ModelMaxLengthValid"
+            ModelMaxLengthValid<MaxLengthOnText>, "max_length on a std::string field must satisfy ModelMaxLengthValid"
     );
     static_assert(
-            storm::orm::statements::ModelMaxLengthValid<MaxLengthOnOptionalText>,
+            ModelMaxLengthValid<MaxLengthOnOptionalText>,
             "max_length on an optional<std::string> field must satisfy ModelMaxLengthValid"
     );
     // A model with no max_length annotation at all trivially satisfies the concept.
     static_assert(
-            storm::orm::statements::ModelMaxLengthValid<BoundedName>,
-            "a model with a text max_length field must satisfy ModelMaxLengthValid"
+            ModelMaxLengthValid<BoundedName>, "a model with a text max_length field must satisfy ModelMaxLengthValid"
     );
 } // namespace
 
@@ -110,29 +117,29 @@ namespace {
 // ============================================================================
 
 TEST(MaxLengthSchema, SqliteNotNullEmitsCheck) {
-    const auto& sql = storm::create_table_sql<BoundedName>();
+    const auto& sql = create_table_sql<BoundedName>();
     EXPECT_NE(sql.find("name TEXT NOT NULL CHECK(length(name) <= 50)"), std::string::npos) << sql;
 }
 
 TEST(MaxLengthSchema, SqliteOptionalOmitsNotNullKeepsCheck) {
-    const auto& sql = storm::create_table_sql<BoundedOptional>();
+    const auto& sql = create_table_sql<BoundedOptional>();
     // Nullable: no NOT NULL, but the CHECK is still emitted (passes on NULL).
     EXPECT_NE(sql.find("nickname TEXT CHECK(length(nickname) <= 20)"), std::string::npos) << sql;
     EXPECT_EQ(sql.find("nickname TEXT NOT NULL"), std::string::npos) << sql;
 }
 
 TEST(MaxLengthSchema, SqliteUniqueAppendsAfterCheck) {
-    const auto& sql = storm::create_table_sql<BoundedUnique>();
+    const auto& sql = create_table_sql<BoundedUnique>();
     EXPECT_NE(sql.find("code TEXT NOT NULL CHECK(length(code) <= 30) UNIQUE"), std::string::npos) << sql;
 }
 
 TEST(MaxLengthSchema, SqliteDefaultPrecedesCheck) {
-    const auto& sql = storm::create_table_sql<BoundedDefault>();
+    const auto& sql = create_table_sql<BoundedDefault>();
     EXPECT_NE(sql.find("status TEXT NOT NULL DEFAULT 'new' CHECK(length(status) <= 10)"), std::string::npos) << sql;
 }
 
 TEST(MaxLengthSchema, SqliteStringViewEmitsCheck) {
-    const auto& sql = storm::create_table_sql<BoundedView>();
+    const auto& sql = create_table_sql<BoundedView>();
     EXPECT_NE(sql.find("label TEXT NOT NULL CHECK(length(label) <= 15)"), std::string::npos) << sql;
 }
 
@@ -169,31 +176,29 @@ template <typename ConnType> class MaxLengthEnforceTest : public StormTestFixtur
 TYPED_TEST_SUITE(MaxLengthEnforceTest, DatabaseTypes);
 
 TYPED_TEST(MaxLengthEnforceTest, InsertUnderLimitSucceeds) {
-    QuerySet<BoundedName, TypeParam> qs;
-    auto                             result = qs.insert(BoundedName{.name = "short"}).execute(); // 5 chars <= 50
+    auto result =
+            (InsertStatement<BoundedName, TypeParam>{}).query(BoundedName{.name = "short"}).execute(); // 5 chars <= 50
     ASSERT_TRUE(result.has_value()) << result.error().message();
 }
 
 TYPED_TEST(MaxLengthEnforceTest, InsertAtLimitSucceeds) {
-    QuerySet<BoundedName, TypeParam> qs;
-    const std::string                at_limit(50, 'x'); // exactly 50 chars
-    auto                             result = qs.insert(BoundedName{.name = at_limit}).execute();
+    const std::string at_limit(50, 'x'); // exactly 50 chars
+    auto result = (InsertStatement<BoundedName, TypeParam>{}).query(BoundedName{.name = at_limit}).execute();
     ASSERT_TRUE(result.has_value()) << result.error().message();
 
-    auto selected = qs.select().execute();
+    auto selected = (SelectStatement<BoundedName, TypeParam>{}).all().execute();
     ASSERT_TRUE(selected.has_value()) << selected.error().message();
     ASSERT_EQ(selected.value().size(), 1U);
     EXPECT_EQ(selected.value().begin()->name, at_limit);
 }
 
 TYPED_TEST(MaxLengthEnforceTest, InsertOverLimitRejected) {
-    QuerySet<BoundedName, TypeParam> qs;
-    const std::string                over_limit(51, 'x'); // 51 chars > 50 — DB must reject
-    auto                             result = qs.insert(BoundedName{.name = over_limit}).execute();
+    const std::string over_limit(51, 'x'); // 51 chars > 50 — DB must reject
+    auto result = (InsertStatement<BoundedName, TypeParam>{}).query(BoundedName{.name = over_limit}).execute();
     EXPECT_FALSE(result.has_value()) << "DB should reject a value over max_length";
 
     // The row must NOT have been written.
-    auto selected = qs.select().execute();
+    auto selected = (SelectStatement<BoundedName, TypeParam>{}).all().execute();
     ASSERT_TRUE(selected.has_value()) << selected.error().message();
     EXPECT_EQ(selected.value().size(), 0U);
 }
@@ -203,14 +208,14 @@ template <typename ConnType> class MaxLengthOptionalEnforceTest : public StormTe
 TYPED_TEST_SUITE(MaxLengthOptionalEnforceTest, DatabaseTypes);
 
 TYPED_TEST(MaxLengthOptionalEnforceTest, NullAllowed) {
-    QuerySet<BoundedOptional, TypeParam> qs;
-    auto                                 result = qs.insert(BoundedOptional{.nickname = std::nullopt}).execute();
+    auto result =
+            (InsertStatement<BoundedOptional, TypeParam>{}).query(BoundedOptional{.nickname = std::nullopt}).execute();
     ASSERT_TRUE(result.has_value()) << result.error().message();
 }
 
 TYPED_TEST(MaxLengthOptionalEnforceTest, OverLimitRejected) {
-    QuerySet<BoundedOptional, TypeParam> qs;
-    const std::string                    over_limit(21, 'x'); // 21 > 20
-    auto                                 result = qs.insert(BoundedOptional{.nickname = over_limit}).execute();
+    const std::string over_limit(21, 'x'); // 21 > 20
+    auto              result =
+            (InsertStatement<BoundedOptional, TypeParam>{}).query(BoundedOptional{.nickname = over_limit}).execute();
     EXPECT_FALSE(result.has_value()) << "DB should reject an over-limit non-NULL value";
 }

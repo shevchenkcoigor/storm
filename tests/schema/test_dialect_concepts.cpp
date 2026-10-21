@@ -1,6 +1,10 @@
 #include <gtest/gtest.h>
 
-import storm;
+import storm_db_concept;
+import storm_db_postgresql;
+import storm_db_sqlite;
+import storm_orm_transaction;
+import storm_orm_utilities;
 import std;
 
 // ── #477: dialect-support concepts are compile-time backend-capability gates ──

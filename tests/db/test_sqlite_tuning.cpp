@@ -3,10 +3,12 @@
 
 // NOLINTBEGIN(cppcoreguidelines-non-private-member-variables-in-classes,misc-non-private-member-variables-in-classes,readability-identifier-length)
 
-import storm;
+import storm_db_pool;
+import storm_db_sqlite;
 import std;
 import storm_db_sqlite;
 import storm_db_pool;
+using storm::db::ConnectionPool;
 
 using storm::db::sqlite::Config;
 using storm::db::sqlite::Connection;
@@ -157,7 +159,7 @@ namespace {
     // ------------------------------------------------------- pool propagation
     TEST(SqliteTuningTest, PoolPropagatesBusyTimeout) {
         TempDb db("pool");
-        auto   pool = storm::db::ConnectionPool<Connection>::create(
+        auto   pool = ConnectionPool<Connection>::create(
                 db.path, {.min_connections = 1, .max_connections = 2, .busy_timeout_ms = 4321}
         );
         ASSERT_TRUE(pool.has_value());
@@ -169,7 +171,7 @@ namespace {
 
     TEST(SqliteTuningTest, PoolPropagatesWal) {
         TempDb db("poolwal");
-        auto   pool = storm::db::ConnectionPool<Connection>::create(
+        auto   pool = ConnectionPool<Connection>::create(
                 db.path, {.min_connections = 1, .max_connections = 2, .journal_mode = JournalMode::WAL}
         );
         ASSERT_TRUE(pool.has_value());

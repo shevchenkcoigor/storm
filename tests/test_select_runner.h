@@ -23,6 +23,8 @@
 
 #include "../shared/models/message.h"
 #include "test_record_helpers.h"
+using storm::QuerySet;
+using storm::meta::FieldRef;
 
 namespace storm::test {
 
@@ -52,21 +54,21 @@ inline auto expect_opt_near(const std::optional<double> &actual, double expected
 
 template <std::meta::info FieldInfo, typename ValueType>
 constexpr auto build_where_expr(std::string_view op, ValueType value) {
-    if constexpr (requires { storm::meta::FieldRef<FieldInfo>{} == value; }) {
+    if constexpr (requires { FieldRef<FieldInfo>{} == value; }) {
         if (op == "==")
-            return storm::meta::FieldRef<FieldInfo>{} == value;
+            return FieldRef<FieldInfo>{} == value;
         if (op == "!=")
-            return storm::meta::FieldRef<FieldInfo>{} != value;
+            return FieldRef<FieldInfo>{} != value;
         if (op == ">")
-            return storm::meta::FieldRef<FieldInfo>{} > value;
+            return FieldRef<FieldInfo>{} > value;
         if (op == ">=")
-            return storm::meta::FieldRef<FieldInfo>{} >= value;
+            return FieldRef<FieldInfo>{} >= value;
         if (op == "<")
-            return storm::meta::FieldRef<FieldInfo>{} < value;
+            return FieldRef<FieldInfo>{} < value;
         if (op == "<=")
-            return storm::meta::FieldRef<FieldInfo>{} <= value;
+            return FieldRef<FieldInfo>{} <= value;
     }
-    return storm::meta::FieldRef<FieldInfo>{} == value;
+    return FieldRef<FieldInfo>{} == value;
 }
 
 // FK resolver for test models (Message::sender → Person).
@@ -104,7 +106,7 @@ template <int N, const auto &Tc, typename Model> auto build_where_node_expr() {
 
 template <typename Model, typename ConnType> class QueryRunnerBase {
   public:
-    storm::QuerySet<Model, ConnType, true> qs_;
+    QuerySet<Model, ConnType, true> qs_;
 
     template <const auto &Tc> auto seed_and_insert() -> void {
         std::vector<Model> initial;
@@ -255,13 +257,13 @@ template <typename Model, typename ConnType> class AggregateRunner : public Sele
 
         } else if constexpr (Tc.query_type == "count_distinct") {
             constexpr auto fi = dispatch_field<Model>(Tc.bench.aggregate.field.view());
-            auto r = this->qs_.template count_distinct<storm::meta::FieldRef<fi>{}>().execute();
+            auto r = this->qs_.template count_distinct<FieldRef<fi>{}>().execute();
             ASSERT_TRUE(r.has_value()) << r.error().message();
             EXPECT_EQ(r.value(), Tc.expected.int_val);
 
         } else if constexpr (Tc.query_type == "sum") {
             constexpr auto fi = dispatch_field<Model>(Tc.bench.aggregate.field.view());
-            auto r = this->qs_.template sum<storm::meta::FieldRef<fi>{}>().execute();
+            auto r = this->qs_.template sum<FieldRef<fi>{}>().execute();
             ASSERT_TRUE(r.has_value()) << r.error().message();
             if constexpr (Tc.expected.int_val != -1)
                 EXPECT_EQ(r.value(), Tc.expected.int_val);
@@ -270,25 +272,25 @@ template <typename Model, typename ConnType> class AggregateRunner : public Sele
 
         } else if constexpr (Tc.query_type == "avg") {
             constexpr auto fi = dispatch_field<Model>(Tc.bench.aggregate.field.view());
-            auto r = this->qs_.template avg<storm::meta::FieldRef<fi>{}>().execute();
+            auto r = this->qs_.template avg<FieldRef<fi>{}>().execute();
             ASSERT_TRUE(r.has_value()) << r.error().message();
             expect_opt_near(r.value(), Tc.expected.dbl_val, Tc.dataset.view() == "empty");
 
         } else if constexpr (Tc.query_type == "min") {
             constexpr auto fi = dispatch_field<Model>(Tc.bench.aggregate.field.view());
-            auto r = this->qs_.template min<storm::meta::FieldRef<fi>{}>().execute();
+            auto r = this->qs_.template min<FieldRef<fi>{}>().execute();
             ASSERT_TRUE(r.has_value()) << r.error().message();
             expect_opt_near(r.value(), Tc.expected.dbl_val, Tc.dataset.view() == "empty");
 
         } else if constexpr (Tc.query_type == "max") {
             constexpr auto fi = dispatch_field<Model>(Tc.bench.aggregate.field.view());
-            auto r = this->qs_.template max<storm::meta::FieldRef<fi>{}>().execute();
+            auto r = this->qs_.template max<FieldRef<fi>{}>().execute();
             ASSERT_TRUE(r.has_value()) << r.error().message();
             expect_opt_near(r.value(), Tc.expected.dbl_val, Tc.dataset.view() == "empty");
 
         } else if constexpr (Tc.query_type == "count_field") {
             constexpr auto fi = dispatch_field<Model>(Tc.bench.aggregate.field.view());
-            auto r = this->qs_.template count<storm::meta::FieldRef<fi>{}>().execute();
+            auto r = this->qs_.template count<FieldRef<fi>{}>().execute();
             ASSERT_TRUE(r.has_value()) << r.error().message();
             EXPECT_EQ(r.value(), Tc.expected.int_val);
         }
@@ -312,21 +314,18 @@ template <typename Model, typename ConnType> class ChainAggRunner : public Selec
     template <const auto &Tc> auto run_chain2_sum_or_count() -> void {
         if constexpr (Tc.aggregations[0].func == "sum" && Tc.aggregations[1].func == "count") {
             constexpr auto fi0 = dispatch_field<Model>(Tc.aggregations[0].field.view());
-            auto [v0, v1] = this->qs_.template sum<storm::meta::FieldRef<fi0>{}>().count().execute().value();
+            auto [v0, v1] = this->qs_.template sum<FieldRef<fi0>{}>().count().execute().value();
             EXPECT_EQ(v0, static_cast<std::int64_t>(Tc.aggregations[0].res_value));
             EXPECT_EQ(v1, static_cast<std::int64_t>(Tc.aggregations[1].res_value));
         } else if constexpr (Tc.aggregations[0].func == "count") {
             constexpr auto fi1 = dispatch_field<Model>(Tc.aggregations[1].field.view());
-            auto [v0, v1] = this->qs_.count().template sum<storm::meta::FieldRef<fi1>{}>().execute().value();
+            auto [v0, v1] = this->qs_.count().template sum<FieldRef<fi1>{}>().execute().value();
             EXPECT_EQ(v0, static_cast<std::int64_t>(Tc.aggregations[0].res_value));
             EXPECT_EQ(v1, static_cast<std::int64_t>(Tc.aggregations[1].res_value));
         } else if constexpr (Tc.aggregations[0].func == "sum") {
             constexpr auto fi0 = dispatch_field<Model>(Tc.aggregations[0].field.view());
             constexpr auto fi1 = dispatch_field<Model>(Tc.aggregations[1].field.view());
-            auto [v0, v1] = this->qs_.template sum<storm::meta::FieldRef<fi0>{}>()
-                                .template avg<storm::meta::FieldRef<fi1>{}>()
-                                .execute()
-                                .value();
+            auto [v0, v1] = this->qs_.template sum<FieldRef<fi0>{}>().template avg<FieldRef<fi1>{}>().execute().value();
             EXPECT_EQ(v0, static_cast<std::int64_t>(Tc.aggregations[0].res_value));
             expect_opt_near(v1, Tc.aggregations[1].res_value);
         }
@@ -335,23 +334,19 @@ template <typename Model, typename ConnType> class ChainAggRunner : public Selec
     template <const auto &Tc> auto run_chain2_avg() -> void {
         constexpr auto fi0 = dispatch_field<Model>(Tc.aggregations[0].field.view());
         if constexpr (Tc.aggregations[1].func == "count") {
-            auto [v0, v1] = this->qs_.template avg<storm::meta::FieldRef<fi0>{}>().count().execute().value();
+            auto [v0, v1] = this->qs_.template avg<FieldRef<fi0>{}>().count().execute().value();
             expect_opt_near(v0, Tc.aggregations[0].res_value);
             EXPECT_EQ(v1, static_cast<std::int64_t>(Tc.aggregations[1].res_value));
         } else {
             constexpr auto fi1 = dispatch_field<Model>(Tc.aggregations[1].field.view());
             if constexpr (Tc.aggregations[1].func == "min") {
-                auto [v0, v1] = this->qs_.template avg<storm::meta::FieldRef<fi0>{}>()
-                                    .template min<storm::meta::FieldRef<fi1>{}>()
-                                    .execute()
-                                    .value();
+                auto [v0, v1] =
+                    this->qs_.template avg<FieldRef<fi0>{}>().template min<FieldRef<fi1>{}>().execute().value();
                 expect_opt_near(v0, Tc.aggregations[0].res_value);
                 expect_opt_near(v1, Tc.aggregations[1].res_value);
             } else {
-                auto [v0, v1] = this->qs_.template avg<storm::meta::FieldRef<fi0>{}>()
-                                    .template max<storm::meta::FieldRef<fi1>{}>()
-                                    .execute()
-                                    .value();
+                auto [v0, v1] =
+                    this->qs_.template avg<FieldRef<fi0>{}>().template max<FieldRef<fi1>{}>().execute().value();
                 expect_opt_near(v0, Tc.aggregations[0].res_value);
                 expect_opt_near(v1, Tc.aggregations[1].res_value);
             }
@@ -362,31 +357,19 @@ template <typename Model, typename ConnType> class ChainAggRunner : public Selec
         constexpr auto fi0 = dispatch_field<Model>(Tc.aggregations[0].field.view());
         constexpr auto fi1 = dispatch_field<Model>(Tc.aggregations[1].field.view());
         if constexpr (Tc.aggregations[0].func == "min" && Tc.aggregations[1].func == "max") {
-            auto [v0, v1] = this->qs_.template min<storm::meta::FieldRef<fi0>{}>()
-                                .template max<storm::meta::FieldRef<fi1>{}>()
-                                .execute()
-                                .value();
+            auto [v0, v1] = this->qs_.template min<FieldRef<fi0>{}>().template max<FieldRef<fi1>{}>().execute().value();
             expect_opt_near(v0, Tc.aggregations[0].res_value);
             expect_opt_near(v1, Tc.aggregations[1].res_value);
         } else if constexpr (Tc.aggregations[0].func == "min") {
-            auto [v0, v1] = this->qs_.template min<storm::meta::FieldRef<fi0>{}>()
-                                .template sum<storm::meta::FieldRef<fi1>{}>()
-                                .execute()
-                                .value();
+            auto [v0, v1] = this->qs_.template min<FieldRef<fi0>{}>().template sum<FieldRef<fi1>{}>().execute().value();
             expect_opt_near(v0, Tc.aggregations[0].res_value);
             EXPECT_EQ(v1, static_cast<std::int64_t>(Tc.aggregations[1].res_value));
         } else if constexpr (Tc.aggregations[0].func == "max" && Tc.aggregations[1].func == "avg") {
-            auto [v0, v1] = this->qs_.template max<storm::meta::FieldRef<fi0>{}>()
-                                .template avg<storm::meta::FieldRef<fi1>{}>()
-                                .execute()
-                                .value();
+            auto [v0, v1] = this->qs_.template max<FieldRef<fi0>{}>().template avg<FieldRef<fi1>{}>().execute().value();
             expect_opt_near(v0, Tc.aggregations[0].res_value);
             expect_opt_near(v1, Tc.aggregations[1].res_value);
         } else if constexpr (Tc.aggregations[0].func == "max") {
-            auto [v0, v1] = this->qs_.template max<storm::meta::FieldRef<fi0>{}>()
-                                .template min<storm::meta::FieldRef<fi1>{}>()
-                                .execute()
-                                .value();
+            auto [v0, v1] = this->qs_.template max<FieldRef<fi0>{}>().template min<FieldRef<fi1>{}>().execute().value();
             expect_opt_near(v0, Tc.aggregations[0].res_value);
             expect_opt_near(v1, Tc.aggregations[1].res_value);
         }
@@ -405,10 +388,7 @@ template <typename Model, typename ConnType> class ChainAggRunner : public Selec
         if constexpr (Tc.aggregations[0].func == "sum") {
             constexpr auto fi0 = dispatch_field<Model>(Tc.aggregations[0].field.view());
             constexpr auto fi2 = dispatch_field<Model>(Tc.aggregations[2].field.view());
-            auto r = this->qs_.template sum<storm::meta::FieldRef<fi0>{}>()
-                         .count()
-                         .template avg<storm::meta::FieldRef<fi2>{}>()
-                         .execute();
+            auto r = this->qs_.template sum<FieldRef<fi0>{}>().count().template avg<FieldRef<fi2>{}>().execute();
             ASSERT_TRUE(r.has_value()) << r.error().message();
             auto [v0, v1, v2] = r.value();
             EXPECT_EQ(v0, static_cast<std::int64_t>(Tc.aggregations[0].res_value));
@@ -417,10 +397,7 @@ template <typename Model, typename ConnType> class ChainAggRunner : public Selec
         } else if constexpr (Tc.aggregations[0].func == "count") {
             constexpr auto fi1 = dispatch_field<Model>(Tc.aggregations[1].field.view());
             constexpr auto fi2 = dispatch_field<Model>(Tc.aggregations[2].field.view());
-            auto r = this->qs_.count()
-                         .template sum<storm::meta::FieldRef<fi1>{}>()
-                         .template avg<storm::meta::FieldRef<fi2>{}>()
-                         .execute();
+            auto r = this->qs_.count().template sum<FieldRef<fi1>{}>().template avg<FieldRef<fi2>{}>().execute();
             ASSERT_TRUE(r.has_value()) << r.error().message();
             auto [v0, v1, v2] = r.value();
             EXPECT_EQ(v0, static_cast<std::int64_t>(Tc.aggregations[0].res_value));
@@ -434,9 +411,9 @@ template <typename Model, typename ConnType> class ChainAggRunner : public Selec
         constexpr auto fi2 = dispatch_field<Model>(Tc.aggregations[2].field.view());
         constexpr auto fi3 = dispatch_field<Model>(Tc.aggregations[3].field.view());
         auto r = this->qs_.count()
-                     .template sum<storm::meta::FieldRef<fi1>{}>()
-                     .template min<storm::meta::FieldRef<fi2>{}>()
-                     .template max<storm::meta::FieldRef<fi3>{}>()
+                     .template sum<FieldRef<fi1>{}>()
+                     .template min<FieldRef<fi2>{}>()
+                     .template max<FieldRef<fi3>{}>()
                      .execute();
         ASSERT_TRUE(r.has_value()) << r.error().message();
         auto [v0, v1, v2, v3] = r.value();
@@ -451,20 +428,20 @@ template <typename Model, typename ConnType> class ChainAggRunner : public Selec
         constexpr auto fi3 = dispatch_field<Model>(Tc.aggregations[3].field.view());
         constexpr auto fi4 = dispatch_field<Model>(Tc.aggregations[4].field.view());
         check_chain5<Tc>(std::forward<decltype(head)>(head)
-                             .template avg<storm::meta::FieldRef<fi2>{}>()
-                             .template min<storm::meta::FieldRef<fi3>{}>()
-                             .template max<storm::meta::FieldRef<fi4>{}>()
+                             .template avg<FieldRef<fi2>{}>()
+                             .template min<FieldRef<fi3>{}>()
+                             .template max<FieldRef<fi4>{}>()
                              .execute());
     }
 
     template <const auto &Tc> auto run_chain5_sum() -> void {
         constexpr auto fi0 = dispatch_field<Model>(Tc.aggregations[0].field.view());
-        chain5_tail<Tc>(this->qs_.template sum<storm::meta::FieldRef<fi0>{}>().count());
+        chain5_tail<Tc>(this->qs_.template sum<FieldRef<fi0>{}>().count());
     }
 
     template <const auto &Tc> auto run_chain5_count() -> void {
         constexpr auto fi1 = dispatch_field<Model>(Tc.aggregations[1].field.view());
-        chain5_tail<Tc>(this->qs_.count().template sum<storm::meta::FieldRef<fi1>{}>());
+        chain5_tail<Tc>(this->qs_.count().template sum<FieldRef<fi1>{}>());
     }
 
   public:
@@ -494,13 +471,12 @@ template <typename Model, typename ConnType> class DistinctRunner : public Selec
         if constexpr (fc >= 2) {
             constexpr auto fi1 = dispatch_field<Model>(Tc.bench.distinct.fields[0].view());
             constexpr auto fi2 = dispatch_field<Model>(Tc.bench.distinct.fields[1].view());
-            auto r =
-                this->qs_.template distinct<storm::meta::FieldRef<fi1>{}, storm::meta::FieldRef<fi2>{}>().execute();
+            auto r = this->qs_.template distinct<FieldRef<fi1>{}, FieldRef<fi2>{}>().execute();
             ASSERT_TRUE(r.has_value()) << r.error().message();
             EXPECT_EQ(static_cast<int>(r.value().size()), Tc.expected.count);
         } else {
             constexpr auto fi = dispatch_field<Model>(Tc.bench.distinct.fields[0].view());
-            auto r = this->qs_.template distinct<storm::meta::FieldRef<fi>{}>().execute();
+            auto r = this->qs_.template distinct<FieldRef<fi>{}>().execute();
             ASSERT_TRUE(r.has_value()) << r.error().message();
             EXPECT_EQ(static_cast<int>(r.value().size()), Tc.expected.count);
         }
@@ -515,14 +491,12 @@ template <typename Model, typename ConnType> class GroupByRunner : public Select
         constexpr auto gb_fi = dispatch_field<Model>(Tc.bench.group_by.fields[0].view());
         if constexpr (Tc.bench.group_by.field_count() >= 2) {
             constexpr auto gb_fi2 = dispatch_field<Model>(Tc.bench.group_by.fields[1].view());
-            auto r = this->qs_.template group_by<storm::meta::FieldRef<gb_fi>{}, storm::meta::FieldRef<gb_fi2>{}>()
-                         .count()
-                         .execute();
+            auto r = this->qs_.template group_by<FieldRef<gb_fi>{}, FieldRef<gb_fi2>{}>().count().execute();
             ASSERT_TRUE(r.has_value()) << r.error().message();
             EXPECT_EQ(static_cast<int>(r.value().size()), Tc.expected.count);
         } else if constexpr (Tc.bench.group_by.having.enabled) {
             constexpr auto hv_fi = dispatch_field<Model>(Tc.bench.group_by.having.field.view());
-            auto r = this->qs_.template group_by<storm::meta::FieldRef<gb_fi>{}>()
+            auto r = this->qs_.template group_by<FieldRef<gb_fi>{}>()
                          .having(build_where_expr<hv_fi>(Tc.bench.group_by.having.op.view(),
                                                          Tc.bench.group_by.having.value.as_int))
                          .count()
@@ -530,7 +504,7 @@ template <typename Model, typename ConnType> class GroupByRunner : public Select
             ASSERT_TRUE(r.has_value()) << r.error().message();
             EXPECT_EQ(static_cast<int>(r.value().size()), Tc.expected.count);
         } else {
-            auto r = this->qs_.template group_by<storm::meta::FieldRef<gb_fi>{}>().count().execute();
+            auto r = this->qs_.template group_by<FieldRef<gb_fi>{}>().count().execute();
             ASSERT_TRUE(r.has_value()) << r.error().message();
             EXPECT_EQ(static_cast<int>(r.value().size()), Tc.expected.count);
             if constexpr (Tc.expected.groups_count > 0)
@@ -547,36 +521,28 @@ template <typename Model, typename ConnType> class GroupByRunner : public Select
             run_group_count<Tc>();
         } else if constexpr (Tc.query_type == "group_sum") {
             constexpr auto agg_fi = dispatch_field<Model>(Tc.bench.aggregate.field.view());
-            auto r = this->qs_.template group_by<storm::meta::FieldRef<gb_fi>{}>()
-                         .template sum<storm::meta::FieldRef<agg_fi>{}>()
-                         .execute();
+            auto r = this->qs_.template group_by<FieldRef<gb_fi>{}>().template sum<FieldRef<agg_fi>{}>().execute();
             ASSERT_TRUE(r.has_value()) << r.error().message();
             EXPECT_EQ(static_cast<int>(r.value().size()), Tc.expected.count);
             if constexpr (Tc.expected.groups_count > 0)
                 verify_group_int_results<Tc>(r.value());
         } else if constexpr (Tc.query_type == "group_avg") {
             constexpr auto agg_fi = dispatch_field<Model>(Tc.bench.aggregate.field.view());
-            auto r = this->qs_.template group_by<storm::meta::FieldRef<gb_fi>{}>()
-                         .template avg<storm::meta::FieldRef<agg_fi>{}>()
-                         .execute();
+            auto r = this->qs_.template group_by<FieldRef<gb_fi>{}>().template avg<FieldRef<agg_fi>{}>().execute();
             ASSERT_TRUE(r.has_value()) << r.error().message();
             EXPECT_EQ(static_cast<int>(r.value().size()), Tc.expected.count);
             if constexpr (Tc.expected.groups_count > 0)
                 verify_group_dbl_results<Tc>(r.value());
         } else if constexpr (Tc.query_type == "group_min") {
             constexpr auto agg_fi = dispatch_field<Model>(Tc.bench.aggregate.field.view());
-            auto r = this->qs_.template group_by<storm::meta::FieldRef<gb_fi>{}>()
-                         .template min<storm::meta::FieldRef<agg_fi>{}>()
-                         .execute();
+            auto r = this->qs_.template group_by<FieldRef<gb_fi>{}>().template min<FieldRef<agg_fi>{}>().execute();
             ASSERT_TRUE(r.has_value()) << r.error().message();
             EXPECT_EQ(static_cast<int>(r.value().size()), Tc.expected.count);
             if constexpr (Tc.expected.groups_count > 0)
                 verify_group_dbl_results<Tc>(r.value());
         } else if constexpr (Tc.query_type == "group_max") {
             constexpr auto agg_fi = dispatch_field<Model>(Tc.bench.aggregate.field.view());
-            auto r = this->qs_.template group_by<storm::meta::FieldRef<gb_fi>{}>()
-                         .template max<storm::meta::FieldRef<agg_fi>{}>()
-                         .execute();
+            auto r = this->qs_.template group_by<FieldRef<gb_fi>{}>().template max<FieldRef<agg_fi>{}>().execute();
             ASSERT_TRUE(r.has_value()) << r.error().message();
             EXPECT_EQ(static_cast<int>(r.value().size()), Tc.expected.count);
             if constexpr (Tc.expected.groups_count > 0)

@@ -538,8 +538,8 @@ Of the ~110 test TUs, **9** import `storm` without needing
 `storm_orm_queryset` — every other TU reaches `storm::QuerySet` through
 `tests/test_models.h`'s fixtures. Three of the nine cannot be converted anyway:
 `schema/test_valid_foreign_key_concept.cpp` and `query/test_fields_selector.cpp`
-spell `storm::primary`, and `schema/test_dialect_concepts.cpp` calls
-`storm::begin` — names that exist only in the umbrella (`storm::primary` is
+spell `primary`, and `schema/test_dialect_concepts.cpp` calls
+`storm::begin` — names that exist only in the umbrella (`primary` is
 #442's top-level re-export; converting would mean reverting those tests to
 `storm::meta::`).
 

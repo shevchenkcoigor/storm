@@ -572,4 +572,20 @@ export namespace storm::orm::where {
         }
     };
 
+    // Combine two optional expressions with `op`; an empty side yields the other.
+    [[nodiscard]] inline auto combine(ExpressionVariantPtr lhs, LogicalOp op, ExpressionVariantPtr rhs)
+            -> ExpressionVariantPtr {
+        if (!lhs) {
+            return rhs;
+        }
+        if (!rhs) {
+            return lhs;
+        }
+        return std::make_shared<ExpressionVariant>(LogicalExpr{std::move(lhs), op, std::move(rhs)});
+    }
+
+    [[nodiscard]] inline auto and_combine(ExpressionVariantPtr lhs, ExpressionVariantPtr rhs) -> ExpressionVariantPtr {
+        return combine(std::move(lhs), LogicalOp::And, std::move(rhs));
+    }
+
 } // namespace storm::orm::where

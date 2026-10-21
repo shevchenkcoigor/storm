@@ -1,7 +1,9 @@
 #include <gtest/gtest.h>
 
-import storm;
+import storm_meta;
 import std;
+import storm_orm_statements_base;
+using storm::primary;
 
 // Compile-time-only verification of the ValidForeignKey concept (#474). Every
 // static_assert is checked at TU compile time; the runtime TEST body exists only
@@ -11,8 +13,8 @@ using storm::orm::statements::ValidForeignKey;
 
 // A valid FK target: has a primary key.
 struct Related {
-    [[= storm::primary]] int id{};
-    std::string              name;
+    [[= primary]] int id{};
+    std::string       name;
 };
 
 // An FK target lacking a primary key — must be rejected.
@@ -28,7 +30,7 @@ struct NoPkModel {
 // below exercises the identical "FK target == owning model" scenario without that
 // language-level obstacle.
 struct Node {
-    [[= storm::primary]] int id{};
+    [[= primary]] int id{};
 };
 
 // ---- Positive: FK whose target has a primary key -----------------------------
@@ -49,12 +51,12 @@ static_assert(!ValidForeignKey<std::optional<NoPkModel>>);
 using storm::orm::statements::FKFieldOf;
 
 struct BadOwner {
-    [[= storm::primary]] int    id{};
+    [[= primary]] int           id{};
     [[= storm::fk<>]] NoPkModel ref; // FK to a PK-less target
 };
 
 struct GoodOwner {
-    [[= storm::primary]] int  id{};
+    [[= primary]] int         id{};
     [[= storm::fk<>]] Related ref; // FK to a valid target
 };
 

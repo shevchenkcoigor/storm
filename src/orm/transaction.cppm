@@ -148,3 +148,35 @@ export namespace storm::orm::utilities {
     };
 
 } // namespace storm::orm::utilities
+
+export namespace storm {
+
+    template <typename ConnType> using TransactionGuard = orm::utilities::TransactionGuard<ConnType>;
+
+    template <db::TransactionCapable ConnType>
+    [[nodiscard]] auto begin(std::shared_ptr<ConnType> conn)
+            -> std::expected<TransactionGuard<ConnType>, typename ConnType::Error> {
+        return orm::utilities::TransactionGuard<ConnType>::begin(std::move(conn));
+    }
+
+    template <db::TransactionCapable ConnType, typename Body>
+    [[nodiscard]] auto transaction(std::shared_ptr<ConnType> conn, Body&& body)
+            -> std::invoke_result_t<Body&, TransactionGuard<ConnType>&> {
+        using Ret = std::invoke_result_t<Body&, TransactionGuard<ConnType>&>;
+
+        auto guard = orm::utilities::TransactionGuard<ConnType>::begin(std::move(conn));
+        if (!guard) {
+            return Ret(std::unexpect, guard.error());
+        }
+
+        Ret result = std::forward<Body>(body)(*guard);
+        if (!result) {
+            return result; // guard destructor ROLLBACKs on the way out.
+        }
+
+        if (auto commit_result = guard->commit(); !commit_result) {
+            return Ret(std::unexpect, commit_result.error());
+        }
+        return result;
+    }
+} // namespace storm

@@ -4,15 +4,23 @@
 
 // NOLINTBEGIN(misc-const-correctness,cppcoreguidelines-rvalue-reference-param-not-moved)
 
-import storm;
+import storm_db_default_connection;
+import storm_db_postgresql;
+import storm_db_sqlite;
+import storm_meta;
+import storm_orm_indexes;
+import storm_orm_schema;
+import storm_orm_statements_erase;
+import storm_orm_statements_insert;
+import storm_orm_statements_select;
+import storm_orm_statements_update;
 import std;
 
 #include "../../shared/models/people_25.h" // NOSONAR cpp:S954
 #include "../../shared/models/person.h"
 #include "test_fixture.h"
 #include "test_seed_helpers.h"
-
-using storm::QuerySet;
+using storm::orm::statements::SelectStatement;
 
 template <typename ConnType> class ExpectedTransformTest : public StormTestFixture<Person, ConnType> {
   protected:
@@ -37,9 +45,7 @@ static_assert(
 );
 
 TYPED_TEST(ExpectedTransformTest, HiveToVectorViaTransformMoves) {
-    QuerySet<Person, TypeParam> qs;
-
-    auto vec_result = qs.select().execute().transform([](auto&& hive) {
+    auto vec_result = (SelectStatement<Person, TypeParam>{}).all().execute().transform([](auto&& hive) {
         return std::forward<decltype(hive)>(hive) | std::views::as_rvalue | std::ranges::to<std::vector<Person>>();
     });
 
@@ -48,20 +54,20 @@ TYPED_TEST(ExpectedTransformTest, HiveToVectorViaTransformMoves) {
 }
 
 TYPED_TEST(ExpectedTransformTest, EmptyResultTransformYieldsEmptyVector) {
-    QuerySet<Person, TypeParam> qs;
-
-    auto vec_result = qs.where(fields::Person.age > 10000).select().execute().transform([](auto&& hive) {
-        return std::forward<decltype(hive)>(hive) | std::views::as_rvalue | std::ranges::to<std::vector<Person>>();
-    });
+    auto vec_result = (SelectStatement<Person, TypeParam>{})
+                              .where(fields::Person.age > 10000)
+                              .execute()
+                              .transform([](auto&& hive) {
+                                  return std::forward<decltype(hive)>(hive) | std::views::as_rvalue |
+                                         std::ranges::to<std::vector<Person>>();
+                              });
 
     ASSERT_TRUE(vec_result.has_value()) << "Query failed: " << vec_result.error().message();
     EXPECT_TRUE(vec_result.value().empty());
 }
 
 TYPED_TEST(ExpectedTransformTest, ChainViewsInsideTransformMoves) {
-    QuerySet<Person, TypeParam> qs;
-
-    auto names_result = qs.select().execute().transform([](auto&& hive) {
+    auto names_result = (SelectStatement<Person, TypeParam>{}).all().execute().transform([](auto&& hive) {
         return std::forward<decltype(hive)>(hive) | std::views::as_rvalue |
                std::views::transform([](Person&& p) -> std::string&& { return std::move(p.name); }) |
                std::ranges::to<std::vector<std::string>>();
@@ -75,11 +81,11 @@ TYPED_TEST(ExpectedTransformTest, ChainViewsInsideTransformMoves) {
 }
 
 TYPED_TEST(ExpectedTransformTest, TransformPreservesWhereFilter) {
-    QuerySet<Person, TypeParam> qs;
-
-    auto vec_result = qs.where(fields::Person.age > 35).select().execute().transform([](auto&& hive) {
-        return std::forward<decltype(hive)>(hive) | std::views::as_rvalue | std::ranges::to<std::vector<Person>>();
-    });
+    auto vec_result =
+            (SelectStatement<Person, TypeParam>{}).where(fields::Person.age > 35).execute().transform([](auto&& hive) {
+                return std::forward<decltype(hive)>(hive) | std::views::as_rvalue |
+                       std::ranges::to<std::vector<Person>>();
+            });
 
     ASSERT_TRUE(vec_result.has_value()) << "Query failed: " << vec_result.error().message();
     EXPECT_GT(vec_result.value().size(), 0U);

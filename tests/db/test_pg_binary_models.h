@@ -24,6 +24,15 @@
 #include "../../shared/models/simple_record.h"
 #include "../../shared/models/timestamped_record.h"
 #include "../../shared/models/uuid_pk_model.h"
+import storm_orm_statements_base;
+import storm_orm_statements_projection;
+using storm::field_specs_for;
+using storm::full_unsigned;
+using storm::many_to_many;
+using storm::primary;
+using storm::signed_storage;
+using storm::UUID;
+using storm::orm::statements::BaseStatement;
 
 // ── The models under test ───────────────────────────────────────────────────
 //
@@ -36,7 +45,7 @@
 // BOOLEAN (1 byte), BIGINT/REAL/DOUBLE PRECISION (network-order fixed width),
 // TEXT and BYTEA (raw bytes).
 struct BinSafeRow {
-    [[= storm::primary]] int id{};
+    [[= primary]] int id{};
     std::int64_t big{};
     double dbl{};
     float flt{};
@@ -47,14 +56,14 @@ struct BinSafeRow {
     std::optional<int> opt_int;
     std::optional<double> opt_dbl;
     std::optional<std::string> opt_text;
-    [[= storm::signed_storage]] std::uint64_t signed_u64{};
+    [[= signed_storage]] std::uint64_t signed_u64{};
 };
 
 // ONE unsafe column (TIMESTAMP) among otherwise-safe ones. The format flag is per
 // statement, so this whole model stays on text — and every column, safe and unsafe
 // alike, must still round-trip.
 struct BinMixedRow {
-    [[= storm::primary]] int id{};
+    [[= primary]] int id{};
     int n{};
     std::string label;
     std::chrono::system_clock::time_point stamp{};
@@ -64,9 +73,9 @@ struct BinMixedRow {
 // (full_unsigned), UUID, DATE, TIMESTAMP. Each has a PG binary wire form that is
 // NOT its text form, so misclassifying any of them corrupts it silently.
 struct BinUnsafeRow {
-    [[= storm::primary]] int id{};
-    [[= storm::full_unsigned]] std::uint64_t huge{};
-    storm::UUID uid{};
+    [[= primary]] int id{};
+    [[= full_unsigned]] std::uint64_t huge{};
+    UUID uid{};
     std::chrono::year_month_day day{std::chrono::year{2024} / std::chrono::March / std::chrono::day{17}};
     std::chrono::system_clock::time_point stamp{};
 };
@@ -76,29 +85,29 @@ struct BinUnsafeRow {
 // shape that reaches the binary path WITH a relation attached — the Q1 leg of the
 // two-query eager load (#391).
 struct BinTag {
-    [[= storm::primary]] int id{};
+    [[= primary]] int id{};
     std::string label;
 };
 
 struct BinDoc {
-    [[= storm::primary]] int id{};
+    [[= primary]] int id{};
     std::string title;
     std::int64_t rank{};
-    [[= storm::many_to_many<>]] std::vector<BinTag> tags;
+    [[= many_to_many<>]] std::vector<BinTag> tags;
 };
 
 namespace fields {
 
 struct BinSafeRowT;
-consteval { std::meta::define_aggregate(^^BinSafeRowT, storm::field_specs_for(^^BinSafeRow)); }
+consteval { std::meta::define_aggregate(^^BinSafeRowT, field_specs_for(^^BinSafeRow)); }
 inline constexpr BinSafeRowT BinSafeRow{};
 
 struct BinUnsafeRowT;
-consteval { std::meta::define_aggregate(^^BinUnsafeRowT, storm::field_specs_for(^^BinUnsafeRow)); }
+consteval { std::meta::define_aggregate(^^BinUnsafeRowT, field_specs_for(^^BinUnsafeRow)); }
 inline constexpr BinUnsafeRowT BinUnsafeRow{};
 
 struct BinDocT;
-consteval { std::meta::define_aggregate(^^BinDocT, storm::field_specs_for(^^BinDoc)); }
+consteval { std::meta::define_aggregate(^^BinDocT, field_specs_for(^^BinDoc)); }
 inline constexpr BinDocT BinDoc{};
 
 } // namespace fields
@@ -107,7 +116,7 @@ namespace storm::test::binfmt {
 
 using PgConn = storm::db::postgresql::Connection;
 
-template <typename T> using Base = storm::orm::statements::BaseStatement<T>;
+template <typename T> using Base = BaseStatement<T>;
 
 // The projection statement a values<>() call on BinUnsafeRow resolves to, named so
 // its classification can be asserted (see projection_pg_binary_safe_).

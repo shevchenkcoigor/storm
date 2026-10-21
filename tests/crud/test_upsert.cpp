@@ -9,12 +9,20 @@ import std;
 #include "../../shared/models/person.h" // NOSONAR cpp:S954
 #include "test_fixture.h"
 #include "test_seed_helpers.h"
+using storm::auto_update;
+using storm::field_specs_for;
+using storm::primary;
+using storm::QuerySet;
+using storm::UUID;
+using storm::orm::statements::ConflictTargetUnique;
+using storm::orm::statements::ReturnId;
+using storm::orm::statements::UpsertSettable;
 
 struct CompositeUpsertRecord {
-    [[= storm::primary]] int id{};
-    std::string              name;
-    std::string              department;
-    int                      age{};
+    [[= primary]] int id{};
+    std::string       name;
+    std::string       department;
+    int               age{};
 };
 
 // fields:: selector proxies (#518).
@@ -22,7 +30,7 @@ namespace fields {
 
     struct CompositeUpsertRecordT;
     consteval {
-        std::meta::define_aggregate(^^CompositeUpsertRecordT, storm::field_specs_for(^^CompositeUpsertRecord));
+        std::meta::define_aggregate(^^CompositeUpsertRecordT, field_specs_for(^^CompositeUpsertRecord));
     }
     inline constexpr CompositeUpsertRecordT CompositeUpsertRecord{};
 
@@ -33,17 +41,17 @@ template <> struct storm::Indexes<CompositeUpsertRecord> {
 };
 
 struct TimestampedUpsertRecord {
-    [[= storm::primary]] int                                       id{};
+    [[= primary]] int                                              id{};
     [[= storm::unique]] std::string                                name;
     [[= storm::auto_create]] std::chrono::system_clock::time_point created_at{};
-    [[= storm::auto_update]] std::chrono::system_clock::time_point updated_at{};
+    [[= auto_update]] std::chrono::system_clock::time_point        updated_at{};
 };
 
 // fields:: selector proxies (#518).
 namespace fields {
     struct TimestampedUpsertRecordT;
     consteval {
-        std::meta::define_aggregate(^^TimestampedUpsertRecordT, storm::field_specs_for(^^TimestampedUpsertRecord));
+        std::meta::define_aggregate(^^TimestampedUpsertRecordT, field_specs_for(^^TimestampedUpsertRecord));
     }
     inline constexpr TimestampedUpsertRecordT TimestampedUpsertRecord{};
 } // namespace fields
@@ -57,24 +65,22 @@ namespace fields {
 // No auto_create field: only the auto_update TAIL drives the offset under test, and
 // the extra column would merely pad the VALUES list.
 struct UuidTimestampedUpsertRecord {
-    [[= storm::primary]] storm::UUID                               id{};
-    [[= storm::unique]] std::string                                label;
-    [[= storm::auto_update]] std::chrono::system_clock::time_point updated_at{};
+    [[= primary]] UUID                                      id{};
+    [[= storm::unique]] std::string                         label;
+    [[= auto_update]] std::chrono::system_clock::time_point updated_at{};
 };
 
 // fields:: selector proxies (#518).
 namespace fields {
     struct UuidTimestampedUpsertRecordT;
     consteval {
-        std::meta::define_aggregate(
-                ^^UuidTimestampedUpsertRecordT, storm::field_specs_for(^^UuidTimestampedUpsertRecord)
-        );
+        std::meta::define_aggregate(^^UuidTimestampedUpsertRecordT, field_specs_for(^^UuidTimestampedUpsertRecord));
     }
     inline constexpr UuidTimestampedUpsertRecordT UuidTimestampedUpsertRecord{};
 } // namespace fields
 
 struct UniqueOwnerRecord {
-    [[= storm::primary]] int                    id{};
+    [[= primary]] int                           id{};
     [[= storm::unique]][[= storm::fk<>]] Person owner;
     std::string                                 label;
 };
@@ -122,17 +128,17 @@ TEST(UpsertGrammarTest, FullSqlDoUpdate) {
 }
 
 // Positive: a single unique field IS a valid conflict target.
-static_assert(storm::orm::statements::ConflictTargetUnique<Person, ^^Person::name>);
+static_assert(ConflictTargetUnique<Person, ^^Person::name>);
 // Positive: the UniqueIndex<name, department> column set IS valid.
-static_assert(storm::orm::statements::ConflictTargetUnique<Person, ^^Person::name, ^^Person::department>);
+static_assert(ConflictTargetUnique<Person, ^^Person::name, ^^Person::department>);
 // Negative: a non-unique column is NOT a valid conflict target.
-static_assert(!storm::orm::statements::ConflictTargetUnique<Person, ^^Person::age>);
+static_assert(!ConflictTargetUnique<Person, ^^Person::age>);
 // Negative: inserts omit the PK, so it cannot be a conflict target.
-static_assert(!storm::orm::statements::ConflictTargetUnique<Person, ^^Person::id>);
+static_assert(!ConflictTargetUnique<Person, ^^Person::id>);
 // Negative: the PK is NOT settable.
-static_assert(!storm::orm::statements::UpsertSettable<Person, ^^Person::id>);
+static_assert(!UpsertSettable<Person, ^^Person::id>);
 // Positive: a normal column IS settable.
-static_assert(storm::orm::statements::UpsertSettable<Person, ^^Person::age>);
+static_assert(UpsertSettable<Person, ^^Person::age>);
 
 TEST(UpsertGrammarTest, ConstraintsCompile) {
     SUCCEED();
@@ -146,7 +152,7 @@ TYPED_TEST_SUITE(CompositeUpsertTest, DatabaseTypes);
 
 // Seeds the initial "Zed" row via the DO NOTHING proxy and returns its id.
 // Shared by both conflict tests below so each only adds its own conflicting insert.
-template <typename ConnType> auto seed_zed(storm::QuerySet<Person, ConnType>& qs) -> std::int64_t {
+template <typename ConnType> auto seed_zed(QuerySet<Person, ConnType>& qs) -> std::int64_t {
     Person const first{.name = "Zed", .age = 1, .department = "X"};
     auto         first_id = qs.insert(first).template on_conflict<fields::Person.name>().nothing().execute();
     EXPECT_TRUE(first_id.has_value());
@@ -168,7 +174,7 @@ static_assert(on_conflict_is_rvalue_only<storm::db::sqlite::Connection>());
 // DO NOTHING via the fluent proxy: first insert lands, the conflicting second
 // insert is skipped (no row touched), leaving the original row untouched.
 TYPED_TEST(UpsertTest, DoNothingSkipsOnConflict) {
-    storm::QuerySet<Person, TypeParam> qs;
+    QuerySet<Person, TypeParam> qs;
     seed_zed(qs);
 
     Person const conflicting{.name = "Zed", .age = 99, .department = "Y"};
@@ -185,8 +191,8 @@ TYPED_TEST(UpsertTest, DoNothingSkipsOnConflict) {
 // DO UPDATE via the fluent proxy: the conflicting insert overwrites the listed
 // column (age) on the existing row.
 TYPED_TEST(UpsertTest, DoUpdateOverwritesListedColumn) {
-    storm::QuerySet<Person, TypeParam> qs;
-    const std::int64_t                 first_id = seed_zed(qs);
+    QuerySet<Person, TypeParam> qs;
+    const std::int64_t          first_id = seed_zed(qs);
 
     Person const conflicting{.name = "Zed", .age = 99, .department = "Y"};
     auto         updated_id = qs.insert(conflicting)
@@ -204,17 +210,17 @@ TYPED_TEST(UpsertTest, DoUpdateOverwritesListedColumn) {
 
 // .sql() golden — DO NOTHING shape via the fluent proxy.
 TYPED_TEST(UpsertTest, SqlGoldenNothing) {
-    storm::QuerySet<Person, TypeParam> qs;
-    Person const                       row{.name = "Q", .age = 1, .department = "X"};
-    const std::string                  sql = qs.insert(row).template on_conflict<fields::Person.name>().nothing().sql();
+    QuerySet<Person, TypeParam> qs;
+    Person const                row{.name = "Q", .age = 1, .department = "X"};
+    const std::string           sql = qs.insert(row).template on_conflict<fields::Person.name>().nothing().sql();
     EXPECT_NE(sql.find("ON CONFLICT (name) DO NOTHING"), std::string::npos) << sql;
 }
 
 // Composite conflict target via UniqueIndex<name, department>.
 TYPED_TEST(CompositeUpsertTest, CompositeConflictTarget) {
-    storm::QuerySet<CompositeUpsertRecord, TypeParam> qs;
-    CompositeUpsertRecord const                       rec{.name = "Cara", .department = "Eng", .age = 20};
-    auto                                              first = qs.insert(rec)
+    QuerySet<CompositeUpsertRecord, TypeParam> qs;
+    CompositeUpsertRecord const                rec{.name = "Cara", .department = "Eng", .age = 20};
+    auto                                       first = qs.insert(rec)
                          .template on_conflict<
                                  fields::CompositeUpsertRecord.name,
                                  fields::CompositeUpsertRecord.department>()
@@ -234,9 +240,9 @@ TYPED_TEST(CompositeUpsertTest, CompositeConflictTarget) {
 
 // DO UPDATE with multiple SET columns.
 TYPED_TEST(UpsertTest, DoUpdateMultipleColumns) {
-    storm::QuerySet<Person, TypeParam> qs;
-    Person const                       rec{.name = "Dan", .age = 10, .salary = 100.0, .department = "Eng"};
-    auto                               first = qs.insert(rec)
+    QuerySet<Person, TypeParam> qs;
+    Person const                rec{.name = "Dan", .age = 10, .salary = 100.0, .department = "Eng"};
+    auto                        first = qs.insert(rec)
                          .template on_conflict<fields::Person.name>()
                          .template update<fields::Person.age, fields::Person.salary>()
                          .execute();
@@ -256,9 +262,9 @@ TYPED_TEST(UpsertTest, DoUpdateMultipleColumns) {
 
 // to_sql() inlines the bound params (debug helper).
 TYPED_TEST(UpsertTest, ToSqlInlinesParams) {
-    storm::QuerySet<Person, TypeParam> qs;
-    Person const                       rec{.name = "Eve", .age = 5, .department = "X"};
-    auto r = qs.insert(rec).template on_conflict<fields::Person.name>().nothing().to_sql();
+    QuerySet<Person, TypeParam> qs;
+    Person const                rec{.name = "Eve", .age = 5, .department = "X"};
+    auto                        r = qs.insert(rec).template on_conflict<fields::Person.name>().nothing().to_sql();
     ASSERT_TRUE(r.has_value());
     EXPECT_NE(r.value().find("ON CONFLICT (name) DO NOTHING"), std::string::npos) << r.value();
 }
@@ -271,7 +277,7 @@ template <typename ConnType> class UpsertTimestampTest : public StormTestFixture
 TYPED_TEST_SUITE(UpsertTimestampTest, DatabaseTypes);
 
 TYPED_TEST(UpsertTimestampTest, DoUpdateRefreshesAutoUpdateTimestamp) {
-    storm::QuerySet<TimestampedUpsertRecord, TypeParam> qs;
+    QuerySet<TimestampedUpsertRecord, TypeParam> qs;
 
     TimestampedUpsertRecord const seed{.name = "record"};
     auto                          inserted = qs.insert(seed)
@@ -306,9 +312,9 @@ TYPED_TEST(UpsertTimestampTest, DoUpdateRefreshesAutoUpdateTimestamp) {
 // The clause is asserted in isolation by AutoUpdateSetTail in test_composite_pk_sql.cpp;
 // this pins that it lands correctly in the complete INSERT ... ON CONFLICT text.
 TYPED_TEST(UpsertTimestampTest, AutoUpdateTailInFullUpsertSql) {
-    storm::QuerySet<TimestampedUpsertRecord, TypeParam> qs;
-    TimestampedUpsertRecord const                       row{.name = "record"};
-    const std::string                                   sql = qs.insert(row)
+    QuerySet<TimestampedUpsertRecord, TypeParam> qs;
+    TimestampedUpsertRecord const                row{.name = "record"};
+    const std::string                            sql = qs.insert(row)
                                     .template on_conflict<fields::TimestampedUpsertRecord.name>()
                                     .template update<fields::TimestampedUpsertRecord.name>()
                                     .sql();
@@ -325,12 +331,12 @@ class UuidUpsertTimestampTest : public StormTestFixture<UuidTimestampedUpsertRec
 TYPED_TEST_SUITE(UuidUpsertTimestampTest, DatabaseTypes);
 
 TYPED_TEST(UuidUpsertTimestampTest, DoUpdateRefreshesAutoUpdateTimestampWithUuidPk) {
-    storm::QuerySet<UuidTimestampedUpsertRecord, TypeParam> qs;
+    QuerySet<UuidTimestampedUpsertRecord, TypeParam> qs;
     // A UUID key is caller-supplied, so nothing is RETURNed on any of these paths (#572) —
     // ReturnId::No is now what plain insert() resolves to, spelled out here to keep this
     // test's subject (the auto_update bind offset) independent of that default.
     using storm::orm::statements::ReturnId;
-    const storm::UUID key{"44444444-4444-4444-8444-444444444444"};
+    const UUID key{"44444444-4444-4444-8444-444444444444"};
 
     auto inserted = qs.template insert<ReturnId::No>(UuidTimestampedUpsertRecord{.id = key, .label = "rec"})
                             .template on_conflict<fields::UuidTimestampedUpsertRecord.label>()

@@ -14,18 +14,22 @@ struct FuzzModel {
 
 // NOLINTBEGIN(modernize-use-trailing-return-type,bugprone-unused-return-value,cppcoreguidelines-avoid-magic-numbers,readability-magic-numbers)
 
+using storm::QuerySet;
+using storm::db::DefaultConnection;
+using storm::orm::schema::SchemaStatement;
+
 /// Common DB initialisation — call from LLVMFuzzerInitialize().
 /// @param with_seed  Insert one seed row so WHERE/LIKE queries can match.
 /// @return 0 (libFuzzer convention; failures are non-fatal here).
 inline int fuzz_init_db(bool with_seed = true) {
-    auto result = storm::QuerySet<FuzzModel>::set_default_connection(":memory:");
+    auto result = DefaultConnection<>::set(":memory:");
     if (!result.has_value()) {
         return 0;
     }
-    const auto &conn = storm::QuerySet<FuzzModel>::get_default_connection();
-    (void)storm::orm::schema::SchemaStatement<FuzzModel>::create_table_if_not_exists(conn);
+    const auto &conn = DefaultConnection<>::get();
+    (void)SchemaStatement<FuzzModel>::create_table_if_not_exists(conn);
     if (with_seed) {
-        (void)storm::QuerySet<FuzzModel>().insert(FuzzModel{.name = "seed", .value = 42}).execute();
+        (void)QuerySet<FuzzModel>().insert(FuzzModel{.name = "seed", .value = 42}).execute();
     }
     return 0;
 }

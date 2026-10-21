@@ -7,6 +7,8 @@
 #define STORM_SPLIT_TYPES DatabaseTypesSqliteHalf
 #define STORM_SPLIT_TYPE_NAMES DatabaseTypesSqliteHalfNames
 #include "test_many_to_many_body.h"
+using storm::orm::schema::Dialect;
+using storm::orm::schema::SchemaStatement;
 #undef STORM_SPLIT_TYPE_NAMES
 #undef STORM_SPLIT_TYPES
 
@@ -23,8 +25,7 @@
 // ============================================================================
 
 TEST(M2MSchemaTest, JunctionTableSqlSQLite) {
-    const auto& sql =
-            storm::orm::schema::SchemaStatement<Student>::junction_table_sql<storm::orm::schema::Dialect::SQLite>();
+    const auto& sql = SchemaStatement<Student>::junction_table_sql<Dialect::SQLite>();
     EXPECT_TRUE(sql.contains("CREATE TABLE Student_Course")) << sql;
     EXPECT_TRUE(sql.contains("Student_id INTEGER NOT NULL")) << sql;
     EXPECT_TRUE(sql.contains("Course_id INTEGER NOT NULL")) << sql;
@@ -32,8 +33,7 @@ TEST(M2MSchemaTest, JunctionTableSqlSQLite) {
 }
 
 TEST(M2MSchemaTest, JunctionTableSqlPostgreSQL) {
-    const auto& sql =
-            storm::orm::schema::SchemaStatement<Student>::junction_table_sql<storm::orm::schema::Dialect::PostgreSQL>();
+    const auto& sql = SchemaStatement<Student>::junction_table_sql<Dialect::PostgreSQL>();
     EXPECT_TRUE(sql.contains("CREATE TABLE Student_Course")) << sql;
     EXPECT_TRUE(sql.contains("Student_id BIGINT NOT NULL")) << sql;
     EXPECT_TRUE(sql.contains("Course_id BIGINT NOT NULL")) << sql;
@@ -54,15 +54,11 @@ namespace {
 } // namespace
 
 TEST(M2MSchemaTest, JunctionEmitsForeignKeysSqlite) {
-    expect_junction_cascade_fks(
-            storm::orm::schema::SchemaStatement<Student>::junction_table_sql<storm::orm::schema::Dialect::SQLite>()
-    );
+    expect_junction_cascade_fks(SchemaStatement<Student>::junction_table_sql<Dialect::SQLite>());
 }
 
 TEST(M2MSchemaTest, JunctionEmitsForeignKeysPostgreSQL) {
-    expect_junction_cascade_fks(
-            storm::orm::schema::SchemaStatement<Student>::junction_table_sql<storm::orm::schema::Dialect::PostgreSQL>()
-    );
+    expect_junction_cascade_fks(SchemaStatement<Student>::junction_table_sql<Dialect::PostgreSQL>());
 }
 
 // Junction ON DELETE override (#431): many_to_many<RefAction::Restrict>
@@ -79,17 +75,11 @@ namespace {
 } // namespace
 
 TEST(M2MSchemaTest, JunctionOnDeleteOverrideSqlite) {
-    expect_junction_restrict_fks(
-            storm::orm::schema::SchemaStatement<RestrictedMember>::junction_table_sql<
-                    storm::orm::schema::Dialect::SQLite>()
-    );
+    expect_junction_restrict_fks(SchemaStatement<RestrictedMember>::junction_table_sql<Dialect::SQLite>());
 }
 
 TEST(M2MSchemaTest, JunctionOnDeleteOverridePostgreSQL) {
-    expect_junction_restrict_fks(
-            storm::orm::schema::SchemaStatement<RestrictedMember>::junction_table_sql<
-                    storm::orm::schema::Dialect::PostgreSQL>()
-    );
+    expect_junction_restrict_fks(SchemaStatement<RestrictedMember>::junction_table_sql<Dialect::PostgreSQL>());
 }
 
 // NOLINTEND(misc-const-correctness)

@@ -12,6 +12,13 @@ import std;
 #include "../../shared/models/task.h"
 #include "../../shared/models/timestamped_record.h"
 #include "test_fixture.h"
+using storm::auto_update;
+using storm::field_specs_for;
+using storm::primary;
+using storm::primary_autoincrement;
+using storm::primary_part;
+using storm::QuerySet;
+using storm::orm::statements::ModelTimestampPkValid;
 
 // Tests for ModelTimestampPkValid<T> (#511): auto_create / auto_update on a
 // primary-key member is a compile-time error.
@@ -40,21 +47,21 @@ namespace {
     // ---- Rejected: auto_update / auto_create on a single primary key ----
 
     struct TsPkAutoUpdate {
-        [[= storm::primary]][[= storm::auto_update]] std::chrono::system_clock::time_point id{};
-        int                                                                                payload{};
+        [[= primary]][[= auto_update]] std::chrono::system_clock::time_point id{};
+        int                                                                  payload{};
     };
 
     struct TsPkAutoCreate {
-        [[= storm::primary]][[= storm::auto_create]] std::chrono::system_clock::time_point id{};
-        int                                                                                payload{};
+        [[= primary]][[= storm::auto_create]] std::chrono::system_clock::time_point id{};
+        int                                                                         payload{};
     };
 
     // primary_autoincrement is the third PK spelling; is_primary_member covers all
     // three by construction, but pinning it completes the 3-spelling x 2-annotation
     // matrix so no spelling can regress independently.
     struct TsPkAutoincrementAutoUpdate {
-        [[= storm::primary_autoincrement]][[= storm::auto_update]] std::chrono::system_clock::time_point id{};
-        int                                                                                              payload{};
+        [[= primary_autoincrement]][[= auto_update]] std::chrono::system_clock::time_point id{};
+        int                                                                                payload{};
     };
 
     // ---- Rejected: auto_update / auto_create on a COMPOSITE key part ----
@@ -62,33 +69,33 @@ namespace {
     // rejected this shape before #511.
 
     struct TsCompositePartAutoUpdate {
-        [[= storm::primary_part]] int                                                           tenant_id{};
-        [[= storm::primary_part]][[= storm::auto_update]] std::chrono::system_clock::time_point recorded_at{};
-        int                                                                                     payload{};
+        [[= primary_part]] int                                                    tenant_id{};
+        [[= primary_part]][[= auto_update]] std::chrono::system_clock::time_point recorded_at{};
+        int                                                                       payload{};
     };
 
     struct TsCompositePartAutoCreate {
-        [[= storm::primary_part]] int                                                           tenant_id{};
-        [[= storm::primary_part]][[= storm::auto_create]] std::chrono::system_clock::time_point recorded_at{};
-        int                                                                                     payload{};
+        [[= primary_part]] int                                                           tenant_id{};
+        [[= primary_part]][[= storm::auto_create]] std::chrono::system_clock::time_point recorded_at{};
+        int                                                                              payload{};
     };
 
     // ---- Accepted: the normal shape — timestamps on NON-key members ----
 
     struct TsNonPkTimestamps {
-        [[= storm::primary_autoincrement]] int                         id{};
+        [[= primary_autoincrement]] int                                id{};
         [[= storm::auto_create]] std::chrono::system_clock::time_point created_at{};
-        [[= storm::auto_update]] std::chrono::system_clock::time_point updated_at{};
+        [[= auto_update]] std::chrono::system_clock::time_point        updated_at{};
         int                                                            payload{};
     };
 
     // ---- Accepted: a composite key whose parts carry no timestamp annotation ----
 
     struct TsCompositeClean {
-        [[= storm::primary_part]] int                                  tenant_id{};
-        [[= storm::primary_part]] std::int64_t                         entry_id{};
-        [[= storm::auto_update]] std::chrono::system_clock::time_point updated_at{};
-        int                                                            payload{};
+        [[= primary_part]] int                                  tenant_id{};
+        [[= primary_part]] std::int64_t                         entry_id{};
+        [[= auto_update]] std::chrono::system_clock::time_point updated_at{};
+        int                                                     payload{};
     };
 
 } // namespace
@@ -99,7 +106,7 @@ namespace fields {
 
     struct TsCompositeCleanT;
     consteval {
-        std::meta::define_aggregate(^^TsCompositeCleanT, storm::field_specs_for(^^TsCompositeClean));
+        std::meta::define_aggregate(^^TsCompositeCleanT, field_specs_for(^^TsCompositeClean));
     }
     inline constexpr TsCompositeCleanT TsCompositeClean{};
 
@@ -113,40 +120,29 @@ namespace fields {
 // call — a negative-compile test must pin the concept, not a loosely
 // constrained API that could reject for an unrelated reason.
 
+static_assert(!ModelTimestampPkValid<TsPkAutoUpdate>, "auto_update on a single primary key must be rejected");
+static_assert(!ModelTimestampPkValid<TsPkAutoCreate>, "auto_create on a single primary key must be rejected");
 static_assert(
-        !storm::orm::statements::ModelTimestampPkValid<TsPkAutoUpdate>,
-        "auto_update on a single primary key must be rejected"
-);
-static_assert(
-        !storm::orm::statements::ModelTimestampPkValid<TsPkAutoCreate>,
-        "auto_create on a single primary key must be rejected"
-);
-static_assert(
-        !storm::orm::statements::ModelTimestampPkValid<TsPkAutoincrementAutoUpdate>,
+        !ModelTimestampPkValid<TsPkAutoincrementAutoUpdate>,
         "auto_update on a primary_autoincrement key must be rejected"
 );
 static_assert(
-        !storm::orm::statements::ModelTimestampPkValid<TsCompositePartAutoUpdate>,
-        "auto_update on a composite primary_part must be rejected"
+        !ModelTimestampPkValid<TsCompositePartAutoUpdate>, "auto_update on a composite primary_part must be rejected"
 );
 static_assert(
-        !storm::orm::statements::ModelTimestampPkValid<TsCompositePartAutoCreate>,
-        "auto_create on a composite primary_part must be rejected"
+        !ModelTimestampPkValid<TsCompositePartAutoCreate>, "auto_create on a composite primary_part must be rejected"
 );
 
+static_assert(ModelTimestampPkValid<TsNonPkTimestamps>, "auto_create/auto_update on non-key members must be accepted");
 static_assert(
-        storm::orm::statements::ModelTimestampPkValid<TsNonPkTimestamps>,
-        "auto_create/auto_update on non-key members must be accepted"
-);
-static_assert(
-        storm::orm::statements::ModelTimestampPkValid<TsCompositeClean>,
+        ModelTimestampPkValid<TsCompositeClean>,
         "a composite key with no timestamp annotation on its parts must be accepted"
 );
 
 // Every in-tree model must keep satisfying the new concept — this is the
 // "models without a timestamp PK are unaffected" clause of the DoD.
-static_assert(storm::orm::statements::ModelTimestampPkValid<Person>, "Person must be unaffected");
-static_assert(storm::orm::statements::ModelTimestampPkValid<Task>, "Task must be unaffected");
+static_assert(ModelTimestampPkValid<Person>, "Person must be unaffected");
+static_assert(ModelTimestampPkValid<Task>, "Task must be unaffected");
 
 // ============================================================================
 // Predicate gate — is_unlisted_auto_update must exclude PK members
@@ -220,8 +216,8 @@ namespace {
     // consteval grammar with no dialect branch, so the PG run would assert a byte-identical
     // string. Same precedent as tests/query/test_where.cpp's non-typed fixture.
     TEST_F(TimestampPkTest, ConditionalUpdateSetClauseExcludesKeyParts) {
-        storm::QuerySet<TsCompositeClean, ConnType> qs;
-        const auto                                  sql = qs.where(fields::TsCompositeClean.tenant_id == 1)
+        QuerySet<TsCompositeClean, ConnType> qs;
+        const auto                           sql = qs.where(fields::TsCompositeClean.tenant_id == 1)
                                  .update<fields::TsCompositeClean.payload>(TsCompositeClean{.payload = 7})
                                  .to_sql();
         ASSERT_TRUE(sql.has_value());
@@ -250,8 +246,8 @@ namespace {
     class TimestampedRecordSqlTest : public StormTestFixture<TimestampedRecord, ConnType> {};
 
     TEST_F(TimestampedRecordSqlTest, ConditionalUpdateSqlUnchanged) {
-        storm::QuerySet<TimestampedRecord, ConnType> qs;
-        const auto                                   sql = qs.where(fields::TimestampedRecord.id == 1)
+        QuerySet<TimestampedRecord, ConnType> qs;
+        const auto                            sql = qs.where(fields::TimestampedRecord.id == 1)
                                  .update<fields::TimestampedRecord.name>(TimestampedRecord{.name = "renamed"})
                                  .to_sql();
         ASSERT_TRUE(sql.has_value());

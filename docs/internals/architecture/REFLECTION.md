@@ -10,7 +10,7 @@ Mark fields with reflection attributes:
 
 ```cpp
 struct Person {
-    [[=storm::primary]] int id;
+    [[=primary]] int id;
     std::string name;
     int age;
 };
@@ -54,7 +54,7 @@ for (auto member : all_members_) {
     auto type_info = std::meta::type_of(member);
 
     // Check for attributes
-    bool is_primary = has_attribute(member, storm::primary);
+    bool is_primary = has_attribute(member, primary);
 }
 ```
 

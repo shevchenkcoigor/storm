@@ -45,11 +45,11 @@ namespace storm::benchmark {
     }
 
     auto initialize_db() -> bool {
-        auto open = QuerySet<Person>::set_default_connection(":memory:");
+        auto open = storm::db::DefaultConnection<>::set(":memory:");
         if (!open.has_value()) {
             return false;
         }
-        const auto& conn = QuerySet<Person>::get_default_connection();
+        const auto& conn = storm::db::DefaultConnection<>::get();
         if (!storm::orm::schema::SchemaStatement<Person>::create_table_if_not_exists(conn).has_value()) {
             return false;
         }
@@ -207,7 +207,7 @@ namespace {
 
       public:
         auto prepare() -> void {
-            sqlite3* db = storm::QuerySet<BStudent>::get_default_connection()->get();
+            sqlite3* db = storm::db::DefaultConnection<>::get()->get();
             sqlite3_exec(db, "DELETE FROM BStudent_BCourse", nullptr, nullptr, nullptr);
             sqlite3_exec(db, "DELETE FROM BStudent", nullptr, nullptr, nullptr);
             sqlite3_exec(db, "DELETE FROM BCourse", nullptr, nullptr, nullptr);
@@ -244,7 +244,7 @@ namespace {
                     first = false;
                 }
             }
-            if (!storm::QuerySet<BStudent>::get_default_connection()->execute(sql).has_value()) {
+            if (!storm::db::DefaultConnection<>::get()->execute(sql).has_value()) {
                 std::cerr << "m2m bench: junction insert failed\n";
             }
         }

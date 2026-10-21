@@ -5,13 +5,13 @@ This document details the architectural decisions that make Storm ORM achieve ne
 ## 1. C++26 Reflection-Based ORM
 
 Uses compile-time reflection (`std::meta`) to automatically:
-- Find primary key fields marked with `[[=storm::primary]]`
+- Find primary key fields marked with `[[=primary]]`
 - Generate SQL statements from struct definitions
 - Bind struct fields to database columns
 
 ```cpp
 struct Person {
-    [[=storm::primary]] int id;
+    [[=primary]] int id;
     std::string name;
     int age;
 };
@@ -149,7 +149,7 @@ conn.execute("CREATE TABLE Person ("
 ```
 Since #379 Storm emits plain `INTEGER PRIMARY KEY` by default; `AUTOINCREMENT`
 (the SQLite never-reuse guarantee, ~358 ns/insert) is opt-in via
-`storm::primary_autoincrement`.
+`primary_autoincrement`.
 
 ## 10. Statement-Level Caching Pattern
 

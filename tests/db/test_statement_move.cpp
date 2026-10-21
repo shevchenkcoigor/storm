@@ -2,7 +2,7 @@
 
 #include <gtest/gtest.h>
 
-import storm;
+import storm_db_sqlite;
 import std;
 import storm_db_sqlite;
 

@@ -3,8 +3,8 @@
 Storm ORM supports all standard SQLite types through compile-time type dispatch in `BaseStatement::bind_value_by_type()` (src/orm/statements/base.cppm) and `SelectStatement::extract_column_inline_fast()` (src/orm/statements/select.cppm).
 
 > **Annotation spelling (#442).** All field annotations are re-exported into the top-level
-> `storm` namespace, so models spell them as `storm::primary`, `storm::fk<>`,
-> `storm::fk<storm::RefAction::Cascade>`, `storm::many_to_many<>`, `storm::reverse_fk<...>`.
+> `storm` namespace, so models spell them as `primary`, `fk<>`,
+> `fk<storm::RefAction::Cascade>`, `many_to_many<>`, `storm::reverse_fk<...>`.
 > The longer `storm::meta::` spelling (`storm::meta::fk<>`, …) still works unchanged — the
 > re-exports are purely additive. Examples in this document use the short `storm::` form.
 
@@ -65,7 +65,7 @@ underlying/`rep` type. SQLite's mapping is unchanged — this is PG-only.
 **Usage (64-bit unsigned):**
 ```cpp
 struct Account {
-    [[=storm::primary]] int id;
+    [[=primary]] int id;
     [[=storm::signed_storage]] std::uint64_t small_id;   // ≤ INT64_MAX
     [[=storm::full_unsigned]]  std::uint64_t full_range; // 0 .. 2⁶⁴−1
 };
@@ -74,7 +74,7 @@ struct Account {
 **Usage:**
 ```cpp
 struct Example {
-    [[=storm::primary]] int id;
+    [[=primary]] int id;
     int64_t big_number;
     unsigned short count;
 };
@@ -90,7 +90,7 @@ struct Example {
 **Usage:**
 ```cpp
 struct Measurement {
-    [[=storm::primary]] int id;
+    [[=primary]] int id;
     double precision_value;
     float approximate_value;
 };
@@ -107,7 +107,7 @@ struct Measurement {
 **Usage:**
 ```cpp
 struct User {
-    [[=storm::primary]] int id;
+    [[=primary]] int id;
     bool is_active;
     bool is_admin;
 };
@@ -129,7 +129,7 @@ struct User {
 **Usage:**
 ```cpp
 struct Document {
-    [[=storm::primary]] int id;
+    [[=primary]] int id;
     std::string title;
     std::string content;
 };
@@ -147,7 +147,7 @@ Annotate a text field with `max_length<N>` to bound its length **in the database
 
 ```cpp
 struct Account {
-    [[=storm::primary]] int id;
+    [[=primary]] int id;
     [[=storm::max_length<50>]] std::string name;              // NOT NULL, ≤ 50
     [[=storm::max_length<20>]] std::optional<std::string> tag; // nullable, ≤ 20
 };
@@ -180,16 +180,16 @@ so it does *not* mean "required") and `check<"expr">` (raw-SQL escape hatch).
 
 ```cpp
 struct Person {
-    [[= storm::primary]] int id;
-    [[= storm::unique]] std::string email;    // CREATE UNIQUE INDEX
-    [[= storm::indexed]] std::string name;    // CREATE INDEX
+    [[= primary]] int id;
+    [[= unique]] std::string email;    // CREATE UNIQUE INDEX
+    [[= indexed]] std::string name;    // CREATE INDEX
 };
 ```
 
 `unique` adds a uniqueness constraint (`UNIQUE INDEX`); `indexed` adds a plain lookup index
 with no uniqueness constraint. Foreign-key fields (`fk<>`) are indexed automatically without
 either tag. See [features/INDEXES.md](../features/INDEXES.md) for full coverage, including
-composite (multi-column) indexes via `storm::Index<>` / `storm::UniqueIndex<>`.
+composite (multi-column) indexes via `storm::Index<>` / `uniqueIndex<>`.
 
 ## Primary Keys (`primary` / `primary_autoincrement` / `primary_assigned` / `primary_part`)
 
@@ -198,15 +198,15 @@ so a model without one fails to compile at a named concept.
 
 ```cpp
 struct Person {
-    [[= storm::primary]] int id;                 // INTEGER PRIMARY KEY
+    [[= primary]] int id;                 // INTEGER PRIMARY KEY
 };
 
 struct Event {
-    [[= storm::primary_autoincrement]] int id;   // + AUTOINCREMENT (SQLite never-reuse, #379)
+    [[= primary_autoincrement]] int id;   // + AUTOINCREMENT (SQLite never-reuse, #379)
 };
 
 struct ExternalRef {
-    [[= storm::primary_assigned]] int id;        // caller supplies the id (#586)
+    [[= primary_assigned]] int id;        // caller supplies the id (#586)
 };
 ```
 
@@ -216,8 +216,8 @@ Annotate two or more members with `primary_part` to make the key span several co
 
 ```cpp
 struct OrderItem {
-    [[= storm::primary_part]] int order_id;
-    [[= storm::primary_part]] int product_id;
+    [[= primary_part]] int order_id;
+    [[= primary_part]] int product_id;
     int quantity;
 };
 ```
@@ -263,7 +263,7 @@ CREATE TABLE OrderItem (
 | A PK annotation on `std::optional<T>` | A nullable PK is not a key (SQLite's legacy NULL quirk even admits duplicates, diverging from PG). Applies to a **single** `primary` too — a deliberate widening in #500, since a nullable PK was never correct |
 | `primary_part` + `unique` | UNIQUE on one part allows at most one row per that part, defeating the composite key |
 
-FK members make good parts — `[[= storm::primary_part]] [[= storm::fk<>]] Warehouse warehouse`
+FK members make good parts — `[[= primary_part]] [[= fk<>]] Warehouse warehouse`
 is the canonical association-table key, and the clause names the FK's actual column
 (`PRIMARY KEY (warehouse_id, sku)`).
 
@@ -274,11 +274,11 @@ via `ModelPrimaryKeyPartLimit<T>` (a `BaseStatement<T>` constraint):
 
 ```cpp
 struct TooWide {
-    [[= storm::primary_part]] int a;
-    [[= storm::primary_part]] int b;
-    [[= storm::primary_part]] int c;
-    [[= storm::primary_part]] int d;
-    [[= storm::primary_part]] int e;   // ❌ compile error — 5 parts
+    [[= primary_part]] int a;
+    [[= primary_part]] int b;
+    [[= primary_part]] int c;
+    [[= primary_part]] int d;
+    [[= primary_part]] int e;   // ❌ compile error — 5 parts
 };
 ```
 
@@ -309,7 +309,7 @@ Every `primary_part` member's type is checked at compile time by `PrimaryKeyType
 | `storm::UUID` | ✅ accepted |
 | `std::string` | ✅ accepted — **composite parts only** |
 | `std::string_view` | ✅ accepted, but see the note below — it cannot be read back |
-| An FK member (`[[= storm::fk<>]] Related`) whose target has a well-typed **single** PK (e.g. `[[= storm::primary]] int id`) | ✅ accepted |
+| An FK member (`[[= fk<>]] Related`) whose target has a well-typed **single** PK (e.g. `[[= primary]] int id`) | ✅ accepted |
 | An FK member whose target has **no** primary key | ❌ rejected |
 | An FK member whose target's single PK is itself a rejected type (e.g. `double`, `std::string`) | ❌ rejected |
 | An FK member whose target is itself **composite-keyed** | ❌ rejected — needs a multi-column FK (#504), out of scope here |
@@ -363,14 +363,14 @@ exactly where Storm's line falls too.
 
 ```cpp
 struct Inventory {
-    [[= storm::primary_part]] int         warehouse;   // ✅
-    [[= storm::primary_part]] std::string sku;         // ✅ TEXT part
+    [[= primary_part]] int         warehouse;   // ✅
+    [[= primary_part]] std::string sku;         // ✅ TEXT part
     int on_hand;
 };
 
 struct Broken {
-    [[= storm::primary_part]] int    id;
-    [[= storm::primary_part]] double amount;           // ❌ compile error
+    [[= primary_part]] int    id;
+    [[= primary_part]] double amount;           // ❌ compile error
 };
 ```
 
@@ -411,8 +411,8 @@ caller-supplied and appears in the INSERT column list in **declaration order**.
 
 ```cpp
 struct OrderItem {
-    [[= storm::primary_part]] int order_id;
-    [[= storm::primary_part]] int product_id;
+    [[= primary_part]] int order_id;
+    [[= primary_part]] int product_id;
     int quantity;
 };
 
@@ -480,13 +480,13 @@ there is nothing for `RETURNING` to echo back.
 Storm supports `storm::UUID` as a primary key. UUID PKs are **always client-generated** — Storm does not auto-generate them at the database level (unlike integer `AUTOINCREMENT`/`IDENTITY`).
 
 `storm::UUID` is accepted under any PK annotation, including `primary_assigned` — combining them
-(`[[= storm::primary_assigned]] storm::UUID id;`) is redundant but harmless: `has_uuid_pk_()` and
+(`[[= primary_assigned]] storm::UUID id;`) is redundant but harmless: `has_uuid_pk_()` and
 `has_caller_assigned_pk_()` are independent checks OR'd together in `pk_is_db_generated_()`, so
 either one alone already routes the model to the caller-supplied-key behavior described below.
 
 ```cpp
 struct User {
-    [[= storm::primary]] storm::UUID id;  // Caller must set this before insert()
+    [[= primary]] storm::UUID id;  // Caller must set this before insert()
     std::string name;
 };
 
@@ -542,8 +542,8 @@ qs.insert(user).execute();  // std::expected<void, Error> — nothing to return 
 
 ```cpp
 struct Message {
-    [[= storm::primary]] storm::UUID id;
-    [[= storm::fk<>]] User sender;        // FK to UUID-PK User — sender_id column is TEXT/UUID
+    [[= primary]] storm::UUID id;
+    [[= fk<>]] User sender;        // FK to UUID-PK User — sender_id column is TEXT/UUID
     std::string text;
 };
 
@@ -559,14 +559,14 @@ QuerySet<Message>().insert(msg).execute();  // sender_id bound as TEXT/UUID, not
 
 ```cpp
 struct Course {
-    [[= storm::primary]] int id;
+    [[= primary]] int id;
     std::string title;
 };
 
 struct Student {
-    [[= storm::primary]] storm::UUID id;     // UUID PK
+    [[= primary]] storm::UUID id;     // UUID PK
     std::string name;
-    [[= storm::many_to_many<>]] std::vector<Course> courses;  // m2m joins through junction
+    [[= many_to_many<>]] std::vector<Course> courses;  // m2m joins through junction
 };
 
 // Eager-load m2m with UUID-PK owner — stitch map keys on UUID, not int64_t
@@ -609,8 +609,8 @@ A: Yes. Mix UUID and integer parts:
 
 ```cpp
 struct OrderLine {
-    [[= storm::primary_part]] storm::UUID order_id;
-    [[= storm::primary_part]] int product_id;
+    [[= primary_part]] storm::UUID order_id;
+    [[= primary_part]] int product_id;
     int quantity;
 };
 
@@ -664,7 +664,7 @@ Return type follows composite-key upsert rules (#503): `std::expected<void, Erro
 **Usage:**
 ```cpp
 struct Contact {
-    [[=storm::primary]] int id;
+    [[=primary]] int id;
     std::string name;
     std::optional<std::string> email;     // Can be NULL
     std::optional<int> age;               // Can be NULL
@@ -687,7 +687,7 @@ Contact c3{3, "Charlie", "charlie@example.com", std::nullopt, false}; // Mixed
 **Usage:**
 ```cpp
 struct FileData {
-    [[=storm::primary]] int id;
+    [[=primary]] int id;
     std::string filename;
     std::vector<uint8_t> data;
 };
@@ -709,7 +709,7 @@ the current time automatically, so you never set them by hand (#209):
 
 ```cpp
 struct User {
-    [[=storm::primary]] int id;
+    [[=primary]] int id;
     std::string name;
     [[=storm::auto_create]] std::chrono::system_clock::time_point created_at;
     [[=storm::auto_update]] std::chrono::system_clock::time_point updated_at;
@@ -749,14 +749,14 @@ existing `time_point` ↔ `"YYYY-MM-DD HH:MM:SS"` conversion.
 
 ## Many-to-Many Container Fields (`many_to_many<>` / `many_to_many_through`)
 
-A container member annotated with `[[= storm::many_to_many<>]]` (or
+A container member annotated with `[[= many_to_many<>]]` (or
 `many_to_many_through<JunctionModel>`) declares a many-to-many relationship (#203):
 
 ```cpp
 struct Student {
-    [[= storm::primary]] int id{};
+    [[= primary]] int id{};
     std::string name;
-    [[= storm::many_to_many<>]] std::vector<Course> courses;
+    [[= many_to_many<>]] std::vector<Course> courses;
 };
 ```
 
@@ -833,7 +833,7 @@ When creating tables, ensure column types match the C++ type mappings:
 
 ```sql
 CREATE TABLE Example (
-    id INTEGER PRIMARY KEY,  -- AUTOINCREMENT is opt-in (#379): storm::primary_autoincrement
+    id INTEGER PRIMARY KEY,  -- AUTOINCREMENT is opt-in (#379): primary_autoincrement
     name TEXT NOT NULL,
     age INTEGER,
     salary REAL,
@@ -947,7 +947,7 @@ at the aggregate call site, not a silent coercion. `count()` / `count_distinct()
 ## Primary Key Type Validation (`PrimaryKeyType`) (#505)
 
 `storm::orm::statements::PrimaryKeyType<T>` is the compile-time gate on the type of `T`'s
-primary-key member (the field annotated `storm::primary` / `storm::primary_autoincrement`).
+primary-key member (the field annotated `primary` / `primary_autoincrement`).
 **Supported primary-key types: `short`, `int`, `long`, `long long`**, their fixed-width
 spellings (`std::int16_t`, `std::int32_t`, `std::int64_t`, …), and **`storm::UUID`** (#507).
 A `uint64_t` (or `unsigned long` / `unsigned long long`) primary key is

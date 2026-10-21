@@ -1,10 +1,12 @@
 #include <gtest/gtest.h>
 #include <meta>
 
-import storm;
+import storm_meta;
 import std;
+import storm_orm_fields;
 
 #include "test_fields_models.h" // NOSONAR cpp:S954
+using storm::field_specs_for;
 
 using storm::meta::FieldSelector;
 using storm::meta::RelationSelector;
@@ -107,11 +109,11 @@ static_assert(ValidSelector<fields::FSArticle.title>);
 static_assert(!ValidSelector<fields::FSArticle.tags>);
 
 // ── Field counts ─────────────────────────────────────────────────────────────
-static_assert(storm::field_specs_for(^^FSPerson).size() == 3);
-static_assert(storm::field_specs_for(^^FSArticle).size() == 3); // id, title, tags
+static_assert(field_specs_for(^^FSPerson).size() == 3);
+static_assert(field_specs_for(^^FSArticle).size() == 3); // id, title, tags
 
 // ── Adding a field auto-propagates: no edit to the fields:: declaration ─────
-static_assert(storm::field_specs_for(^^FSPersonExtra).size() == 4);
+static_assert(field_specs_for(^^FSPersonExtra).size() == 4);
 static_assert(std::meta::identifier_of(selector_info<fields::FSPersonExtra.salary>()) == "salary");
 
 TEST(FieldsSelector, CompileTimeOnly) {

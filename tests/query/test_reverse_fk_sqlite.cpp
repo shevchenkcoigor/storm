@@ -7,6 +7,7 @@
 #define STORM_SPLIT_TYPES DatabaseTypesSqliteHalf
 #define STORM_SPLIT_TYPE_NAMES DatabaseTypesSqliteHalfNames
 #include "test_reverse_fk_body.h"
+using storm::create_table_sql;
 #undef STORM_SPLIT_TYPE_NAMES
 #undef STORM_SPLIT_TYPES
 
@@ -20,14 +21,14 @@
 // sat under in the pre-split file (test_reverse_fk_body.h:19).
 
 TEST(ReverseFKSchemaTest, BaseTableHasNoReverseContainerColumn) {
-    const auto& sql = storm::create_table_sql<RfPerson>();
+    const auto& sql = create_table_sql<RfPerson>();
     EXPECT_FALSE(sql.contains("tasks")) << sql;
     EXPECT_TRUE(sql.contains("name")) << sql;
     EXPECT_TRUE(sql.contains("age")) << sql;
 }
 
 TEST(ReverseFKSchemaTest, OwnerTableHasFkColumn) {
-    const auto& sql = storm::create_table_sql<RfTask>();
+    const auto& sql = create_table_sql<RfTask>();
     EXPECT_TRUE(sql.contains("assignee_id")) << sql;
 }
 

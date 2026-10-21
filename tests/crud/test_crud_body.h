@@ -19,12 +19,15 @@
 import storm;
 import std;
 
+using storm::db::DefaultConnection;
+
 #include "../../shared/models/people_25.h" // NOSONAR cpp:S954
 #include "../../shared/models/person.h"
 #include "../../shared/models/simple_record.h"
 #include "test_fixture.h"
 
 #include "test_seed_helpers.h"
+using storm::QuerySet;
 
 // Common base fixture for Erase/Update tests — shared setup + helpers.
 template <typename ConnType> class PersonCrudTestBase : public StormTestFixture<Person, ConnType> {
@@ -38,7 +41,7 @@ template <typename ConnType> class PersonCrudTestBase : public StormTestFixture<
         ASSERT_TRUE((storm::test::batch_insert<Person, ConnType>(initial)));
     }
 
-    static auto insert_persons_range(storm::QuerySet<Person, ConnType> &qs, int from, int to) -> void {
+    static auto insert_persons_range(QuerySet<Person, ConnType> &qs, int from, int to) -> void {
         std::vector<Person> batch;
         batch.reserve(static_cast<std::size_t>(to) - static_cast<std::size_t>(from) + 1U);
         for (int i = from; i <= to; i++) {
@@ -49,7 +52,7 @@ template <typename ConnType> class PersonCrudTestBase : public StormTestFixture<
     }
 
     static auto countPersons() -> int {
-        storm::QuerySet<Person, ConnType> qs;
+        QuerySet<Person, ConnType> qs;
         auto result = qs.count().execute();
         if (!result.has_value()) {
             return -1;
@@ -58,7 +61,7 @@ template <typename ConnType> class PersonCrudTestBase : public StormTestFixture<
     }
 
     static auto personExists(int person_id) -> bool {
-        const storm::QuerySet<Person, ConnType> qs;
+        const QuerySet<Person, ConnType> qs;
         auto result = qs.where(fields::Person.id == person_id).select().execute();
         return result.has_value() && !result.value().empty();
     }
@@ -70,7 +73,7 @@ TYPED_TEST_SUITE(QuerySetEraseTest, STORM_SPLIT_TYPES, STORM_SPLIT_TYPE_NAMES);
 
 TYPED_TEST(QuerySetEraseTest, DatabaseSetup) {
     // Verify database was created and populated correctly
-    EXPECT_TRUE((storm::QuerySet<Person, TypeParam>::has_default_connection())) << "Should have default connection";
+    EXPECT_TRUE(DefaultConnection<TypeParam>::has()) << "Should have default connection";
     EXPECT_EQ(this->countPersons(), 3) << "Should have 3 persons in database";
 
     // Verify specific persons exist
@@ -80,7 +83,7 @@ TYPED_TEST(QuerySetEraseTest, DatabaseSetup) {
 }
 
 TYPED_TEST(QuerySetEraseTest, EraseMultiplePersonsSequentially) {
-    storm::QuerySet<Person, TypeParam> queryset;
+    QuerySet<Person, TypeParam> queryset;
 
     // Create person objects to erase
     Person const alice{.id = 1, .name = "Alice", .age = 30};
@@ -104,7 +107,7 @@ TYPED_TEST(QuerySetEraseTest, EraseMultiplePersonsSequentially) {
 }
 
 TYPED_TEST(QuerySetEraseTest, EraseBatchPerformance) {
-    storm::QuerySet<Person, TypeParam> queryset;
+    QuerySet<Person, TypeParam> queryset;
 
     const int num_records = 1000;
     this->insert_persons_range(queryset, 4, num_records);
@@ -146,7 +149,7 @@ TYPED_TEST(QuerySetEraseTest, EraseBatchPerformance) {
 
 // Test chunked erase (>799 rows to trigger execute_chunked path)
 TYPED_TEST(QuerySetEraseTest, EraseBatchChunked) {
-    storm::QuerySet<Person, TypeParam> queryset;
+    QuerySet<Person, TypeParam> queryset;
 
     // MAX_CHUNK_SIZE is 799, so >799 triggers chunked path
     this->insert_persons_range(queryset, 4, 1000);
@@ -183,7 +186,7 @@ TYPED_TEST(QuerySetEraseTest, EraseBatchChunked) {
 
 // Test chunked erase with remainder (tests both full chunks and remainder processing)
 TYPED_TEST(QuerySetEraseTest, EraseBatchChunkedWithRemainder) {
-    storm::QuerySet<Person, TypeParam> queryset;
+    QuerySet<Person, TypeParam> queryset;
 
     // MAX_CHUNK_SIZE is 799, so 1650 rows = 2 full chunks (1598) + 52 remainder
     this->insert_persons_range(queryset, 4, 1800);
@@ -220,7 +223,7 @@ template <typename ConnType> class QuerySetUpdateTest : public PersonCrudTestBas
   protected:
     // Helper function to get person by ID using the ORM
     static auto getPerson(int person_id) -> std::optional<Person> {
-        const storm::QuerySet<Person, ConnType> qs;
+        const QuerySet<Person, ConnType> qs;
         auto result = qs.where(fields::Person.id == person_id).select().execute();
         if (!result.has_value() || result.value().empty()) {
             return std::nullopt;
@@ -233,7 +236,7 @@ TYPED_TEST_SUITE(QuerySetUpdateTest, STORM_SPLIT_TYPES, STORM_SPLIT_TYPE_NAMES);
 
 TYPED_TEST(QuerySetUpdateTest, DatabaseSetup) {
     // Verify database was created and populated correctly
-    EXPECT_TRUE((storm::QuerySet<Person, TypeParam>::has_default_connection())) << "Should have default connection";
+    EXPECT_TRUE(DefaultConnection<TypeParam>::has()) << "Should have default connection";
     EXPECT_EQ(this->countPersons(), 3) << "Should have 3 persons in database";
 
     // Verify specific persons exist with correct values
@@ -254,7 +257,7 @@ TYPED_TEST(QuerySetUpdateTest, DatabaseSetup) {
 }
 
 TYPED_TEST(QuerySetUpdateTest, UpdateMultipleTimes) {
-    storm::QuerySet<Person, TypeParam> queryset;
+    QuerySet<Person, TypeParam> queryset;
 
     // Update Alice multiple times
     Person const alice_v1{.id = 1, .name = "Alice A", .age = 31};
@@ -286,7 +289,7 @@ TYPED_TEST(QuerySetUpdateTest, UpdateMultipleTimes) {
 }
 
 TYPED_TEST(QuerySetUpdateTest, UpdateCachedStatementReuse) {
-    storm::QuerySet<Person, TypeParam> queryset;
+    QuerySet<Person, TypeParam> queryset;
 
     // Perform multiple updates to verify statement caching works correctly
     for (int i = 0; i < 10; ++i) {
@@ -314,7 +317,7 @@ TYPED_TEST(QuerySetUpdateTest, UpdateCachedStatementReuse) {
 template <typename ConnType> class TransactionTest : public StormTestFixture<SimpleRecord, ConnType> {
   public:
     auto on_after_setup(const std::shared_ptr<ConnType> &) -> void override {
-        qs = std::make_unique<storm::QuerySet<SimpleRecord, ConnType>>();
+        qs = std::make_unique<QuerySet<SimpleRecord, ConnType>>();
     }
 
     auto TearDown() -> void override {
@@ -322,7 +325,7 @@ template <typename ConnType> class TransactionTest : public StormTestFixture<Sim
         StormTestFixture<SimpleRecord, ConnType>::TearDown();
     }
 
-    std::unique_ptr<storm::QuerySet<SimpleRecord, ConnType>> qs;
+    std::unique_ptr<QuerySet<SimpleRecord, ConnType>> qs;
 };
 
 TYPED_TEST_SUITE(TransactionTest, STORM_SPLIT_TYPES, STORM_SPLIT_TYPE_NAMES);
@@ -394,7 +397,7 @@ TYPED_TEST(TransactionTest, SingleRowOperations) {
 template <typename ConnType> class QueryResetTest : public StormTestFixture<Person, ConnType> {
   protected:
     auto on_after_setup(const std::shared_ptr<ConnType> &) -> void override {
-        qs = std::make_unique<storm::QuerySet<Person, ConnType>>();
+        qs = std::make_unique<QuerySet<Person, ConnType>>();
 
         ASSERT_TRUE((storm::test::batch_insert<Person, ConnType>(
             std::vector<Person>(storm::test::PEOPLE_25.begin(), storm::test::PEOPLE_25.end()))));
@@ -406,7 +409,7 @@ template <typename ConnType> class QueryResetTest : public StormTestFixture<Pers
     }
 
   public:
-    std::unique_ptr<storm::QuerySet<Person, ConnType>> qs;
+    std::unique_ptr<QuerySet<Person, ConnType>> qs;
 };
 
 TYPED_TEST_SUITE(QueryResetTest, STORM_SPLIT_TYPES, STORM_SPLIT_TYPE_NAMES);

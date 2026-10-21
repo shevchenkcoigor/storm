@@ -1,28 +1,45 @@
 #include <gtest/gtest.h>
 #include "test_db_helpers.h"
 
-import storm;
+import storm_db_default_connection;
+import storm_db_postgresql;
+import storm_db_sqlite;
+import storm_meta;
+import storm_orm_indexes;
+import storm_orm_schema;
+import storm_orm_statements_erase;
+import storm_orm_statements_insert;
+import storm_orm_statements_select;
+import storm_orm_statements_update;
+import storm_orm_transaction;
+import storm_orm_utilities;
 import std;
 
 #include "../../shared/models/person.h" // NOSONAR cpp:S954
 #include "test_fixture.h"
 #include "test_seed_helpers.h"
+using storm::db::DefaultConnection;
+using storm::orm::statements::EraseStatement;
+using storm::orm::statements::InsertOptions;
+using storm::orm::statements::InsertStatement;
+using storm::orm::statements::ReturnId;
+using storm::orm::statements::SelectStatement;
+using storm::orm::statements::UpdateStatement;
 
 // Tests for the public transaction API (#415):
-//   - storm::TransactionGuard re-exported from storm.cppm
+//   - TransactionGuard re-exported from storm.cppm
 //   - storm::begin(conn) thin factory returning the guard
 //   - success path COMMITs, early-return / scope-exit ROLLBACKs
 //   - batch ops nested inside an outer transaction skip their inner BEGIN (#9)
 template <typename ConnType> class PublicTransactionApiTest : public StormTestFixture<Person, ConnType> {
   protected:
     static auto countPersons() -> int {
-        storm::QuerySet<Person, ConnType> qs;
-        auto                              result = qs.count().execute();
+        auto result = (SelectStatement<Person, ConnType>{}).all().count().execute();
         return result.has_value() ? static_cast<int>(result.value()) : -1;
     }
 
     static auto conn() -> std::shared_ptr<ConnType> {
-        return storm::QuerySet<Person, ConnType>::get_default_connection();
+        return DefaultConnection<ConnType>::get();
     }
 
     // Build `count` distinct Person rows for batch tests.
@@ -36,8 +53,8 @@ template <typename ConnType> class PublicTransactionApiTest : public StormTestFi
     }
 
     // InsertOptions that force chunking (so the inner TransactionGuard runs).
-    static auto chunked_opts() -> storm::orm::statements::InsertOptions {
-        storm::orm::statements::InsertOptions opts;
+    static auto chunked_opts() -> InsertOptions {
+        InsertOptions opts;
         opts.batch_size = 2; // chunks of 2 → multiple inner BEGIN/COMMIT attempts.
         return opts;
     }
@@ -45,10 +62,11 @@ template <typename ConnType> class PublicTransactionApiTest : public StormTestFi
     // Inserts `count` rows (committed) and returns them with their assigned PKs so
     // update(span)/erase(span) can address existing rows.
     static auto seed_with_ids(int count) -> std::vector<Person> {
-        using ReturnId = storm::orm::statements::ReturnId;
-        storm::QuerySet<Person, ConnType> qs;
-        auto                              rows = make_people(count);
-        auto ids = qs.template insert<ReturnId::Yes>(std::span<const Person>(rows)).execute();
+        using ReturnId = ReturnId;
+        auto rows      = make_people(count);
+        auto ids       = (InsertStatement<Person, ConnType>{})
+                           .template query<ReturnId::Yes>(std::span<const Person>(rows))
+                           .execute();
         EXPECT_TRUE(ids.has_value()) << "seed insert failed";
         if (ids.has_value()) {
             for (std::size_t i = 0; i < rows.size(); ++i) {
@@ -74,14 +92,13 @@ TYPED_TEST_SUITE(PublicTransactionApiTest, DatabaseTypes);
 // The guard type is reachable through the public storm:: namespace (re-export).
 TYPED_TEST(PublicTransactionApiTest, GuardTypeIsPublic) {
     auto txn = storm::begin(this->conn());
-    ASSERT_TRUE(txn.has_value()) << "storm::begin should start a transaction";
+    ASSERT_TRUE(txn.has_value()) << "begin should start a transaction";
     auto commit_result = txn->commit();
     EXPECT_TRUE(commit_result.has_value()) << "explicit commit should succeed";
 }
 
 // Success path: several QuerySet ops run atomically, commit persists them.
 TYPED_TEST(PublicTransactionApiTest, CommitPersistsMultipleOps) {
-    storm::QuerySet<Person, TypeParam> qs;
     EXPECT_EQ(this->countPersons(), 0);
 
     auto txn = storm::begin(this->conn());
@@ -89,8 +106,8 @@ TYPED_TEST(PublicTransactionApiTest, CommitPersistsMultipleOps) {
 
     Person const alice{.name = "Alice", .age = 30};
     Person const bob{.name = "Bob", .age = 25};
-    ASSERT_TRUE(qs.insert(alice).execute().has_value());
-    ASSERT_TRUE(qs.insert(bob).execute().has_value());
+    ASSERT_TRUE((InsertStatement<Person, TypeParam>{}).query(alice).execute().has_value());
+    ASSERT_TRUE((InsertStatement<Person, TypeParam>{}).query(bob).execute().has_value());
 
     ASSERT_TRUE(txn->commit().has_value());
     EXPECT_EQ(this->countPersons(), 2) << "both inserts visible after commit";
@@ -98,14 +115,13 @@ TYPED_TEST(PublicTransactionApiTest, CommitPersistsMultipleOps) {
 
 // Failure path: dropping the guard without commit ROLLBACKs everything.
 TYPED_TEST(PublicTransactionApiTest, ScopeExitWithoutCommitRollsBack) {
-    storm::QuerySet<Person, TypeParam> qs;
     EXPECT_EQ(this->countPersons(), 0);
 
     {
         auto txn = storm::begin(this->conn());
         ASSERT_TRUE(txn.has_value());
         Person const alice{.name = "Alice", .age = 30};
-        ASSERT_TRUE(qs.insert(alice).execute().has_value());
+        ASSERT_TRUE((InsertStatement<Person, TypeParam>{}).query(alice).execute().has_value());
         // No commit() — guard destructor must ROLLBACK here.
     }
 
@@ -116,13 +132,13 @@ TYPED_TEST(PublicTransactionApiTest, ScopeExitWithoutCommitRollsBack) {
 // small batch_size (3 chunks of 2 rows) drives that transaction-wrapped path.
 // Inside an outer transaction it must NOT raise a nested-BEGIN error.
 TYPED_TEST(PublicTransactionApiTest, ChunkedBatchNestedInTransactionDoesNotConflict) {
-    storm::QuerySet<Person, TypeParam> qs;
-
     auto txn = storm::begin(this->conn());
     ASSERT_TRUE(txn.has_value());
 
     auto const batch  = this->make_people(5); // 3 chunks (2+2+1) via chunked_opts().
-    auto       result = qs.insert(std::span<const Person>(batch), this->chunked_opts()).execute();
+    auto       result = (InsertStatement<Person, TypeParam>{})
+                          .query(std::span<const Person>(batch), this->chunked_opts())
+                          .execute();
     ASSERT_TRUE(result.has_value()) << "nested chunked batch must not raise a nested-BEGIN error";
 
     ASSERT_TRUE(txn->commit().has_value());
@@ -132,13 +148,14 @@ TYPED_TEST(PublicTransactionApiTest, ChunkedBatchNestedInTransactionDoesNotConfl
 // #9 fix continued: rolling back the outer transaction must discard the rows the
 // nested chunked batch wrote (proving the inner op did NOT self-commit per chunk).
 TYPED_TEST(PublicTransactionApiTest, OuterRollbackDiscardsNestedChunkedBatch) {
-    storm::QuerySet<Person, TypeParam> qs;
-
     {
         auto txn = storm::begin(this->conn());
         ASSERT_TRUE(txn.has_value());
         auto const batch = this->make_people(4); // 2 chunks via chunked_opts().
-        ASSERT_TRUE(qs.insert(std::span<const Person>(batch), this->chunked_opts()).execute().has_value());
+        ASSERT_TRUE((InsertStatement<Person, TypeParam>{})
+                            .query(std::span<const Person>(batch), this->chunked_opts())
+                            .execute()
+                            .has_value());
         // No commit — outer rollback on scope exit.
     }
 
@@ -152,13 +169,12 @@ TYPED_TEST(PublicTransactionApiTest, OuterRollbackDiscardsNestedChunkedBatch) {
 // Success: body's ops commit together and the returned value is forwarded.
 TYPED_TEST(PublicTransactionApiTest, TransactionScopeCommitsOnSuccess) {
     using Error = typename TypeParam::Error;
-    storm::QuerySet<Person, TypeParam> qs;
 
     auto result = storm::transaction(this->conn(), [&](auto& /*txn*/) -> std::expected<int, Error> {
-        if (auto r = qs.insert(Person{.name = "Alice", .age = 30}).execute(); !r) {
+        if (auto r = (InsertStatement<Person, TypeParam>{}).query(Person{.name = "Alice", .age = 30}).execute(); !r) {
             return std::unexpected(r.error());
         }
-        if (auto r = qs.insert(Person{.name = "Bob", .age = 25}).execute(); !r) {
+        if (auto r = (InsertStatement<Person, TypeParam>{}).query(Person{.name = "Bob", .age = 25}).execute(); !r) {
             return std::unexpected(r.error());
         }
         return 42; // body's value is forwarded out on commit.
@@ -172,10 +188,9 @@ TYPED_TEST(PublicTransactionApiTest, TransactionScopeCommitsOnSuccess) {
 // Failure: body returns unexpected → scope ROLLBACKs and propagates the error.
 TYPED_TEST(PublicTransactionApiTest, TransactionScopeRollsBackOnUnexpected) {
     using Error = typename TypeParam::Error;
-    storm::QuerySet<Person, TypeParam> qs;
 
     auto result = storm::transaction(this->conn(), [&](auto& /*txn*/) -> std::expected<void, Error> {
-        if (auto r = qs.insert(Person{.name = "Alice", .age = 30}).execute(); !r) {
+        if (auto r = (InsertStatement<Person, TypeParam>{}).query(Person{.name = "Alice", .age = 30}).execute(); !r) {
             return std::unexpected(r.error());
         }
         return std::unexpected(Error{-1, "deliberate failure after a write"});
@@ -188,11 +203,12 @@ TYPED_TEST(PublicTransactionApiTest, TransactionScopeRollsBackOnUnexpected) {
 // Nested chunked batch inside the scope cooperates (no nested-BEGIN conflict, #9).
 TYPED_TEST(PublicTransactionApiTest, TransactionScopeNestsChunkedBatch) {
     using Error = typename TypeParam::Error;
-    storm::QuerySet<Person, TypeParam> qs;
 
     auto result = storm::transaction(this->conn(), [&](auto& /*txn*/) -> std::expected<void, Error> {
         auto const batch = this->make_people(5); // 3 chunks via chunked_opts().
-        return qs.insert(std::span<const Person>(batch), this->chunked_opts()).execute();
+        return (InsertStatement<Person, TypeParam>{})
+                .query(std::span<const Person>(batch), this->chunked_opts())
+                .execute();
     });
 
     ASSERT_TRUE(result.has_value()) << "nested chunked batch must not conflict inside the scope";
@@ -206,16 +222,15 @@ TYPED_TEST(PublicTransactionApiTest, TransactionScopeNestsChunkedBatch) {
 // update(span) of >1 row wraps its writes in a TransactionGuard. Inside an outer
 // transaction it must not raise a nested-BEGIN error, and the outer commit persists.
 TYPED_TEST(PublicTransactionApiTest, NestedBatchUpdateCooperatesAndCommits) {
-    storm::QuerySet<Person, TypeParam> qs;
-    auto                               rows = this->seed_bumped(3);
+    auto rows = this->seed_bumped(3);
 
     auto txn = storm::begin(this->conn());
     ASSERT_TRUE(txn.has_value());
-    ASSERT_TRUE(qs.update(std::span<const Person>(rows)).execute().has_value())
+    ASSERT_TRUE((UpdateStatement<Person, TypeParam>{}).query(std::span<const Person>(rows)).execute().has_value())
             << "nested batch update must not raise a nested-BEGIN error";
     ASSERT_TRUE(txn->commit().has_value());
 
-    auto bumped = qs.where(fields::Person.age >= 100).count().execute();
+    auto bumped = (SelectStatement<Person, TypeParam>{}).where(fields::Person.age >= 100).count().execute();
     ASSERT_TRUE(bumped.has_value());
     EXPECT_EQ(bumped.value(), 3) << "all updated rows persisted with the outer commit";
 }
@@ -223,17 +238,16 @@ TYPED_TEST(PublicTransactionApiTest, NestedBatchUpdateCooperatesAndCommits) {
 // Outer rollback must discard the nested batch update (the inner guard must not
 // have self-committed).
 TYPED_TEST(PublicTransactionApiTest, OuterRollbackDiscardsNestedBatchUpdate) {
-    storm::QuerySet<Person, TypeParam> qs;
-    auto                               rows = this->seed_bumped(3);
+    auto rows = this->seed_bumped(3);
 
     {
         auto txn = storm::begin(this->conn());
         ASSERT_TRUE(txn.has_value());
-        ASSERT_TRUE(qs.update(std::span<const Person>(rows)).execute().has_value());
+        ASSERT_TRUE((UpdateStatement<Person, TypeParam>{}).query(std::span<const Person>(rows)).execute().has_value());
         // No commit — outer rollback on scope exit.
     }
 
-    auto bumped = qs.where(fields::Person.age >= 100).count().execute();
+    auto bumped = (SelectStatement<Person, TypeParam>{}).where(fields::Person.age >= 100).count().execute();
     ASSERT_TRUE(bumped.has_value());
     EXPECT_EQ(bumped.value(), 0) << "nested batch update must not have self-committed";
 }
@@ -242,13 +256,12 @@ TYPED_TEST(PublicTransactionApiTest, OuterRollbackDiscardsNestedBatchUpdate) {
 // TransactionGuard. Inside an outer transaction it must nest and the outer commit
 // persists the deletions.
 TYPED_TEST(PublicTransactionApiTest, NestedChunkedEraseCooperatesAndCommits) {
-    storm::QuerySet<Person, TypeParam> qs;
-    auto                               rows = this->seed_with_ids(850); // > 799 → chunked erase
+    auto rows = this->seed_with_ids(850); // > 799 → chunked erase
     ASSERT_EQ(this->countPersons(), 850);
 
     auto txn = storm::begin(this->conn());
     ASSERT_TRUE(txn.has_value());
-    ASSERT_TRUE(qs.erase(std::span<const Person>(rows)).execute().has_value())
+    ASSERT_TRUE((EraseStatement<Person, TypeParam>{}).query(std::span<const Person>(rows)).execute().has_value())
             << "nested chunked erase must not raise a nested-BEGIN error";
     ASSERT_TRUE(txn->commit().has_value());
 

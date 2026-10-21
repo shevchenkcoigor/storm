@@ -8,12 +8,21 @@
 import storm;
 import std;
 
+using storm::db::DefaultConnection;
+
 #include "../../shared/models/color.h"
 #include "../../shared/models/extended_types.h"
 #include "../../shared/models/person.h"
 #include "../../shared/models/set_null_child.h"
 #include "../../shared/models/simple_record.h"
 #include "test_fixture.h"
+using storm::create_table_sql;
+using storm::full_unsigned;
+using storm::primary;
+using storm::RefAction;
+using storm::signed_storage;
+using storm::UUID;
+using storm::orm::statements::ModelStorageAnnotated;
 
 using std::chrono::day;
 using std::chrono::hours;
@@ -243,7 +252,7 @@ TYPED_TEST_SUITE(NullTextExtractionTest, DatabaseTypes);
 // name TEXT NOT NULL, so rebuild the table without the constraint to let a
 // NULL reach the extraction path.
 TYPED_TEST(NullTextExtractionTest, NullTextColumnExtractsAsEmptyString) {
-    auto conn = QuerySet<SimpleRecord, TypeParam>::get_default_connection();
+    auto conn = DefaultConnection<TypeParam>::get();
     ASSERT_TRUE(conn->execute("DROP TABLE SimpleRecord").has_value());
     ASSERT_TRUE(
             conn->execute("CREATE TABLE SimpleRecord (id INTEGER PRIMARY KEY, name TEXT, value INTEGER)").has_value()
@@ -710,7 +719,7 @@ TYPED_TEST(LongLongTypesInsertUpdateTest, UpdateLongLongValues) {
 // Test Error struct accessors for code coverage
 TEST(ErrorHandlingTest, ErrorAccessors) {
     // Try to open a database in a non-existent directory (should fail)
-    auto result = QuerySet<ExtendedTypes>::set_default_connection("/nonexistent/path/database.db");
+    auto result = DefaultConnection<>::set("/nonexistent/path/database.db");
 
     // Verify operation failed
     ASSERT_FALSE(result.has_value()) << "Should fail to open database in non-existent path";
@@ -728,7 +737,7 @@ TEST(ErrorHandlingTest, ErrorAccessors) {
 // Test select on non-existent table
 TEST(ErrorHandlingTest, SelectFromNonExistentTable) {
     // Set up in-memory database (no table created)
-    auto conn_result = QuerySet<ExtendedTypes>::set_default_connection(storm::test::get_connection_string());
+    auto conn_result = DefaultConnection<>::set(storm::test::get_connection_string());
     ASSERT_TRUE(conn_result.has_value());
 
     // Try to select from non-existent table
@@ -743,7 +752,7 @@ TEST(ErrorHandlingTest, SelectFromNonExistentTable) {
     EXPECT_NE(error.code(), 0);
     EXPECT_FALSE(error.message().empty());
 
-    QuerySet<ExtendedTypes>::clear_default_connection();
+    DefaultConnection<>::clear();
 }
 
 // =============================================================================
@@ -1490,7 +1499,7 @@ TYPED_TEST_SUITE(UUIDTypesTest, DatabaseTypes);
 
 TYPED_TEST(UUIDTypesTest, InsertAndSelectUUID) {
     QuerySet<ExtendedTypes, TypeParam> qs;
-    ExtendedTypes obj{.label = "uuid_test", .uuid_field = storm::UUID{"550e8400-e29b-41d4-a716-446655440000"}};
+    ExtendedTypes obj{.label = "uuid_test", .uuid_field = UUID{"550e8400-e29b-41d4-a716-446655440000"}};
 
     auto result = qs.insert(obj).execute();
     ASSERT_TRUE(result.has_value());
@@ -1518,9 +1527,9 @@ TYPED_TEST(UUIDTypesTest, EmptyUUIDAutoGeneratesOnInsert) {
 TYPED_TEST(UUIDTypesTest, BatchUUIDInsert) {
     QuerySet<ExtendedTypes, TypeParam> qs;
     std::vector<ExtendedTypes>         batch = {
-            {.label = "u1", .uuid_field = storm::UUID{"aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee"}},
-            {.label = "u2", .uuid_field = storm::UUID{"11111111-2222-3333-4444-555555555555"}},
-            {.label = "u3", .uuid_field = storm::UUID{"99999999-8888-7777-6666-555544443333"}},
+            {.label = "u1", .uuid_field = UUID{"aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee"}},
+            {.label = "u2", .uuid_field = UUID{"11111111-2222-3333-4444-555555555555"}},
+            {.label = "u3", .uuid_field = UUID{"99999999-8888-7777-6666-555544443333"}},
     };
 
     auto result = qs.insert(batch).execute();
@@ -1535,14 +1544,14 @@ TYPED_TEST(UUIDTypesTest, BatchUUIDInsert) {
 
 TYPED_TEST(UUIDTypesTest, StringViewConstructorAndConversion) {
     std::string_view sv = "abcdefab-1234-5678-9abc-def012345678";
-    storm::UUID      uuid{sv};
+    UUID             uuid{sv};
     EXPECT_EQ(uuid.value, sv);
 
     std::string_view converted = uuid;
     EXPECT_EQ(converted, sv);
 
     QuerySet<ExtendedTypes, TypeParam> qs;
-    ExtendedTypes                      obj{.label = "sv_test", .uuid_field = storm::UUID{sv}};
+    ExtendedTypes                      obj{.label = "sv_test", .uuid_field = UUID{sv}};
     auto                               result = qs.insert(obj).execute();
     ASSERT_TRUE(result.has_value());
 
@@ -1552,7 +1561,7 @@ TYPED_TEST(UUIDTypesTest, StringViewConstructorAndConversion) {
 }
 
 TYPED_TEST(UUIDTypesTest, GeneratedUUIDRoundTrip) {
-    auto generated = storm::UUID::generate();
+    auto generated = UUID::generate();
 
     QuerySet<ExtendedTypes, TypeParam> qs;
     ExtendedTypes                      obj{.label = "generated", .uuid_field = generated};
@@ -1591,7 +1600,7 @@ TYPED_TEST(UUIDTypesTest, BatchEmptyUUIDsAutoGenerate) {
 TYPED_TEST(UUIDTypesTest, UserProvidedUUIDPreserved) {
     QuerySet<ExtendedTypes, TypeParam> qs;
     std::string                        custom_uuid = "a0b1c2d3-e4f5-1678-9abc-def012345678";
-    ExtendedTypes                      obj{.label = "custom", .uuid_field = storm::UUID{custom_uuid}};
+    ExtendedTypes                      obj{.label = "custom", .uuid_field = UUID{custom_uuid}};
 
     auto result = qs.insert(obj).execute();
     ASSERT_TRUE(result.has_value());
@@ -1603,7 +1612,7 @@ TYPED_TEST(UUIDTypesTest, UserProvidedUUIDPreserved) {
 
 TYPED_TEST(UUIDTypesTest, InvalidUUIDFormatRejected) {
     QuerySet<ExtendedTypes, TypeParam> qs;
-    ExtendedTypes                      obj{.label = "bad", .uuid_field = storm::UUID{"not-a-valid-uuid"}};
+    ExtendedTypes                      obj{.label = "bad", .uuid_field = UUID{"not-a-valid-uuid"}};
 
     auto result = qs.insert(obj).execute();
     ASSERT_FALSE(result.has_value());
@@ -1612,7 +1621,7 @@ TYPED_TEST(UUIDTypesTest, InvalidUUIDFormatRejected) {
 
 TYPED_TEST(UUIDTypesTest, InvalidUUIDWrongLength) {
     QuerySet<ExtendedTypes, TypeParam> qs;
-    ExtendedTypes                      obj{.label = "short", .uuid_field = storm::UUID{"1234"}};
+    ExtendedTypes                      obj{.label = "short", .uuid_field = UUID{"1234"}};
 
     auto result = qs.insert(obj).execute();
     ASSERT_FALSE(result.has_value());
@@ -1620,7 +1629,7 @@ TYPED_TEST(UUIDTypesTest, InvalidUUIDWrongLength) {
 
 TYPED_TEST(UUIDTypesTest, InvalidUUIDNonHexChars) {
     QuerySet<ExtendedTypes, TypeParam> qs;
-    ExtendedTypes obj{.label = "nonhex", .uuid_field = storm::UUID{"zzzzzzzz-zzzz-zzzz-zzzz-zzzzzzzzzzzz"}};
+    ExtendedTypes obj{.label = "nonhex", .uuid_field = UUID{"zzzzzzzz-zzzz-zzzz-zzzz-zzzzzzzzzzzz"}};
 
     auto result = qs.insert(obj).execute();
     ASSERT_FALSE(result.has_value());
@@ -1628,8 +1637,8 @@ TYPED_TEST(UUIDTypesTest, InvalidUUIDNonHexChars) {
 
 // TODO(#507): UUID PK DDL tests — requires UuidPkModel and UuidPkRef test models + SchemaBuilder API
 // TYPED_TEST(UUIDTypesTest, UuidPkColumnDDL) {
-//     const auto ddl = storm::orm::schema::SchemaBuilder<UuidPkModel>::build();
-//     if (std::is_same_v<TypeParam, storm::db::postgresql::Connection>) {
+//     const auto ddl = SchemaBuilder<UuidPkModel>::build();
+//     if (std::is_same_v<TypeParam, postgresql::Connection>) {
 //         EXPECT_THAT(ddl, HasSubstr("id UUID PRIMARY KEY"));
 //     } else {
 //         EXPECT_THAT(ddl, HasSubstr("id TEXT PRIMARY KEY"));
@@ -1640,8 +1649,8 @@ TYPED_TEST(UUIDTypesTest, InvalidUUIDNonHexChars) {
 // }
 //
 // TYPED_TEST(UUIDTypesTest, FkToUuidPkColumnDDL) {
-//     const auto ddl = storm::orm::schema::SchemaBuilder<UuidPkRef>::build();
-//     if (std::is_same_v<TypeParam, storm::db::postgresql::Connection>) {
+//     const auto ddl = SchemaBuilder<UuidPkRef>::build();
+//     if (std::is_same_v<TypeParam, postgresql::Connection>) {
 //         EXPECT_THAT(ddl, HasSubstr("owner_id UUID NOT NULL"));
 //     } else {
 //         EXPECT_THAT(ddl, HasSubstr("owner_id TEXT NOT NULL"));
@@ -1655,7 +1664,7 @@ template <typename ConnType> class NewTypesSchemaTest : public StormTestFixture<
 TYPED_TEST_SUITE(NewTypesSchemaTest, DatabaseTypes);
 
 TYPED_TEST(NewTypesSchemaTest, SchemaContainsNewColumns) {
-    const auto& sql = storm::create_table_sql<ExtendedTypes>();
+    const auto& sql = create_table_sql<ExtendedTypes>();
     EXPECT_NE(sql.find("tiny_signed INTEGER NOT NULL"), std::string::npos);
     EXPECT_NE(sql.find("tiny_unsigned INTEGER NOT NULL"), std::string::npos);
     EXPECT_NE(sql.find("single_char INTEGER NOT NULL"), std::string::npos);
@@ -1701,7 +1710,7 @@ TYPED_TEST(AllNewTypesRoundtripTest, FullRoundtrip) {
             .duration_field = seconds{7200},
             .file_path      = std::filesystem::path("/data/file.csv"),
             .raw_data       = blob,
-            .uuid_field     = storm::UUID{"12345678-1234-1234-1234-123456789abc"},
+            .uuid_field     = UUID{"12345678-1234-1234-1234-123456789abc"},
             .opt_color      = Color::Green,
             .opt_timestamp  = datetime,
             .opt_path       = std::filesystem::path("/opt/backup"),
@@ -1906,9 +1915,9 @@ TEST(PgDialectTypesSchemaTest, DoubleFieldIsDoublePrecision) {
 
 // Test PG-dialect optional types that have no dedicated fields in ExtendedTypes
 struct PgOptionalSpecialTypes {
-    [[= storm::primary]] int                   id{};
+    [[= primary]] int                          id{};
     std::optional<std::chrono::year_month_day> opt_date;
-    std::optional<storm::UUID>                 opt_uuid;
+    std::optional<UUID>                        opt_uuid;
     std::optional<bool>                        opt_bool;
 };
 
@@ -2017,11 +2026,11 @@ TYPED_TEST(Uint64SignedStorageTest, OrderBySortsBySignedInterpretation) {
 
 // ===== 64-BIT UNSIGNED FULL-RANGE STORAGE TESTS (#436) =====
 //
-// storm::full_unsigned stores an unsigned-64 field order-preservingly:
+// full_unsigned stores an unsigned-64 field order-preservingly:
 // PostgreSQL NUMERIC(20,0), SQLite zero-padded 20-char TEXT (lexicographic ==
 // numeric order). Unlike signed_storage (#419), values > INT64_MAX both round-trip
 // AND sort correctly, and external readers see the true unsigned value.
-// storm::signed_storage keeps today's signed BIGINT/INTEGER storage.
+// signed_storage keeps today's signed BIGINT/INTEGER storage.
 
 // --- Compile-time refusal: a bare unsigned-64 field is rejected (#436) ---
 // ModelStorageAnnotated<T> is false for a model with an un-annotated uint64 field, so
@@ -2030,28 +2039,28 @@ TYPED_TEST(Uint64SignedStorageTest, OrderBySortsBySignedInterpretation) {
 // without needing a compile-fail harness.
 namespace {
     struct BareUint64Model {
-        [[= storm::primary]] int id{};
-        std::uint64_t            value{}; // bare — no storage annotation
+        [[= primary]] int id{};
+        std::uint64_t     value{}; // bare — no storage annotation
     };
     struct SignedStorageModel {
-        [[= storm::primary]] int                  id{};
-        [[= storm::signed_storage]] std::uint64_t value{};
+        [[= primary]] int                  id{};
+        [[= signed_storage]] std::uint64_t value{};
     };
     struct FullUnsignedModel {
-        [[= storm::primary]] int                 id{};
-        [[= storm::full_unsigned]] std::uint64_t value{};
+        [[= primary]] int                 id{};
+        [[= full_unsigned]] std::uint64_t value{};
     };
     static_assert(
-            !storm::orm::statements::ModelStorageAnnotated<BareUint64Model>,
-            "bare unsigned-64 field must NOT satisfy ModelStorageAnnotated"
+            !ModelStorageAnnotated<BareUint64Model>,
+            "bare unsigned-64 field must NOT satisfy storm::orm::statements::ModelStorageAnnotated"
     );
     static_assert(
-            storm::orm::statements::ModelStorageAnnotated<SignedStorageModel>,
-            "signed_storage uint64 field must satisfy ModelStorageAnnotated"
+            ModelStorageAnnotated<SignedStorageModel>,
+            "signed_storage uint64 field must satisfy storm::orm::statements::ModelStorageAnnotated"
     );
     static_assert(
-            storm::orm::statements::ModelStorageAnnotated<FullUnsignedModel>,
-            "full_unsigned uint64 field must satisfy ModelStorageAnnotated"
+            ModelStorageAnnotated<FullUnsignedModel>,
+            "full_unsigned uint64 field must satisfy storm::orm::statements::ModelStorageAnnotated"
     );
 } // namespace
 
@@ -2063,12 +2072,12 @@ namespace {
 // compile-fail harness.
 namespace {
     struct SetNullNonNullableFk {
-        [[= storm::primary]] int                          id{};
-        [[= storm::fk<storm::RefAction::SetNull>]] Person owner; // non-optional → invalid
+        [[= primary]] int                          id{};
+        [[= storm::fk<RefAction::SetNull>]] Person owner; // non-optional → invalid
     };
     struct CascadeNonNullableFk {
-        [[= storm::primary]] int                          id{};
-        [[= storm::fk<storm::RefAction::Cascade>]] Person owner;
+        [[= primary]] int                          id{};
+        [[= storm::fk<RefAction::Cascade>]] Person owner;
     };
     static_assert(
             !storm::orm::statements::ModelFkPoliciesValid<SetNullNonNullableFk>,
@@ -2088,7 +2097,7 @@ namespace {
 
 TYPED_TEST(NewTypesSchemaTest, SignedStorageKeepsIntegerColumn) {
     // SQLite: signed_storage uint64 stays INTEGER (byte-identical to today).
-    const auto& sqlite_sql = storm::create_table_sql<ExtendedTypes>();
+    const auto& sqlite_sql = create_table_sql<ExtendedTypes>();
     EXPECT_NE(sqlite_sql.find("big_unsigned INTEGER NOT NULL"), std::string::npos) << sqlite_sql;
     // PostgreSQL: signed_storage uint64 stays BIGINT.
     const std::string& pg_sql = SchemaStatement<ExtendedTypes>::create_table_sql<Dialect::PostgreSQL>();
@@ -2097,7 +2106,7 @@ TYPED_TEST(NewTypesSchemaTest, SignedStorageKeepsIntegerColumn) {
 
 TYPED_TEST(NewTypesSchemaTest, FullUnsignedUsesOrderPreservingColumn) {
     // SQLite: full_unsigned uint64 maps to TEXT (zero-padded decimal on write).
-    const auto& sqlite_sql = storm::create_table_sql<ExtendedTypes>();
+    const auto& sqlite_sql = create_table_sql<ExtendedTypes>();
     EXPECT_NE(sqlite_sql.find("big_unsigned_full TEXT NOT NULL"), std::string::npos) << sqlite_sql;
     // PostgreSQL: full_unsigned uint64 maps to NUMERIC(20,0).
     const std::string& pg_sql = SchemaStatement<ExtendedTypes>::create_table_sql<Dialect::PostgreSQL>();

@@ -9,6 +9,7 @@ import std;
 #include "../../shared/models/timestamped_record.h"
 #include "test_fixture.h"
 #include "test_seed_helpers.h"
+using storm::QuerySet;
 
 // clang-tidy's readability-implicit-bool-conversion mis-fires on the GTest
 // streamed-message idiom `EXPECT_*(...) << "literal"`. Band the whole file.
@@ -34,15 +35,15 @@ class ConditionalUpdateTest : public StormTestFixture<Person, ConnType, Message,
     }
 
     static auto countPersons() -> int {
-        storm::QuerySet<Person, ConnType> qs;
-        auto                              result = qs.count().execute();
+        QuerySet<Person, ConnType> qs;
+        auto                       result = qs.count().execute();
         return result.has_value() ? static_cast<int>(result.value()) : -1;
     }
 
     // Fetch a single person by id (asserts exactly one row).
     static auto getPerson(int person_id) -> Person {
-        const storm::QuerySet<Person, ConnType> qs;
-        auto                                    rows = qs.where(fields::Person.id == person_id).select().execute();
+        const QuerySet<Person, ConnType> qs;
+        auto                             rows = qs.where(fields::Person.id == person_id).select().execute();
         EXPECT_TRUE(rows.has_value());
         EXPECT_EQ(rows.value().size(), 1U);
         return *rows.value().begin();
@@ -57,7 +58,7 @@ TYPED_TEST(ConditionalUpdateTest, Setup) {
 
 // --- SET coverage: single column, multiple columns, each type --------------
 TYPED_TEST(ConditionalUpdateTest, SingleSetColumn) {
-    storm::QuerySet<Person, TypeParam> qs;
+    QuerySet<Person, TypeParam> qs;
     ASSERT_TRUE(qs.where(fields::Person.age == 30)
                         .template update<fields::Person.salary>(Person{.salary = 99000.0})
                         .execute()
@@ -67,8 +68,8 @@ TYPED_TEST(ConditionalUpdateTest, SingleSetColumn) {
 }
 
 TYPED_TEST(ConditionalUpdateTest, MultipleSetColumns) {
-    storm::QuerySet<Person, TypeParam> qs;
-    auto                               result = qs.where(fields::Person.department == "Eng")
+    QuerySet<Person, TypeParam> qs;
+    auto                        result = qs.where(fields::Person.department == "Eng")
                           .template update<fields::Person.salary, fields::Person.is_active>(
                                   Person{.salary = 12345.0, .is_active = true}
                           )
@@ -81,7 +82,7 @@ TYPED_TEST(ConditionalUpdateTest, MultipleSetColumns) {
 }
 
 TYPED_TEST(ConditionalUpdateTest, SetIntColumn) {
-    storm::QuerySet<Person, TypeParam> qs;
+    QuerySet<Person, TypeParam> qs;
     ASSERT_TRUE(qs.where(fields::Person.id == 1)
                         .template update<fields::Person.age>(Person{.age = 77})
                         .execute()
@@ -90,7 +91,7 @@ TYPED_TEST(ConditionalUpdateTest, SetIntColumn) {
 }
 
 TYPED_TEST(ConditionalUpdateTest, SetStringColumn) {
-    storm::QuerySet<Person, TypeParam> qs;
+    QuerySet<Person, TypeParam> qs;
     ASSERT_TRUE(qs.where(fields::Person.id == 1)
                         .template update<fields::Person.department>(Person{.department = "Relocated"})
                         .execute()
@@ -99,7 +100,7 @@ TYPED_TEST(ConditionalUpdateTest, SetStringColumn) {
 }
 
 TYPED_TEST(ConditionalUpdateTest, SetBoolColumn) {
-    storm::QuerySet<Person, TypeParam> qs;
+    QuerySet<Person, TypeParam> qs;
     ASSERT_TRUE(qs.where(fields::Person.id == 1)
                         .template update<fields::Person.is_active>(Person{.is_active = false})
                         .execute()
@@ -109,7 +110,7 @@ TYPED_TEST(ConditionalUpdateTest, SetBoolColumn) {
 
 // --- WHERE coverage: 6 operators -------------------------------------------
 TYPED_TEST(ConditionalUpdateTest, WhereEqual) {
-    storm::QuerySet<Person, TypeParam> qs;
+    QuerySet<Person, TypeParam> qs;
     ASSERT_TRUE(qs.where(fields::Person.age == 30)
                         .template update<fields::Person.age>(Person{.age = 31})
                         .execute()
@@ -118,7 +119,7 @@ TYPED_TEST(ConditionalUpdateTest, WhereEqual) {
 }
 
 TYPED_TEST(ConditionalUpdateTest, WhereNotEqual) {
-    storm::QuerySet<Person, TypeParam> qs;
+    QuerySet<Person, TypeParam> qs;
     ASSERT_TRUE(qs.where(fields::Person.age != 30)
                         .template update<fields::Person.department>(Person{.department = "X"})
                         .execute()
@@ -128,7 +129,7 @@ TYPED_TEST(ConditionalUpdateTest, WhereNotEqual) {
 }
 
 TYPED_TEST(ConditionalUpdateTest, WhereGreater) {
-    storm::QuerySet<Person, TypeParam> qs;
+    QuerySet<Person, TypeParam> qs;
     ASSERT_TRUE(qs.where(fields::Person.age > 35)
                         .template update<fields::Person.is_active>(Person{.is_active = false})
                         .execute()
@@ -139,7 +140,7 @@ TYPED_TEST(ConditionalUpdateTest, WhereGreater) {
 }
 
 TYPED_TEST(ConditionalUpdateTest, WhereGreaterEqual) {
-    storm::QuerySet<Person, TypeParam> qs;
+    QuerySet<Person, TypeParam> qs;
     ASSERT_TRUE(qs.where(fields::Person.age >= 35)
                         .template update<fields::Person.age>(Person{.age = 0})
                         .execute()
@@ -149,7 +150,7 @@ TYPED_TEST(ConditionalUpdateTest, WhereGreaterEqual) {
 }
 
 TYPED_TEST(ConditionalUpdateTest, WhereLess) {
-    storm::QuerySet<Person, TypeParam> qs;
+    QuerySet<Person, TypeParam> qs;
     ASSERT_TRUE(qs.where(fields::Person.age < 30)
                         .template update<fields::Person.age>(Person{.age = 1})
                         .execute()
@@ -159,7 +160,7 @@ TYPED_TEST(ConditionalUpdateTest, WhereLess) {
 }
 
 TYPED_TEST(ConditionalUpdateTest, WhereLessEqual) {
-    storm::QuerySet<Person, TypeParam> qs;
+    QuerySet<Person, TypeParam> qs;
     ASSERT_TRUE(qs.where(fields::Person.age <= 30)
                         .template update<fields::Person.age>(Person{.age = 2})
                         .execute()
@@ -171,7 +172,7 @@ TYPED_TEST(ConditionalUpdateTest, WhereLessEqual) {
 
 // --- WHERE coverage: IN / BETWEEN / LIKE / NULL ----------------------------
 TYPED_TEST(ConditionalUpdateTest, WhereIn) {
-    storm::QuerySet<Person, TypeParam> qs;
+    QuerySet<Person, TypeParam> qs;
     ASSERT_TRUE(qs.where(fields::Person.age.in(25, 35))
                         .template update<fields::Person.is_active>(Person{.is_active = false})
                         .execute()
@@ -181,7 +182,7 @@ TYPED_TEST(ConditionalUpdateTest, WhereIn) {
 }
 
 TYPED_TEST(ConditionalUpdateTest, WhereBetween) {
-    storm::QuerySet<Person, TypeParam> qs;
+    QuerySet<Person, TypeParam> qs;
     ASSERT_TRUE(qs.where(fields::Person.age.between(30, 40))
                         .template update<fields::Person.salary>(Person{.salary = 1.0})
                         .execute()
@@ -192,7 +193,7 @@ TYPED_TEST(ConditionalUpdateTest, WhereBetween) {
 }
 
 TYPED_TEST(ConditionalUpdateTest, WhereLike) {
-    storm::QuerySet<Person, TypeParam> qs;
+    QuerySet<Person, TypeParam> qs;
     ASSERT_TRUE(qs.where(fields::Person.department.like("Eng%"))
                         .template update<fields::Person.salary>(Person{.salary = 5.0})
                         .execute()
@@ -202,7 +203,7 @@ TYPED_TEST(ConditionalUpdateTest, WhereLike) {
 }
 
 TYPED_TEST(ConditionalUpdateTest, WhereIsNull) {
-    storm::QuerySet<Person, TypeParam> qs;
+    QuerySet<Person, TypeParam> qs;
     ASSERT_TRUE(qs.where(fields::Person.score.is_null())
                         .template update<fields::Person.salary>(Person{.salary = 7.0})
                         .execute()
@@ -212,7 +213,7 @@ TYPED_TEST(ConditionalUpdateTest, WhereIsNull) {
 }
 
 TYPED_TEST(ConditionalUpdateTest, WhereIsNotNull) {
-    storm::QuerySet<Person, TypeParam> qs;
+    QuerySet<Person, TypeParam> qs;
     ASSERT_TRUE(qs.where(fields::Person.score.is_not_null())
                         .template update<fields::Person.salary>(Person{.salary = 8.0})
                         .execute()
@@ -224,7 +225,7 @@ TYPED_TEST(ConditionalUpdateTest, WhereIsNotNull) {
 
 // --- WHERE coverage: AND / OR / nested -------------------------------------
 TYPED_TEST(ConditionalUpdateTest, WhereAnd) {
-    storm::QuerySet<Person, TypeParam> qs;
+    QuerySet<Person, TypeParam> qs;
     ASSERT_TRUE(qs.where(fields::Person.department == "Sales" && fields::Person.is_active == false)
                         .template update<fields::Person.age>(Person{.age = 100})
                         .execute()
@@ -234,7 +235,7 @@ TYPED_TEST(ConditionalUpdateTest, WhereAnd) {
 }
 
 TYPED_TEST(ConditionalUpdateTest, WhereOr) {
-    storm::QuerySet<Person, TypeParam> qs;
+    QuerySet<Person, TypeParam> qs;
     ASSERT_TRUE(qs.where(fields::Person.age < 26 || fields::Person.age > 44)
                         .template update<fields::Person.salary>(Person{.salary = 3.0})
                         .execute()
@@ -245,7 +246,7 @@ TYPED_TEST(ConditionalUpdateTest, WhereOr) {
 }
 
 TYPED_TEST(ConditionalUpdateTest, WhereNested) {
-    storm::QuerySet<Person, TypeParam> qs;
+    QuerySet<Person, TypeParam> qs;
     ASSERT_TRUE(qs.where((fields::Person.department == "Eng" && fields::Person.age < 28) ||
                          fields::Person.salary > 75000.0)
                         .template update<fields::Person.age>(Person{.age = 9})
@@ -258,7 +259,7 @@ TYPED_TEST(ConditionalUpdateTest, WhereNested) {
 
 // --- Chained where() (AND-combined) ----------------------------------------
 TYPED_TEST(ConditionalUpdateTest, ChainedWhere) {
-    storm::QuerySet<Person, TypeParam> qs;
+    QuerySet<Person, TypeParam> qs;
     ASSERT_TRUE(qs.where(fields::Person.department == "Eng")
                         .where(fields::Person.is_active == true)
                         .template update<fields::Person.age>(Person{.age = 88})
@@ -270,7 +271,7 @@ TYPED_TEST(ConditionalUpdateTest, ChainedWhere) {
 
 // --- Result-set sizes ------------------------------------------------------
 TYPED_TEST(ConditionalUpdateTest, EmptyResultNoOp) {
-    storm::QuerySet<Person, TypeParam> qs;
+    QuerySet<Person, TypeParam> qs;
     ASSERT_TRUE(
             qs.where(fields::Person.age > 1000)
                     .template update<fields::Person.age>(Person{.age = 1})
@@ -281,8 +282,8 @@ TYPED_TEST(ConditionalUpdateTest, EmptyResultNoOp) {
 }
 
 TYPED_TEST(ConditionalUpdateTest, LargeResultSet) {
-    storm::QuerySet<Person, TypeParam> qs;
-    std::vector<Person>                batch;
+    QuerySet<Person, TypeParam> qs;
+    std::vector<Person>         batch;
     batch.reserve(150);
     for (int i = 100; i < 250; ++i) {
         batch.emplace_back(Person{.id = i, .name = std::format("Bulk{}", i), .age = 50, .department = "Bulk"});
@@ -304,8 +305,8 @@ TYPED_TEST(ConditionalUpdateTest, LargeResultSet) {
 
 // --- Safety: empty WHERE refuses the full-table write ----------------------
 TYPED_TEST(ConditionalUpdateTest, EmptyWhereIsRefused) {
-    storm::QuerySet<Person, TypeParam> qs;
-    auto                               result = qs.template update<fields::Person.age>(Person{.age = 0}).execute();
+    QuerySet<Person, TypeParam> qs;
+    auto                        result = qs.template update<fields::Person.age>(Person{.age = 0}).execute();
     ASSERT_FALSE(result.has_value()) << "update<...>() with no where() must refuse";
     // The refusal message must point at update_all() — the method that actually exists (#409).
     EXPECT_TRUE(result.error().message().contains("update_all()")) << result.error().message();
@@ -313,14 +314,14 @@ TYPED_TEST(ConditionalUpdateTest, EmptyWhereIsRefused) {
 }
 
 TYPED_TEST(ConditionalUpdateTest, ToSqlEmptyWhereRefused) {
-    storm::QuerySet<Person, TypeParam> qs;
-    auto                               sql = qs.template update<fields::Person.age>(Person{.age = 0}).to_sql();
+    QuerySet<Person, TypeParam> qs;
+    auto                        sql = qs.template update<fields::Person.age>(Person{.age = 0}).to_sql();
     EXPECT_FALSE(sql.has_value()) << "to_sql() on an unfiltered update<...>() must also refuse";
 }
 
 // --- to_sql() shape --------------------------------------------------------
 TYPED_TEST(ConditionalUpdateTest, ToSqlShape) {
-    storm::QuerySet<Person, TypeParam> qs;
+    QuerySet<Person, TypeParam> qs;
     auto sql = qs.where(fields::Person.age > 30).template update<fields::Person.salary>(Person{.salary = 1.0}).to_sql();
     ASSERT_TRUE(sql.has_value());
     EXPECT_TRUE(sql.value().contains("UPDATE")) << sql.value();
@@ -331,8 +332,8 @@ TYPED_TEST(ConditionalUpdateTest, ToSqlShape) {
 
 // --- FK SET column: emits <name>_id ----------------------------------------
 TYPED_TEST(ConditionalUpdateTest, FkSetColumnToSql) {
-    storm::QuerySet<Message, TypeParam> mqs;
-    auto                                sql = mqs.where(fields::Message.id == 1)
+    QuerySet<Message, TypeParam> mqs;
+    auto                         sql = mqs.where(fields::Message.id == 1)
                        .template update<fields::Message.sender>(Message{.sender = Person{.id = 7}})
                        .to_sql();
     ASSERT_TRUE(sql.has_value());
@@ -341,8 +342,8 @@ TYPED_TEST(ConditionalUpdateTest, FkSetColumnToSql) {
 
 // --- auto_update field auto-included ---------------------------------------
 TYPED_TEST(ConditionalUpdateTest, AutoUpdateFieldIncludedInSql) {
-    storm::QuerySet<TimestampedRecord, TypeParam> tqs;
-    auto                                          sql = tqs.where(fields::TimestampedRecord.id == 1)
+    QuerySet<TimestampedRecord, TypeParam> tqs;
+    auto                                   sql = tqs.where(fields::TimestampedRecord.id == 1)
                        .template update<fields::TimestampedRecord.name>(TimestampedRecord{.name = "renamed"})
                        .to_sql();
     ASSERT_TRUE(sql.has_value());
@@ -353,7 +354,7 @@ TYPED_TEST(ConditionalUpdateTest, AutoUpdateFieldIncludedInSql) {
 // --- auto_update field actually advances on execute() ----------------------
 TYPED_TEST(ConditionalUpdateTest, AutoUpdateFieldAdvancesOnExecute) {
     using std::chrono::system_clock;
-    storm::QuerySet<TimestampedRecord, TypeParam> tqs;
+    QuerySet<TimestampedRecord, TypeParam> tqs;
     // Seed one row with a stale updated_at far in the past.
     const auto stale = system_clock::time_point{};
     ASSERT_TRUE(tqs.insert(TimestampedRecord{.id = 0, .name = "before", .created_at = stale, .updated_at = stale})
@@ -374,7 +375,7 @@ TYPED_TEST(ConditionalUpdateTest, AutoUpdateFieldAdvancesOnExecute) {
 
 // --- model without timestamp: no extra column ------------------------------
 TYPED_TEST(ConditionalUpdateTest, NoTimestampNoExtraColumn) {
-    storm::QuerySet<Person, TypeParam> qs;
+    QuerySet<Person, TypeParam> qs;
     auto sql = qs.where(fields::Person.id == 1).template update<fields::Person.age>(Person{.age = 5}).to_sql();
     ASSERT_TRUE(sql.has_value());
     // The SET segment (between "SET " and " WHERE") has exactly one assignment and no
@@ -392,7 +393,7 @@ TYPED_TEST(ConditionalUpdateTest, NoTimestampNoExtraColumn) {
 // --- update_all(): explicit full-table write (#409) ------------------------
 // Symmetry with erase_all(): the documented escape hatch for an unfiltered update.
 TYPED_TEST(ConditionalUpdateTest, UpdateAllWritesEveryRow) {
-    storm::QuerySet<Person, TypeParam> qs;
+    QuerySet<Person, TypeParam> qs;
     ASSERT_TRUE(
             qs.template update_all<fields::Person.department>(Person{.department = "Global"}).execute().has_value()
     );
@@ -403,7 +404,7 @@ TYPED_TEST(ConditionalUpdateTest, UpdateAllWritesEveryRow) {
 }
 
 TYPED_TEST(ConditionalUpdateTest, UpdateAllMultipleColumns) {
-    storm::QuerySet<Person, TypeParam> qs;
+    QuerySet<Person, TypeParam> qs;
     ASSERT_TRUE((qs.template update_all<fields::Person.age, fields::Person.is_active>(Person{.age       = 99,
                                                                                              .is_active = true})
                          .execute()
@@ -415,8 +416,8 @@ TYPED_TEST(ConditionalUpdateTest, UpdateAllMultipleColumns) {
 }
 
 TYPED_TEST(ConditionalUpdateTest, UpdateAllToSqlHasNoWhere) {
-    storm::QuerySet<Person, TypeParam> qs;
-    auto sql = qs.template update_all<fields::Person.salary>(Person{.salary = 1.0}).to_sql();
+    QuerySet<Person, TypeParam> qs;
+    auto                        sql = qs.template update_all<fields::Person.salary>(Person{.salary = 1.0}).to_sql();
     ASSERT_TRUE(sql.has_value());
     EXPECT_TRUE(sql.value().contains("UPDATE")) << sql.value();
     EXPECT_TRUE(sql.value().contains("SET")) << sql.value();
@@ -427,8 +428,8 @@ TYPED_TEST(ConditionalUpdateTest, UpdateAllToSqlHasNoWhere) {
 // auto_update column is auto-appended and stamped on the full-table write too.
 TYPED_TEST(ConditionalUpdateTest, UpdateAllStampsAutoUpdate) {
     using std::chrono::system_clock;
-    storm::QuerySet<TimestampedRecord, TypeParam> tqs;
-    const auto                                    stale = system_clock::time_point{};
+    QuerySet<TimestampedRecord, TypeParam> tqs;
+    const auto                             stale = system_clock::time_point{};
     ASSERT_TRUE(tqs.insert(TimestampedRecord{.id = 0, .name = "seed", .created_at = stale, .updated_at = stale})
                         .execute()
                         .has_value());

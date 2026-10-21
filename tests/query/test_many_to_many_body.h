@@ -18,31 +18,51 @@
 
 // NOLINTBEGIN(misc-const-correctness)
 
-import storm;
+import storm_db_default_connection;
+import storm_db_sqlite;
+import storm_meta;
+import storm_orm_schema;
+import storm_orm_statements_erase;
+import storm_orm_statements_insert;
+import storm_orm_statements_select;
+import storm_orm_statements_update;
+import storm_orm_transaction;
+import storm_orm_utilities;
 import storm_orm_statements_update_grammar; // UpdateGrammar — SET-target gate (#486) / SQL leak assert (#485); not re-exported by `storm`
+import storm_orm_statements_base;
+import storm_orm_fields;
+import storm_orm_statements_upsert_grammar;
+import storm_db_postgresql;
 import std;
-
-using storm::QuerySet;
 
 #include "test_fixture.h" // NOSONAR cpp:S954
 
 #include "test_m2m_models.h" // NOSONAR cpp:S954
+using storm::meta::FieldRef;
+using storm::orm::schema::SchemaStatement;
+using storm::orm::statements::BaseStatement;
+using storm::orm::statements::ConflictTargetUnique;
+using storm::orm::statements::EraseStatement;
+using storm::orm::statements::InsertStatement;
+using storm::orm::statements::SelectStatement;
+using storm::orm::statements::UpdateGrammar;
+using storm::orm::statements::UpdateStatement;
+using storm::orm::statements::UpsertGrammar;
+using storm::orm::statements::UpsertSettable;
 
 // ============================================================================
 // Compile-time: m2m fields are excluded from persisted members (#203)
 // ============================================================================
 
-static_assert(storm::orm::statements::BaseStatement<Student>::field_count_ == 3,
-              "courses (m2m) must not count as a persisted column");
-static_assert(storm::orm::statements::BaseStatement<Course>::field_count_ == 2);
+static_assert(BaseStatement<Student>::field_count_ == 3, "courses (m2m) must not count as a persisted column");
+static_assert(BaseStatement<Course>::field_count_ == 2);
 
 // Pre-computed single-row/bulk UPDATE SQL must not name relation containers (#485).
-constexpr std::string_view student_update_sql{
-    storm::orm::statements::UpdateGrammar<Student>::update_sql_array.data.data(),
-    storm::orm::statements::UpdateGrammar<Student>::update_sql_array.len};
+constexpr std::string_view student_update_sql{UpdateGrammar<Student>::update_sql_array.data.data(),
+                                              UpdateGrammar<Student>::update_sql_array.len};
 static_assert(!student_update_sql.contains("courses"), "m2m container leaked into UPDATE SET clause");
-constexpr std::string_view pupil_update_sql{storm::orm::statements::UpdateGrammar<Pupil>::update_sql_array.data.data(),
-                                            storm::orm::statements::UpdateGrammar<Pupil>::update_sql_array.len};
+constexpr std::string_view pupil_update_sql{UpdateGrammar<Pupil>::update_sql_array.data.data(),
+                                            UpdateGrammar<Pupil>::update_sql_array.len};
 static_assert(!pupil_update_sql.contains("courses"), "m2m_through container leaked into UPDATE SET clause");
 
 // ============================================================================
@@ -61,7 +81,7 @@ static_assert(storm::orm::statements::M2MFieldOf<Pupil, ^^Pupil::courses>);
 // ============================================================================
 
 template <auto M>
-concept FCallableM2M = requires { storm::meta::FieldRef<M>{}; };
+concept FCallableM2M = requires { FieldRef<M>{}; };
 
 static_assert(!FCallableM2M<^^Student::courses>, "m2m member rejected by FieldRef");
 static_assert(!FCallableM2M<^^Pupil::courses>, "m2m_through member rejected by FieldRef");
@@ -75,27 +95,24 @@ static_assert(FCallableM2M<^^Student::age>, "persisted column still accepted");
 // fail at the named gate, not at runtime with "no such column".
 // ============================================================================
 
-static_assert(!storm::orm::statements::UpdateGrammar<Student>::is_settable_member<^^Student::courses>(),
+static_assert(!UpdateGrammar<Student>::is_settable_member<^^Student::courses>(),
               "m2m member rejected as a conditional-UPDATE SET target");
-static_assert(!storm::orm::statements::UpsertGrammar<Student>::is_settable_member<^^Student::courses>(),
+static_assert(!UpsertGrammar<Student>::is_settable_member<^^Student::courses>(),
               "m2m member rejected as an upsert DO UPDATE SET target");
-static_assert(!storm::orm::statements::UpsertSettable<Student, ^^Student::courses>,
-              "UpsertSettable concept rejects an m2m SET target");
-static_assert(!storm::orm::statements::UpsertSettable<Pupil, ^^Pupil::courses>,
-              "UpsertSettable concept rejects an m2m_through SET target");
+static_assert(!UpsertSettable<Student, ^^Student::courses>, "UpsertSettable concept rejects an m2m SET target");
+static_assert(!UpsertSettable<Pupil, ^^Pupil::courses>, "UpsertSettable concept rejects an m2m_through SET target");
 
 // Persisted, non-PK columns are still accepted at the same gate.
-static_assert(storm::orm::statements::UpdateGrammar<Student>::is_settable_member<^^Student::name>());
-static_assert(storm::orm::statements::UpsertGrammar<Student>::is_settable_member<^^Student::age>());
-static_assert(storm::orm::statements::UpsertSettable<Student, ^^Student::name>);
+static_assert(UpdateGrammar<Student>::is_settable_member<^^Student::name>());
+static_assert(UpsertGrammar<Student>::is_settable_member<^^Student::age>());
+static_assert(UpsertSettable<Student, ^^Student::name>);
 // The primary key remains rejected (pre-existing gate behavior).
-static_assert(!storm::orm::statements::UpdateGrammar<Student>::is_settable_member<^^Student::id>());
+static_assert(!UpdateGrammar<Student>::is_settable_member<^^Student::id>());
 
 // The conflict-target gate is already safe (#486 DoD): a relation member carries
-// no storm::unique annotation and cannot appear in a UniqueIndex, so
+// no unique annotation and cannot appear in a UniqueIndex, so
 // ConflictTargetUnique rejects it without needing an is_relation_field check.
-static_assert(!storm::orm::statements::ConflictTargetUnique<Student, ^^Student::courses>,
-              "an m2m member is not a valid conflict target");
+static_assert(!ConflictTargetUnique<Student, ^^Student::courses>, "an m2m member is not a valid conflict target");
 
 // ============================================================================
 // Compile-time: related-type extraction from containers via std::meta
@@ -115,12 +132,11 @@ template <typename ConnType> class M2MBaseTest : public StormTestFixture<Student
 TYPED_TEST_SUITE(M2MBaseTest, STORM_SPLIT_TYPES, STORM_SPLIT_TYPE_NAMES);
 
 TYPED_TEST(M2MBaseTest, PlainCrudIgnoresM2MField) {
-    QuerySet<Student, TypeParam> qs;
     Student const s{.name = "Alice", .age = 20, .courses = {{.id = 99, .title = "ghost"}}};
-    auto ins = qs.insert(s).execute();
+    auto ins = (InsertStatement<Student, TypeParam>{}).query(s).execute();
     ASSERT_TRUE(ins.has_value()) << ins.error().message();
 
-    auto rows = qs.select().execute();
+    auto rows = (SelectStatement<Student, TypeParam>{}).all().execute();
     ASSERT_TRUE(rows.has_value()) << rows.error().message();
     ASSERT_EQ(rows->size(), 1U);
     EXPECT_EQ(rows->begin()->name, "Alice");
@@ -132,19 +148,18 @@ TYPED_TEST(M2MBaseTest, PlainCrudIgnoresM2MField) {
 // name persisted columns, and the PK must bind into the last placeholder —
 // verified by round-tripping through a re-select.
 TYPED_TEST(M2MBaseTest, SingleRowUpdateIgnoresM2MField) {
-    QuerySet<Student, TypeParam> qs;
     Student const s{.name = "Alice", .age = 20};
-    auto ins = qs.insert(s).execute();
+    auto ins = (InsertStatement<Student, TypeParam>{}).query(s).execute();
     ASSERT_TRUE(ins.has_value()) << ins.error().message();
 
     Student const updated{.id = static_cast<int>(ins.value()),
                           .name = "Alice Updated",
                           .age = 21,
                           .courses{{.id = 99, .title = "ghost"}}};
-    auto upd = qs.update(updated).execute();
+    auto upd = (UpdateStatement<Student, TypeParam>{}).query(updated).execute();
     ASSERT_TRUE(upd.has_value()) << upd.error().message();
 
-    auto rows = qs.select().execute();
+    auto rows = (SelectStatement<Student, TypeParam>{}).all().execute();
     ASSERT_TRUE(rows.has_value()) << rows.error().message();
     ASSERT_EQ(rows->size(), 1U);
     EXPECT_EQ(rows->begin()->id, static_cast<int>(ins.value()));
@@ -154,18 +169,18 @@ TYPED_TEST(M2MBaseTest, SingleRowUpdateIgnoresM2MField) {
 
 // Bulk UPDATE goes through the same pre-computed SQL (#485).
 TYPED_TEST(M2MBaseTest, BulkUpdateIgnoresM2MField) {
-    QuerySet<Student, TypeParam> qs;
     std::vector<Student> const students = {{.name = "Alice", .age = 20}, {.name = "Bob", .age = 22}};
-    ASSERT_TRUE(qs.insert(std::span<const Student>(students)).execute().has_value());
+    ASSERT_TRUE(
+        (InsertStatement<Student, TypeParam>{}).query(std::span<const Student>(students)).execute().has_value());
 
     std::vector<Student> const updated = {
         {.id = 1, .name = "Alice2", .age = 30, .courses{{.id = 99, .title = "ghost"}}},
         {.id = 2, .name = "Bob2", .age = 32},
     };
-    auto upd = qs.update(std::span<const Student>(updated)).execute();
+    auto upd = (UpdateStatement<Student, TypeParam>{}).query(std::span<const Student>(updated)).execute();
     ASSERT_TRUE(upd.has_value()) << upd.error().message();
 
-    auto rows = qs.template order_by<fields::Student.id>().select().execute();
+    auto rows = (SelectStatement<Student, TypeParam>{}).all().template order_by<fields::Student.id>().execute();
     ASSERT_TRUE(rows.has_value()) << rows.error().message();
     ASSERT_EQ(rows->size(), 2U);
     auto it = rows->begin();
@@ -177,19 +192,17 @@ TYPED_TEST(M2MBaseTest, BulkUpdateIgnoresM2MField) {
 }
 
 // A through-model m2m field must NOT produce an auto junction table.
-static_assert(!storm::orm::schema::SchemaStatement<Pupil>::has_m2m_junction_);
-static_assert(storm::orm::schema::SchemaStatement<Student>::has_m2m_junction_);
+static_assert(!SchemaStatement<Pupil>::has_m2m_junction_);
+static_assert(SchemaStatement<Student>::has_m2m_junction_);
 
 TYPED_TEST(M2MBaseTest, JunctionTableIsCreatedAndWritable) {
-    auto conn = QuerySet<Student, TypeParam>::get_default_connection();
+    auto conn = DefaultConnection<TypeParam>::get();
 
     // Seed the referenced rows — the junction FKs (#412) require a real Student and
     // Course before a link row may be inserted.
-    QuerySet<Student, TypeParam> student_qs;
-    QuerySet<Course, TypeParam> course_qs;
-    auto student_id = student_qs.insert(Student{.name = "S", .age = 20}).execute();
+    auto student_id = (InsertStatement<Student, TypeParam>{}).query(Student{.name = "S", .age = 20}).execute();
     ASSERT_TRUE(student_id.has_value()) << student_id.error().message();
-    auto course_id = course_qs.insert(Course{.title = "C"}).execute();
+    auto course_id = (InsertStatement<Course, TypeParam>{}).query(Course{.title = "C"}).execute();
     ASSERT_TRUE(course_id.has_value()) << course_id.error().message();
 
     const std::string pair = std::format("INSERT INTO Student_Course (Student_id, Course_id) VALUES ({}, {})",
@@ -215,8 +228,7 @@ TYPED_TEST(M2MBaseTest, JunctionTableIsCreatedAndWritable) {
 // ============================================================================
 
 TYPED_TEST(M2MBaseTest, M2MJoinSqlShape) {
-    QuerySet<Student, TypeParam> qs;
-    auto sql = qs.template join<fields::Student.courses>().select().sql();
+    auto sql = (SelectStatement<Student, TypeParam>{}).all().template join<fields::Student.courses>().sql();
     // Q1 — base entities, a plain SELECT (no join, no sorter).
     EXPECT_TRUE(sql.contains("SELECT id, name, age FROM Student; ")) << sql;
     // Q2 — junction⋈related, related rows filtered by the same base subquery.
@@ -228,12 +240,12 @@ TYPED_TEST(M2MBaseTest, M2MJoinSqlShape) {
 }
 
 TYPED_TEST(M2MBaseTest, M2MJoinSqlModifiersGoInsideSubquery) {
-    QuerySet<Student, TypeParam> qs;
-    auto sql = qs.template join<fields::Student.courses>()
+    auto sql = (SelectStatement<Student, TypeParam>{})
+                   .all()
+                   .template join<fields::Student.courses>()
                    .where(fields::Student.age > 18)
                    .template order_by<fields::Student.name, false>()
                    .limit(2)
-                   .select()
                    .sql();
     // WHERE / ORDER BY / LIMIT select WHICH base entities load — they appear in
     // Q1 directly AND inside Q2's IN-subquery so both pick the same entities.
@@ -252,10 +264,10 @@ TYPED_TEST(M2MBaseTest, M2MJoinSqlModifiersGoInsideSubquery) {
 }
 
 TYPED_TEST(M2MBaseTest, M2MJoinSqlMultiFieldOrderByQualifiesAllFields) {
-    QuerySet<Student, TypeParam> qs;
-    auto sql = qs.template join<fields::Student.courses>()
+    auto sql = (SelectStatement<Student, TypeParam>{})
+                   .all()
+                   .template join<fields::Student.courses>()
                    .template order_by<fields::Student.age, fields::Student.name>()
-                   .select()
                    .sql();
     // Multi-field ORDER BY appears (unqualified — no t1. surgery) in Q1 and the
     // Q2 IN-subquery; no pk tiebreak (the stitch is a hash map, not adjacency).
@@ -268,8 +280,7 @@ TYPED_TEST(M2MBaseTest, M2MJoinSqlMultiFieldOrderByQualifiesAllFields) {
 }
 
 TYPED_TEST(M2MBaseTest, M2MLeftJoinSqlShape) {
-    QuerySet<Student, TypeParam> qs;
-    auto sql = qs.template left_join<fields::Student.courses>().select().sql();
+    auto sql = (SelectStatement<Student, TypeParam>{}).all().template left_join<fields::Student.courses>().sql();
     // Q2 is always an INNER junction⋈related join — LEFT vs INNER is a post-stitch
     // filter (LEFT keeps zero-relation entities), never an SQL difference.
     EXPECT_TRUE(sql.contains("SELECT id, name, age FROM Student; ")) << sql;
@@ -301,8 +312,7 @@ template <typename Hive> auto find_student(Hive &rows, std::string_view name) ->
 }
 
 TYPED_TEST(M2MSeededTest, EagerLoadAggregatesCourses) {
-    QuerySet<Student, TypeParam> qs;
-    auto rows = qs.template join<fields::Student.courses>().select().execute();
+    auto rows = (SelectStatement<Student, TypeParam>{}).all().template join<fields::Student.courses>().execute();
     ASSERT_TRUE(rows.has_value()) << rows.error().message();
     // INNER join drops Carol (no courses); 3 joined rows aggregate into 2 students
     ASSERT_EQ(rows->size(), 2U);
@@ -324,7 +334,7 @@ TYPED_TEST(M2MSeededTest, EagerLoadAggregatesCourses) {
 // Alice (id 1) owns two Student_Course links (Math, Physics); deleting her must
 // leave no orphaned junction rows for Student_id = 1 (ON DELETE CASCADE).
 TYPED_TEST(M2MSeededTest, DeletingOwnerCascadesJunctionRows) {
-    auto conn = QuerySet<Student, TypeParam>::get_default_connection();
+    auto conn = DefaultConnection<TypeParam>::get();
 
     auto before = conn->prepare("SELECT COUNT(*) FROM Student_Course WHERE Student_id = 1");
     ASSERT_TRUE(before.has_value());
@@ -332,8 +342,7 @@ TYPED_TEST(M2MSeededTest, DeletingOwnerCascadesJunctionRows) {
     ASSERT_EQ(before_stmt.step_raw(), decltype(before_stmt)::ROW_AVAILABLE);
     ASSERT_EQ(before_stmt.extract_int64(0), 2) << "Alice should start with two junction rows";
 
-    QuerySet<Student, TypeParam> sqs;
-    auto del = sqs.where(fields::Student.id == 1).erase().execute();
+    auto del = (EraseStatement<Student, TypeParam>{}).query_where(fields::Student.id == 1).execute();
     ASSERT_TRUE(del.has_value()) << "Deleting Alice failed: " << del.error().message();
 
     auto after = conn->prepare("SELECT COUNT(*) FROM Student_Course WHERE Student_id = 1");
@@ -347,11 +356,10 @@ TYPED_TEST(M2MSeededTest, DeletingOwnerCascadesJunctionRows) {
 // snapshot consistency. Inside an outer storm::begin() scope it must not fail on
 // a nested BEGIN; the prefetch goes passive and the outer guard owns the commit.
 TYPED_TEST(M2MSeededTest, EagerLoadInsideOuterTransactionSucceeds) {
-    QuerySet<Student, TypeParam> qs;
-    auto txn = storm::begin(QuerySet<Student, TypeParam>::get_default_connection());
+    auto txn = storm::begin(DefaultConnection<TypeParam>::get());
     ASSERT_TRUE(txn.has_value()) << "storm::begin should start a transaction";
 
-    auto rows = qs.template join<fields::Student.courses>().select().execute();
+    auto rows = (SelectStatement<Student, TypeParam>{}).all().template join<fields::Student.courses>().execute();
     ASSERT_TRUE(rows.has_value()) << "m2m prefetch inside outer txn must not fail on nested BEGIN: "
                                   << (rows ? "" : rows.error().message());
     ASSERT_EQ(rows->size(), 2U);
@@ -360,8 +368,7 @@ TYPED_TEST(M2MSeededTest, EagerLoadInsideOuterTransactionSucceeds) {
 }
 
 TYPED_TEST(M2MSeededTest, LeftJoinKeepsStudentsWithoutCourses) {
-    QuerySet<Student, TypeParam> qs;
-    auto rows = qs.template left_join<fields::Student.courses>().select().execute();
+    auto rows = (SelectStatement<Student, TypeParam>{}).all().template left_join<fields::Student.courses>().execute();
     ASSERT_TRUE(rows.has_value()) << rows.error().message();
     ASSERT_EQ(rows->size(), 3U);
 
@@ -374,16 +381,19 @@ TYPED_TEST(M2MSeededTest, LeftJoinKeepsStudentsWithoutCourses) {
 }
 
 TYPED_TEST(M2MSeededTest, EmptyResultSet) {
-    QuerySet<Student, TypeParam> qs;
-    auto rows = qs.template join<fields::Student.courses>().where(fields::Student.age > 99).select().execute();
+    auto rows = (SelectStatement<Student, TypeParam>{})
+                    .all()
+                    .template join<fields::Student.courses>()
+                    .where(fields::Student.age > 99)
+                    .execute();
     ASSERT_TRUE(rows.has_value()) << rows.error().message();
     EXPECT_TRUE(rows->empty());
 }
 
 // Aggregates over an m2m join count (student, course) PAIRS — documented behavior.
 TYPED_TEST(M2MSeededTest, CountOverM2MJoinCountsPairs) {
-    QuerySet<Student, TypeParam> qs;
-    auto count = qs.template join<fields::Student.courses>().count().execute();
+    auto count =
+        (SelectStatement<Student, TypeParam>{}).all().template join<fields::Student.courses>().count().execute();
     ASSERT_TRUE(count.has_value()) << count.error().message();
     EXPECT_EQ(count.value(), 3);
 }
@@ -395,13 +405,10 @@ TYPED_TEST(M2MSeededTest, CountOverM2MJoinCountsPairs) {
 template <typename ConnType> class M2MContainerTest : public StormTestFixture<Playlist, ConnType, Track, Album> {
   public:
     auto on_after_setup(const std::shared_ptr<ConnType> &conn) -> void override {
-        QuerySet<Playlist, ConnType> pqs;
-        ASSERT_TRUE(pqs.insert(Playlist{.name = "Road trip"}).execute().has_value());
-        QuerySet<Album, ConnType> aqs;
-        ASSERT_TRUE(aqs.insert(Album{.name = "Greatest hits"}).execute().has_value());
-        QuerySet<Track, ConnType> tqs;
+        ASSERT_TRUE((InsertStatement<Playlist, ConnType>{}).query(Playlist{.name = "Road trip"}).execute().has_value());
+        ASSERT_TRUE((InsertStatement<Album, ConnType>{}).query(Album{.name = "Greatest hits"}).execute().has_value());
         std::vector<Track> const tracks = {{.title = "Intro"}, {.title = "Outro"}};
-        ASSERT_TRUE(tqs.insert(std::span<const Track>(tracks)).execute().has_value());
+        ASSERT_TRUE((InsertStatement<Track, ConnType>{}).query(std::span<const Track>(tracks)).execute().has_value());
         for (const auto *sql : {"INSERT INTO Playlist_Track (Playlist_id, Track_id) VALUES (1, 1)",
                                 "INSERT INTO Playlist_Track (Playlist_id, Track_id) VALUES (1, 2)",
                                 "INSERT INTO Album_Track (Album_id, Track_id) VALUES (1, 2)"}) {
@@ -413,8 +420,7 @@ template <typename ConnType> class M2MContainerTest : public StormTestFixture<Pl
 TYPED_TEST_SUITE(M2MContainerTest, STORM_SPLIT_TYPES, STORM_SPLIT_TYPE_NAMES);
 
 TYPED_TEST(M2MContainerTest, HiveContainerEagerLoad) {
-    QuerySet<Playlist, TypeParam> qs;
-    auto rows = qs.template join<fields::Playlist.tracks>().select().execute();
+    auto rows = (SelectStatement<Playlist, TypeParam>{}).all().template join<fields::Playlist.tracks>().execute();
     ASSERT_TRUE(rows.has_value()) << rows.error().message();
     ASSERT_EQ(rows->size(), 1U);
     ASSERT_EQ(rows->begin()->tracks.size(), 2U); // appended via hive insert()
@@ -423,8 +429,7 @@ TYPED_TEST(M2MContainerTest, HiveContainerEagerLoad) {
 }
 
 TYPED_TEST(M2MContainerTest, SharedPtrElementsEagerLoad) {
-    QuerySet<Album, TypeParam> qs;
-    auto rows = qs.template join<fields::Album.tracks>().select().execute();
+    auto rows = (SelectStatement<Album, TypeParam>{}).all().template join<fields::Album.tracks>().execute();
     ASSERT_TRUE(rows.has_value()) << rows.error().message();
     ASSERT_EQ(rows->size(), 1U);
     ASSERT_EQ(rows->begin()->tracks.size(), 1U);

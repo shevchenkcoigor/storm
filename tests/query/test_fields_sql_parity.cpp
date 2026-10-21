@@ -25,7 +25,7 @@ namespace {
     // per-backend rendering itself is already covered by test_sql_verify.cpp.
     //
     // A fixture is still required despite the tests being structural: .sql() reaches
-    // get_default_connection(), which asserts when no connection is set.
+    // DefaultConnection::get(), which asserts when no connection is set.
     class FieldsSqlParity : public StormTestFixture<Person, Conn, Message> {
       public:
         // NOTE on style: SonarCloud S1659 forbids multiple identifiers per declaration

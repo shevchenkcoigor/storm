@@ -6,17 +6,34 @@
 
 // NOLINTBEGIN(misc-const-correctness)
 
-import storm;
+import storm_db_default_connection;
+import storm_db_postgresql;
+import storm_db_sqlite;
+import storm_meta;
+import storm_orm_schema;
+import storm_orm_statements_insert;
+import storm_orm_statements_select;
+import storm_orm_transaction;
+import storm_orm_utilities;
 import std;
 
 #include "test_fixture.h" // NOSONAR cpp:S954
+using storm::field_specs_for;
+using storm::many_to_many;
+using storm::primary;
+using storm::UUID;
+using storm::db::DefaultConnection;
+using storm::orm::schema::SchemaStatement;
+using storm::orm::statements::InsertStatement;
+using storm::orm::statements::ReturnId;
+using storm::orm::statements::SelectStatement;
 
 // ============================================================================
 // m2m auto-junction column TYPE must derive from the referenced model's PK
 // type, not a hardcoded INTEGER/BIGINT (#565).
 //
 // The per-field FK path (append_fk_column_def) has always done this: an FK onto
-// a storm::UUID PK (#507) emits a UUID/TEXT column. The junction path did not —
+// a UUID PK (#507) emits a UUID/TEXT column. The junction path did not —
 // it typed every column INTEGER (SQLite) / BIGINT (PostgreSQL) unconditionally,
 // so an m2m between UUID-PK models produced a junction whose INTEGER/BIGINT
 // column carried a "REFERENCES <Model>(<uuid_pk>)" clause pointing at a
@@ -28,22 +45,20 @@ import std;
 // #519 fixed the junction's REFERENCES column NAME. That made the clause name
 // the right column — of the wrong type, which is what this closes.
 // ============================================================================
-
-using storm::QuerySet;
 using storm::orm::schema::Dialect;
 
 namespace {
 
     // ---- UUID PK on BOTH junction sides ------------------------------------
     struct UuidTag {
-        [[= storm::primary]] storm::UUID id{};
-        std::string                      label;
+        [[= primary]] UUID id{};
+        std::string        label;
     };
 
     struct UuidDoc {
-        [[= storm::primary]] storm::UUID                 id{};
-        std::string                                      title;
-        [[= storm::many_to_many<>]] std::vector<UuidTag> tags;
+        [[= primary]] UUID                        id{};
+        std::string                               title;
+        [[= many_to_many<>]] std::vector<UuidTag> tags;
     };
 
     // ---- Mixed: integer-PK owner, UUID-PK related --------------------------
@@ -51,26 +66,26 @@ namespace {
     // one shared decision — a single "does this junction involve a UUID" flag
     // would type both columns the same and break the integer side.
     struct UuidLabel {
-        [[= storm::primary]] storm::UUID id{};
-        std::string                      text;
+        [[= primary]] UUID id{};
+        std::string        text;
     };
 
     struct IntShelf {
-        [[= storm::primary]] int                           id{};
-        std::string                                        name;
-        [[= storm::many_to_many<>]] std::vector<UuidLabel> labels;
+        [[= primary]] int                           id{};
+        std::string                                 name;
+        [[= many_to_many<>]] std::vector<UuidLabel> labels;
     };
 
     // ---- Integer PKs on both sides — byte-identical regression guard -------
     struct IntTag {
-        [[= storm::primary]] int id{};
-        std::string              label;
+        [[= primary]] int id{};
+        std::string       label;
     };
 
     struct IntPost {
-        [[= storm::primary]] int                        id{};
-        std::string                                     title;
-        [[= storm::many_to_many<>]] std::vector<IntTag> tags;
+        [[= primary]] int                        id{};
+        std::string                              title;
+        [[= many_to_many<>]] std::vector<IntTag> tags;
     };
 
     // ---- Narrow-typed integer PK — the DB-generated single-column PK is PINNED
@@ -81,14 +96,14 @@ namespace {
     // ---- to SMALLINT/INTEGER — otherwise PG's FOREIGN KEY type check would
     // ---- reject the junction table outright (the #536/#565 asymmetry again).
     struct NarrowPkTag {
-        [[= storm::primary]] short id{};
-        std::string                label;
+        [[= primary]] short id{};
+        std::string         label;
     };
 
     struct NarrowPkPost {
-        [[= storm::primary]] int                             id{};
-        std::string                                          title;
-        [[= storm::many_to_many<>]] std::vector<NarrowPkTag> tags;
+        [[= primary]] int                             id{};
+        std::string                                   title;
+        [[= many_to_many<>]] std::vector<NarrowPkTag> tags;
     };
 
     // ---- UUID PK whose member is NOT named "id" ----------------------------
@@ -96,17 +111,17 @@ namespace {
     // the junction column is typed from the PK member and the REFERENCES clause
     // names it, so a UUID PK called "note_uuid" exercises the two together.
     struct UuidNote {
-        [[= storm::primary]] storm::UUID note_uuid{};
-        std::string                      body;
+        [[= primary]] UUID note_uuid{};
+        std::string        body;
     };
 
     struct UuidBinder {
-        [[= storm::primary]] storm::UUID                  binder_uuid{};
-        [[= storm::many_to_many<>]] std::vector<UuidNote> notes;
+        [[= primary]] UUID                         binder_uuid{};
+        [[= many_to_many<>]] std::vector<UuidNote> notes;
     };
 
-    template <typename Model, storm::orm::schema::Dialect D> auto junction_sql() -> const std::string& {
-        return storm::orm::schema::SchemaStatement<Model>::template junction_table_sql<D>();
+    template <typename Model, Dialect D> auto junction_sql() -> const std::string& {
+        return SchemaStatement<Model>::template junction_table_sql<D>();
     }
 
     constexpr std::string_view kDocUuid   = "11111111-1111-4111-8111-111111111111";
@@ -122,13 +137,13 @@ namespace fields {
 
     struct UuidDocT;
     consteval {
-        std::meta::define_aggregate(^^UuidDocT, storm::field_specs_for(^^UuidDoc));
+        std::meta::define_aggregate(^^UuidDocT, field_specs_for(^^UuidDoc));
     }
     inline constexpr UuidDocT UuidDoc{};
 
     struct IntShelfT;
     consteval {
-        std::meta::define_aggregate(^^IntShelfT, storm::field_specs_for(^^IntShelf));
+        std::meta::define_aggregate(^^IntShelfT, field_specs_for(^^IntShelf));
     }
     inline constexpr IntShelfT IntShelf{};
 
@@ -253,18 +268,18 @@ template <typename ConnType> class UuidM2MJunctionTest : public StormTestFixture
     // Returns false on a fatal failure so the caller can bail (ASSERT_* cannot
     // cross a helper's return).
     static auto seed_linked_pair(const std::shared_ptr<ConnType>& conn) -> bool {
-        QuerySet<UuidDoc, ConnType> doc_qs;
-        QuerySet<UuidTag, ConnType> tag_qs;
         // A UUID PK is never DB-generated — the caller supplies it (#507), so
         // there is no generated id to return. ReturnId::No is what plain insert()
         // resolves to on this shape since #572; spelled out so this fixture stays
         // scoped to the junction DDL rather than to that default.
         using storm::orm::statements::ReturnId;
-        auto doc =
-                doc_qs.template insert<ReturnId::No>(UuidDoc{.id = storm::UUID{kDocUuid}, .title = "Spec"}).execute();
+        auto doc = (InsertStatement<UuidDoc, ConnType>{})
+                           .template query<ReturnId::No>(UuidDoc{.id = UUID{kDocUuid}, .title = "Spec"})
+                           .execute();
         EXPECT_TRUE(doc.has_value());
-        auto tag =
-                tag_qs.template insert<ReturnId::No>(UuidTag{.id = storm::UUID{kTagUuid}, .label = "draft"}).execute();
+        auto tag = (InsertStatement<UuidTag, ConnType>{})
+                           .template query<ReturnId::No>(UuidTag{.id = UUID{kTagUuid}, .label = "draft"})
+                           .execute();
         EXPECT_TRUE(tag.has_value());
         if (!doc.has_value() || !tag.has_value()) {
             return false;
@@ -284,7 +299,7 @@ TYPED_TEST_SUITE(UuidM2MJunctionTest, DatabaseTypes);
 // The whole point: with the pre-#565 hardcoded integer type, PostgreSQL refuses
 // to CREATE the junction at all, so the fixture's table setup fails outright.
 TYPED_TEST(UuidM2MJunctionTest, JunctionDdlIsExecutableAndEnforcesFks) {
-    auto conn = QuerySet<UuidDoc, TypeParam>::get_default_connection();
+    auto conn = DefaultConnection<TypeParam>::get();
     ASSERT_TRUE(TestFixture::seed_linked_pair(conn)) << "junction insert must succeed on executable DDL";
 
     // The FK really points at the UUID keys — a dangling pair is rejected.
@@ -304,12 +319,13 @@ TYPED_TEST(UuidM2MJunctionTest, JunctionDdlIsExecutableAndEnforcesFks) {
 // asserted on the SQL text: the column list and the bind sequence are produced by
 // two different functions, and only reading the row back proves they agree.
 TYPED_TEST(UuidM2MJunctionTest, CallerSuppliedUuidKeyIsPersisted) {
-    QuerySet<UuidDoc, TypeParam> qs;
     using storm::orm::statements::ReturnId;
-    auto ins = qs.template insert<ReturnId::No>(UuidDoc{.id = storm::UUID{kDocUuid}, .title = "Spec"}).execute();
+    auto ins = (InsertStatement<UuidDoc, TypeParam>{})
+                       .template query<ReturnId::No>(UuidDoc{.id = UUID{kDocUuid}, .title = "Spec"})
+                       .execute();
     ASSERT_TRUE(ins.has_value()) << ins.error().message();
 
-    auto rows = qs.select().execute();
+    auto rows = (SelectStatement<UuidDoc, TypeParam>{}).all().execute();
     ASSERT_TRUE(rows.has_value()) << rows.error().message();
     ASSERT_EQ(rows->size(), 1U);
     EXPECT_EQ(rows->begin()->id.value, std::string{kDocUuid});
@@ -319,9 +335,10 @@ TYPED_TEST(UuidM2MJunctionTest, CallerSuppliedUuidKeyIsPersisted) {
 // The counterpart guard: a UUID PK is never auto-generated, so an empty one is a
 // caller error rather than a request to invent a key (bind_uuid_pk, #507).
 TYPED_TEST(UuidM2MJunctionTest, EmptyUuidKeyIsRejected) {
-    QuerySet<UuidDoc, TypeParam> qs;
     using storm::orm::statements::ReturnId;
-    auto ins = qs.template insert<ReturnId::No>(UuidDoc{.id = storm::UUID{}, .title = "No key"}).execute();
+    auto ins = (InsertStatement<UuidDoc, TypeParam>{})
+                       .template query<ReturnId::No>(UuidDoc{.id = UUID{}, .title = "No key"})
+                       .execute();
     EXPECT_FALSE(ins.has_value()) << "an empty UUID primary key must be refused, not auto-generated";
 }
 
@@ -330,18 +347,18 @@ TYPED_TEST(UuidM2MJunctionTest, EmptyUuidKeyIsRejected) {
 // propagates back out through bind_optional_or_uuid_pk_field's error return — the arm
 // EmptyUuidKeyIsRejected returns too early to reach.
 TYPED_TEST(UuidM2MJunctionTest, MalformedUuidKeyIsRejected) {
-    QuerySet<UuidDoc, TypeParam> qs;
     using storm::orm::statements::ReturnId;
-    auto ins = qs.template insert<ReturnId::No>(UuidDoc{.id = storm::UUID{"not-a-uuid"}, .title = "Bad key"}).execute();
+    auto ins = (InsertStatement<UuidDoc, TypeParam>{})
+                       .template query<ReturnId::No>(UuidDoc{.id = UUID{"not-a-uuid"}, .title = "Bad key"})
+                       .execute();
     EXPECT_FALSE(ins.has_value()) << "a malformed UUID primary key must be refused";
 }
 
 TYPED_TEST(UuidM2MJunctionTest, EagerLoadThroughUuidJunction) {
-    auto conn = QuerySet<UuidDoc, TypeParam>::get_default_connection();
+    auto conn = DefaultConnection<TypeParam>::get();
     ASSERT_TRUE(TestFixture::seed_linked_pair(conn));
 
-    QuerySet<UuidDoc, TypeParam> doc_qs;
-    auto                         loaded = doc_qs.template join<fields::UuidDoc.tags>().select().execute();
+    auto loaded = (SelectStatement<UuidDoc, TypeParam>{}).all().template join<fields::UuidDoc.tags>().execute();
     ASSERT_TRUE(loaded.has_value()) << loaded.error().message();
     ASSERT_EQ(loaded->size(), 1U);
     ASSERT_EQ(loaded->begin()->tags.size(), 1U);
@@ -355,18 +372,17 @@ template <typename ConnType> class MixedPkM2MJunctionTest : public StormTestFixt
 TYPED_TEST_SUITE(MixedPkM2MJunctionTest, DatabaseTypes);
 
 TYPED_TEST(MixedPkM2MJunctionTest, MixedJunctionDdlIsExecutable) {
-    auto                           conn = QuerySet<IntShelf, TypeParam>::get_default_connection();
-    QuerySet<IntShelf, TypeParam>  shelf_qs;
-    QuerySet<UuidLabel, TypeParam> label_qs;
+    auto conn = DefaultConnection<TypeParam>::get();
 
     // The integer side keeps the plain insert (its RETURNING id is real, and used
     // below); the UUID side spells ReturnId::No like every other UUID insert here —
     // #572 will make that the default and change this call's return type.
     using storm::orm::statements::ReturnId;
-    auto shelf = shelf_qs.insert(IntShelf{.id = 0, .name = "Top"}).execute();
+    auto shelf = (InsertStatement<IntShelf, TypeParam>{}).query(IntShelf{.id = 0, .name = "Top"}).execute();
     ASSERT_TRUE(shelf.has_value());
-    auto label =
-            label_qs.template insert<ReturnId::No>(UuidLabel{.id = storm::UUID{kTagUuid}, .text = "urgent"}).execute();
+    auto label = (InsertStatement<UuidLabel, TypeParam>{})
+                         .template query<ReturnId::No>(UuidLabel{.id = UUID{kTagUuid}, .text = "urgent"})
+                         .execute();
     ASSERT_TRUE(label.has_value());
 
     auto ins = conn->execute(
@@ -378,8 +394,7 @@ TYPED_TEST(MixedPkM2MJunctionTest, MixedJunctionDdlIsExecutable) {
     );
     ASSERT_TRUE(ins.has_value()) << ins.error().message();
 
-    QuerySet<IntShelf, TypeParam> load_qs;
-    auto                          loaded = load_qs.template join<fields::IntShelf.labels>().select().execute();
+    auto loaded = (SelectStatement<IntShelf, TypeParam>{}).all().template join<fields::IntShelf.labels>().execute();
     ASSERT_TRUE(loaded.has_value()) << loaded.error().message();
     ASSERT_EQ(loaded->size(), 1U);
     ASSERT_EQ(loaded->begin()->labels.size(), 1U);

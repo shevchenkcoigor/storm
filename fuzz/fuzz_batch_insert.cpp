@@ -34,7 +34,7 @@ extern "C" int LLVMFuzzerTestOneInput(const uint8_t* data, size_t size) {
     }
 
     try {
-        (void)storm::QuerySet<FuzzModel>().insert(std::span<const FuzzModel>(batch)).execute();
+        (void)QuerySet<FuzzModel>().insert(std::span<const FuzzModel>(batch)).execute();
     } catch (...) { // NOSONAR cpp:S2486 — SQL errors expected; only ASAN/crash = bug
     }
     return 0;

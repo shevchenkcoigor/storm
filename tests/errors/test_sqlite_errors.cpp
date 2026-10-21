@@ -14,9 +14,11 @@
 // NOLINTBEGIN(bugprone-implicit-widening-of-multiplication-result) // NOSONAR
 
 import storm_db_sqlite;
+import storm_db_default_connection;
 import storm_orm_statements_insert;
 
 namespace fs = std::filesystem;
+using storm::db::DefaultConnection;
 using storm::db::sqlite::Connection;
 using storm::db::sqlite::Statement;
 
@@ -844,10 +846,14 @@ import storm;
 import std;
 
 #include "../../shared/models/person.h" // NOSONAR
+using storm::primary;
+using storm::QuerySet;
+using storm::orm::schema::SchemaStatement;
+using storm::orm::statements::InsertOptions;
 
 // Local struct — UNIQUE constraint tests only
 struct UniqueTestPerson {
-    [[= storm::primary]] int        id{};
+    [[= primary]] int               id{};
     [[= storm::unique]] std::string email;
     int                             value{};
 };
@@ -855,26 +861,24 @@ struct UniqueTestPerson {
 class ORMErrorTest : public ::testing::Test {
   protected:
     auto SetUp() -> void override {
-        auto result = storm::QuerySet<Person>::set_default_connection(":memory:");
+        auto result = DefaultConnection<>::set(":memory:");
         ASSERT_TRUE(result.has_value()) << "Failed to open database";
 
-        const auto& conn = storm::QuerySet<Person>::get_default_connection();
-
-        auto create_result = storm::orm::schema::SchemaStatement<Person>::create_table_if_not_exists(conn);
+        auto create_result = SchemaStatement<Person>::create_table_if_not_exists();
         ASSERT_TRUE(create_result.has_value()) << "Failed to create table";
 
-        // Create table with UNIQUE constraint via storm::unique on email field
-        auto create_unique = storm::orm::schema::SchemaStatement<UniqueTestPerson>::create_table_if_not_exists(conn);
+        // Create table with UNIQUE constraint via unique on email field
+        auto create_unique = SchemaStatement<UniqueTestPerson>::create_table_if_not_exists();
         ASSERT_TRUE(create_unique.has_value()) << "Failed to create UniqueTestPerson table";
     }
 
     auto TearDown() -> void override {
-        storm::QuerySet<Person>::clear_default_connection();
+        DefaultConnection<>::clear();
     }
 };
 
 TEST_F(ORMErrorTest, InsertUniqueConstraintViolation) {
-    storm::QuerySet<UniqueTestPerson> qs;
+    QuerySet<UniqueTestPerson> qs;
 
     // Insert first person
     UniqueTestPerson const person1{.id = 0, .email = "test@example.com", .value = 100};
@@ -892,7 +896,7 @@ TEST_F(ORMErrorTest, InsertUniqueConstraintViolation) {
 }
 
 TEST_F(ORMErrorTest, BatchInsertUniqueConstraintViolation) {
-    storm::QuerySet<UniqueTestPerson> qs;
+    QuerySet<UniqueTestPerson> qs;
 
     // Insert first person
     UniqueTestPerson const person1{.id = 0, .email = "first@example.com", .value = 100};
@@ -912,7 +916,7 @@ TEST_F(ORMErrorTest, BatchInsertUniqueConstraintViolation) {
 }
 
 TEST_F(ORMErrorTest, UpdateUniqueConstraintViolation) {
-    storm::QuerySet<UniqueTestPerson> qs;
+    QuerySet<UniqueTestPerson> qs;
 
     // Insert two unique persons
     UniqueTestPerson const person1{.id = 0, .email = "first@example.com", .value = 100};
@@ -930,7 +934,7 @@ TEST_F(ORMErrorTest, UpdateUniqueConstraintViolation) {
 }
 
 TEST_F(ORMErrorTest, SelectEmptyResult) {
-    storm::QuerySet<Person> qs;
+    QuerySet<Person> qs;
 
     // Select from empty table - should succeed with empty result
     auto result = qs.select().execute();
@@ -939,7 +943,7 @@ TEST_F(ORMErrorTest, SelectEmptyResult) {
 }
 
 TEST_F(ORMErrorTest, SelectWithWhereNoMatch) {
-    storm::QuerySet<Person> qs;
+    QuerySet<Person> qs;
 
     // Insert some data
     Person const person{.id = 0, .name = "Alice", .age = 30};
@@ -953,7 +957,7 @@ TEST_F(ORMErrorTest, SelectWithWhereNoMatch) {
 }
 
 TEST_F(ORMErrorTest, RemoveNonExistent) {
-    storm::QuerySet<Person> qs;
+    QuerySet<Person> qs;
 
     // Try to erase non-existent person
     Person const nonexistent{.id = 999, .name = "Ghost", .age = 0};
@@ -964,7 +968,7 @@ TEST_F(ORMErrorTest, RemoveNonExistent) {
 }
 
 TEST_F(ORMErrorTest, AggregateOnEmptyTable) {
-    storm::QuerySet<Person> qs;
+    QuerySet<Person> qs;
 
     // COUNT on empty table should return 0
     auto count_result = qs.count().execute();
@@ -983,7 +987,7 @@ TEST_F(ORMErrorTest, AggregateOnEmptyTable) {
 }
 
 TEST_F(ORMErrorTest, AggregateWithWhereNoMatch) {
-    storm::QuerySet<Person> qs;
+    QuerySet<Person> qs;
 
     // Insert data
     Person const person{.id = 0, .name = "Alice", .age = 30};
@@ -997,7 +1001,7 @@ TEST_F(ORMErrorTest, AggregateWithWhereNoMatch) {
 }
 
 TEST_F(ORMErrorTest, DistinctOnEmptyTable) {
-    storm::QuerySet<Person> qs;
+    QuerySet<Person> qs;
 
     // DISTINCT on empty table
     auto result = qs.distinct<fields::Person.name>().execute();
@@ -1006,7 +1010,7 @@ TEST_F(ORMErrorTest, DistinctOnEmptyTable) {
 }
 
 TEST_F(ORMErrorTest, GroupByOnEmptyTable) {
-    storm::QuerySet<Person> qs;
+    QuerySet<Person> qs;
 
     // GROUP BY on empty table
     auto result = qs.group_by<fields::Person.age>().count().execute();
@@ -1015,7 +1019,7 @@ TEST_F(ORMErrorTest, GroupByOnEmptyTable) {
 }
 
 TEST_F(ORMErrorTest, BatchUpdateWithConstraintViolation) {
-    storm::QuerySet<UniqueTestPerson> qs;
+    QuerySet<UniqueTestPerson> qs;
 
     // Insert multiple persons with unique emails
     std::vector<UniqueTestPerson> initial =
@@ -1049,7 +1053,7 @@ TEST_F(ORMErrorTest, BatchUpdateWithConstraintViolation) {
 }
 
 TEST_F(ORMErrorTest, BatchRemoveFromEmptyTable) {
-    storm::QuerySet<Person> qs;
+    QuerySet<Person> qs;
 
     // Try to batch erase from empty table
     std::vector<Person> to_remove = {{1, "Ghost1", 25}, {2, "Ghost2", 30}, {3, "Ghost3", 35}};
@@ -1060,7 +1064,7 @@ TEST_F(ORMErrorTest, BatchRemoveFromEmptyTable) {
 }
 
 TEST_F(ORMErrorTest, LargeBatchInsertThenRemove) {
-    storm::QuerySet<Person> qs;
+    QuerySet<Person> qs;
 
     // Insert a larger batch to test chunking logic
     std::vector<Person> batch;
@@ -1099,7 +1103,7 @@ TEST_F(ORMErrorTest, LargeBatchInsertThenRemove) {
 }
 
 TEST_F(ORMErrorTest, InsertThenSelectWithOrderBy) {
-    storm::QuerySet<Person> qs;
+    QuerySet<Person> qs;
 
     // Insert in random order
     std::vector<Person> batch =
@@ -1128,7 +1132,7 @@ TEST_F(ORMErrorTest, InsertThenSelectWithOrderBy) {
 }
 
 TEST_F(ORMErrorTest, SelectWithLimitOffset) {
-    storm::QuerySet<Person> qs;
+    QuerySet<Person> qs;
 
     // Insert 10 persons
     for (int i = 1; i <= 10; ++i) {
@@ -1152,7 +1156,7 @@ TEST_F(ORMErrorTest, SelectWithLimitOffset) {
 }
 
 TEST_F(ORMErrorTest, ChunkedInsertRollsBackOnConstraintViolation) {
-    storm::QuerySet<UniqueTestPerson> qs;
+    QuerySet<UniqueTestPerson> qs;
 
     // Seed one existing row so the second chunk will hit a unique constraint
     UniqueTestPerson const seed{.id = 0, .email = "duplicate@example.com", .value = 0};
@@ -1165,9 +1169,7 @@ TEST_F(ORMErrorTest, ChunkedInsertRollsBackOnConstraintViolation) {
             {0, "duplicate@example.com", 200}, // conflicts with seeded row
     };
 
-    auto result =
-            qs.insert(std::span<const UniqueTestPerson>(batch), storm::orm::statements::InsertOptions{.batch_size = 1})
-                    .execute();
+    auto result = qs.insert(std::span<const UniqueTestPerson>(batch), InsertOptions{.batch_size = 1}).execute();
 
     ASSERT_FALSE(result.has_value()) << "Chunked insert with constraint violation should fail";
     EXPECT_TRUE((result.error().code() & 0xFF) == SQLITE_CONSTRAINT);

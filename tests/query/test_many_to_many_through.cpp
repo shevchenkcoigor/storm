@@ -4,13 +4,21 @@
 
 // NOLINTBEGIN(misc-const-correctness)
 
-import storm;
+import storm_db_default_connection;
+import storm_db_postgresql;
+import storm_db_sqlite;
+import storm_meta;
+import storm_orm_schema;
+import storm_orm_statements_insert;
+import storm_orm_statements_select;
+import storm_orm_statements_update;
 import std;
-
-using storm::QuerySet;
 
 #include "test_fixture.h"    // NOSONAR cpp:S954
 #include "test_m2m_models.h" // NOSONAR cpp:S954
+using storm::orm::statements::InsertStatement;
+using storm::orm::statements::SelectStatement;
+using storm::orm::statements::UpdateStatement;
 
 // ============================================================================
 // Phase 2 (#203): explicit junction model — many_to_many_through<Enrollment>
@@ -20,30 +28,31 @@ using storm::QuerySet;
 template <typename ConnType> class M2MThroughTest : public StormTestFixture<Pupil, ConnType, Course, Enrollment> {
   public:
     auto on_after_setup(const std::shared_ptr<ConnType>& /*conn*/) -> void override {
-        QuerySet<Pupil, ConnType> pqs;
-        std::vector<Pupil> const  pupils = {{.name = "Dora", .age = 11}, {.name = "Eli", .age = 12}};
-        ASSERT_TRUE(pqs.insert(std::span<const Pupil>(pupils)).execute().has_value());
+        std::vector<Pupil> const pupils = {{.name = "Dora", .age = 11}, {.name = "Eli", .age = 12}};
+        ASSERT_TRUE((InsertStatement<Pupil, ConnType>{}).query(std::span<const Pupil>(pupils)).execute().has_value());
 
-        QuerySet<Course, ConnType> cqs;
-        std::vector<Course> const  courses = {{.title = "Math"}, {.title = "Art"}};
-        ASSERT_TRUE(cqs.insert(std::span<const Course>(courses)).execute().has_value());
+        std::vector<Course> const courses = {{.title = "Math"}, {.title = "Art"}};
+        ASSERT_TRUE(
+                (InsertStatement<Course, ConnType>{}).query(std::span<const Course>(courses)).execute().has_value()
+        );
 
         // Junction rows are plain Enrollment inserts — the through model is a model.
-        QuerySet<Enrollment, ConnType> eqs;
-        std::vector<Enrollment> const  enrollments = {
+        std::vector<Enrollment> const enrollments = {
                 {.pupil = {.id = 1}, .course = {.id = 1}, .grade = "A"},
                 {.pupil = {.id = 1}, .course = {.id = 2}, .grade = "B"},
                 {.pupil = {.id = 2}, .course = {.id = 1}, .grade = "C"},
         };
-        ASSERT_TRUE(eqs.insert(std::span<const Enrollment>(enrollments)).execute().has_value());
+        ASSERT_TRUE((InsertStatement<Enrollment, ConnType>{})
+                            .query(std::span<const Enrollment>(enrollments))
+                            .execute()
+                            .has_value());
     }
 };
 
 TYPED_TEST_SUITE(M2MThroughTest, DatabaseTypes);
 
 TYPED_TEST(M2MThroughTest, ThroughSqlUsesJunctionModel) {
-    QuerySet<Pupil, TypeParam> qs;
-    auto                       sql = qs.template join<fields::Pupil.courses>().select().sql();
+    auto sql = (SelectStatement<Pupil, TypeParam>{}).all().template join<fields::Pupil.courses>().sql();
     // Two-query shape (#391): junction = the through model's table; FK columns
     // come from its field names. Q1 selects the base pupils; Q2 the junction⋈course.
     EXPECT_TRUE(sql.contains("SELECT id, name, age FROM Pupil; ")) << sql;
@@ -54,12 +63,11 @@ TYPED_TEST(M2MThroughTest, ThroughSqlUsesJunctionModel) {
 // Single-row and bulk UPDATE on a through-model owner must skip the m2m
 // container (#485); round-trip re-select verifies values and PK bind order.
 TYPED_TEST(M2MThroughTest, SingleRowUpdateIgnoresThroughField) {
-    QuerySet<Pupil, TypeParam> qs;
     Pupil const updated{.id = 1, .name = "Dora Updated", .age = 13, .courses{{.id = 99, .title = "ghost"}}};
-    auto        upd = qs.update(updated).execute();
+    auto        upd = (UpdateStatement<Pupil, TypeParam>{}).query(updated).execute();
     ASSERT_TRUE(upd.has_value()) << upd.error().message();
 
-    auto rows = qs.where(fields::Pupil.id == 1).select().execute();
+    auto rows = (SelectStatement<Pupil, TypeParam>{}).where(fields::Pupil.id == 1).execute();
     ASSERT_TRUE(rows.has_value()) << rows.error().message();
     ASSERT_EQ(rows->size(), 1U);
     EXPECT_EQ(rows->begin()->name, "Dora Updated");
@@ -67,15 +75,14 @@ TYPED_TEST(M2MThroughTest, SingleRowUpdateIgnoresThroughField) {
 }
 
 TYPED_TEST(M2MThroughTest, BulkUpdateIgnoresThroughField) {
-    QuerySet<Pupil, TypeParam> qs;
-    std::vector<Pupil> const   updated = {
+    std::vector<Pupil> const updated = {
             {.id = 1, .name = "Dora2", .age = 14, .courses{{.id = 99, .title = "ghost"}}},
             {.id = 2, .name = "Eli2", .age = 15},
     };
-    auto upd = qs.update(std::span<const Pupil>(updated)).execute();
+    auto upd = (UpdateStatement<Pupil, TypeParam>{}).query(std::span<const Pupil>(updated)).execute();
     ASSERT_TRUE(upd.has_value()) << upd.error().message();
 
-    auto rows = qs.template order_by<fields::Pupil.id>().select().execute();
+    auto rows = (SelectStatement<Pupil, TypeParam>{}).all().template order_by<fields::Pupil.id>().execute();
     ASSERT_TRUE(rows.has_value()) << rows.error().message();
     ASSERT_EQ(rows->size(), 2U);
     auto it = rows->begin();
@@ -87,8 +94,7 @@ TYPED_TEST(M2MThroughTest, BulkUpdateIgnoresThroughField) {
 }
 
 TYPED_TEST(M2MThroughTest, ThroughEagerLoadIgnoresMetadata) {
-    QuerySet<Pupil, TypeParam> qs;
-    auto                       rows = qs.template join<fields::Pupil.courses>().select().execute();
+    auto rows = (SelectStatement<Pupil, TypeParam>{}).all().template join<fields::Pupil.courses>().execute();
     ASSERT_TRUE(rows.has_value()) << rows.error().message();
     ASSERT_EQ(rows->size(), 2U);
 
@@ -106,12 +112,12 @@ TYPED_TEST(M2MThroughTest, ThroughEagerLoadIgnoresMetadata) {
 }
 
 TYPED_TEST(M2MThroughTest, ThroughWithWhereOrderAndLimit) {
-    QuerySet<Pupil, TypeParam> qs;
-    auto                       rows = qs.template join<fields::Pupil.courses>()
+    auto rows = (SelectStatement<Pupil, TypeParam>{})
+                        .all()
+                        .template join<fields::Pupil.courses>()
                         .where(fields::Pupil.age >= 11)
                         .template order_by<fields::Pupil.name, false>()
                         .limit(1)
-                        .select()
                         .execute();
     ASSERT_TRUE(rows.has_value()) << rows.error().message();
     ASSERT_EQ(rows->size(), 1U);
@@ -121,10 +127,10 @@ TYPED_TEST(M2MThroughTest, ThroughWithWhereOrderAndLimit) {
 
 // Metadata access: query the junction model directly with the existing FK join API.
 TYPED_TEST(M2MThroughTest, JunctionModelQueriedDirectlyForMetadata) {
-    QuerySet<Enrollment, TypeParam> qs;
-    auto                            rows = qs.template join<fields::Enrollment.pupil, fields::Enrollment.course>()
+    auto rows = (SelectStatement<Enrollment, TypeParam>{})
+                        .all()
+                        .template join<fields::Enrollment.pupil, fields::Enrollment.course>()
                         .where(fields::Enrollment.grade == "B")
-                        .select()
                         .execute();
     ASSERT_TRUE(rows.has_value()) << rows.error().message();
     ASSERT_EQ(rows->size(), 1U);

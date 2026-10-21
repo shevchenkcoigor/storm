@@ -16,6 +16,8 @@ import storm_orm_fields; // selector_info — #518 proxy selectors
 import storm_orm_utilities;
 import storm_orm_transaction;
 import storm_db_concept;
+import storm_db_default_connection;
+import storm_db_sqlite;
 
 export namespace storm::orm::statements {
 
@@ -142,7 +144,8 @@ export namespace storm::orm::statements {
     } // namespace detail
 
     // Statement class for ORM insert operations
-    template <typename T, storm::db::DatabaseConnection ConnType> class InsertStatement : private BaseStatement<T> {
+    template <typename T, storm::db::DatabaseConnection ConnType = storm::db::sqlite::Connection>
+    class InsertStatement : private BaseStatement<T> {
         friend class BaseStatement<T>; // Allow BaseStatement to access protected/private members
         using Base       = BaseStatement<T>;
         using Grammar    = UpsertGrammar<T>;
@@ -335,6 +338,8 @@ export namespace storm::orm::statements {
         }
 
       public:
+        InsertStatement() : conn_(storm::db::DefaultConnection<ConnType>::get()) {}
+
         explicit InsertStatement(std::shared_ptr<ConnType> conn) : conn_(std::move(conn)) {}
 
         // Single-row insert proxy. R selects RETURNING (execute() yields the generated id)

@@ -1,5 +1,8 @@
 #pragma once
 
+using storm::QuerySet;
+using storm::orm::statements::ReturnId;
+
 // DB writer (DashboardDB) + baseline resolution helpers for
 // storm_bench_dashboard (Issue #247).
 //
@@ -93,7 +96,7 @@ namespace {
     template <auto Flag>
     auto newest_flagged_run(std::string_view current_branch, std::string_view current_host) -> ResolvedBaseline {
         return newest_run(
-                storm::QuerySet<bench_dashboard::BenchRun>()
+                QuerySet<bench_dashboard::BenchRun>()
                         .where(Flag == true)
                         .where(bench_dashboard::fields::BenchRun.branch == std::string{current_branch})
                         .where(bench_dashboard::fields::BenchRun.hostname == std::string{current_host})
@@ -103,7 +106,7 @@ namespace {
     // Newest run with the given id.
     auto run_by_id(std::int64_t id) -> ResolvedBaseline {
         return newest_run(
-                storm::QuerySet<bench_dashboard::BenchRun>().where(
+                QuerySet<bench_dashboard::BenchRun>().where(
                         bench_dashboard::fields::BenchRun.id == static_cast<int>(id)
                 )
         );
@@ -121,7 +124,7 @@ namespace {
 
         if (const auto* b = std::get_if<BaselineBranch>(&sel))
             return newest_run(
-                    storm::QuerySet<bench_dashboard::BenchRun>()
+                    QuerySet<bench_dashboard::BenchRun>()
                             .where(bench_dashboard::fields::BenchRun.is_full_run == true)
                             .where(bench_dashboard::fields::BenchRun.branch == b->name)
             );
@@ -140,7 +143,7 @@ namespace {
     auto lookup_baseline_ns(std::int64_t baseline_run_id, std::string const& test_name, std::int64_t dataset_size)
             -> std::optional<double> {
         auto rows = fetch_first_result_row(
-                storm::QuerySet<bench_dashboard::BenchResult>()
+                QuerySet<bench_dashboard::BenchResult>()
                         .where(bench_dashboard::fields::BenchResult.run_id == static_cast<int>(baseline_run_id))
                         .where(bench_dashboard::fields::BenchResult.test_name == test_name)
                         .where(bench_dashboard::fields::BenchResult.dataset_size == static_cast<int>(dataset_size))
@@ -165,7 +168,7 @@ namespace {
     auto lookup_baseline_complexity(std::int64_t baseline_run_id, std::string const& test_name)
             -> std::optional<BaselineComplexity> {
         auto rows = fetch_first_result_row(
-                storm::QuerySet<bench_dashboard::BenchResult>()
+                QuerySet<bench_dashboard::BenchResult>()
                         .where(bench_dashboard::fields::BenchResult.run_id == static_cast<int>(baseline_run_id))
                         .where(bench_dashboard::fields::BenchResult.test_name == test_name)
                         .where(bench_dashboard::fields::BenchResult.row_kind ==
@@ -232,7 +235,7 @@ namespace {
             row.is_full_run = is_full_run;
             row.is_raw      = is_raw;
 
-            auto rc = storm::QuerySet<bench_dashboard::BenchRun>().insert(row).execute();
+            auto rc = QuerySet<bench_dashboard::BenchRun>().insert(row).execute();
             if (!rc)
                 return std::unexpected(std::string{rc.error().message()});
             return *rc;
@@ -254,8 +257,8 @@ namespace {
             row.complexity_coef  = m.complexity_coef;
             row.rms_pct          = m.rms_pct;
 
-            storm::QuerySet<bench_dashboard::BenchResult> qs;
-            auto rc = qs.template insert<storm::orm::statements::ReturnId::No>(row).execute();
+            QuerySet<bench_dashboard::BenchResult> qs;
+            auto                                   rc = qs.template insert<ReturnId::No>(row).execute();
             if (!rc)
                 return std::unexpected(std::string{rc.error().message()});
             return {};

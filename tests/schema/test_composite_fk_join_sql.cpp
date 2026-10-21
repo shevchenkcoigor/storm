@@ -4,8 +4,16 @@
 
 #include "test_db_helpers.h"
 
-import storm;
+import storm_db_default_connection;
+import storm_db_postgresql;
+import storm_db_sqlite;
+import storm_meta;
+import storm_orm_indexes;
+import storm_orm_schema;
+import storm_orm_statements_insert;
 import std;
+import storm_orm_statements_base;
+import storm_orm_utilities;
 
 #include "../../shared/models/message.h" // NOSONAR cpp:S954 — Message/Person
 #include "../../shared/models/person.h"
@@ -14,6 +22,7 @@ import std;
 // across the #501/#502 tests; nothing here needs Person as an FK part.
 #include "crud/test_composite_pk_models.h" // NOSONAR cpp:S954
 #include "query/test_m2m_models.h"         // NOSONAR cpp:S954 — Student/Course (single-PK junction baseline)
+using storm::orm::statements::BaseStatement;
 
 // ── #504 (Task 2): widen find_fk_primary_key to find_fk_primary_key_members ──
 // Step 1 of the composite-FK-join plan. Adds an ADDITIVE, composite-aware
@@ -136,7 +145,7 @@ TEST(FkColumnNamesTest, CompositeTargetEmitsOneColumnPerPart) {
     // the test asserting the TARGET side (order_id/product_id) is correctly spelled
     // to prove the per-part loop is right; Task 4 covers the member-identifier prefix
     // end to end against a real composite-FK-holding model.
-    constexpr auto target_pk = storm::orm::statements::BaseStatement<OrderLine>::primary_key_members_;
+    constexpr auto target_pk = BaseStatement<OrderLine>::primary_key_members_;
     constexpr auto size      = storm::meta::fk_column_names_size(target_pk[0], target_pk, ", ");
     constexpr auto result    = []() consteval {
         storm::orm::utilities::ConstexprString<size + 1> buf;

@@ -34,6 +34,9 @@
 #include "../shared/models/simple_record.h"
 #include "test_fixture.h"
 #include "test_seed_helpers.h"
+using storm::db::DefaultConnection;
+using storm::orm::statements::EraseStatement;
+using storm::orm::statements::SelectStatement;
 
 namespace storm::test {
 
@@ -53,23 +56,20 @@ class UnifiedYamlBody : public UnifiedYamlFixture<Tag, ConnType> {
 
     auto reset_tables() -> void {
         std::shared_ptr<ConnType> conn = // NOSONAR(S1659)
-            storm::QuerySet<Person, ConnType>::get_default_connection();
+            DefaultConnection<ConnType>::get();
         ASSERT_NE(conn, nullptr);
         storm::test::rollback_test_txn<ConnType>(conn);
         ASSERT_TRUE((storm::test::ensure_tables<ConnType, Person, SimpleRecord, Message>(conn)));
-        storm::QuerySet<Person, ConnType> cp;
-        storm::QuerySet<SimpleRecord, ConnType> cs;
-        storm::QuerySet<Message, ConnType> cm;
-        ASSERT_TRUE(cp.erase_all().execute().has_value());
-        ASSERT_TRUE(cs.erase_all().execute().has_value());
-        ASSERT_TRUE(cm.erase_all().execute().has_value());
+        ASSERT_TRUE((EraseStatement<Person, ConnType>{}).query_all().execute().has_value());
+        ASSERT_TRUE((EraseStatement<SimpleRecord, ConnType>{}).query_all().execute().has_value());
+        ASSERT_TRUE((EraseStatement<Message, ConnType>{}).query_all().execute().has_value());
     }
 
     auto seed_main_msg() -> void {
         ASSERT_TRUE((storm::test::batch_insert<Person, ConnType>(
             std::vector<Person>(storm::test::PEOPLE_25.begin(), storm::test::PEOPLE_25.end()))));
-        storm::QuerySet<Person, ConnType> pqs;
-        auto people_result = pqs.template order_by<fields::Person.name>().select().execute();
+        auto people_result =
+            (SelectStatement<Person, ConnType>{}).all().template order_by<fields::Person.name>().execute();
         ASSERT_TRUE(people_result.has_value()) << people_result.error().message();
         ASSERT_EQ(people_result.value().size(), 25U);
         std::array<int, 4> sender_ids{};

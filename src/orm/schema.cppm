@@ -13,6 +13,8 @@ import storm_orm_indexes;
 import storm_orm_utilities;
 import storm_orm_field_attr;
 import storm_db_concept;
+import storm_db_sqlite;
+import storm_db_default_connection;
 
 export namespace storm::orm::schema {
 
@@ -1974,6 +1976,32 @@ export namespace storm::orm::schema {
             std::set<std::string, std::less<>> done;
             return create_table_if_not_exists(conn, done);
         }
+
+        // Uses the calling thread's default connection for ConnType.
+        template <db::DatabaseConnection ConnType = db::sqlite::Connection>
+        [[nodiscard]] static auto create_table_if_not_exists() -> std::expected<void, typename ConnType::Error> {
+            return create_table_if_not_exists(db::DefaultConnection<ConnType>::get());
+        }
+
+        template <db::DatabaseConnection ConnType = db::sqlite::Connection>
+        [[nodiscard]] static auto create_indexes_if_not_exist() -> std::expected<void, typename ConnType::Error> {
+            return create_indexes_if_not_exist(db::DefaultConnection<ConnType>::get());
+        }
     };
 
 } // namespace storm::orm::schema
+
+export namespace storm {
+
+    // Returns the compile-time generated CREATE TABLE SQL for model T and dialect D.
+    // D defaults to SQLite regardless of backend: pass Dialect::PostgreSQL for PG DDL.
+    template <typename T, orm::schema::Dialect D = orm::schema::Dialect::SQLite>
+    [[nodiscard]] auto create_table_sql() -> const std::string& {
+        return orm::schema::SchemaStatement<T>::template create_table_sql<D>();
+    }
+
+    // Returns the pre-computed CREATE INDEX SQL statements for model T.
+    template <typename T> [[nodiscard]] auto create_index_sql() -> const std::vector<std::string>& {
+        return orm::schema::SchemaStatement<T>::create_index_sql();
+    }
+} // namespace storm

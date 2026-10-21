@@ -3,11 +3,19 @@
 
 #include "test_db_helpers.h"
 
-import storm;
+import storm_db_postgresql;
+import storm_db_sqlite;
+import storm_meta;
 import std;
+import storm_orm_statements_base;
+using storm::full_unsigned;
+using storm::primary;
+using storm::primary_autoincrement;
+using storm::signed_storage;
+using storm::orm::statements::BaseStatement;
 
 // ── #492: ModelAnnotationsValid<T> conflict rejection ────────────────────────
-// The free-standing flag annotation objects (storm::primary, storm::unique, …)
+// The free-standing flag annotation objects (primary, storm::unique, …)
 // replaced enum class FieldAttr. An enum member was mutually exclusive for free;
 // stackable annotation objects are not. ModelAnnotationsValid<T> restores the
 // exclusivity guarantee at compile time, rejecting per member:
@@ -24,8 +32,8 @@ namespace {
 
     // --- Conflict: primary + primary_autoincrement on the same member ---
     struct DoublePrimaryModel {
-        [[= storm::primary]][[= storm::primary_autoincrement]] int id{};
-        std::string                                                name;
+        [[= primary]][[= primary_autoincrement]] int id{};
+        std::string                                  name;
     };
     static_assert(
             !ModelAnnotationsValid<DoublePrimaryModel>,
@@ -34,8 +42,8 @@ namespace {
 
     // --- Conflict: signed_storage + full_unsigned on the same member ---
     struct DoubleStorageModel {
-        [[= storm::primary]] int                                            id{};
-        [[= storm::signed_storage]][[= storm::full_unsigned]] std::uint64_t value{};
+        [[= primary]] int                                     id{};
+        [[= signed_storage]][[= full_unsigned]] std::uint64_t value{};
     };
     static_assert(
             !ModelAnnotationsValid<DoubleStorageModel>,
@@ -44,7 +52,7 @@ namespace {
 
     // --- Valid: each flag used at most once per member ---
     struct PlainPrimaryModel {
-        [[= storm::primary]] int        id{};
+        [[= primary]] int               id{};
         [[= storm::unique]] std::string name;
     };
     static_assert(
@@ -53,16 +61,16 @@ namespace {
     );
 
     struct AutoincrementModel {
-        [[= storm::primary_autoincrement]] int id{};
-        std::string                            name;
+        [[= primary_autoincrement]] int id{};
+        std::string                     name;
     };
     static_assert(
             ModelAnnotationsValid<AutoincrementModel>, "single primary_autoincrement must satisfy ModelAnnotationsValid"
     );
 
     struct SingleStorageModel {
-        [[= storm::primary]] int                 id{};
-        [[= storm::full_unsigned]] std::uint64_t value{};
+        [[= primary]] int                 id{};
+        [[= full_unsigned]] std::uint64_t value{};
     };
     static_assert(
             ModelAnnotationsValid<SingleStorageModel>,
@@ -78,8 +86,7 @@ namespace {
 // naming the constrained specialization directly in a namespace-scope `requires` is
 // eagerly instantiated by clang-p2996 and hard-errors instead of yielding false
 // (same pattern as the #472 Entity test).
-template <class T>
-constexpr bool base_statement_instantiable = requires { typename storm::orm::statements::BaseStatement<T>; };
+template <class T> constexpr bool base_statement_instantiable = requires { typename BaseStatement<T>; };
 static_assert(base_statement_instantiable<PlainPrimaryModel>, "conflict-free model must back a statement");
 static_assert(
         !base_statement_instantiable<DoublePrimaryModel>,

@@ -14,6 +14,7 @@ import std;
 // Must follow the shared model headers: OrderLineWithShipments/Shipment name storm:: annotations.
 #include "crud/test_composite_pk_models.h" // NOSONAR cpp:S954
 #include "test_m2m_models.h"               // NOSONAR cpp:S954 — Student/Course (single-PK m2m regression baseline)
+using storm::QuerySet;
 
 // ── #504 Task 7: regular FK JoinStatement — multi-column AND-joined ON clause ──
 // Shipment::line is a plain (non-m2m, non-reverse-FK) FK member whose target
@@ -35,11 +36,11 @@ namespace {
 TYPED_TEST_SUITE(CompositeFkRegularJoinTest, DatabaseTypes);
 
 TYPED_TEST(CompositeFkRegularJoinTest, InnerJoinAcrossCompositeFkReturnsMatchingRow) {
-    storm::QuerySet<OrderLineWithShipments, TypeParam> line_qs;
-    const OrderLineWithShipments line{.order_id = 5, .product_id = 12, .quantity = 3, .note = "first"};
+    QuerySet<OrderLineWithShipments, TypeParam> line_qs;
+    const OrderLineWithShipments                line{.order_id = 5, .product_id = 12, .quantity = 3, .note = "first"};
     ASSERT_TRUE(line_qs.insert(line).execute().has_value());
 
-    storm::QuerySet<Shipment, TypeParam> ship_qs;
+    QuerySet<Shipment, TypeParam> ship_qs;
     ASSERT_TRUE(ship_qs.insert(Shipment{.line = line, .carrier = "UPS"}).execute().has_value());
 
     auto results = ship_qs.template join<fields::Shipment.line>().select().execute();
@@ -59,13 +60,13 @@ TYPED_TEST(CompositeFkRegularJoinTest, InnerJoinAcrossCompositeFkReturnsMatching
 // query planner picked first — this test proves each Shipment resolves to its
 // OWN OrderLineWithShipments, not the other one sharing the partial key.
 TYPED_TEST(CompositeFkRegularJoinTest, InnerJoinDoesNotCrossMatchOnSharedPkPart) {
-    storm::QuerySet<OrderLineWithShipments, TypeParam> line_qs;
-    const OrderLineWithShipments line_a{.order_id = 5, .product_id = 12, .quantity = 3, .note = "a"};
-    const OrderLineWithShipments line_b{.order_id = 5, .product_id = 99, .quantity = 7, .note = "b"};
+    QuerySet<OrderLineWithShipments, TypeParam> line_qs;
+    const OrderLineWithShipments                line_a{.order_id = 5, .product_id = 12, .quantity = 3, .note = "a"};
+    const OrderLineWithShipments                line_b{.order_id = 5, .product_id = 99, .quantity = 7, .note = "b"};
     ASSERT_TRUE(line_qs.insert(line_a).execute().has_value());
     ASSERT_TRUE(line_qs.insert(line_b).execute().has_value());
 
-    storm::QuerySet<Shipment, TypeParam> ship_qs;
+    QuerySet<Shipment, TypeParam> ship_qs;
     ASSERT_TRUE(ship_qs.insert(Shipment{.line = line_a, .carrier = "UPS"}).execute().has_value());
     ASSERT_TRUE(ship_qs.insert(Shipment{.line = line_b, .carrier = "FedEx"}).execute().has_value());
 
@@ -103,7 +104,7 @@ template <typename ConnType> class OptionalCompositeFkJoinTest : public StormTes
 TYPED_TEST_SUITE(OptionalCompositeFkJoinTest, DatabaseTypes);
 
 TYPED_TEST(OptionalCompositeFkJoinTest, LeftJoinKeepsRowWithNullCompositeFk) {
-    storm::QuerySet<OptionalShipment, TypeParam> ship_qs;
+    QuerySet<OptionalShipment, TypeParam> ship_qs;
     ASSERT_TRUE(ship_qs.insert(OptionalShipment{.line = std::nullopt, .carrier = "FedEx"}).execute().has_value());
 
     auto results = ship_qs.template left_join<fields::OptionalShipment.line>().select().execute();
@@ -191,7 +192,7 @@ class CompositeReverseFkOwnerTest : public StormTestFixture<OrderLineWithShipmen
   protected:
     // Insert a lone OrderLineWithShipments with no Shipment pointing at it —
     // shared setup for the empty-relation INNER/LEFT pair below.
-    static auto insert_solo_line(storm::QuerySet<OrderLineWithShipments, ConnType>& line_qs) -> void {
+    static auto insert_solo_line(QuerySet<OrderLineWithShipments, ConnType>& line_qs) -> void {
         ASSERT_TRUE(
                 line_qs.insert(OrderLineWithShipments{.order_id = 9, .product_id = 1, .quantity = 1, .note = "solo"})
                         .execute()
@@ -202,13 +203,13 @@ class CompositeReverseFkOwnerTest : public StormTestFixture<OrderLineWithShipmen
 TYPED_TEST_SUITE(CompositeReverseFkOwnerTest, DatabaseTypes);
 
 TYPED_TEST(CompositeReverseFkOwnerTest, ReverseFkStitchesCorrectlyWithCompositeOwnerKey) {
-    storm::QuerySet<OrderLineWithShipments, TypeParam> line_qs;
-    const OrderLineWithShipments line_a{.order_id = 1, .product_id = 10, .quantity = 5, .note = "a"};
-    const OrderLineWithShipments line_b{.order_id = 1, .product_id = 20, .quantity = 7, .note = "b"};
+    QuerySet<OrderLineWithShipments, TypeParam> line_qs;
+    const OrderLineWithShipments                line_a{.order_id = 1, .product_id = 10, .quantity = 5, .note = "a"};
+    const OrderLineWithShipments                line_b{.order_id = 1, .product_id = 20, .quantity = 7, .note = "b"};
     ASSERT_TRUE(line_qs.insert(line_a).execute().has_value());
     ASSERT_TRUE(line_qs.insert(line_b).execute().has_value());
 
-    storm::QuerySet<Shipment, TypeParam> ship_qs;
+    QuerySet<Shipment, TypeParam> ship_qs;
     ASSERT_TRUE(ship_qs.insert(Shipment{.line = line_a, .carrier = "DHL"}).execute().has_value());
 
     auto results = line_qs.template join<fields::OrderLineWithShipments.shipments>().select().execute();
@@ -231,7 +232,7 @@ TYPED_TEST(CompositeReverseFkOwnerTest, ReverseFkStitchesCorrectlyWithCompositeO
 }
 
 TYPED_TEST(CompositeReverseFkOwnerTest, EmptyRelationOnCompositeOwnerReturnsNoInnerJoinRows) {
-    storm::QuerySet<OrderLineWithShipments, TypeParam> line_qs;
+    QuerySet<OrderLineWithShipments, TypeParam> line_qs;
     this->insert_solo_line(line_qs);
     auto results = line_qs.template join<fields::OrderLineWithShipments.shipments>().select().execute(); // INNER
     ASSERT_TRUE(results.has_value());
@@ -239,7 +240,7 @@ TYPED_TEST(CompositeReverseFkOwnerTest, EmptyRelationOnCompositeOwnerReturnsNoIn
 }
 
 TYPED_TEST(CompositeReverseFkOwnerTest, LeftJoinKeepsEmptyRelationOnCompositeOwner) {
-    storm::QuerySet<OrderLineWithShipments, TypeParam> line_qs;
+    QuerySet<OrderLineWithShipments, TypeParam> line_qs;
     this->insert_solo_line(line_qs);
     auto results = line_qs.template left_join<fields::OrderLineWithShipments.shipments>().select().execute();
     ASSERT_TRUE(results.has_value());
@@ -251,14 +252,14 @@ TYPED_TEST(CompositeReverseFkOwnerTest, LeftJoinKeepsEmptyRelationOnCompositeOwn
 // appends every related row into the SAME owner's container (no drops, no
 // cross-contamination into a different owner sharing a PK part).
 TYPED_TEST(CompositeReverseFkOwnerTest, FanOutTenShipmentsAllStitchToSameCompositeOwner) {
-    storm::QuerySet<OrderLineWithShipments, TypeParam> line_qs;
-    const OrderLineWithShipments owner{.order_id = 3, .product_id = 7, .quantity = 1, .note = "fanout"};
+    QuerySet<OrderLineWithShipments, TypeParam> line_qs;
+    const OrderLineWithShipments                owner{.order_id = 3, .product_id = 7, .quantity = 1, .note = "fanout"};
     ASSERT_TRUE(line_qs.insert(owner).execute().has_value());
     // A decoy sharing order_id=3 but a different product_id — must stay unaffected.
     const OrderLineWithShipments decoy{.order_id = 3, .product_id = 8, .quantity = 1, .note = "decoy"};
     ASSERT_TRUE(line_qs.insert(decoy).execute().has_value());
 
-    storm::QuerySet<Shipment, TypeParam> ship_qs;
+    QuerySet<Shipment, TypeParam> ship_qs;
     for (int i = 0; i < 10; ++i) {
         ASSERT_TRUE(
                 ship_qs.insert(Shipment{.line = owner, .carrier = std::format("carrier-{}", i)}).execute().has_value()
@@ -317,8 +318,8 @@ class CompositeM2MSinglePkRegressionTest : public StormTestFixture<Student, Conn
 TYPED_TEST_SUITE(CompositeM2MSinglePkRegressionTest, DatabaseTypes);
 
 TYPED_TEST(CompositeM2MSinglePkRegressionTest, SinglePkM2MSqlShapeStaysByteIdentical) {
-    storm::QuerySet<Student, TypeParam> student_qs;
-    auto                                sql = student_qs.template join<fields::Student.courses>().select().sql();
+    QuerySet<Student, TypeParam> student_qs;
+    auto                         sql = student_qs.template join<fields::Student.courses>().select().sql();
     EXPECT_TRUE(sql.contains("SELECT t2.Student_id, t3.id, t3.title")) << sql;
     EXPECT_TRUE(sql.contains("WHERE t2.Student_id IN (SELECT id FROM Student)")) << sql;
 }

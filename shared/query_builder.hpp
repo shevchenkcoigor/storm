@@ -8,8 +8,13 @@
 // Must be included AFTER `import storm;` in each consumer TU.
 
 #include <meta>
+import storm_orm_utilities;
+import storm_orm_fields;
 
 namespace storm::orm::query_builder {
+
+    using storm::meta::selector_for;
+    using storm::orm::utilities::Collate;
 
     // ========================================================================
     // Field dispatcher — compile-time field lookup by name
@@ -237,7 +242,7 @@ namespace storm::orm::query_builder {
             if constexpr (spec.join.enabled) {
                 constexpr std::size_t N = spec.join.fk_count >= 2 ? spec.join.fk_count : std::size_t{1};
                 [&]<std::size_t... Is>(std::index_sequence<Is...>) {
-                    dispatch_join_type<storm::meta::selector_for<fk_resolver(join_fk_name(Is))>()...>(qs);
+                    dispatch_join_type<selector_for<fk_resolver(join_fk_name(Is))>()...>(qs);
                 }(std::make_index_sequence<N>{});
             }
         }
@@ -245,12 +250,12 @@ namespace storm::orm::query_builder {
         // ----------------------------------------------------------------
         // ORDER BY
         // ----------------------------------------------------------------
-        static consteval auto parse_collate(std::string_view s) -> storm::orm::utilities::Collate {
+        static consteval auto parse_collate(std::string_view s) -> Collate {
             if (s == "BINARY")
-                return storm::orm::utilities::Collate::Binary;
+                return Collate::Binary;
             if (s == "RTRIM")
-                return storm::orm::utilities::Collate::RTrim;
-            return storm::orm::utilities::Collate::NoCase;
+                return Collate::RTrim;
+            return Collate::NoCase;
         }
 
         static consteval auto enabled_order_by_count() -> std::size_t {
@@ -314,7 +319,7 @@ namespace storm::orm::query_builder {
             } else {
                 static_assert(has_field<Model>(spec.aggregate.field.view()), "aggregate field not found on model");
                 constexpr std::string_view func = spec.aggregate.func.view();
-                constexpr auto fi = storm::meta::selector_for<dispatch_field<Model>(spec.aggregate.field.view())>();
+                constexpr auto             fi   = selector_for<dispatch_field<Model>(spec.aggregate.field.view())>();
                 if (func == "count")
                     return ^^Stmt::template count<fi>;
                 if (func == "count_distinct")
@@ -338,15 +343,15 @@ namespace storm::orm::query_builder {
 
         static auto build_distinct_stmt(auto& qs) {
             return [&]<std::size_t... Is>(std::index_sequence<Is...>) {
-                return qs.template distinct<
-                        storm::meta::selector_for<dispatch_field<Model>(spec.distinct.fields[Is].view())>()...>();
+                return qs
+                        .template distinct<selector_for<dispatch_field<Model>(spec.distinct.fields[Is].view())>()...>();
             }(std::make_index_sequence<spec.distinct.field_count()>{});
         }
 
         static auto build_group_by_query(auto& qs) {
             auto gb = [&]<std::size_t... Is>(std::index_sequence<Is...>) {
-                return qs.template group_by<
-                        storm::meta::selector_for<dispatch_field<Model>(spec.group_by.fields[Is].view())>()...>();
+                return qs
+                        .template group_by<selector_for<dispatch_field<Model>(spec.group_by.fields[Is].view())>()...>();
             }(std::make_index_sequence<spec.group_by.field_count()>{});
 
             if constexpr (spec.group_by.having.enabled) {

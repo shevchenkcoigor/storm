@@ -1,6 +1,6 @@
 #include <gtest/gtest.h>
 
-import storm;
+import storm_orm_utilities;
 import std;
 
 // Compile-time-only verification of the BindableType concept (#473). Every

@@ -9,24 +9,24 @@ Two tag annotations request a single-column index:
 
 ```cpp
 struct Person {
-    [[= storm::primary]] int id;
-    [[= storm::unique]] std::string email;    // CREATE UNIQUE INDEX
-    [[= storm::indexed]] std::string name;    // CREATE INDEX
+    [[= primary]] int id;
+    [[= unique]] std::string email;    // CREATE UNIQUE INDEX
+    [[= indexed]] std::string name;    // CREATE INDEX
 };
 ```
 
 | Tag | Effect |
 |---|---|
-| `storm::unique` | `CREATE UNIQUE INDEX IF NOT EXISTS idx_<field> ON <table>(<field>)` |
-| `storm::indexed` | `CREATE INDEX IF NOT EXISTS idx_<field> ON <table>(<field>)` |
+| `unique` | `CREATE UNIQUE INDEX IF NOT EXISTS idx_<field> ON <table>(<field>)` |
+| `indexed` | `CREATE INDEX IF NOT EXISTS idx_<field> ON <table>(<field>)` |
 
-Foreign-key fields (`[[= storm::fk<>]]`) are indexed automatically — no `indexed`/`unique`
+Foreign-key fields (`[[= fk<>]]`) are indexed automatically — no `indexed`/`unique`
 tag needed — because JOINs and cascade deletes both hit the FK column:
 
 ```cpp
 struct Message {
-    [[= storm::primary]] int id;
-    [[= storm::fk<>]] Person sender;   // implicit CREATE INDEX idx_sender_id ON Message(sender_id)
+    [[= primary]] int id;
+    [[= fk<>]] Person sender;   // implicit CREATE INDEX idx_sender_id ON Message(sender_id)
 };
 ```
 
@@ -38,16 +38,16 @@ prefer just `unique` when you need the uniqueness constraint.
 ## Composite (multi-column) indexes
 
 A single-column tag can't express "unique on the *pair* of columns" — use `storm::Index<>` /
-`storm::UniqueIndex<>` for that, specifying the member list as `std::meta::info` NTTPs:
+`uniqueIndex<>` for that, specifying the member list as `std::meta::info` NTTPs:
 
 ```cpp
 struct Enrollment {
-    [[= storm::primary]] int id;
-    [[= storm::fk<>]] Student student;
-    [[= storm::fk<>]] Course  course;
+    [[= primary]] int id;
+    [[= fk<>]] Student student;
+    [[= fk<>]] Course  course;
 
     using storm_indexes = std::tuple<
-        storm::UniqueIndex<^^Enrollment::student, ^^Enrollment::course>
+        uniqueIndex<^^Enrollment::student, ^^Enrollment::course>
     >;
 };
 ```
@@ -57,7 +57,7 @@ CREATE UNIQUE INDEX IF NOT EXISTS idx_Enrollment_student_id_course_id
     ON Enrollment(student_id, course_id)
 ```
 
-`storm::Index<^^A::x, ^^A::y>` (non-unique) and `storm::UniqueIndex<^^A::x, ^^A::y>` both
+`storm::Index<^^A::x, ^^A::y>` (non-unique) and `uniqueIndex<^^A::x, ^^A::y>` both
 accept any number of member selectors. FK members in the list resolve to their `_id` column
 name automatically (#422), same as everywhere else in Storm.
 
@@ -69,13 +69,13 @@ rather than specializing `storm::Indexes<T>` externally:
 ```cpp
 // ❌ Don't specialize Indexes<T> in a header included by multiple module TUs
 template <> struct storm::Indexes<Enrollment> {
-    using type = std::tuple<storm::UniqueIndex<^^Enrollment::student, ^^Enrollment::course>>;
+    using type = std::tuple<uniqueIndex<^^Enrollment::student, ^^Enrollment::course>>;
 };
 
 // ✅ Nested typedef — safe everywhere
 struct Enrollment {
     // ...
-    using storm_indexes = std::tuple<storm::UniqueIndex<^^Enrollment::student, ^^Enrollment::course>>;
+    using storm_indexes = std::tuple<uniqueIndex<^^Enrollment::student, ^^Enrollment::course>>;
 };
 ```
 

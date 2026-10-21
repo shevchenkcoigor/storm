@@ -845,3 +845,7 @@ export template <> struct std::hash<storm::orm::utilities::StitchKey> {
         return k.hash();
     }
 };
+
+export namespace storm {
+    using UUID = orm::utilities::UUID;
+} // namespace storm

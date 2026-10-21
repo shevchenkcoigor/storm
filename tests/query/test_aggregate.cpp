@@ -4,6 +4,8 @@
 import storm;
 import std;
 
+using storm::db::DefaultConnection;
+
 using storm::QuerySet;
 
 #include "../../shared/models/message.h" // NOSONAR cpp:S954
@@ -396,22 +398,20 @@ namespace {
         person_qs  = nullptr;
         message_qs = nullptr;
         if constexpr (storm::test::is_postgresql<ConnType>()) {
-            storm::test::rollback_test_txn<ConnType>(storm::QuerySet<Person, ConnType>::get_default_connection());
+            storm::test::rollback_test_txn<ConnType>(DefaultConnection<ConnType>::get());
         }
-        storm::QuerySet<Person, ConnType>::clear_default_connection();
-        auto result = storm::QuerySet<Person, ConnType>::set_default_connection(
-                storm::test::get_connection_string<ConnType>()
-        );
+        DefaultConnection<ConnType>::clear();
+        auto result = DefaultConnection<ConnType>::set(storm::test::get_connection_string<ConnType>());
         if (!result.has_value()) {
             return false;
         }
-        const auto& conn = storm::QuerySet<Person, ConnType>::get_default_connection();
+        const auto& conn = DefaultConnection<ConnType>::get();
         storm::test::pg_schema_init<ConnType>(conn);
         if (!storm::test::ensure_tables<ConnType, Person, Message>(conn)) {
             return false;
         }
-        person_qs  = std::make_unique<storm::QuerySet<Person, ConnType>>();
-        message_qs = std::make_unique<storm::QuerySet<Message, ConnType>>();
+        person_qs  = std::make_unique<QuerySet<Person, ConnType>>();
+        message_qs = std::make_unique<QuerySet<Message, ConnType>>();
         return true;
     }
 } // namespace
