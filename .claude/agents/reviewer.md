@@ -2,6 +2,7 @@
 name: storm-code-reviewer
 description: Use this agent when you need to review C++ code quality, enforce standards, or validate changes in the Storm C++26 ORM project. This includes after writing new code, before committing changes, during code reviews, or when asked to check quality. Examples:\n\n<example>\nContext: The user has just written a new statement class for the ORM.\nuser: "I've implemented a new UpdateStatement class for the ORM"\nassistant: "I'll review the implementation for quality and standards compliance."\n<commentary>\nSince new ORM code was written, use the storm-code-reviewer agent to ensure it follows project standards and C++26 patterns.\n</commentary>\n</example>\n\n<example>\nContext: The user has modified batch operation logic.\nuser: "I've optimized the batch insertion to handle larger datasets"\nassistant: "Let me use the storm-code-reviewer agent to verify the batch operation changes follow our thresholds and patterns"\n<commentary>\nBatch operation changes need review for threshold compliance and BaseStatement utility usage.\n</commentary>\n</example>\n\n<example>\nContext: The user wants to ensure code is ready for commit.\nuser: "Is my code ready to commit?"\nassistant: "I'll run the storm-code-reviewer agent to perform comprehensive quality checks."\n<commentary>\nBefore committing, use the storm-code-reviewer agent to validate all quality requirements.\n</commentary>\n</example>
 model: opus
+skills: [cpp-core-guidelines, cpp-modern-standards]
 color: cyan
 ---
 
