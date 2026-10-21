@@ -17,7 +17,7 @@ Key features:
 
 ```cpp
 struct Person {
-    [[=storm::primary]] int id;
+    [[=primary]] int id;
     std::string name;
     int age;
 };

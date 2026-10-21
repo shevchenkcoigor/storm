@@ -31,10 +31,14 @@
 
 import storm;
 import std;
+using storm::primary;
+using storm::orm::schema::Dialect;
+using storm::orm::schema::SchemaStatement;
 
 using PgConnection = storm::db::postgresql::Connection;
 using PgStatement  = storm::db::postgresql::Statement;
 using PgError      = storm::db::postgresql::Error;
+using storm::db::DefaultConnection;
 using storm::test::MockPqConfig;
 using storm::test::MockPqGuard;
 
@@ -1228,9 +1232,9 @@ namespace {
     // ============================================================================
 
     struct MockPgPerson {
-        [[= storm::primary]] std::int64_t id{};
-        std::string                       name;
-        int                               age{};
+        [[= primary]] std::int64_t id{};
+        std::string                name;
+        int                        age{};
     };
 
     using PgQuerySet = storm::QuerySet<MockPgPerson, PgConnection>;
@@ -1242,7 +1246,7 @@ namespace {
         auto SetUp() -> void override {
             MockPqConfig::reset();
             // Set up PG default connection via mock
-            (void)PgQuerySet::set_default_connection("host=localhost");
+            (void)DefaultConnection<PgConnection>::set("host=localhost");
         }
     };
 
@@ -1543,10 +1547,10 @@ namespace {
 
     TEST(PgInsertReturningBindErrorTest, BindFailureReturnsError) {
         // Set up connection with failing binds
-        (void)BindFailQuerySet::set_default_connection("mock");
+        (void)DefaultConnection<BindFailConnection>::set("mock");
 
         // Get the connection and configure it to fail binds
-        const auto& conn = BindFailQuerySet::get_default_connection();
+        const auto& conn = DefaultConnection<BindFailConnection>::get();
         conn->set_fail_binds(true);
 
         BindFailQuerySet   qs;
@@ -1560,9 +1564,9 @@ namespace {
 
     // Covers insert.cppm lines 263-264: to_sql() bind failure in PG branch
     TEST(PgInsertReturningBindErrorTest, InsertToSqlBindFailureReturnsError) {
-        (void)BindFailQuerySet::set_default_connection("mock");
+        (void)DefaultConnection<BindFailConnection>::set("mock");
 
-        const auto& conn = BindFailQuerySet::get_default_connection();
+        const auto& conn = DefaultConnection<BindFailConnection>::get();
         conn->set_fail_binds(true);
 
         BindFailQuerySet   qs;
@@ -1623,10 +1627,10 @@ namespace {
 
     // Exercises the PostgreSQL dialect path of create_table_if_not_exists
     TEST_F(PgSchemaDetailTest, CreateTableIfNotExistsPgDialect) {
-        (void)PgQuerySet::set_default_connection("host=localhost");
+        (void)DefaultConnection<PgConnection>::set("host=localhost");
 
-        const auto& conn   = PgQuerySet::get_default_connection();
-        auto        result = storm::orm::schema::SchemaStatement<MockPgPerson>::create_table_if_not_exists(conn);
+        const auto& conn   = DefaultConnection<PgConnection>::get();
+        auto        result = SchemaStatement<MockPgPerson>::create_table_if_not_exists(conn);
         ASSERT_TRUE(result.has_value());
     }
 

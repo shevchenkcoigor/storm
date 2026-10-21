@@ -8,6 +8,8 @@
 #define STORM_SPLIT_TYPES DatabaseTypesSqliteHalf
 #define STORM_SPLIT_TYPE_NAMES DatabaseTypesSqliteHalfNames
 #include "test_many_to_many_multi_body.h"
+using storm::orm::schema::Dialect;
+using storm::orm::schema::SchemaStatement;
 #undef STORM_SPLIT_TYPE_NAMES
 #undef STORM_SPLIT_TYPES
 
@@ -24,8 +26,7 @@
 // ============================================================================
 
 TEST(MultiM2MSchemaTest, OneJunctionTablePerM2MField) {
-    const auto& sqls =
-            storm::orm::schema::SchemaStatement<Member>::junction_table_sqls<storm::orm::schema::Dialect::SQLite>();
+    const auto& sqls = SchemaStatement<Member>::junction_table_sqls<Dialect::SQLite>();
     ASSERT_EQ(sqls.size(), 2U);
     EXPECT_TRUE(sqls[0].contains("CREATE TABLE Member_Course")) << sqls[0];
     EXPECT_TRUE(sqls[0].contains("PRIMARY KEY (Member_id, Course_id)")) << sqls[0];

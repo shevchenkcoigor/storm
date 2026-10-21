@@ -10,6 +10,10 @@
 import storm;
 import std;
 
+using storm::QuerySet;
+using storm::db::DefaultConnection;
+using storm::orm::schema::SchemaStatement;
+
 namespace nb = nanobind;
 
 // Minimal model for proof of concept — hardcoded in C++.
@@ -20,7 +24,7 @@ struct PyPerson {
     int                      age{};
 };
 
-using PersonQS = storm::QuerySet<PyPerson, storm::db::sqlite::Connection>;
+using PersonQS = QuerySet<PyPerson, storm::db::sqlite::Connection>;
 
 namespace {
 
@@ -177,7 +181,7 @@ NB_MODULE(_storm, m) {
     m.def(
             "connect",
             [](const std::string& db_path) {
-                auto result = PersonQS::set_default_connection(db_path);
+                auto result = DefaultConnection<>::set(db_path);
                 if (!result) {
                     throw std::runtime_error("Failed to connect: " + std::string(result.error().message()));
                 }
@@ -189,8 +193,8 @@ NB_MODULE(_storm, m) {
 
     // ── Schema management ───────────────────────────────────────────
     m.def("create_table", []() {
-        auto conn   = PersonQS::get_default_connection();
-        auto result = storm::orm::schema::SchemaStatement<PyPerson>::create_table_if_not_exists(conn);
+        auto conn   = DefaultConnection<>::get();
+        auto result = SchemaStatement<PyPerson>::create_table_if_not_exists(conn);
         if (!result) {
             throw std::runtime_error("Failed to create table: " + std::string(result.error().message()));
         }

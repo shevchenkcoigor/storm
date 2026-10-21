@@ -18,15 +18,29 @@
 
 // NOLINTBEGIN(misc-const-correctness)
 
-import storm;
+import storm_db_default_connection;
+import storm_db_sqlite;
+import storm_meta;
+import storm_orm_schema;
+import storm_orm_statements_insert;
+import storm_orm_statements_select;
+import storm_orm_statements_update;
 import storm_orm_statements_update_grammar; // UpdateGrammar — SET-target gate (#486) / SQL leak assert (#485); not re-exported by `storm`
+import storm_orm_statements_base;
+import storm_orm_statements_join;
+import storm_orm_fields;
+import storm_orm_statements_upsert_grammar;
+import storm_db_postgresql;
 import std;
-
-using storm::QuerySet;
 
 #include "test_fixture.h" // NOSONAR cpp:S954
 
 #include "test_reverse_fk_models.h" // NOSONAR cpp:S954
+using storm::meta::FieldRef;
+using storm::orm::schema::SchemaStatement;
+using storm::orm::statements::InsertStatement;
+using storm::orm::statements::SelectStatement;
+using storm::orm::statements::UpdateStatement;
 
 namespace stmt = storm::orm::statements;
 
@@ -75,7 +89,7 @@ static_assert(stmt::JoinableFields<RfPerson, ^^RfTask::assignee>);
 // ============================================================================
 
 template <auto M>
-concept FCallableRfk = requires { storm::meta::FieldRef<M>{}; };
+concept FCallableRfk = requires { FieldRef<M>{}; };
 
 static_assert(!FCallableRfk<^^RfPerson::tasks>, "reverse_fk member rejected by FieldRef");
 static_assert(!FCallableRfk<^^RfBoard::notes>, "reverse_fk member rejected by FieldRef");
@@ -99,7 +113,7 @@ static_assert(stmt::UpdateGrammar<RfPerson>::is_settable_member<^^RfPerson::name
 // Schema: reverse_fk creates NO junction table and is not a column
 // ============================================================================
 
-static_assert(!storm::orm::schema::SchemaStatement<RfPerson>::has_m2m_junction_);
+static_assert(!SchemaStatement<RfPerson>::has_m2m_junction_);
 
 // ============================================================================
 // Runtime fixtures
@@ -128,7 +142,7 @@ TYPED_TEST_SUITE(ReverseFKTest, STORM_SPLIT_TYPES, STORM_SPLIT_TYPE_NAMES);
 
 // Plain CRUD ignores the reverse_fk container.
 TYPED_TEST(ReverseFKTest, PlainSelectDoesNotPopulateReverseContainer) {
-    auto rows = QuerySet<RfPerson, TypeParam>().template order_by<fields::RfPerson.id>().select().execute();
+    auto rows = (SelectStatement<RfPerson, TypeParam>{}).all().template order_by<fields::RfPerson.id>().execute();
     ASSERT_TRUE(rows.has_value()) << rows.error().message();
     ASSERT_EQ(rows->size(), 3U);
     for (const auto &p : *rows) {
@@ -140,12 +154,11 @@ TYPED_TEST(ReverseFKTest, PlainSelectDoesNotPopulateReverseContainer) {
 // may only name persisted columns; the round-trip re-select verifies values and
 // that the PK binds into the last placeholder.
 TYPED_TEST(ReverseFKTest, SingleRowUpdateIgnoresReverseContainer) {
-    QuerySet<RfPerson, TypeParam> qs;
     RfPerson const updated{.id = 1, .name = "Alice Updated", .age = 33, .tasks{{.id = 99, .title = "ghost"}}};
-    auto upd = qs.update(updated).execute();
+    auto upd = (UpdateStatement<RfPerson, TypeParam>{}).query(updated).execute();
     ASSERT_TRUE(upd.has_value()) << upd.error().message();
 
-    auto rows = qs.where(fields::RfPerson.id == 1).select().execute();
+    auto rows = (SelectStatement<RfPerson, TypeParam>{}).where(fields::RfPerson.id == 1).execute();
     ASSERT_TRUE(rows.has_value()) << rows.error().message();
     ASSERT_EQ(rows->size(), 1U);
     EXPECT_EQ(rows->begin()->name, "Alice Updated");
@@ -154,15 +167,15 @@ TYPED_TEST(ReverseFKTest, SingleRowUpdateIgnoresReverseContainer) {
 
 // Bulk UPDATE goes through the same pre-computed SQL (#485).
 TYPED_TEST(ReverseFKTest, BulkUpdateIgnoresReverseContainer) {
-    QuerySet<RfPerson, TypeParam> qs;
     std::vector<RfPerson> const updated = {
         {.id = 1, .name = "Alice2", .age = 40, .tasks{{.id = 99, .title = "ghost"}}},
         {.id = 2, .name = "Bob2", .age = 41},
     };
-    auto upd = qs.update(std::span<const RfPerson>(updated)).execute();
+    auto upd = (UpdateStatement<RfPerson, TypeParam>{}).query(std::span<const RfPerson>(updated)).execute();
     ASSERT_TRUE(upd.has_value()) << upd.error().message();
 
-    auto rows = qs.template order_by<fields::RfPerson.id>().limit(2).select().execute();
+    auto rows =
+        (SelectStatement<RfPerson, TypeParam>{}).all().template order_by<fields::RfPerson.id>().limit(2).execute();
     ASSERT_TRUE(rows.has_value()) << rows.error().message();
     ASSERT_EQ(rows->size(), 2U);
     auto it = rows->begin();
@@ -175,10 +188,10 @@ TYPED_TEST(ReverseFKTest, BulkUpdateIgnoresReverseContainer) {
 
 // LEFT join: every person, container filled (empty when none).
 TYPED_TEST(ReverseFKTest, LeftJoinPopulatesAndKeepsEmpty) {
-    auto rows = QuerySet<RfPerson, TypeParam>()
+    auto rows = (SelectStatement<RfPerson, TypeParam>{})
+                    .all()
                     .template left_join<fields::RfPerson.tasks>()
                     .template order_by<fields::RfPerson.id>()
-                    .select()
                     .execute();
     ASSERT_TRUE(rows.has_value()) << rows.error().message();
     ASSERT_EQ(rows->size(), 3U);
@@ -192,10 +205,10 @@ TYPED_TEST(ReverseFKTest, LeftJoinPopulatesAndKeepsEmpty) {
 
 // INNER join: drops persons with no tasks.
 TYPED_TEST(ReverseFKTest, InnerJoinDropsZeroRelationEntities) {
-    auto rows = QuerySet<RfPerson, TypeParam>()
+    auto rows = (SelectStatement<RfPerson, TypeParam>{})
+                    .all()
                     .template join<fields::RfPerson.tasks>()
                     .template order_by<fields::RfPerson.id>()
-                    .select()
                     .execute();
     ASSERT_TRUE(rows.has_value()) << rows.error().message();
     ASSERT_EQ(rows->size(), 2U); // Carol dropped
@@ -204,10 +217,9 @@ TYPED_TEST(ReverseFKTest, InnerJoinDropsZeroRelationEntities) {
 
 // Owner rows carry their columns (title) and the FK pk.
 TYPED_TEST(ReverseFKTest, OwnerColumnsExtracted) {
-    auto rows = QuerySet<RfPerson, TypeParam>()
+    auto rows = (SelectStatement<RfPerson, TypeParam>{})
                     .where(fields::RfPerson.id == 1)
                     .template left_join<fields::RfPerson.tasks>()
-                    .select()
                     .execute();
     ASSERT_TRUE(rows.has_value()) << rows.error().message();
     ASSERT_EQ(rows->size(), 1U);
@@ -224,11 +236,10 @@ TYPED_TEST(ReverseFKTest, OwnerColumnsExtracted) {
 
 // WHERE bounds the BASE entities (the loaded persons), not the tasks.
 TYPED_TEST(ReverseFKTest, WhereAppliesToBaseEntities) {
-    auto rows = QuerySet<RfPerson, TypeParam>()
+    auto rows = (SelectStatement<RfPerson, TypeParam>{})
                     .where(fields::RfPerson.age < 25)
                     .template left_join<fields::RfPerson.tasks>()
                     .template order_by<fields::RfPerson.id>()
-                    .select()
                     .execute();
     ASSERT_TRUE(rows.has_value()) << rows.error().message();
     ASSERT_EQ(rows->size(), 2U); // Alice + Bob (age < 25)
@@ -237,11 +248,11 @@ TYPED_TEST(ReverseFKTest, WhereAppliesToBaseEntities) {
 
 // LIMIT bounds base entities.
 TYPED_TEST(ReverseFKTest, LimitBoundsBaseEntities) {
-    auto rows = QuerySet<RfPerson, TypeParam>()
+    auto rows = (SelectStatement<RfPerson, TypeParam>{})
+                    .all()
                     .template left_join<fields::RfPerson.tasks>()
                     .template order_by<fields::RfPerson.id>()
                     .limit(1)
-                    .select()
                     .execute();
     ASSERT_TRUE(rows.has_value()) << rows.error().message();
     ASSERT_EQ(rows->size(), 1U);
@@ -251,7 +262,8 @@ TYPED_TEST(ReverseFKTest, LimitBoundsBaseEntities) {
 
 // Aggregate over the cross-model FK selector: tasks-per-person including zeros.
 TYPED_TEST(ReverseFKTest, LeftJoinAggregateCountIncludesZeroGroups) {
-    auto total = QuerySet<RfPerson, TypeParam>().template left_join<fields::RfTask.assignee>().count().execute();
+    auto total =
+        (SelectStatement<RfPerson, TypeParam>{}).all().template left_join<fields::RfTask.assignee>().count().execute();
     ASSERT_TRUE(total.has_value()) << total.error().message();
     // 3 task rows + 1 NULL row for Carol (LEFT) = 4.
     EXPECT_EQ(*total, 4);
@@ -264,15 +276,16 @@ TYPED_TEST(ReverseFKTest, LeftJoinAggregateCountIncludesZeroGroups) {
 template <typename ConnType> class ReverseFKDisambigTest : public StormTestFixture<RfReporter, ConnType, RfBug> {
   public:
     void on_after_setup(const std::shared_ptr<ConnType> &conn) override {
-        storm::QuerySet<RfReporter, ConnType> rqs;
         std::vector<RfReporter> const reporters = {{.name = "Rita"}, {.name = "Sam"}};
-        ASSERT_TRUE(rqs.insert(std::span<const RfReporter>(reporters)).execute().has_value());
+        ASSERT_TRUE((InsertStatement<RfReporter, ConnType>{})
+                        .query(std::span<const RfReporter>(reporters))
+                        .execute()
+                        .has_value());
 
-        storm::QuerySet<RfBug, ConnType> bqs;
         // Bug1 authored by Rita(1), reviewed by Sam(2); Bug2 authored by Sam(2), reviewed by Rita(1).
         std::vector<RfBug> const bugs = {{.summary = "B1", .author = {.id = 1}, .reviewer = {.id = 2}},
                                          {.summary = "B2", .author = {.id = 2}, .reviewer = {.id = 1}}};
-        ASSERT_TRUE(bqs.insert(std::span<const RfBug>(bugs)).execute().has_value());
+        ASSERT_TRUE((InsertStatement<RfBug, ConnType>{}).query(std::span<const RfBug>(bugs)).execute().has_value());
         (void)conn;
     }
 };
@@ -283,11 +296,13 @@ TYPED_TEST_SUITE(ReverseFKDisambigTest, STORM_SPLIT_TYPES, STORM_SPLIT_TYPE_NAME
 // base: counting over RfBug::author vs RfBug::reviewer keys on different columns
 // (here both have 2 rows, but the selector picks distinct FK columns in the SQL).
 TYPED_TEST(ReverseFKDisambigTest, SelectorDisambiguatesFkInAggregate) {
-    auto by_author = QuerySet<RfReporter, TypeParam>().template join<fields::RfBug.author>().count().execute();
+    auto by_author =
+        (SelectStatement<RfReporter, TypeParam>{}).all().template join<fields::RfBug.author>().count().execute();
     ASSERT_TRUE(by_author.has_value()) << by_author.error().message();
     EXPECT_EQ(*by_author, 2); // two bugs, each with an author
 
-    auto by_reviewer = QuerySet<RfReporter, TypeParam>().template join<fields::RfBug.reviewer>().count().execute();
+    auto by_reviewer =
+        (SelectStatement<RfReporter, TypeParam>{}).all().template join<fields::RfBug.reviewer>().count().execute();
     ASSERT_TRUE(by_reviewer.has_value()) << by_reviewer.error().message();
     EXPECT_EQ(*by_reviewer, 2); // two bugs, each with a reviewer
 }

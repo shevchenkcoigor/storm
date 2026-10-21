@@ -17,11 +17,14 @@
 import storm;
 import std;
 
+using storm::db::DefaultConnection;
+
 #include "../../shared/models/person.h" // NOSONAR cpp:S954 — Person, via test_composite_pk_models.h's FK members
 #include "test_fixture.h"
 
 // Must follow the shared model headers: the composite-PK models name storm:: annotations.
 #include "crud/test_composite_pk_models.h" // NOSONAR cpp:S954
+using storm::QuerySet;
 
 // ── #504 Task 9: junction DDL is genuinely ACCEPTED by both live backends ────
 //
@@ -59,7 +62,7 @@ class MultiRelationCompositeOwnerTest : public StormTestFixture<ShelfAssignment,
 
 // Two entries sharing catalog_id == 7, differing in entry_no (3 vs 4).
 template <typename ConnType> auto seed_catalog_entries() -> void {
-    storm::QuerySet<CatalogEntry, ConnType> entry_qs;
+    QuerySet<CatalogEntry, ConnType> entry_qs;
     ASSERT_TRUE(entry_qs.insert(CatalogEntry{.catalog_id = 7, .entry_no = 3, .title = "widget"}).execute().has_value());
     ASSERT_TRUE(entry_qs.insert(CatalogEntry{.catalog_id = 7, .entry_no = 4, .title = "gadget"}).execute().has_value());
 }
@@ -93,7 +96,7 @@ auto link_junction_rows(const auto &conn, std::string_view table_and_cols, auto 
 // Two bins sharing aisle=4 and bin_code="B12", differing only in `revision` —
 // the LAST part, so a key comparison that stops early conflates them.
 template <typename ConnType> auto seed_bins() -> void {
-    storm::QuerySet<StorageBin, ConnType> bin_qs;
+    QuerySet<StorageBin, ConnType> bin_qs;
     ASSERT_TRUE(
         bin_qs.insert(StorageBin{.aisle = 4, .bin_code = "B12", .revision = 9, .capacity = 2.5}).execute().has_value());
     ASSERT_TRUE(bin_qs.insert(StorageBin{.aisle = 4, .bin_code = "B12", .revision = 10, .capacity = 3.5})
@@ -105,7 +108,7 @@ template <typename ConnType> auto seed_bins() -> void {
 // junction PAIRS seed only S-1, so the second shelf is opt-in rather than
 // baked in — it would change their expected count.
 template <typename ConnType> auto seed_shelves(bool with_second = true) -> void {
-    storm::QuerySet<ShelfAssignment, ConnType> shelf_qs;
+    QuerySet<ShelfAssignment, ConnType> shelf_qs;
     ASSERT_TRUE(
         shelf_qs.insert(ShelfAssignment{.warehouse_no = 2, .shelf_code = "S-1", .priority = 5}).execute().has_value());
     if (with_second) {
@@ -134,7 +137,7 @@ TYPED_TEST_SUITE(MultiRelationCompositeOwnerTest, STORM_SPLIT_TYPES, STORM_SPLIT
 // tags landed on WHICH ledger, not merely how many.
 TYPED_TEST(CompositeOwnerJunctionCreateTest, M2MEagerLoadStitchesOnFullCompositeOwnerKey) {
     using LedgerQs = storm::QuerySet<LedgerWithTags, TypeParam>;
-    auto conn = LedgerQs::get_default_connection();
+    auto conn = DefaultConnection<TypeParam>::get();
 
     // Two ledgers sharing the FIRST PK part (region == 1) and differing only in
     // later parts. If the stitch keyed on region alone — the single-column
@@ -197,12 +200,12 @@ TYPED_TEST(CompositeOwnerJunctionCreateTest, LeftJoinKeepsCompositeOwnerWithNoTa
 
 TYPED_TEST(CompositeOwnerJunctionCreateTest, JunctionTableIsCreatedOnLiveBackend) {
     using LedgerQs = storm::QuerySet<LedgerWithTags, TypeParam>;
-    auto conn = LedgerQs::get_default_connection();
+    auto conn = DefaultConnection<TypeParam>::get();
     // Round-trip a junction row through raw SQL: the ORM has no junction write
     // path (existing m2m tests populate junctions this way too), so this is the
     // only way to prove the emitted columns actually exist and accept data.
     ASSERT_TRUE(conn->execute("INSERT INTO LedgerTag (label) VALUES ('audit')").has_value());
-    storm::QuerySet<LedgerWithTags, TypeParam> ledger_qs;
+    QuerySet<LedgerWithTags, TypeParam> ledger_qs;
     const auto ledger_inserted =
         ledger_qs.insert(LedgerWithTags{.region = 1, .account = "acct-a", .period = 202601, .balance = 10.5}).execute();
     ASSERT_TRUE(ledger_inserted.has_value());
@@ -215,12 +218,12 @@ TYPED_TEST(CompositeOwnerJunctionCreateTest, JunctionTableIsCreatedOnLiveBackend
 // Single-PK owner + composite (2-part) RELATED — the mirror direction.
 TYPED_TEST(CompositeRelatedJunctionCreateTest, JunctionTableIsCreatedOnLiveBackend) {
     using RegistryQs = storm::QuerySet<TagRegistry, TypeParam>;
-    auto conn = RegistryQs::get_default_connection();
-    storm::QuerySet<CatalogEntry, TypeParam> entry_qs;
+    auto conn = DefaultConnection<TypeParam>::get();
+    QuerySet<CatalogEntry, TypeParam> entry_qs;
     const auto entry_inserted =
         entry_qs.insert(CatalogEntry{.catalog_id = 7, .entry_no = 3, .title = "widget"}).execute();
     ASSERT_TRUE(entry_inserted.has_value());
-    storm::QuerySet<TagRegistry, TypeParam> registry_qs;
+    QuerySet<TagRegistry, TypeParam> registry_qs;
     const auto registry_inserted = registry_qs.insert(TagRegistry{.label = "featured"}).execute();
     ASSERT_TRUE(registry_inserted.has_value());
     auto link = conn->execute("INSERT INTO TagRegistry_CatalogEntry "
@@ -246,7 +249,7 @@ TYPED_TEST(CompositeRelatedJunctionCreateTest, JunctionTableIsCreatedOnLiveBacke
 // join<>().select() and join<>().count() for real on both backends.
 TYPED_TEST(CompositeRelatedJunctionCreateTest, M2MEagerLoadStitchesOverCompositeRelatedKey) {
     using RegistryQs = storm::QuerySet<TagRegistry, TypeParam>;
-    auto conn = RegistryQs::get_default_connection();
+    auto conn = DefaultConnection<TypeParam>::get();
 
     // Entries share catalog_id == 7 and differ only in entry_no — a partial-key
     // match on catalog_id alone would make either junction row resolve to both.
@@ -273,7 +276,7 @@ TYPED_TEST(CompositeRelatedJunctionCreateTest, M2MEagerLoadStitchesOverComposite
 // the same widening independently — count() exercises it end to end.
 TYPED_TEST(CompositeRelatedJunctionCreateTest, CountOverCompositeRelatedM2MCountsPairs) {
     using RegistryQs = storm::QuerySet<TagRegistry, TypeParam>;
-    auto conn = RegistryQs::get_default_connection();
+    auto conn = DefaultConnection<TypeParam>::get();
 
     seed_catalog_entries<TypeParam>();
 
@@ -290,12 +293,12 @@ TYPED_TEST(CompositeRelatedJunctionCreateTest, CountOverCompositeRelatedM2MCount
 // clauses. The widest junction shape the tree produces.
 TYPED_TEST(CompositeBothSidesJunctionCreateTest, JunctionTableIsCreatedOnLiveBackend) {
     using ShelfQs = storm::QuerySet<ShelfAssignment, TypeParam>;
-    auto conn = ShelfQs::get_default_connection();
-    storm::QuerySet<StorageBin, TypeParam> bin_qs;
+    auto conn = DefaultConnection<TypeParam>::get();
+    QuerySet<StorageBin, TypeParam> bin_qs;
     const auto bin_inserted =
         bin_qs.insert(StorageBin{.aisle = 4, .bin_code = "B12", .revision = 9, .capacity = 2.5}).execute();
     ASSERT_TRUE(bin_inserted.has_value());
-    storm::QuerySet<ShelfAssignment, TypeParam> shelf_qs;
+    QuerySet<ShelfAssignment, TypeParam> shelf_qs;
     const auto shelf_inserted =
         shelf_qs.insert(ShelfAssignment{.warehouse_no = 2, .shelf_code = "S-1", .priority = 5}).execute();
     ASSERT_TRUE(shelf_inserted.has_value());
@@ -312,7 +315,7 @@ TYPED_TEST(CompositeBothSidesJunctionCreateTest, JunctionTableIsCreatedOnLiveBac
 // related entity's own columns at offset 2. Decoys share a PK part on BOTH sides.
 TYPED_TEST(CompositeBothSidesJunctionCreateTest, M2MEagerLoadStitchesOverBothCompositeKeys) {
     using ShelfQs = storm::QuerySet<ShelfAssignment, TypeParam>;
-    auto conn = ShelfQs::get_default_connection();
+    auto conn = DefaultConnection<TypeParam>::get();
 
     seed_bins<TypeParam>();
     seed_shelves<TypeParam>();
@@ -345,7 +348,7 @@ TYPED_TEST(CompositeBothSidesJunctionCreateTest, M2MEagerLoadStitchesOverBothCom
 
 TYPED_TEST(CompositeBothSidesJunctionCreateTest, CountOverBothCompositeM2MCountsPairs) {
     using ShelfQs = storm::QuerySet<ShelfAssignment, TypeParam>;
-    auto conn = ShelfQs::get_default_connection();
+    auto conn = DefaultConnection<TypeParam>::get();
 
     seed_bins<TypeParam>();
     seed_shelves<TypeParam>(/*with_second=*/false); // only S-1: the count is over PAIRS
@@ -359,7 +362,7 @@ TYPED_TEST(CompositeBothSidesJunctionCreateTest, CountOverBothCompositeM2MCounts
 
 // LEFT keeps a both-sides-composite owner with no junction rows; INNER drops it.
 TYPED_TEST(CompositeBothSidesJunctionCreateTest, LeftJoinKeepsBothCompositeOwnerWithNoBins) {
-    storm::QuerySet<ShelfAssignment, TypeParam> shelf_qs;
+    QuerySet<ShelfAssignment, TypeParam> shelf_qs;
     ASSERT_TRUE(shelf_qs.insert(ShelfAssignment{.warehouse_no = 8, .shelf_code = "lonely", .priority = 1})
                     .execute()
                     .has_value());
@@ -390,7 +393,7 @@ TYPED_TEST(CompositeBothSidesJunctionCreateTest, LeftJoinKeepsBothCompositeOwner
 // fail outright.
 TYPED_TEST(MultiRelationCompositeOwnerTest, TwoRelationsOnACompositeOwnerStitchIndependently) {
     using ShelfQs = storm::QuerySet<ShelfAssignment, TypeParam>;
-    auto conn = ShelfQs::get_default_connection();
+    auto conn = DefaultConnection<TypeParam>::get();
 
     seed_bins<TypeParam>();
     seed_shelves<TypeParam>();
@@ -426,7 +429,7 @@ TYPED_TEST(MultiRelationCompositeOwnerTest, TwoRelationsOnACompositeOwnerStitchI
 // relation but not the other keeps the empty container rather than dropping.
 TYPED_TEST(MultiRelationCompositeOwnerTest, LeftJoinFillsEachRelationIndependently) {
     using ShelfQs = storm::QuerySet<ShelfAssignment, TypeParam>;
-    auto conn = ShelfQs::get_default_connection();
+    auto conn = DefaultConnection<TypeParam>::get();
 
     seed_bins<TypeParam>();
     seed_shelves<TypeParam>(/*with_second=*/false); // S-1 only
@@ -452,7 +455,7 @@ TYPED_TEST(MultiRelationCompositeOwnerTest, LeftJoinFillsEachRelationIndependent
 // AND-joins one equality per owner PK part, nesting the two loops.
 TYPED_TEST(MultiRelationCompositeOwnerTest, CountOverTwoRelationsChainsBothJunctionsWithDistinctAliases) {
     using ShelfQs = storm::QuerySet<ShelfAssignment, TypeParam>;
-    auto conn = ShelfQs::get_default_connection();
+    auto conn = DefaultConnection<TypeParam>::get();
 
     seed_bins<TypeParam>();
     seed_shelves<TypeParam>(/*with_second=*/false); // S-1 only

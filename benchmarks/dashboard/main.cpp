@@ -82,6 +82,7 @@ namespace {
 // QuerySet calls see the same models with their reflection annotations.
 // Order matters: backup needs Options, db needs Options + tui types,
 // events needs DashboardDB + baseline helpers from db.
+using storm::db::DefaultConnection;
 #include "args.hpp"
 #include "backup.hpp"
 #include "db.hpp"
@@ -126,7 +127,7 @@ namespace {
 
     // Open the SQLite store. Returns 0 on success, 1 on connection failure.
     auto open_db_connection(Options const& opts) -> int {
-        auto rc = storm::QuerySet<bench_dashboard::BenchRun>::set_default_connection(opts.db_path);
+        auto rc = DefaultConnection<>::set(opts.db_path);
         if (!rc) {
             return fail_with(1, "cannot open", opts.db_path, std::string{rc.error().message()});
         }
@@ -150,12 +151,11 @@ namespace {
     }
 
     auto check_schema(Options const& opts) -> int {
-        if (const int rc =
-                    check_table_exists(storm::QuerySet<bench_dashboard::BenchRun>().count().execute(), opts.db_path);
+        if (const int rc = check_table_exists(QuerySet<bench_dashboard::BenchRun>().count().execute(), opts.db_path);
             rc != 0) {
             return rc;
         }
-        return check_table_exists(storm::QuerySet<bench_dashboard::BenchResult>().count().execute(), opts.db_path);
+        return check_table_exists(QuerySet<bench_dashboard::BenchResult>().count().execute(), opts.db_path);
     }
 
     // Each BenchRun re-reads git_hash/branch from the working tree at insert
@@ -341,7 +341,7 @@ auto main(int argc, char** argv) -> int { // NOLINT(bugprone-exception-escape)
 
     // One-shot backup actions short-circuit before any TUI / DB-connection
     // setup. They must NOT install signal handlers (Ctrl-C should propagate
-    // straight to gh) and must NOT call set_default_connection.
+    // straight to gh) and must NOT call DefaultConnection::set.
     if (auto code = try_run_subcommand(opts); code.has_value()) {
         return *code;
     }

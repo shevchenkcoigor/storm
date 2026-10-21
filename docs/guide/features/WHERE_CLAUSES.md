@@ -26,7 +26,7 @@ declaration it needs. It carries the comparison operators directly, so no wrappe
 is involved.
 
 Only persisted columns are comparable. A relation member — a many-to-many
-container (`[[= storm::many_to_many]]`) or a reverse-FK container
+container (`[[= many_to_many]]`) or a reverse-FK container
 (`[[= storm::reverse_fk<...>]]`) — is a **compile-time error** (#408): those are not
 columns, so a WHERE clause on one would reference a non-existent column. The constraint
 fails at the call site instead of producing an opaque "no such column" at prepare time.

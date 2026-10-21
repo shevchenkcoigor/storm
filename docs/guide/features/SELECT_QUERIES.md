@@ -13,13 +13,41 @@ Key optimizations:
 - **PostgreSQL binary results** - Binary format (~34% faster) when all columns are binary-safe (#600)
 - **74% efficiency** - 13.07M rows/sec on SQLite (vs 17.67M raw SQLite)
 
+## Using SelectStatement Directly
+
+`QuerySet` is a thin wrapper over `SelectStatement<T, ConnType>::Query`, which exposes the same chain. Import
+only the statement module instead of `import storm;`:
+
+```cpp
+import storm_db_default_connection;
+import storm_db_sqlite;
+import storm_orm_statements_select;
+
+using storm::db::DefaultConnection;
+using storm::orm::statements::SelectStatement;
+
+DefaultConnection<>::set(":memory:");   // replaces QuerySet::set_default_connection (removed)
+
+auto rows = SelectStatement<Person>{}   // ConnType defaults to sqlite::Connection
+    .where(fields::Person.age > 30)
+    .order_by<fields::Person.name>()
+    .limit(10)
+    .execute();
+
+auto count = SelectStatement<Person>{}.all().count().execute();
+auto one   = SelectStatement<Person>{}.all().first().order_by<fields::Person.age>().execute();
+```
+
+`DefaultConnection<>::get()` aborts if the thread has no default connection; check with `has()` first when unsure.
+Insert/Update/Erase statements follow the same pattern (`InsertStatement<Person>{}.query(p).execute()`).
+
 ## Basic Usage
 
 ### Select All Rows
 
 ```cpp
 struct Person {
-    [[=storm::primary]] int id;
+    [[=primary]] int id;
     std::string name;
     int age;
 };
@@ -151,7 +179,7 @@ If your model includes **any** of these column types, the entire statement falls
 
 ```cpp
 struct Article {
-    [[= storm::primary]] int id;
+    [[= primary]] int id;
     std::string title;              // ✅ safe
     std::chrono::system_clock::time_point created_at;  // ❌ unsafe
 };

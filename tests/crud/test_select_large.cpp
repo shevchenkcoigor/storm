@@ -1,13 +1,19 @@
 #include <gtest/gtest.h>
 #include "test_db_helpers.h"
 
-import storm;
+import storm_db_default_connection;
+import storm_db_postgresql;
+import storm_db_sqlite;
+import storm_meta;
+import storm_orm_schema;
+import storm_orm_statements_insert;
+import storm_orm_statements_select;
 import std;
 
 #include "../../shared/models/simple_record.h"
 #include "test_fixture.h"
-
-using storm::QuerySet;
+using storm::orm::statements::InsertStatement;
+using storm::orm::statements::SelectStatement;
 
 // Test fixture for large SELECT operations — templated on database backend
 template <typename ConnType> class SelectLargeTest : public StormTestFixture<SimpleRecord, ConnType> {};
@@ -17,8 +23,6 @@ TYPED_TEST_SUITE(SelectLargeTest, DatabaseTypes);
 // Test: SELECT with result set larger than initial capacity (10K)
 // This tests the exponential growth path
 TYPED_TEST(SelectLargeTest, SelectMoreThan10KRows) {
-    QuerySet<SimpleRecord, TypeParam> queryset;
-
     // Insert 25,000 records (will trigger exponential growth: 10K → 20K → 40K)
     constexpr int             RECORD_COUNT = 25000;
     std::vector<SimpleRecord> records;
@@ -28,11 +32,12 @@ TYPED_TEST(SelectLargeTest, SelectMoreThan10KRows) {
         records.emplace_back(SimpleRecord{.id = i, .name = std::format("Record_{}", i), .value = i * 10});
     }
 
-    auto insert_result = queryset.insert(std::span<const SimpleRecord>(records)).execute();
+    auto insert_result =
+            (InsertStatement<SimpleRecord, TypeParam>{}).query(std::span<const SimpleRecord>(records)).execute();
     ASSERT_TRUE(insert_result.has_value()) << "Batch INSERT failed: " << insert_result.error().message();
 
     // SELECT all rows - this will exercise exponential growth
-    auto select_result = queryset.select().execute();
+    auto select_result = (SelectStatement<SimpleRecord, TypeParam>{}).all().execute();
     ASSERT_TRUE(select_result.has_value()) << "SELECT failed: " << select_result.error().message();
 
     const auto& retrieved = select_result.value();
@@ -58,8 +63,6 @@ TYPED_TEST(SelectLargeTest, SelectMoreThan10KRows) {
 
 // Test: SELECT with result set at exactly 10K (no exponential growth needed)
 TYPED_TEST(SelectLargeTest, SelectExactly10KRows) {
-    QuerySet<SimpleRecord, TypeParam> queryset;
-
     constexpr int             RECORD_COUNT = 10000;
     std::vector<SimpleRecord> records;
     records.reserve(RECORD_COUNT);
@@ -68,11 +71,12 @@ TYPED_TEST(SelectLargeTest, SelectExactly10KRows) {
         records.emplace_back(SimpleRecord{.id = i, .name = std::format("R{}", i), .value = i});
     }
 
-    auto insert_result = queryset.insert(std::span<const SimpleRecord>(records)).execute();
+    auto insert_result =
+            (InsertStatement<SimpleRecord, TypeParam>{}).query(std::span<const SimpleRecord>(records)).execute();
     ASSERT_TRUE(insert_result.has_value());
 
     // SELECT all rows - should fit in initial capacity exactly
-    auto select_result = queryset.select().execute();
+    auto select_result = (SelectStatement<SimpleRecord, TypeParam>{}).all().execute();
     ASSERT_TRUE(select_result.has_value());
 
     const auto& retrieved = select_result.value();
@@ -85,8 +89,6 @@ TYPED_TEST(SelectLargeTest, SelectExactly10KRows) {
 
 // Test: SELECT with result set slightly over 10K (minimal exponential growth)
 TYPED_TEST(SelectLargeTest, SelectSlightlyOver10KRows) {
-    QuerySet<SimpleRecord, TypeParam> queryset;
-
     constexpr int             RECORD_COUNT = 10001; // Just 1 over capacity
     std::vector<SimpleRecord> records;
     records.reserve(RECORD_COUNT);
@@ -95,11 +97,12 @@ TYPED_TEST(SelectLargeTest, SelectSlightlyOver10KRows) {
         records.emplace_back(SimpleRecord{.id = i, .name = "Test", .value = i});
     }
 
-    auto insert_result = queryset.insert(std::span<const SimpleRecord>(records)).execute();
+    auto insert_result =
+            (InsertStatement<SimpleRecord, TypeParam>{}).query(std::span<const SimpleRecord>(records)).execute();
     ASSERT_TRUE(insert_result.has_value());
 
     // SELECT all rows - will grow to 20K
-    auto select_result = queryset.select().execute();
+    auto select_result = (SelectStatement<SimpleRecord, TypeParam>{}).all().execute();
     ASSERT_TRUE(select_result.has_value());
 
     const auto& retrieved = select_result.value();
@@ -112,8 +115,6 @@ TYPED_TEST(SelectLargeTest, SelectSlightlyOver10KRows) {
 // Test: SELECT with very large result set (100K rows)
 // Tests multiple exponential growth cycles
 TYPED_TEST(SelectLargeTest, SelectVeryLargeDataset) {
-    QuerySet<SimpleRecord, TypeParam> queryset;
-
     // 100K records: 10K → 20K → 40K → 80K → 160K (4 growth cycles)
     constexpr int RECORD_COUNT = 100000;
 
@@ -130,12 +131,14 @@ TYPED_TEST(SelectLargeTest, SelectVeryLargeDataset) {
             );
         }
 
-        auto insert_result = queryset.insert(std::span<const SimpleRecord>(batch_records)).execute();
+        auto insert_result = (InsertStatement<SimpleRecord, TypeParam>{})
+                                     .query(std::span<const SimpleRecord>(batch_records))
+                                     .execute();
         ASSERT_TRUE(insert_result.has_value()) << "Batch " << batch << " INSERT failed";
     }
 
     // SELECT all 100K rows
-    auto select_result = queryset.select().execute();
+    auto select_result = (SelectStatement<SimpleRecord, TypeParam>{}).all().execute();
     ASSERT_TRUE(select_result.has_value()) << "SELECT 100K rows failed: " << select_result.error().message();
 
     const auto& retrieved = select_result.value();

@@ -28,6 +28,10 @@ import std;
 // Must follow the shared model headers: Shipment / LedgerEntryRef name storm:: annotations.
 // Supplies the composite-PK FK targets the compile-time gate below is asserted on.
 #include "crud/test_composite_pk_models.h" // NOSONAR cpp:S954
+using storm::field_specs_for;
+using storm::primary;
+using storm::meta::selector_info;
+using storm::orm::utilities::Collate;
 
 using storm::QuerySet;
 
@@ -35,14 +39,14 @@ using storm::QuerySet;
 // (#575) route through the same "<member>_id" rewrite as the comparison operators, on a
 // member no other fixture here already covers with an optional FK.
 struct NullableSenderMessage {
-    [[= storm::primary]] int id{};
+    [[= primary]] int id{};
     [[= storm::fk<>]] std::optional<Person> sender;
     std::string content;
 };
 
 namespace fields {
 struct NullableSenderMessageT;
-consteval { std::meta::define_aggregate(^^NullableSenderMessageT, storm::field_specs_for(^^NullableSenderMessage)); }
+consteval { std::meta::define_aggregate(^^NullableSenderMessageT, field_specs_for(^^NullableSenderMessage)); }
 inline constexpr NullableSenderMessageT NullableSenderMessage{};
 } // namespace fields
 
@@ -195,8 +199,7 @@ TYPED_TEST(FkColumnNameTest, WhereFkMemberInAcceptsWiderIntOperand) {
 // independently of the plain Field path above — must be rewritten too.
 TYPED_TEST(FkColumnNameTest, WhereFkMemberCollateSqlNamesFkColumn) {
     QuerySet<Message, TypeParam> qs;
-    const auto sql =
-        qs.where(fields::Message.sender.collate(storm::orm::utilities::Collate::NoCase) == 1).select().sql();
+    const auto sql = qs.where(fields::Message.sender.collate(Collate::NoCase) == 1).select().sql();
     EXPECT_TRUE(sql.contains("sender_id COLLATE NOCASE = ?")) << "Emitted SQL: " << sql;
 }
 
@@ -204,8 +207,7 @@ TYPED_TEST(FkColumnNameTest, WhereFkMemberCollateSqlNamesFkColumn) {
 // must independently route through InTargetType too, not just the plain Field path above.
 TYPED_TEST(FkColumnNameTest, WhereFkMemberCollateInSqlNamesFkColumn) {
     QuerySet<Message, TypeParam> qs;
-    const auto sql =
-        qs.where(fields::Message.sender.collate(storm::orm::utilities::Collate::NoCase).in(1, 2)).select().sql();
+    const auto sql = qs.where(fields::Message.sender.collate(Collate::NoCase).in(1, 2)).select().sql();
     EXPECT_TRUE(sql.contains("sender_id COLLATE NOCASE IN (?, ?)")) << "Emitted SQL: " << sql;
 }
 
@@ -217,10 +219,7 @@ TYPED_TEST(FkColumnNameTest, WhereFkMemberCollateExecutes) {
         GTEST_SKIP() << "COLLATE NOCASE is SQLite-only syntax";
     }
     QuerySet<Message, TypeParam> qs;
-    auto result =
-        qs.where(fields::Message.sender.collate(storm::orm::utilities::Collate::NoCase) == this->person_ids_[0])
-            .select()
-            .execute();
+    auto result = qs.where(fields::Message.sender.collate(Collate::NoCase) == this->person_ids_[0]).select().execute();
     ASSERT_TRUE(result.has_value()) << "WHERE == via collate() on an FK member failed: " << result.error().message();
     ASSERT_EQ(result->size(), 2U);
 }
@@ -397,15 +396,15 @@ TYPED_TEST(FkColumnNameTest, GroupByPlainWithCountDistinctFkExecutes) {
 // the ill-formed call it asserts about (same pattern as #502's ReturnIdSupported).
 
 // Message::sender → single-PK Person: one column (`sender_id`), accepted.
-static_assert(storm::meta::is_single_column_member(storm::meta::selector_info<fields::Message.sender>()),
+static_assert(storm::meta::is_single_column_member(selector_info<fields::Message.sender>()),
               "an FK to a single-PK target is one column and stays usable in ORDER BY / COUNT(DISTINCT)");
 // A plain non-FK column is trivially one column.
-static_assert(storm::meta::is_single_column_member(storm::meta::selector_info<fields::Person.age>()),
+static_assert(storm::meta::is_single_column_member(selector_info<fields::Person.age>()),
               "an ordinary column is always single-column");
 // Shipment::line → 2-part composite PK (order_id, product_id): rejected.
-static_assert(!storm::meta::is_single_column_member(storm::meta::selector_info<fields::Shipment.line>()),
+static_assert(!storm::meta::is_single_column_member(selector_info<fields::Shipment.line>()),
               "an FK to a composite-PK target spans several columns and has no <member>_id");
-static_assert(storm::meta::column_span_of(storm::meta::selector_info<fields::Shipment.line>()) == 2,
+static_assert(storm::meta::column_span_of(selector_info<fields::Shipment.line>()) == 2,
               "Shipment::line spans exactly the target's two PK parts");
 
 // The gate is not arity-limited — it counts the target's parts rather than testing
@@ -458,7 +457,7 @@ template <auto S, typename Str = std::string_view>
 concept CanWhereLike = requires(Str s) { S.like(s); };
 template <auto S, typename V = int>
 concept CanWhereBetween = requires(V v) { S.between(v, v); };
-template <auto S, typename Col = storm::orm::utilities::Collate>
+template <auto S, typename Col = Collate>
 concept CanWhereCollate = requires(Col c) { S.collate(c); };
 template <auto S>
 concept CanWhereIsNull = requires { S.is_null(); };
@@ -571,7 +570,7 @@ TYPED_TEST(NonFkSqlParityTest, WherePlainMemberSqlUnchanged) {
     EXPECT_EQ(qs.where(fields::Person.age == 30).select().sql(),
               "SELECT id, name, age, salary, is_active, years_experience, department, score, nickname, avatar"
               " FROM Person WHERE age = ?");
-    EXPECT_EQ(qs.where(fields::Person.age.collate(storm::orm::utilities::Collate::NoCase) == 30).select().sql(),
+    EXPECT_EQ(qs.where(fields::Person.age.collate(Collate::NoCase) == 30).select().sql(),
               "SELECT id, name, age, salary, is_active, years_experience, department, score, nickname, avatar"
               " FROM Person WHERE age COLLATE NOCASE = ?");
 }

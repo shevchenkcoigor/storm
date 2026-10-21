@@ -23,7 +23,7 @@ Incremental rebuild (bindings.cpp only): **~1.6 seconds**
 
 ## Architecture
 
-- **PyPerson** struct hardcoded in C++ with `[[= storm::primary]]`
+- **PyPerson** struct hardcoded in C++ with `[[= primary]]`
 - **PersonQS** = `storm::QuerySet<PyPerson, storm::db::sqlite::Connection>`
 - **consteval helpers** pre-compute `std::array<std::meta::info, N>` of field members
 - **`template for` expansion statements** iterate fields at compile time for:

@@ -12,6 +12,7 @@ using storm::QuerySet;
 #include "../../shared/models/person.h"
 #include "../../shared/models/simple_record.h"
 #include "test_fixture.h"
+using storm::orm::statements::ReturnId;
 
 // ============================================================================
 // Helpers
@@ -228,7 +229,7 @@ TYPED_TEST(SqlVerifyTest, InsertSingleReturning) {
 TYPED_TEST(SqlVerifyTest, InsertSingleNoReturning) {
     QuerySet<Person, TypeParam> qs;
     Person const                p{};
-    auto                        sql = qs.template insert<storm::orm::statements::ReturnId::No>(p).sql();
+    auto                        sql = qs.template insert<ReturnId::No>(p).sql();
     EXPECT_EQ(
             sql,
             "INSERT INTO Person (name, age, salary, is_active, years_experience, department, score, nickname, avatar)"
@@ -252,7 +253,7 @@ TYPED_TEST(SqlVerifyTest, InsertBulkReturning) {
     QuerySet<Person, TypeParam>   qs;
     std::array<Person, 2> const   people{};
     std::span<const Person> const span{people};
-    auto                          sql = qs.template insert<storm::orm::statements::ReturnId::Yes>(span).sql();
+    auto                          sql = qs.template insert<ReturnId::Yes>(span).sql();
     EXPECT_EQ(
             sql,
             "INSERT INTO Person (name, age, salary, is_active, years_experience, department, score, nickname, avatar)"

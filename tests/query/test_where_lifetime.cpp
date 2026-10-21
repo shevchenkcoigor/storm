@@ -3,15 +3,26 @@
 
 // NOLINTBEGIN(misc-const-correctness,performance-unnecessary-value-param,performance-unnecessary-copy-initialization)
 
-import storm;
+import storm_db_default_connection;
+import storm_db_postgresql;
+import storm_db_sqlite;
+import storm_meta;
+import storm_orm_indexes;
+import storm_orm_schema;
+import storm_orm_statements_erase;
+import storm_orm_statements_insert;
+import storm_orm_statements_select;
+import storm_orm_statements_update;
+import storm_orm_where;
+import storm_orm_utilities;
 import std;
 
 #include "../../shared/models/people_25.h" // NOSONAR cpp:S954
 #include "../../shared/models/person.h"
 #include "test_fixture.h"
 #include "test_seed_helpers.h"
-
-using storm::QuerySet;
+using storm::orm::statements::SelectStatement;
+using storm::orm::utilities::Collate;
 using storm::orm::where::Expr;
 
 // Lifetime safety for WHERE comparison operands (#352).
@@ -24,8 +35,7 @@ using storm::orm::where::Expr;
 // Run the deferred WHERE and assert it returns exactly one Bob — the operand must have been copied,
 // not stored as a view into a buffer that has already been freed.
 template <typename ConnType> auto expect_single_bob(const Expr& expr) -> void {
-    QuerySet<Person, ConnType> queryset;
-    auto                       result = queryset.where(expr).select().execute();
+    auto result = (SelectStatement<Person, ConnType>{}).where(expr).execute();
     ASSERT_TRUE(result.has_value()) << "Deferred bind failed: " << result.error().message();
     ASSERT_EQ(result.value().size(), 1) << "Expected exactly 1 person named Bob";
     EXPECT_EQ(result.value().begin()->name, "Bob");
@@ -82,7 +92,7 @@ TEST_F(WhereLifetimeCollateTest, CollatedStringViewOperandSurvivesDeferredBind) 
     Expr expr = [] {
         auto             owner = std::make_unique<std::string>("bob");
         std::string_view view  = *owner;
-        return fields::Person.name.collate(storm::orm::utilities::Collate::NoCase) == view;
+        return fields::Person.name.collate(Collate::NoCase) == view;
     }();
 
     // Case-insensitive match: "bob" finds "Bob".
@@ -120,7 +130,7 @@ TEST_F(WhereLifetimeCollateTest, CollatedBetweenStringOperandSurvivesDeferredBin
         auto        hi_owner = std::make_unique<std::array<char, 4>>(std::array<char, 4>{'b', 'o', 'b', '\0'});
         const char* lo       = lo_owner->data();
         const char* hi       = hi_owner->data();
-        return fields::Person.name.collate(storm::orm::utilities::Collate::NoCase).between(lo, hi);
+        return fields::Person.name.collate(Collate::NoCase).between(lo, hi);
     }();
 
     // Case-insensitive: "bob" BETWEEN-bounds finds "Bob".

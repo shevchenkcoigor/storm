@@ -5,6 +5,7 @@ import storm;
 import std;
 
 using storm::QuerySet;
+using storm::orm::statements::SelectStatement;
 
 #include "../../shared/models/person.h" // NOSONAR cpp:S954
 #include "test_fixture.h"
@@ -103,4 +104,55 @@ TYPED_TEST(SelectOneTest, FirstWithWhereNoMatch) {
     auto result = queryset.where(fields::Person.age == 999).first().execute();
     ASSERT_TRUE(result.has_value()) << "first() should succeed even with no match";
     EXPECT_FALSE(result.value().has_value()) << "Expected nullopt when no rows match";
+}
+
+// Chain methods inherited by FirstQuery/GetQuery can change the query after first()/get() chose
+// its fast path; execute() must re-check, or it serves the unordered/unshifted cached statement.
+TYPED_TEST(SelectOneTest, FirstThenOrderByHonoursOrdering) {
+    const std::vector<Person> people = {{0, "Alice", 30}, {0, "Bob", 25}, {0, "Charlie", 35}};
+    ASSERT_TRUE((storm::test::batch_insert<Person, TypeParam>(people)));
+
+    auto result =
+            (SelectStatement<Person, TypeParam>{}).all().first().template order_by<fields::Person.age>().execute();
+    ASSERT_TRUE(result.has_value());
+    ASSERT_TRUE(result.value().has_value());
+    EXPECT_EQ(result.value()->name, "Bob") << "youngest row, not the first inserted";
+}
+
+TYPED_TEST(SelectOneTest, FirstThenOffsetSkipsRows) {
+    const std::vector<Person> people = {{0, "Alice", 30}, {0, "Bob", 25}, {0, "Charlie", 35}};
+    ASSERT_TRUE((storm::test::batch_insert<Person, TypeParam>(people)));
+
+    auto result = (SelectStatement<Person, TypeParam>{}).all().first().offset(1).execute();
+    ASSERT_TRUE(result.has_value());
+    ASSERT_TRUE(result.value().has_value());
+    EXPECT_NE(result.value()->name, "Alice") << "OFFSET 1 must skip the first row";
+}
+
+TYPED_TEST(SelectOneTest, GetThenOffsetNarrowsToOneRow) {
+    const std::vector<Person> people = {{0, "Alice", 30}, {0, "Bob", 25}, {0, "Charlie", 35}};
+    ASSERT_TRUE((storm::test::batch_insert<Person, TypeParam>(people)));
+
+    auto result = (SelectStatement<Person, TypeParam>{}).all().get().offset(2).execute();
+    ASSERT_TRUE(result.has_value()) << "OFFSET 2 leaves exactly one row; the fast path would report 3";
+    EXPECT_FALSE(result.value().name.empty());
+}
+
+TYPED_TEST(SelectOneTest, GetThenWhereFiltersToOneRow) {
+    const std::vector<Person> people = {{0, "Alice", 30}, {0, "Bob", 25}, {0, "Charlie", 35}};
+    ASSERT_TRUE((storm::test::batch_insert<Person, TypeParam>(people)));
+
+    auto result = (SelectStatement<Person, TypeParam>{}).all().get().where(fields::Person.name == "Bob").execute();
+    ASSERT_TRUE(result.has_value()) << "the WHERE added after get() must not be dropped by the fast path";
+    EXPECT_EQ(result.value().name, "Bob");
+}
+
+TYPED_TEST(SelectOneTest, FirstThenWhereFilters) {
+    const std::vector<Person> people = {{0, "Alice", 30}, {0, "Bob", 25}, {0, "Charlie", 35}};
+    ASSERT_TRUE((storm::test::batch_insert<Person, TypeParam>(people)));
+
+    auto result = (SelectStatement<Person, TypeParam>{}).all().first().where(fields::Person.age > 30).execute();
+    ASSERT_TRUE(result.has_value());
+    ASSERT_TRUE(result.value().has_value());
+    EXPECT_EQ(result.value()->name, "Charlie");
 }

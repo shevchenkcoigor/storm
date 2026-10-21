@@ -3,18 +3,26 @@
 
 #include "test_db_helpers.h"
 
-import storm;
+import storm_db_postgresql;
+import storm_db_sqlite;
+import storm_meta;
+import storm_orm_indexes;
+import storm_orm_statements_insert;
 import std;
 // UpdateGrammar / EraseGrammar are not re-exported by `storm` — same direct
 // import the m2m and reverse-FK SET-gate assertions use.
 import storm_orm_statements_update_grammar;
 import storm_orm_statements_erase_grammar;
+import storm_orm_statements_upsert_grammar;
+import storm_orm_statements_erase;
 
 #include "../../shared/models/person.h" // NOSONAR cpp:S954 — Person, the FK target of StockEntry
 #include "../../shared/models/timestamped_record.h"
 
 // Must follow person.h: StockEntry's FK part names Person.
 #include "test_composite_pk_models.h" // NOSONAR cpp:S954
+using storm::orm::statements::InsertStatement;
+using storm::orm::statements::ReturnId;
 
 using storm::orm::statements::default_return_id;
 using storm::orm::statements::ReturnId;
@@ -233,8 +241,7 @@ namespace {
     // from reflection, so no live connection is involved (same rationale as the
     // EraseGrammar asserts above).
     template <typename T, ReturnId R = default_return_id<T>()> auto insert_sql() -> std::string {
-        return storm::orm::statements::InsertStatement<T, storm::db::sqlite::Connection>::template SingleInsertQuery<
-                R>::sql();
+        return InsertStatement<T, storm::db::sqlite::Connection>::template SingleInsertQuery<R>::sql();
     }
 
 } // namespace

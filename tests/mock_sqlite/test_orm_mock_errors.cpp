@@ -24,10 +24,19 @@
 
 #include "mock_sqlite3.h"
 
-import storm;
 import std;
 import storm_orm_utilities;
 import storm_orm_transaction;
+import storm;
+using storm::auto_update;
+using storm::field_specs_for;
+using storm::many_to_many;
+using storm::primary;
+using storm::primary_part;
+using storm::orm::statements::InsertOptions;
+using storm::orm::statements::InsertStatement;
+using storm::orm::statements::ReturnId;
+using storm::orm::statements::UpsertGrammar;
 
 namespace db  = storm::db;
 namespace orm = storm::orm;
@@ -36,55 +45,56 @@ using storm::test::MockSqlite3Config;
 
 // Struct with indexes — must be at namespace scope for Indexes<> specialization
 struct MockIndexedPerson {
-    [[= storm::primary]] int id{};
-    std::string              name;
-    int                      department{};
+    [[= primary]] int id{};
+    std::string       name;
+    int               department{};
 };
 
 template <> struct storm::Indexes<MockIndexedPerson> {
-    using type = std::tuple<storm::Index<^^MockIndexedPerson::name, ^^MockIndexedPerson::department>>;
+    using type = std::tuple<Index<^^MockIndexedPerson::name, ^^MockIndexedPerson::department>>;
 };
 
 namespace {
+    using storm::db::DefaultConnection;
 
     // Test model for ORM operations
     struct MockPerson {
-        [[= storm::primary]] std::int64_t id{};
-        std::string                       name;
-        int                               age{};
+        [[= primary]] std::int64_t id{};
+        std::string                name;
+        int                        age{};
     };
 
     // fields:: selector proxies (#518).
     namespace fields {
         struct MockPersonT;
         consteval {
-            std::meta::define_aggregate(^^MockPersonT, storm::field_specs_for(^^MockPerson));
+            std::meta::define_aggregate(^^MockPersonT, field_specs_for(^^MockPerson));
         }
         inline constexpr MockPersonT MockPerson{};
     } // namespace fields
 
     // Test model with optional fields
     struct MockPersonOptional {
-        [[= storm::primary]] std::int64_t id{};
-        std::optional<std::string>        name;
-        std::optional<int>                age;
+        [[= primary]] std::int64_t id{};
+        std::optional<std::string> name;
+        std::optional<int>         age;
     };
 
     // Test model with an auto_update timestamp (#209), used to cover the upsert
     // DO UPDATE auto_update-tail bind-error branch (#205).
     struct MockPersonAutoUpdate {
-        [[= storm::primary]] std::int64_t                              id{};
-        std::string                                                    name;
-        [[= storm::auto_update]] std::chrono::system_clock::time_point updated_at{};
+        [[= primary]] std::int64_t                              id{};
+        std::string                                             name;
+        [[= auto_update]] std::chrono::system_clock::time_point updated_at{};
     };
 
     // Composite-PK model, used to cover the composite branches of
     // execute_upsert_nothing()/UpsertUpdateRunner::run() (#503) — the plain
     // single-PK mocks above only ever hit the single-PK else-branch.
     struct MockOrderLine {
-        [[= storm::primary_part]] int order_id{};
-        [[= storm::primary_part]] int product_id{};
-        int                           quantity{};
+        [[= primary_part]] int order_id{};
+        [[= primary_part]] int product_id{};
+        int                    quantity{};
     };
 
     // Composite-PK + auto_update, mirroring MockPersonAutoUpdate above — isolates
@@ -92,10 +102,10 @@ namespace {
     // bind_all_fields()'. `quantity` is a settable non-key column so SetCols can
     // list it while leaving `updated_at` unlisted, forcing the auto_update tail.
     struct MockOrderLineAutoUpdate {
-        [[= storm::primary_part]] int                                  order_id{};
-        [[= storm::primary_part]] int                                  product_id{};
-        int                                                            quantity{};
-        [[= storm::auto_update]] std::chrono::system_clock::time_point updated_at{};
+        [[= primary_part]] int                                  order_id{};
+        [[= primary_part]] int                                  product_id{};
+        int                                                     quantity{};
+        [[= auto_update]] std::chrono::system_clock::time_point updated_at{};
     };
 
     // FK targeting MockOrderLine's composite (2-part) PK, as std::optional — used
@@ -104,7 +114,7 @@ namespace {
     // must propagate. The plain single-column optional-FK mock above
     // (MockOptionalFKMessage) only ever hits the N==1 bind_null branch.
     struct MockOptionalCompositeFkOrder {
-        [[= storm::primary]] int                       id{};
+        [[= primary]] int                              id{};
         [[= storm::fk<>]] std::optional<MockOrderLine> shipment_line;
     };
 
@@ -119,7 +129,7 @@ namespace {
         void SetUp() override {
             MockSqlite3Config::reset();
             // Set up default connection for QuerySet
-            (void)QuerySet<MockPerson>::set_default_connection(":memory:");
+            (void)DefaultConnection<>::set(":memory:");
         }
 
         void TearDown() override {
@@ -200,11 +210,10 @@ namespace {
         // Fail bind_text (used for the "name" field) so prepare_and_bind() errors out.
         MockSqlite3Config::bind_text_returns(SQLITE_NOMEM);
 
-        auto conn = QuerySet<MockPerson>::get_default_connection();
-        storm::orm::statements::InsertStatement<MockPerson, storm::db::sqlite::Connection> stmt{conn};
-        MockPerson const person{.id = 0, .name = "Alice", .age = 30};
+        InsertStatement<MockPerson> stat{};
+        MockPerson const            person{.id = 0, .name = "Alice", .age = 30};
 
-        auto result = stmt.template execute_upsert_nothing<^^MockPerson::name>(person);
+        auto result = stat.template execute_upsert_nothing<^^MockPerson::name>(person);
 
         ASSERT_FALSE(result.has_value());
         EXPECT_EQ(result.error().code(), SQLITE_NOMEM);
@@ -214,12 +223,11 @@ namespace {
         // Fail bind_text so the bind step inside to_sql_with() errors out.
         MockSqlite3Config::bind_text_returns(SQLITE_NOMEM);
 
-        auto conn = QuerySet<MockPerson>::get_default_connection();
-        storm::orm::statements::InsertStatement<MockPerson, storm::db::sqlite::Connection> stmt{conn};
-        MockPerson const person{.id = 0, .name = "Alice", .age = 30};
+        InsertStatement<MockPerson> stat{};
+        MockPerson const            person{.id = 0, .name = "Alice", .age = 30};
 
-        auto result = stmt.template to_sql_with<>(
-                storm::orm::statements::UpsertGrammar<MockPerson>::template nothing_sql<^^MockPerson::name>(), person
+        auto result = stat.template to_sql_with<>(
+                UpsertGrammar<MockPerson>::template nothing_sql<^^MockPerson::name>(), person
         );
 
         ASSERT_FALSE(result.has_value());
@@ -231,11 +239,10 @@ namespace {
         // (neither ROW_AVAILABLE nor NO_MORE_ROWS).
         MockSqlite3Config::step_returns(SQLITE_IOERR);
 
-        auto conn = QuerySet<MockPerson>::get_default_connection();
-        storm::orm::statements::InsertStatement<MockPerson, storm::db::sqlite::Connection> stmt{conn};
-        MockPerson const person{.id = 0, .name = "Alice", .age = 30};
+        InsertStatement<MockPerson> stat{};
+        MockPerson const            person{.id = 0, .name = "Alice", .age = 30};
 
-        auto result = stmt.template execute_upsert_nothing<^^MockPerson::name>(person);
+        auto result = stat.template execute_upsert_nothing<^^MockPerson::name>(person);
 
         ASSERT_FALSE(result.has_value());
         EXPECT_EQ(result.error().code(), SQLITE_IOERR);
@@ -244,11 +251,10 @@ namespace {
     TEST_F(ORMMockErrorTest, UpsertUpdateFailsOnPrepareError) {
         MockSqlite3Config::prepare_returns(SQLITE_ERROR);
 
-        auto conn = QuerySet<MockPerson>::get_default_connection();
-        storm::orm::statements::InsertStatement<MockPerson, storm::db::sqlite::Connection> stmt{conn};
-        MockPerson const person{.id = 0, .name = "Alice", .age = 30};
+        InsertStatement<MockPerson> stat{};
+        MockPerson const            person{.id = 0, .name = "Alice", .age = 30};
 
-        auto result = stmt.template upsert_update_runner<^^MockPerson::name>().template run<^^MockPerson::age>(person);
+        auto result = stat.template upsert_update_runner<^^MockPerson::name>().template run<^^MockPerson::age>(person);
 
         ASSERT_FALSE(result.has_value());
         EXPECT_EQ(result.error().code(), SQLITE_ERROR);
@@ -258,11 +264,10 @@ namespace {
         // Fail bind_text (used for the "name" VALUES field) so bind_all_fields() errors out.
         MockSqlite3Config::bind_text_returns(SQLITE_NOMEM);
 
-        auto conn = QuerySet<MockPerson>::get_default_connection();
-        storm::orm::statements::InsertStatement<MockPerson, storm::db::sqlite::Connection> stmt{conn};
-        MockPerson const person{.id = 0, .name = "Alice", .age = 30};
+        InsertStatement<MockPerson> stat{};
+        MockPerson const            person{.id = 0, .name = "Alice", .age = 30};
 
-        auto result = stmt.template upsert_update_runner<^^MockPerson::name>().template run<^^MockPerson::age>(person);
+        auto result = stat.template upsert_update_runner<^^MockPerson::name>().template run<^^MockPerson::age>(person);
 
         ASSERT_FALSE(result.has_value());
         EXPECT_EQ(result.error().code(), SQLITE_NOMEM);
@@ -272,11 +277,10 @@ namespace {
         // Let prepare and binding succeed, but fail on step with a real DB error.
         MockSqlite3Config::step_returns(SQLITE_IOERR);
 
-        auto conn = QuerySet<MockPerson>::get_default_connection();
-        storm::orm::statements::InsertStatement<MockPerson, storm::db::sqlite::Connection> stmt{conn};
-        MockPerson const person{.id = 0, .name = "Alice", .age = 30};
+        InsertStatement<MockPerson> stat{};
+        MockPerson const            person{.id = 0, .name = "Alice", .age = 30};
 
-        auto result = stmt.template upsert_update_runner<^^MockPerson::name>().template run<^^MockPerson::age>(person);
+        auto result = stat.template upsert_update_runner<^^MockPerson::name>().template run<^^MockPerson::age>(person);
 
         ASSERT_FALSE(result.has_value());
         EXPECT_EQ(result.error().code(), SQLITE_IOERR);
@@ -291,12 +295,11 @@ namespace {
         // bind_all_fields'.
         MockSqlite3Config::bind_text_fails_on_call(3, SQLITE_NOMEM);
 
-        (void)QuerySet<MockPersonAutoUpdate>::set_default_connection(":memory:");
-        auto conn = QuerySet<MockPersonAutoUpdate>::get_default_connection();
-        storm::orm::statements::InsertStatement<MockPersonAutoUpdate, storm::db::sqlite::Connection> stmt{conn};
-        MockPersonAutoUpdate const person{.id = 0, .name = "Alice"};
+        (void)DefaultConnection<>::set(":memory:");
+        InsertStatement<MockPersonAutoUpdate> stat{};
+        MockPersonAutoUpdate const            person{.id = 0, .name = "Alice"};
 
-        auto result = stmt.template upsert_update_runner<^^MockPersonAutoUpdate::id>()
+        auto result = stat.template upsert_update_runner<^^MockPersonAutoUpdate::id>()
                               .template run<^^MockPersonAutoUpdate::name>(person);
 
         ASSERT_FALSE(result.has_value());
@@ -311,13 +314,12 @@ namespace {
     TEST_F(ORMMockErrorTest, CompositeUpsertNothingFailsOnPrepareError) {
         MockSqlite3Config::prepare_returns(SQLITE_ERROR);
 
-        (void)QuerySet<MockOrderLine>::set_default_connection(":memory:");
-        auto conn = QuerySet<MockOrderLine>::get_default_connection();
-        storm::orm::statements::InsertStatement<MockOrderLine, storm::db::sqlite::Connection> stmt{conn};
-        MockOrderLine const line{.order_id = 1, .product_id = 10, .quantity = 5};
+        (void)DefaultConnection<>::set(":memory:");
+        InsertStatement<MockOrderLine> stat{};
+        MockOrderLine const            line{.order_id = 1, .product_id = 10, .quantity = 5};
 
         auto result =
-                stmt.template execute_upsert_nothing<^^MockOrderLine::order_id, ^^MockOrderLine::product_id>(line);
+                stat.template execute_upsert_nothing<^^MockOrderLine::order_id, ^^MockOrderLine::product_id>(line);
 
         ASSERT_FALSE(result.has_value());
         EXPECT_EQ(result.error().code(), SQLITE_ERROR);
@@ -326,13 +328,12 @@ namespace {
     TEST_F(ORMMockErrorTest, CompositeUpsertNothingFailsOnStepError) {
         MockSqlite3Config::step_returns(SQLITE_IOERR);
 
-        (void)QuerySet<MockOrderLine>::set_default_connection(":memory:");
-        auto conn = QuerySet<MockOrderLine>::get_default_connection();
-        storm::orm::statements::InsertStatement<MockOrderLine, storm::db::sqlite::Connection> stmt{conn};
-        MockOrderLine const line{.order_id = 1, .product_id = 10, .quantity = 5};
+        (void)DefaultConnection<>::set(":memory:");
+        InsertStatement<MockOrderLine> stat{};
+        MockOrderLine const            line{.order_id = 1, .product_id = 10, .quantity = 5};
 
         auto result =
-                stmt.template execute_upsert_nothing<^^MockOrderLine::order_id, ^^MockOrderLine::product_id>(line);
+                stat.template execute_upsert_nothing<^^MockOrderLine::order_id, ^^MockOrderLine::product_id>(line);
 
         ASSERT_FALSE(result.has_value());
         EXPECT_EQ(result.error().code(), SQLITE_IOERR);
@@ -341,12 +342,11 @@ namespace {
     TEST_F(ORMMockErrorTest, CompositeUpsertUpdateFailsOnPrepareError) {
         MockSqlite3Config::prepare_returns(SQLITE_ERROR);
 
-        (void)QuerySet<MockOrderLine>::set_default_connection(":memory:");
-        auto conn = QuerySet<MockOrderLine>::get_default_connection();
-        storm::orm::statements::InsertStatement<MockOrderLine, storm::db::sqlite::Connection> stmt{conn};
-        MockOrderLine const line{.order_id = 1, .product_id = 10, .quantity = 5};
+        (void)DefaultConnection<>::set(":memory:");
+        InsertStatement<MockOrderLine> stat{};
+        MockOrderLine const            line{.order_id = 1, .product_id = 10, .quantity = 5};
 
-        auto result = stmt.template upsert_update_runner<^^MockOrderLine::order_id, ^^MockOrderLine::product_id>()
+        auto result = stat.template upsert_update_runner<^^MockOrderLine::order_id, ^^MockOrderLine::product_id>()
                               .template run<^^MockOrderLine::quantity>(line);
 
         ASSERT_FALSE(result.has_value());
@@ -357,12 +357,11 @@ namespace {
         // Fail bind_int (used for every field of MockOrderLine) so bind_all_fields() errors out.
         MockSqlite3Config::bind_int_returns(SQLITE_NOMEM);
 
-        (void)QuerySet<MockOrderLine>::set_default_connection(":memory:");
-        auto conn = QuerySet<MockOrderLine>::get_default_connection();
-        storm::orm::statements::InsertStatement<MockOrderLine, storm::db::sqlite::Connection> stmt{conn};
-        MockOrderLine const line{.order_id = 1, .product_id = 10, .quantity = 5};
+        (void)DefaultConnection<>::set(":memory:");
+        InsertStatement<MockOrderLine> stat{};
+        MockOrderLine const            line{.order_id = 1, .product_id = 10, .quantity = 5};
 
-        auto result = stmt.template upsert_update_runner<^^MockOrderLine::order_id, ^^MockOrderLine::product_id>()
+        auto result = stat.template upsert_update_runner<^^MockOrderLine::order_id, ^^MockOrderLine::product_id>()
                               .template run<^^MockOrderLine::quantity>(line);
 
         ASSERT_FALSE(result.has_value());
@@ -372,12 +371,11 @@ namespace {
     TEST_F(ORMMockErrorTest, CompositeUpsertUpdateFailsOnStepError) {
         MockSqlite3Config::step_returns(SQLITE_IOERR);
 
-        (void)QuerySet<MockOrderLine>::set_default_connection(":memory:");
-        auto conn = QuerySet<MockOrderLine>::get_default_connection();
-        storm::orm::statements::InsertStatement<MockOrderLine, storm::db::sqlite::Connection> stmt{conn};
-        MockOrderLine const line{.order_id = 1, .product_id = 10, .quantity = 5};
+        (void)DefaultConnection<>::set(":memory:");
+        InsertStatement<MockOrderLine> stat{};
+        MockOrderLine const            line{.order_id = 1, .product_id = 10, .quantity = 5};
 
-        auto result = stmt.template upsert_update_runner<^^MockOrderLine::order_id, ^^MockOrderLine::product_id>()
+        auto result = stat.template upsert_update_runner<^^MockOrderLine::order_id, ^^MockOrderLine::product_id>()
                               .template run<^^MockOrderLine::quantity>(line);
 
         ASSERT_FALSE(result.has_value());
@@ -393,12 +391,11 @@ namespace {
         // bind_all_fields'.
         MockSqlite3Config::bind_text_fails_on_call(2, SQLITE_NOMEM);
 
-        (void)QuerySet<MockOrderLineAutoUpdate>::set_default_connection(":memory:");
-        auto conn = QuerySet<MockOrderLineAutoUpdate>::get_default_connection();
-        storm::orm::statements::InsertStatement<MockOrderLineAutoUpdate, storm::db::sqlite::Connection> stmt{conn};
-        MockOrderLineAutoUpdate const line{.order_id = 1, .product_id = 10, .quantity = 5};
+        (void)DefaultConnection<>::set(":memory:");
+        InsertStatement<MockOrderLineAutoUpdate> stat{};
+        MockOrderLineAutoUpdate const            line{.order_id = 1, .product_id = 10, .quantity = 5};
 
-        auto result = stmt.template upsert_update_runner<
+        auto result = stat.template upsert_update_runner<
                                   ^^MockOrderLineAutoUpdate::order_id,
                                   ^^MockOrderLineAutoUpdate::product_id>()
                               .template run<^^MockOrderLineAutoUpdate::quantity>(line);
@@ -849,14 +846,14 @@ namespace {
 
     // Test model with double field for bind_double coverage
     struct MockPersonWithDouble {
-        [[= storm::primary]] std::int64_t id{};
-        std::string                       name;
-        double                            salary{};
+        [[= primary]] std::int64_t id{};
+        std::string                name;
+        double                     salary{};
     };
 
     TEST_F(ORMMockErrorTest, InsertFailsOnBindDoubleNomem) {
         MockSqlite3Config::reset();
-        (void)QuerySet<MockPersonWithDouble>::set_default_connection(":memory:");
+        (void)DefaultConnection<>::set(":memory:");
         MockSqlite3Config::bind_double_returns(SQLITE_NOMEM);
 
         QuerySet<MockPersonWithDouble> qs;
@@ -872,14 +869,14 @@ namespace {
 
     // Test model with blob field for bind_blob coverage
     struct MockPersonWithBlob {
-        [[= storm::primary]] std::int64_t id{};
-        std::string                       name;
-        std::vector<std::uint8_t>         data;
+        [[= primary]] std::int64_t id{};
+        std::string                name;
+        std::vector<std::uint8_t>  data;
     };
 
     TEST_F(ORMMockErrorTest, InsertFailsOnBindBlobNomem) {
         MockSqlite3Config::reset();
-        (void)QuerySet<MockPersonWithBlob>::set_default_connection(":memory:");
+        (void)DefaultConnection<>::set(":memory:");
         MockSqlite3Config::bind_blob_returns(SQLITE_NOMEM);
 
         QuerySet<MockPersonWithBlob> qs;
@@ -895,7 +892,7 @@ namespace {
 
     TEST_F(ORMMockErrorTest, InsertOptionalFieldFailsOnBindNullNomem) {
         MockSqlite3Config::reset();
-        (void)QuerySet<MockPersonOptional>::set_default_connection(":memory:");
+        (void)DefaultConnection<>::set(":memory:");
         MockSqlite3Config::bind_null_returns(SQLITE_NOMEM);
 
         QuerySet<MockPersonOptional> qs;
@@ -1468,7 +1465,7 @@ namespace {
         int const baseline_count = MockSqlite3Config::get_prepare_call_count();
         EXPECT_EQ(baseline_count, 0);
 
-        (void)QuerySet<MockPerson>::set_default_connection(":memory:");
+        (void)DefaultConnection<>::set(":memory:");
 
         // Count after connection setup
         int const after_setup_count = MockSqlite3Config::get_prepare_call_count();
@@ -1514,13 +1511,13 @@ namespace {
     // ============================================================================
 
     struct MockUser {
-        [[= storm::primary]] int id{};
-        std::string              name;
-        int                      age{};
+        [[= primary]] int id{};
+        std::string       name;
+        int               age{};
     };
 
     struct MockMessage {
-        [[= storm::primary]] int   id{};
+        [[= primary]] int          id{};
         [[= storm::fk<>]] MockUser sender;
         std::string                text;
     };
@@ -1529,7 +1526,7 @@ namespace {
     namespace fields {
         struct MockMessageT;
         consteval {
-            std::meta::define_aggregate(^^MockMessageT, storm::field_specs_for(^^MockMessage));
+            std::meta::define_aggregate(^^MockMessageT, field_specs_for(^^MockMessage));
         }
         inline constexpr MockMessageT MockMessage{};
     } // namespace fields
@@ -1538,7 +1535,7 @@ namespace {
       protected:
         void SetUp() override {
             MockSqlite3Config::reset();
-            (void)QuerySet<MockUser>::set_default_connection(":memory:");
+            (void)DefaultConnection<>::set(":memory:");
         }
 
         void TearDown() override {
@@ -1719,7 +1716,7 @@ namespace {
         EXPECT_EQ(MockSqlite3Config::get_bind_text_call_count(), 0);
 
         // Setup fresh connection
-        (void)QuerySet<MockPerson>::set_default_connection(":memory:");
+        (void)DefaultConnection<>::set(":memory:");
 
         QuerySet<MockPerson> qs;
         MockPerson const     person{.id = 0, .name = "Test", .age = 25};
@@ -2415,7 +2412,7 @@ namespace {
     // ============================================================================
 
     TEST_F(ORMMockErrorTest, InsertBatchReturningFailsOnPrepareError) {
-        using ReturnId = storm::orm::statements::ReturnId;
+        using ReturnId = ReturnId;
         MockSqlite3Config::prepare_returns(SQLITE_ERROR);
 
         QuerySet<MockPerson>    qs;
@@ -2431,7 +2428,7 @@ namespace {
     }
 
     TEST_F(ORMMockErrorTest, InsertBatchReturningFailsOnBindError) {
-        using ReturnId = storm::orm::statements::ReturnId;
+        using ReturnId = ReturnId;
         MockSqlite3Config::bind_text_returns(SQLITE_NOMEM);
 
         QuerySet<MockPerson>    qs;
@@ -2448,7 +2445,7 @@ namespace {
     }
 
     TEST_F(ORMMockErrorTest, InsertBatchReturningFailsOnStepError) {
-        using ReturnId = storm::orm::statements::ReturnId;
+        using ReturnId = ReturnId;
         MockSqlite3Config::step_returns(SQLITE_BUSY);
 
         QuerySet<MockPerson>    qs;
@@ -2464,7 +2461,7 @@ namespace {
     }
 
     TEST_F(ORMMockErrorTest, InsertBatchReturningEmptySpan) {
-        using ReturnId = storm::orm::statements::ReturnId;
+        using ReturnId = ReturnId;
         QuerySet<MockPerson>    qs;
         std::vector<MockPerson> empty;
 
@@ -2475,7 +2472,7 @@ namespace {
     }
 
     TEST_F(ORMMockErrorTest, InsertBatchReturningToSqlEmptySpan) {
-        using ReturnId = storm::orm::statements::ReturnId;
+        using ReturnId = ReturnId;
         QuerySet<MockPerson>    qs;
         std::vector<MockPerson> empty;
 
@@ -2486,7 +2483,7 @@ namespace {
     }
 
     TEST_F(ORMMockErrorTest, InsertBatchReturningToSqlFailsOnPrepareError) {
-        using ReturnId = storm::orm::statements::ReturnId;
+        using ReturnId = ReturnId;
         MockSqlite3Config::prepare_returns(SQLITE_ERROR);
 
         QuerySet<MockPerson>    qs;
@@ -2501,7 +2498,7 @@ namespace {
     }
 
     TEST_F(ORMMockErrorTest, InsertBatchReturningToSqlFailsOnBindError) {
-        using ReturnId = storm::orm::statements::ReturnId;
+        using ReturnId = ReturnId;
         MockSqlite3Config::bind_text_returns(SQLITE_NOMEM);
 
         QuerySet<MockPerson>    qs;
@@ -2517,7 +2514,7 @@ namespace {
     }
 
     TEST_F(ORMMockErrorTest, InsertChunkedBatchReturningFailsOnTxnBeginError) {
-        using ReturnId = storm::orm::statements::ReturnId;
+        using ReturnId = ReturnId;
         // Step failure on BEGIN TRANSACTION (first step call)
         MockSqlite3Config::step_returns(SQLITE_BUSY);
 
@@ -2527,7 +2524,7 @@ namespace {
                 {.id = 0, .name = "Second", .age = 25},
         };
 
-        storm::orm::statements::InsertOptions opts;
+        InsertOptions opts;
         opts.batch_size = 1; // Forces chunking (2 chunks of 1)
 
         auto result = qs.insert<ReturnId::Yes>(std::span{people}, opts).execute();
@@ -2536,7 +2533,7 @@ namespace {
     }
 
     TEST_F(ORMMockErrorTest, InsertChunkedBatchReturningFailsOnChunkError) {
-        using ReturnId = storm::orm::statements::ReturnId;
+        using ReturnId = ReturnId;
         // First step = SQLITE_DONE (BEGIN succeeds), then SQLITE_ERROR on chunk step
         MockSqlite3Config::step_returns_sequence({SQLITE_DONE, SQLITE_ERROR});
 
@@ -2546,7 +2543,7 @@ namespace {
                 {.id = 0, .name = "Second", .age = 25},
         };
 
-        storm::orm::statements::InsertOptions opts;
+        InsertOptions opts;
         opts.batch_size = 1; // Forces chunking
 
         auto result = qs.insert<ReturnId::Yes>(std::span{people}, opts).execute();
@@ -2555,7 +2552,7 @@ namespace {
     }
 
     TEST_F(ORMMockErrorTest, InsertChunkedBatchReturningFailsOnCommitError) {
-        using ReturnId = storm::orm::statements::ReturnId;
+        using ReturnId = ReturnId;
         // BEGIN=DONE, chunk1 step=ROW(id=1), chunk1 done=DONE, chunk2 step=ROW(id=2), chunk2 done=DONE, COMMIT=BUSY
         MockSqlite3Config::step_returns_sequence(
                 {SQLITE_DONE, SQLITE_ROW, SQLITE_DONE, SQLITE_ROW, SQLITE_DONE, SQLITE_BUSY}
@@ -2567,7 +2564,7 @@ namespace {
                 {.id = 0, .name = "Second", .age = 25},
         };
 
-        storm::orm::statements::InsertOptions opts;
+        InsertOptions opts;
         opts.batch_size = 1; // Forces chunking
 
         auto result = qs.insert<ReturnId::Yes>(std::span{people}, opts).execute();
@@ -2586,7 +2583,7 @@ namespace {
         ASSERT_TRUE(conn_result.has_value());
         auto conn = std::make_shared<db::sqlite::Connection>(std::move(*conn_result));
 
-        using TxnGuard = storm::orm::utilities::TransactionGuard<db::sqlite::Connection>;
+        using TxnGuard = storm::TransactionGuard<db::sqlite::Connection>;
 
         auto txn = TxnGuard::begin(conn);
         ASSERT_TRUE(txn.has_value());
@@ -2606,7 +2603,7 @@ namespace {
         ASSERT_TRUE(conn_result.has_value());
         auto conn = std::make_shared<db::sqlite::Connection>(std::move(*conn_result));
 
-        using TxnGuard = storm::orm::utilities::TransactionGuard<db::sqlite::Connection>;
+        using TxnGuard = storm::TransactionGuard<db::sqlite::Connection>;
 
         auto txn = TxnGuard::begin(conn);
         ASSERT_TRUE(txn.has_value());
@@ -2629,7 +2626,7 @@ namespace {
         ASSERT_TRUE(conn_result.has_value());
         auto conn = std::make_shared<db::sqlite::Connection>(std::move(*conn_result));
 
-        using TxnGuard = storm::orm::utilities::TransactionGuard<db::sqlite::Connection>;
+        using TxnGuard = storm::TransactionGuard<db::sqlite::Connection>;
 
         // Step 1: BEGIN TRANSACTION (succeeds)
         // Step 2: COMMIT (fails with BUSY)
@@ -2644,7 +2641,7 @@ namespace {
     }
 
     TEST_F(ORMMockErrorTest, TransactionScopeBeginFailurePropagates) {
-        // storm::transaction (#415) error path: BEGIN fails → body never runs,
+        // transaction (#415) error path: BEGIN fails → body never runs,
         // the begin error propagates as std::unexpected.
         auto conn_result = db::sqlite::Connection::open(":memory:");
         ASSERT_TRUE(conn_result.has_value());
@@ -2665,7 +2662,7 @@ namespace {
     }
 
     TEST_F(ORMMockErrorTest, TransactionScopeCommitFailurePropagates) {
-        // storm::transaction (#415) error path: body succeeds but COMMIT fails →
+        // transaction (#415) error path: body succeeds but COMMIT fails →
         // the commit error propagates (guard already rolled back).
         auto conn_result = db::sqlite::Connection::open(":memory:");
         ASSERT_TRUE(conn_result.has_value());
@@ -2689,7 +2686,7 @@ namespace {
         ASSERT_TRUE(conn_result.has_value());
         auto conn = std::make_shared<db::sqlite::Connection>(std::move(*conn_result));
 
-        using TxnGuard = storm::orm::utilities::TransactionGuard<db::sqlite::Connection>;
+        using TxnGuard = storm::TransactionGuard<db::sqlite::Connection>;
 
         // Step 1: BEGIN TRANSACTION (succeeds), Step 2: COMMIT (fails)
         MockSqlite3Config::step_fails_on_call(2, SQLITE_BUSY);
@@ -2717,7 +2714,7 @@ namespace {
         ASSERT_TRUE(conn_result.has_value());
         auto conn = std::make_shared<db::sqlite::Connection>(std::move(*conn_result));
 
-        using TxnGuard = storm::orm::utilities::TransactionGuard<db::sqlite::Connection>;
+        using TxnGuard = storm::TransactionGuard<db::sqlite::Connection>;
 
         // dst (live owner) outlives the inner scope where the moved-from source dies.
         std::optional<TxnGuard> dst;
@@ -2750,7 +2747,7 @@ namespace {
         ASSERT_TRUE(conn_result.has_value());
         auto conn = std::make_shared<db::sqlite::Connection>(std::move(*conn_result));
 
-        using TxnGuard = storm::orm::utilities::TransactionGuard<db::sqlite::Connection>;
+        using TxnGuard = storm::TransactionGuard<db::sqlite::Connection>;
 
         // Target guard already committed → its move-assign rollback_if_needed() is a no-op.
         auto dst = TxnGuard::begin(conn);
@@ -2839,7 +2836,7 @@ namespace {
         // throws. The noexcept destructor must swallow it (no std::terminate).
         auto conn = std::make_shared<ThrowingRollbackConnection>();
 
-        using TxnGuard = storm::orm::utilities::TransactionGuard<ThrowingRollbackConnection>;
+        using TxnGuard = storm::TransactionGuard<ThrowingRollbackConnection>;
 
         {
             auto txn = TxnGuard::begin(conn);
@@ -2857,7 +2854,7 @@ namespace {
         // ROLLBACK throws; the noexcept operator=(&&) must swallow it.
         auto conn = std::make_shared<ThrowingRollbackConnection>();
 
-        using TxnGuard = storm::orm::utilities::TransactionGuard<ThrowingRollbackConnection>;
+        using TxnGuard = storm::TransactionGuard<ThrowingRollbackConnection>;
 
         auto dst_result = TxnGuard::begin(conn); // dst is live, uncommitted
         ASSERT_TRUE(dst_result.has_value());
@@ -2882,7 +2879,7 @@ namespace {
         auto conn                = std::make_shared<ThrowingRollbackConnection>();
         conn->commit_should_fail = true;
 
-        using TxnGuard = storm::orm::utilities::TransactionGuard<ThrowingRollbackConnection>;
+        using TxnGuard = storm::TransactionGuard<ThrowingRollbackConnection>;
 
         auto txn = TxnGuard::begin(conn);
         ASSERT_TRUE(txn.has_value());
@@ -3207,9 +3204,7 @@ namespace {
         };
 
         // batch_size=1 forces chunking (2 chunks for 2 rows)
-        auto result =
-                qs.insert(std::span<const MockPerson>(people), storm::orm::statements::InsertOptions{.batch_size = 1})
-                        .execute();
+        auto result = qs.insert(std::span<const MockPerson>(people), InsertOptions{.batch_size = 1}).execute();
 
         ASSERT_FALSE(result.has_value());
         EXPECT_EQ(result.error().code(), SQLITE_BUSY);
@@ -3227,9 +3222,7 @@ namespace {
         };
 
         // batch_size=1 forces chunking — first chunk succeeds, second fails
-        auto result =
-                qs.insert(std::span<const MockPerson>(people), storm::orm::statements::InsertOptions{.batch_size = 1})
-                        .execute();
+        auto result = qs.insert(std::span<const MockPerson>(people), InsertOptions{.batch_size = 1}).execute();
 
         ASSERT_FALSE(result.has_value());
         EXPECT_EQ(result.error().code(), SQLITE_IOERR);
@@ -3246,9 +3239,7 @@ namespace {
         };
 
         // batch_size=1 forces 3 chunks
-        auto result =
-                qs.insert(std::span<const MockPerson>(people), storm::orm::statements::InsertOptions{.batch_size = 1})
-                        .execute();
+        auto result = qs.insert(std::span<const MockPerson>(people), InsertOptions{.batch_size = 1}).execute();
 
         ASSERT_TRUE(result.has_value());
         // BEGIN TRANSACTION + COMMIT go through sqlite3_step (cached prepared statement path).
@@ -3382,7 +3373,7 @@ namespace {
         QuerySet<MockPerson> qs;
         MockPerson const     person{.id = 0, .name = "Alice", .age = 30};
 
-        auto result = qs.insert<storm::orm::statements::ReturnId::No>(person).execute();
+        auto result = qs.insert<ReturnId::No>(person).execute();
 
         ASSERT_FALSE(result.has_value());
         EXPECT_EQ(result.error().code(), SQLITE_ERROR);
@@ -3394,7 +3385,7 @@ namespace {
         QuerySet<MockPerson> qs;
         MockPerson const     person{.id = 0, .name = "Alice", .age = 30};
 
-        auto result = qs.insert<storm::orm::statements::ReturnId::No>(person).execute();
+        auto result = qs.insert<ReturnId::No>(person).execute();
 
         if (!result.has_value()) {
             EXPECT_EQ(result.error().code(), SQLITE_NOMEM);
@@ -3407,7 +3398,7 @@ namespace {
         QuerySet<MockPerson> qs;
         MockPerson const     person{.id = 0, .name = "Alice", .age = 30};
 
-        auto result = qs.insert<storm::orm::statements::ReturnId::No>(person).execute();
+        auto result = qs.insert<ReturnId::No>(person).execute();
 
         ASSERT_FALSE(result.has_value());
         EXPECT_EQ(result.error().code(), SQLITE_IOERR);
@@ -3419,7 +3410,7 @@ namespace {
         QuerySet<MockPerson> qs;
         MockPerson const     person{.id = 0, .name = "Alice", .age = 30};
 
-        auto result = qs.insert<storm::orm::statements::ReturnId::No>(person).to_sql();
+        auto result = qs.insert<ReturnId::No>(person).to_sql();
 
         ASSERT_FALSE(result.has_value());
         EXPECT_EQ(result.error().code(), SQLITE_ERROR);
@@ -3431,7 +3422,7 @@ namespace {
         QuerySet<MockPerson> qs;
         MockPerson const     person{.id = 0, .name = "Alice", .age = 30};
 
-        auto result = qs.insert<storm::orm::statements::ReturnId::No>(person).to_sql();
+        auto result = qs.insert<ReturnId::No>(person).to_sql();
 
         if (!result.has_value()) {
             EXPECT_EQ(result.error().code(), SQLITE_NOMEM);
@@ -3554,7 +3545,7 @@ namespace {
     // ============================================================================
 
     struct MockOptionalFKMessage {
-        [[= storm::primary]] int                  id{};
+        [[= primary]] int                         id{};
         [[= storm::fk<>]] std::optional<MockUser> sender;
         std::string                               text;
     };
@@ -3565,7 +3556,7 @@ namespace {
         // Fail on first bind_int call
         MockSqlite3Config::bind_int_fails_on_call(1, SQLITE_NOMEM);
 
-        (void)QuerySet<MockOptionalFKMessage>::set_default_connection(":memory:");
+        (void)DefaultConnection<>::set(":memory:");
         QuerySet<MockOptionalFKMessage> qs;
         MockUser const                  sender{.id = 1, .name = "Sender", .age = 30};
         MockOptionalFKMessage const     msg{.id = 0, .sender = sender, .text = "Hello"};
@@ -3580,7 +3571,7 @@ namespace {
         // When sender is nullopt, bind_null is called
         MockSqlite3Config::bind_null_returns(SQLITE_NOMEM);
 
-        (void)QuerySet<MockOptionalFKMessage>::set_default_connection(":memory:");
+        (void)DefaultConnection<>::set(":memory:");
         QuerySet<MockOptionalFKMessage> qs;
         MockOptionalFKMessage const     msg{.id = 0, .sender = std::nullopt, .text = "No sender"};
 
@@ -3596,7 +3587,7 @@ namespace {
     TEST_F(ORMMockErrorTest, InsertOptionalCompositeFKNullBindFailure) {
         MockSqlite3Config::bind_null_returns(SQLITE_NOMEM);
 
-        (void)QuerySet<MockOptionalCompositeFkOrder>::set_default_connection(":memory:");
+        (void)DefaultConnection<>::set(":memory:");
         QuerySet<MockOptionalCompositeFkOrder> qs;
         MockOptionalCompositeFkOrder const     order{.id = 0, .shipment_line = std::nullopt};
 
@@ -3767,21 +3758,21 @@ namespace {
     // ============================================================================
 
     struct MockCourse {
-        [[= storm::primary]] std::int64_t id{};
-        std::string                       title;
+        [[= primary]] std::int64_t id{};
+        std::string                title;
     };
 
     struct MockStudent {
-        [[= storm::primary]] std::int64_t                   id{};
-        std::string                                         name;
-        [[= storm::many_to_many<>]] std::vector<MockCourse> courses;
+        [[= primary]] std::int64_t                   id{};
+        std::string                                  name;
+        [[= many_to_many<>]] std::vector<MockCourse> courses;
     };
 
     // fields:: selector proxies (#518).
     namespace fields {
         struct MockStudentT;
         consteval {
-            std::meta::define_aggregate(^^MockStudentT, storm::field_specs_for(^^MockStudent));
+            std::meta::define_aggregate(^^MockStudentT, field_specs_for(^^MockStudent));
         }
         inline constexpr MockStudentT MockStudent{};
     } // namespace fields
@@ -3912,22 +3903,22 @@ namespace {
     // ============================================================================
 
     struct MockClub {
-        [[= storm::primary]] std::int64_t id{};
-        std::string                       name;
+        [[= primary]] std::int64_t id{};
+        std::string                name;
     };
 
     struct MockMember {
-        [[= storm::primary]] std::int64_t                   id{};
-        std::string                                         name;
-        [[= storm::many_to_many<>]] std::vector<MockCourse> courses;
-        [[= storm::many_to_many<>]] std::vector<MockClub>   clubs;
+        [[= primary]] std::int64_t                   id{};
+        std::string                                  name;
+        [[= many_to_many<>]] std::vector<MockCourse> courses;
+        [[= many_to_many<>]] std::vector<MockClub>   clubs;
     };
 
     // fields:: selector proxies (#518).
     namespace fields {
         struct MockMemberT;
         consteval {
-            std::meta::define_aggregate(^^MockMemberT, storm::field_specs_for(^^MockMember));
+            std::meta::define_aggregate(^^MockMemberT, field_specs_for(^^MockMember));
         }
         inline constexpr MockMemberT MockMember{};
     } // namespace fields

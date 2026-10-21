@@ -8,6 +8,14 @@ import std;
 
 #include "../../shared/models/person.h" // NOSONAR cpp:S954 — Person, the single-PK regression anchor
 #include "test_fixture.h"
+using storm::field_specs_for;
+using storm::primary;
+using storm::primary_autoincrement;
+using storm::primary_part;
+using storm::QuerySet;
+using storm::UUID;
+using storm::orm::statements::InsertStatement;
+using storm::orm::statements::ReturnId;
 
 // ── #572: a UUID primary key is never DB-generated, so nothing is RETURNed ────
 //
@@ -42,15 +50,15 @@ namespace {
     // needs. A distinct model from test_junction_column_type.cpp's UuidDoc so
     // this TU owns its own tables.
     struct UuidNoteRec {
-        [[= storm::primary]] storm::UUID id{};
-        std::string                      title;
+        [[= primary]] UUID id{};
+        std::string        title;
     };
 
     // UUID PK whose member is NOT named "id": RETURNING would name the pk
     // column, so a hardcoded "id" would sit dead behind the same branch.
     struct UuidTicketRec {
-        [[= storm::primary]] storm::UUID ticket_uuid{};
-        [[= storm::unique]] std::string  code;
+        [[= primary]] UUID              ticket_uuid{};
+        [[= storm::unique]] std::string code;
     };
 
     // The regression anchor: a plain single-INTEGER PK must keep the RETURNING
@@ -60,8 +68,8 @@ namespace {
     // UuidTicketRec above (key + one unique text column) so the two goldens differ
     // in exactly the key type and nothing else.
     struct IntNoteRec {
-        [[= storm::primary_autoincrement]] std::int64_t id{};
-        [[= storm::unique]] std::string                 title;
+        [[= primary_autoincrement]] std::int64_t id{};
+        [[= storm::unique]] std::string          title;
     };
 
     // The OTHER non-generated shape. This TU is about UUID keys, but the fix's
@@ -72,9 +80,9 @@ namespace {
     // itself is owned by test_composite_pk_sql.cpp / test_composite_pk_crud.cpp,
     // and what needs pinning HERE is only that both shapes share the one gate.
     struct CompositeNoteRec {
-        [[= storm::primary_part]] std::int64_t region{};
-        [[= storm::primary_part]] std::int64_t slot{};
-        std::string                            title;
+        [[= primary_part]] std::int64_t region{};
+        [[= primary_part]] std::int64_t slot{};
+        std::string                     title;
     };
 
     constexpr std::string_view kNoteUuid   = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
@@ -84,8 +92,7 @@ namespace {
     // SingleInsertQuery<R>::sql() is static — the text derives purely
     // from the model, so no connection is needed (same helper as #502's TU).
     template <typename T, ReturnId R = default_return_id<T>()> auto insert_sql() -> std::string {
-        return storm::orm::statements::InsertStatement<T, storm::db::sqlite::Connection>::template SingleInsertQuery<
-                R>::sql();
+        return InsertStatement<T, storm::db::sqlite::Connection>::template SingleInsertQuery<R>::sql();
     }
 
 } // namespace
@@ -97,19 +104,19 @@ namespace fields {
 
     struct UuidNoteRecT;
     consteval {
-        std::meta::define_aggregate(^^UuidNoteRecT, storm::field_specs_for(^^UuidNoteRec));
+        std::meta::define_aggregate(^^UuidNoteRecT, field_specs_for(^^UuidNoteRec));
     }
     inline constexpr UuidNoteRecT UuidNoteRec{};
 
     struct UuidTicketRecT;
     consteval {
-        std::meta::define_aggregate(^^UuidTicketRecT, storm::field_specs_for(^^UuidTicketRec));
+        std::meta::define_aggregate(^^UuidTicketRecT, field_specs_for(^^UuidTicketRec));
     }
     inline constexpr UuidTicketRecT UuidTicketRec{};
 
     struct IntNoteRecT;
     consteval {
-        std::meta::define_aggregate(^^IntNoteRecT, storm::field_specs_for(^^IntNoteRec));
+        std::meta::define_aggregate(^^IntNoteRecT, field_specs_for(^^IntNoteRec));
     }
     inline constexpr IntNoteRecT IntNoteRec{};
 
@@ -171,11 +178,10 @@ namespace {
     // it asserts about. Available here (unlike #502's is_settable_member) only
     // because insert() is genuinely constrained by ReturnIdSupported.
     template <typename Model, typename ConnType>
-    concept SingleInsertYesCallable = requires(storm::QuerySet<Model, ConnType>& qs, const Model& obj) {
-        qs.template insert<ReturnId::Yes>(obj);
-    };
+    concept SingleInsertYesCallable =
+            requires(QuerySet<Model, ConnType>& qs, const Model& obj) { qs.template insert<ReturnId::Yes>(obj); };
     template <typename Model, typename ConnType>
-    concept BulkInsertYesCallable = requires(storm::QuerySet<Model, ConnType>& qs, std::span<const Model> objs) {
+    concept BulkInsertYesCallable = requires(QuerySet<Model, ConnType>& qs, std::span<const Model> objs) {
         qs.template insert<ReturnId::Yes>(objs);
     };
 
@@ -201,7 +207,7 @@ namespace {
     //
     // ConflictTargetUnique gated the PK case on has_composite_pk_, whose stated
     // reason was "INSERT omits a single-column PK, so it can never conflict".
-    // True for a DB-generated integer key; false for a storm::UUID key ever
+    // True for a DB-generated integer key; false for a UUID key ever
     // since #565 put that column back in the INSERT. So the natural upsert on a
     // UUID key was a compile error, workaround-able only by declaring a
     // redundant UniqueIndex over the primary key.
@@ -345,9 +351,9 @@ TYPED_TEST_SUITE(UuidPkReturningTest, DatabaseTypes);
 // Plain insert() — no explicit ReturnId — now yields expected<void>, and the
 // caller's key is what actually landed in the row.
 TYPED_TEST(UuidPkReturningTest, PlainInsertReturnsVoidAndPersistsTheCallerKey) {
-    storm::QuerySet<UuidNoteRec, TypeParam> qs;
+    QuerySet<UuidNoteRec, TypeParam> qs;
 
-    auto result = qs.insert(UuidNoteRec{.id = storm::UUID{kNoteUuid}, .title = "Spec"}).execute();
+    auto result = qs.insert(UuidNoteRec{.id = UUID{kNoteUuid}, .title = "Spec"}).execute();
     static_assert(
             std::is_same_v<decltype(result), std::expected<void, typename TypeParam::Error>>,
             "plain insert() on a UUID-PK model returns std::expected<void, Error> (#572, BREAKING)"
@@ -362,9 +368,8 @@ TYPED_TEST(UuidPkReturningTest, PlainInsertReturnsVoidAndPersistsTheCallerKey) {
 
 // Explicit ReturnId::No is unchanged — the pre-#572 spelling keeps working.
 TYPED_TEST(UuidPkReturningTest, ExplicitReturnIdNoStillWorks) {
-    storm::QuerySet<UuidNoteRec, TypeParam> qs;
-    auto                                    result =
-            qs.template insert<ReturnId::No>(UuidNoteRec{.id = storm::UUID{kNoteUuid}, .title = "Spec"}).execute();
+    QuerySet<UuidNoteRec, TypeParam> qs;
+    auto result = qs.template insert<ReturnId::No>(UuidNoteRec{.id = UUID{kNoteUuid}, .title = "Spec"}).execute();
     static_assert(std::is_same_v<decltype(result), std::expected<void, typename TypeParam::Error>>);
     ASSERT_TRUE(result.has_value()) << result.error().message();
 }
@@ -372,10 +377,10 @@ TYPED_TEST(UuidPkReturningTest, ExplicitReturnIdNoStillWorks) {
 // The bulk overload's default was already ReturnId::No; this drives the batch
 // bind path with caller-supplied UUID keys so it is executed, not merely gated.
 TYPED_TEST(UuidPkReturningTest, BulkInsertPersistsEveryCallerKey) {
-    storm::QuerySet<UuidNoteRec, TypeParam> qs;
-    const std::vector<UuidNoteRec>          batch{
-            UuidNoteRec{.id = storm::UUID{kNoteUuid}, .title = "First"},
-            UuidNoteRec{.id = storm::UUID{kNoteUuid2}, .title = "Second"},
+    QuerySet<UuidNoteRec, TypeParam> qs;
+    const std::vector<UuidNoteRec>   batch{
+            UuidNoteRec{.id = UUID{kNoteUuid}, .title = "First"},
+            UuidNoteRec{.id = UUID{kNoteUuid2}, .title = "Second"},
     };
 
     auto result = qs.insert(std::span<const UuidNoteRec>(batch)).execute();
@@ -395,8 +400,8 @@ TYPED_TEST(UuidPkReturningTest, BulkInsertPersistsEveryCallerKey) {
 // An empty UUID key is still refused — the fix removes RETURNING, not the
 // "a key is never auto-generated" guard (#565).
 TYPED_TEST(UuidPkReturningTest, EmptyUuidKeyIsStillRejected) {
-    storm::QuerySet<UuidNoteRec, TypeParam> qs;
-    auto result = qs.insert(UuidNoteRec{.id = storm::UUID{}, .title = "No key"}).execute();
+    QuerySet<UuidNoteRec, TypeParam> qs;
+    auto                             result = qs.insert(UuidNoteRec{.id = UUID{}, .title = "No key"}).execute();
     EXPECT_FALSE(result.has_value()) << "an empty UUID primary key must be refused, not auto-generated";
 
     // Refused must mean "no row", not "reported an error after writing one" — the
@@ -413,9 +418,9 @@ template <typename ConnType> class UuidPkUpsertReturningTest : public StormTestF
 TYPED_TEST_SUITE(UuidPkUpsertReturningTest, DatabaseTypes);
 
 TYPED_TEST(UuidPkUpsertReturningTest, DoUpdateReturnsVoidAndKeepsTheKey) {
-    storm::QuerySet<UuidTicketRec, TypeParam> qs;
+    QuerySet<UuidTicketRec, TypeParam> qs;
 
-    auto inserted = qs.insert(UuidTicketRec{.ticket_uuid = storm::UUID{kTicketUuid}, .code = "T-1"})
+    auto inserted = qs.insert(UuidTicketRec{.ticket_uuid = UUID{kTicketUuid}, .code = "T-1"})
                             .template on_conflict<fields::UuidTicketRec.code>()
                             .template update<fields::UuidTicketRec.code>()
                             .execute();
@@ -426,7 +431,7 @@ TYPED_TEST(UuidPkUpsertReturningTest, DoUpdateReturnsVoidAndKeepsTheKey) {
     ASSERT_TRUE(inserted.has_value()) << inserted.error().message();
 
     // Second pass conflicts on `code` and takes the DO UPDATE branch.
-    auto updated = qs.insert(UuidTicketRec{.ticket_uuid = storm::UUID{kTicketUuid}, .code = "T-1"})
+    auto updated = qs.insert(UuidTicketRec{.ticket_uuid = UUID{kTicketUuid}, .code = "T-1"})
                            .template on_conflict<fields::UuidTicketRec.code>()
                            .template update<fields::UuidTicketRec.code>()
                            .execute();
@@ -439,9 +444,9 @@ TYPED_TEST(UuidPkUpsertReturningTest, DoUpdateReturnsVoidAndKeepsTheKey) {
 }
 
 TYPED_TEST(UuidPkUpsertReturningTest, DoNothingReturnsVoidAndSkipsTheConflict) {
-    storm::QuerySet<UuidTicketRec, TypeParam> qs;
+    QuerySet<UuidTicketRec, TypeParam> qs;
 
-    auto inserted = qs.insert(UuidTicketRec{.ticket_uuid = storm::UUID{kTicketUuid}, .code = "T-1"})
+    auto inserted = qs.insert(UuidTicketRec{.ticket_uuid = UUID{kTicketUuid}, .code = "T-1"})
                             .template on_conflict<fields::UuidTicketRec.code>()
                             .nothing()
                             .execute();
@@ -452,7 +457,7 @@ TYPED_TEST(UuidPkUpsertReturningTest, DoNothingReturnsVoidAndSkipsTheConflict) {
     ASSERT_TRUE(inserted.has_value()) << inserted.error().message();
 
     // A conflicting row with a DIFFERENT key is skipped, not inserted.
-    auto skipped = qs.insert(UuidTicketRec{.ticket_uuid = storm::UUID{kNoteUuid}, .code = "T-1"})
+    auto skipped = qs.insert(UuidTicketRec{.ticket_uuid = UUID{kNoteUuid}, .code = "T-1"})
                            .template on_conflict<fields::UuidTicketRec.code>()
                            .nothing()
                            .execute();
@@ -474,8 +479,8 @@ TYPED_TEST(UuidPkUpsertReturningTest, DoNothingReturnsVoidAndSkipsTheConflict) {
 // SQLite alone would not give.
 
 TYPED_TEST(UuidPkUpsertReturningTest, DoUpdateOnTheUuidKeyItself) {
-    storm::QuerySet<UuidTicketRec, TypeParam> qs;
-    const storm::UUID                         key{kTicketUuid};
+    QuerySet<UuidTicketRec, TypeParam> qs;
+    const UUID                         key{kTicketUuid};
 
     auto inserted = qs.insert(UuidTicketRec{.ticket_uuid = key, .code = "first"})
                             .template on_conflict<fields::UuidTicketRec.ticket_uuid>()
@@ -499,8 +504,8 @@ TYPED_TEST(UuidPkUpsertReturningTest, DoUpdateOnTheUuidKeyItself) {
 }
 
 TYPED_TEST(UuidPkUpsertReturningTest, DoNothingOnTheUuidKeyItself) {
-    storm::QuerySet<UuidTicketRec, TypeParam> qs;
-    const storm::UUID                         key{kTicketUuid};
+    QuerySet<UuidTicketRec, TypeParam> qs;
+    const UUID                         key{kTicketUuid};
 
     auto inserted = qs.insert(UuidTicketRec{.ticket_uuid = key, .code = "first"})
                             .template on_conflict<fields::UuidTicketRec.ticket_uuid>()
@@ -526,8 +531,8 @@ template <typename ConnType> class IntPkReturningTest : public StormTestFixture<
 TYPED_TEST_SUITE(IntPkReturningTest, DatabaseTypes);
 
 TYPED_TEST(IntPkReturningTest, PlainInsertStillReturnsTheGeneratedId) {
-    storm::QuerySet<IntNoteRec, TypeParam> qs;
-    auto                                   result = qs.insert(IntNoteRec{.title = "Generated"}).execute();
+    QuerySet<IntNoteRec, TypeParam> qs;
+    auto                            result = qs.insert(IntNoteRec{.title = "Generated"}).execute();
     static_assert(
             std::is_same_v<decltype(result), std::expected<std::int64_t, typename TypeParam::Error>>,
             "a single-integer PK is DB-generated — its return type is unchanged"

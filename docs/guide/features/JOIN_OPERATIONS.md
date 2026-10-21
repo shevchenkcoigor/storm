@@ -17,13 +17,13 @@ Key features:
 
 ```cpp
 struct User {
-    [[=storm::primary]] int id;
+    [[=primary]] int id;
     std::string username;
     int level;
 };
 
 struct Message {
-    [[=storm::primary]] int id;
+    [[=primary]] int id;
     std::string content;
     User sender;  // FK field
 };
@@ -52,7 +52,7 @@ INNER JOIN User t2 ON t2.id = t1.sender_id
 
 ```cpp
 struct Message {
-    [[=storm::primary]] int id;
+    [[=primary]] int id;
     std::string content;
     User sender;    // First FK
     User receiver;  // Second FK
@@ -123,15 +123,15 @@ Several m2m fields of the same model can be loaded in **one call** (#392) — se
 
 ```cpp
 struct Course {
-    [[= storm::primary]] int id{};
+    [[= primary]] int id{};
     std::string title;
 };
 
 struct Student {
-    [[= storm::primary]] int id{};
+    [[= primary]] int id{};
     std::string name;
     int age{};
-    [[= storm::many_to_many<>]] std::vector<Course> courses;
+    [[= many_to_many<>]] std::vector<Course> courses;
 };
 
 // Two queries (in one transaction): base students, then their courses, stitched
@@ -178,16 +178,16 @@ Q2's `IN (…)` subquery, so both pick exactly the same base entities.
 
 ```cpp
 struct Enrollment {
-    [[= storm::primary]] int id{};
-    [[= storm::fk<>]] Pupil pupil;
-    [[= storm::fk<>]] Course course;
+    [[= primary]] int id{};
+    [[= fk<>]] Pupil pupil;
+    [[= fk<>]] Course course;
     std::string grade;  // relationship metadata
 };
 
 struct Pupil {
-    [[= storm::primary]] int id{};
+    [[= primary]] int id{};
     std::string name;
-    [[= storm::many_to_many_through<Enrollment>]] std::vector<Course> courses;
+    [[= many_to_many_through<Enrollment>]] std::vector<Course> courses;
 };
 
 // Simple access — metadata ignored, same two-query eager load
@@ -211,11 +211,11 @@ any subset of them:
 
 ```cpp
 struct Member {
-    [[= storm::primary]] int id{};
+    [[= primary]] int id{};
     std::string name;
     int age{};
-    [[= storm::many_to_many<>]] std::vector<Course> courses;
-    [[= storm::many_to_many<>]] std::vector<Club> clubs;
+    [[= many_to_many<>]] std::vector<Course> courses;
+    [[= many_to_many<>]] std::vector<Club> clubs;
 };
 
 // One Q1 (base members) + one Q2 PER relation, all in one transaction:
@@ -314,7 +314,7 @@ Declare a reverse-FK container (not a column — invisible to CRUD, like m2m):
 struct Task; // forward declaration breaks the Person⟷Task reference cycle
 
 struct Person {
-    [[= storm::primary]] int id{};
+    [[= primary]] int id{};
     std::string name;
     int age{};
     // Filled on eager load. The annotation names the OWNER TYPE; the unique FK
@@ -323,9 +323,9 @@ struct Person {
 };
 
 struct Task {
-    [[= storm::primary]] int id{};
+    [[= primary]] int id{};
     std::string title;
-    [[= storm::fk<>]] Person assignee;   // FK → Person
+    [[= fk<>]] Person assignee;   // FK → Person
 };
 
 person_qs.left_join<fields::Person.tasks>().select();   // all Persons; .tasks empty when none
@@ -381,7 +381,7 @@ the modifier-free complete SQL `Person t1 <KW> Owner t2 ON t2.<fk>_id = t1.<pk>`
 ## Composite Primary Keys in JOINs (#504)
 
 Every join path above works when a model has a composite primary key
-(two or more `[[= storm::primary_part]]` members, #500). No API changes — the
+(two or more `[[= primary_part]]` members, #500). No API changes — the
 same `join<>()` / `left_join<>()` calls apply.
 
 ### FK columns
@@ -390,14 +390,14 @@ An FK to an N-part target occupies **N columns**, named `<member>_<part>`:
 
 ```cpp
 struct OrderLine {
-    [[= storm::primary_part]] int order_id{};
-    [[= storm::primary_part]] int product_id{};
+    [[= primary_part]] int order_id{};
+    [[= primary_part]] int product_id{};
     int quantity{};
 };
 
 struct Shipment {
-    [[= storm::primary_autoincrement]] int id{};
-    [[= storm::fk<>]] OrderLine line;   // → line_order_id, line_product_id
+    [[= primary_autoincrement]] int id{};
+    [[= fk<>]] OrderLine line;   // → line_order_id, line_product_id
 };
 ```
 
@@ -462,15 +462,15 @@ composite-FK columns, named by the FK rule at the top of this section —
 
 ```cpp
 struct Entry {
-    [[= storm::primary_part]][[= storm::fk<>]] Warehouse warehouse;
-    [[= storm::primary_part]] int sku{};
-    [[= storm::many_to_many_through<EntryLink>]] std::vector<Topic> topics;
+    [[= primary_part]][[= fk<>]] Warehouse warehouse;
+    [[= primary_part]] int sku{};
+    [[= many_to_many_through<EntryLink>]] std::vector<Topic> topics;
 };
 
 struct EntryLink {
-    [[= storm::primary_autoincrement]] int id{};
-    [[= storm::fk<>]] Entry entry;   // → entry_warehouse, entry_sku
-    [[= storm::fk<>]] Topic topic;   // → topic_id
+    [[= primary_autoincrement]] int id{};
+    [[= fk<>]] Entry entry;   // → entry_warehouse, entry_sku
+    [[= fk<>]] Topic topic;   // → topic_id
 };
 ```
 

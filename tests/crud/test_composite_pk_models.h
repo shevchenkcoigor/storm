@@ -13,11 +13,16 @@
  */
 #include "../../shared/models/person.h" // NOSONAR cpp:S954 — Person-typed FK members below
 #include <meta>
+using storm::field_specs_for;
+using storm::many_to_many;
+using storm::primary;
+using storm::primary_autoincrement;
+using storm::primary_part;
 
 // Canonical 2-part composite key, both parts int.
 struct OrderLine {
-    [[= storm::primary_part]] int order_id{};
-    [[= storm::primary_part]] int product_id{};
+    [[= primary_part]] int order_id{};
+    [[= primary_part]] int product_id{};
     int quantity{};
     std::string note;
 };
@@ -26,24 +31,24 @@ struct OrderLine {
 // part type rather than assuming an integer key, and that a TEXT part is
 // compared correctly in the WHERE clause.
 struct Inventory {
-    [[= storm::primary_part]] int warehouse{};
-    [[= storm::primary_part]] std::string sku;
+    [[= primary_part]] int warehouse{};
+    [[= primary_part]] std::string sku;
     int on_hand{};
 };
 
 // Three parts, mixed widths — the AND-join and the row-value list must not be
 // arity-limited, and the consteval sizers must stay exact at N=3.
 struct Ledger {
-    [[= storm::primary_part]] int region{};
-    [[= storm::primary_part]] std::string account;
-    [[= storm::primary_part]] std::int64_t period{};
+    [[= primary_part]] int region{};
+    [[= primary_part]] std::string account;
+    [[= primary_part]] std::int64_t period{};
     double balance{};
 };
 
 // Single-PK control. Every SQL assertion on this model must be byte-identical
 // to what Storm emitted before composite support.
 struct Widget {
-    [[= storm::primary]] int id{};
+    [[= primary]] int id{};
     std::string name;
     int weight{};
 };
@@ -54,8 +59,8 @@ struct Widget {
 // in the WHERE clause — emitting the bare member would name a column that does
 // not exist. `Person` comes from shared/models/person.h, included above.
 struct StockEntry {
-    [[= storm::primary_part]][[= storm::fk<>]] Person warehouse;
-    [[= storm::primary_part]] int sku{};
+    [[= primary_part]][[= storm::fk<>]] Person warehouse;
+    [[= primary_part]] int sku{};
     int qty{};
 };
 
@@ -72,8 +77,8 @@ struct Shipment; // forward declaration breaks the Base⟷Owner cycle
 // OrderLine (not added to it directly) so existing OrderLine-shape assertions
 // in the #501/#502 test suites stay untouched.
 struct OrderLineWithShipments {
-    [[= storm::primary_part]] int order_id{};
-    [[= storm::primary_part]] int product_id{};
+    [[= primary_part]] int order_id{};
+    [[= primary_part]] int product_id{};
     int quantity{};
     std::string note;
     [[= storm::reverse_fk<^^Shipment>]] std::vector<Shipment> shipments;
@@ -88,7 +93,7 @@ struct OrderLineWithShipments {
 // OrderLineWithShipments, which is why this targets that type and not the
 // plain OrderLine (which nothing references back to).
 struct Shipment {
-    [[= storm::primary_autoincrement]] int id{};
+    [[= primary_autoincrement]] int id{};
     [[= storm::fk<>]] OrderLineWithShipments line;
     std::string carrier;
 };
@@ -98,15 +103,15 @@ struct Shipment {
 // (region, account, period) PLUS an m2m container, proving m2m eager-load
 // stitching works when the OWNER side has a composite key.
 struct LedgerTag {
-    [[= storm::primary_autoincrement]] int id{};
+    [[= primary_autoincrement]] int id{};
     std::string label;
 };
 struct LedgerWithTags {
-    [[= storm::primary_part]] int region{};
-    [[= storm::primary_part]] std::string account;
-    [[= storm::primary_part]] std::int64_t period{};
+    [[= primary_part]] int region{};
+    [[= primary_part]] std::string account;
+    [[= primary_part]] std::int64_t period{};
     double balance{};
-    [[= storm::many_to_many<>]] std::vector<LedgerTag> tags;
+    [[= many_to_many<>]] std::vector<LedgerTag> tags;
 };
 
 // #504 Task 7 fix — FK target with a 3-part composite PK. Ledger already
@@ -120,7 +125,7 @@ struct LedgerWithTags {
 // slack absorb a single 6-byte deficit) — see LedgerEntryRefWide below for the
 // fixture that actually forces a measurable, non-slack-absorbed deficit.
 struct LedgerEntryRef {
-    [[= storm::primary_autoincrement]] int id{};
+    [[= primary_autoincrement]] int id{};
     [[= storm::fk<>]] Ledger ledger;
     std::string note;
 };
@@ -134,7 +139,7 @@ struct LedgerEntryRef {
 // 3-part FK (LedgerEntryRef above) does not. This is the fixture that actually
 // forces ConstexprString::append to silently truncate under the pre-fix sizer.
 struct LedgerEntryRefWide {
-    [[= storm::primary_autoincrement]] int id{};
+    [[= primary_autoincrement]] int id{};
     [[= storm::fk<>]] Ledger ledger1;
     [[= storm::fk<>]] Ledger ledger2;
     [[= storm::fk<>]] Ledger ledger3;
@@ -149,7 +154,7 @@ struct LedgerEntryRefWide {
 // (which is never optional — a PK can't be nullable), and that it emits the
 // suffix exactly once, not doubled.
 struct OptionalShipment {
-    [[= storm::primary_autoincrement]] int id{};
+    [[= primary_autoincrement]] int id{};
     [[= storm::fk<>]] std::optional<OrderLineWithShipments> line;
     std::string carrier;
 };
@@ -162,7 +167,7 @@ struct OptionalShipment {
 // index (2). Before the fix, extract_optional_fk_column read column 2
 // (composite_product_id) instead.
 struct MixedFkOrder {
-    [[= storm::primary_autoincrement]] int id{};
+    [[= primary_autoincrement]] int id{};
     [[= storm::fk<>]] OrderLineWithShipments composite;
     [[= storm::fk<>]] std::optional<Person> single;
 };
@@ -181,8 +186,8 @@ struct MixedFkOrder {
 // Composite (2-part) RELATED model for the single-PK-owner direction. Both parts
 // are int, so the junction's related-side columns are the simple homogeneous case.
 struct CatalogEntry {
-    [[= storm::primary_part]] int catalog_id{};
-    [[= storm::primary_part]] int entry_no{};
+    [[= primary_part]] int catalog_id{};
+    [[= primary_part]] int entry_no{};
     std::string title;
 };
 
@@ -190,9 +195,9 @@ struct CatalogEntry {
 // emit ONE owner column (tagregistry_id, the unchanged single-PK spelling) plus
 // TWO related columns (CatalogEntry_catalog_id, CatalogEntry_entry_no).
 struct TagRegistry {
-    [[= storm::primary_autoincrement]] int id{};
+    [[= primary_autoincrement]] int id{};
     std::string label;
-    [[= storm::many_to_many<>]] std::vector<CatalogEntry> entries;
+    [[= many_to_many<>]] std::vector<CatalogEntry> entries;
 };
 
 // Composite (3-part) RELATED model with MIXED part types (int + string +
@@ -200,9 +205,9 @@ struct TagRegistry {
 // part from the target's own PK-part types, not assumed integral. Paired with a
 // composite owner below for the both-sides case.
 struct StorageBin {
-    [[= storm::primary_part]] int aisle{};
-    [[= storm::primary_part]] std::string bin_code;
-    [[= storm::primary_part]] std::int64_t revision{};
+    [[= primary_part]] int aisle{};
+    [[= primary_part]] std::string bin_code;
+    [[= primary_part]] std::int64_t revision{};
     double capacity{};
 };
 
@@ -225,11 +230,11 @@ struct StorageBin {
 // 1-part LedgerTag) — a per-relation column count leaking across relations
 // would misalign the second relation's extraction.
 struct ShelfAssignment {
-    [[= storm::primary_part]] int warehouse_no{};
-    [[= storm::primary_part]] std::string shelf_code;
+    [[= primary_part]] int warehouse_no{};
+    [[= primary_part]] std::string shelf_code;
     int priority{};
-    [[= storm::many_to_many<>]] std::vector<StorageBin> bins;
-    [[= storm::many_to_many<>]] std::vector<LedgerTag> tags;
+    [[= many_to_many<>]] std::vector<StorageBin> bins;
+    [[= many_to_many<>]] std::vector<LedgerTag> tags;
 };
 
 // ── #536: many_to_many_through<> when either side has a composite PK ─────────
@@ -250,7 +255,7 @@ struct ShelfAssignment {
 
 // Plain single-PK related side, reused by the composite-OWNER direction.
 struct ThroughTopic {
-    [[= storm::primary_autoincrement]] int id{};
+    [[= primary_autoincrement]] int id{};
     std::string label;
 };
 
@@ -260,14 +265,14 @@ struct RegionEntryLink; // through model, defined below (breaks the cycle)
 // plain columns, so this direction alone does NOT diverge — it is the control
 // that proves the through path handles a multi-column key at all.
 struct RegionEntry {
-    [[= storm::primary_part]] int region{};
-    [[= storm::primary_part]] std::string code;
+    [[= primary_part]] int region{};
+    [[= primary_part]] std::string code;
     std::string title;
     [[= storm::many_to_many_through<RegionEntryLink>]] std::vector<ThroughTopic> topics;
 };
 
 struct RegionEntryLink {
-    [[= storm::primary_autoincrement]] int id{};
+    [[= primary_autoincrement]] int id{};
     [[= storm::fk<>]] RegionEntry entry;
     [[= storm::fk<>]] ThroughTopic topic;
     std::string note;
@@ -277,20 +282,20 @@ struct ShelfCodeLink; // through model, defined below
 
 // Composite (2-part) RELATED side reached through an explicit junction model.
 struct ShelfCode {
-    [[= storm::primary_part]] int aisle{};
-    [[= storm::primary_part]] std::string code;
+    [[= primary_part]] int aisle{};
+    [[= primary_part]] std::string code;
     std::string label;
 };
 
 // Single-PK OWNER, composite RELATED — the mirror direction.
 struct ShelfOwner {
-    [[= storm::primary_autoincrement]] int id{};
+    [[= primary_autoincrement]] int id{};
     std::string name;
     [[= storm::many_to_many_through<ShelfCodeLink>]] std::vector<ShelfCode> codes;
 };
 
 struct ShelfCodeLink {
-    [[= storm::primary_autoincrement]] int id{};
+    [[= primary_autoincrement]] int id{};
     [[= storm::fk<>]] ShelfOwner owner;
     [[= storm::fk<>]] ShelfCode code;
 };
@@ -305,14 +310,14 @@ struct FkPartLink; // through model, defined below
 // Before the fix the query named a column that does not exist and the eager
 // load failed with "no such column: t2.entry_warehouse_id".
 struct FkPartEntry {
-    [[= storm::primary_part]][[= storm::fk<>]] Person warehouse;
-    [[= storm::primary_part]] int sku{};
+    [[= primary_part]][[= storm::fk<>]] Person warehouse;
+    [[= primary_part]] int sku{};
     std::string title;
     [[= storm::many_to_many_through<FkPartLink>]] std::vector<ThroughTopic> topics;
 };
 
 struct FkPartLink {
-    [[= storm::primary_autoincrement]] int id{};
+    [[= primary_autoincrement]] int id{};
     [[= storm::fk<>]] FkPartEntry entry;
     [[= storm::fk<>]] ThroughTopic topic;
 };
@@ -323,14 +328,14 @@ struct BothSidesLink; // through model, defined below
 // junction, where the owner contributes 2 columns (one of them FK-derived) and
 // the related side contributes 2 more.
 struct BothSidesOwner {
-    [[= storm::primary_part]][[= storm::fk<>]] Person depot;
-    [[= storm::primary_part]] int slot{};
+    [[= primary_part]][[= storm::fk<>]] Person depot;
+    [[= primary_part]] int slot{};
     std::string name;
     [[= storm::many_to_many_through<BothSidesLink>]] std::vector<ShelfCode> codes;
 };
 
 struct BothSidesLink {
-    [[= storm::primary_autoincrement]] int id{};
+    [[= primary_autoincrement]] int id{};
     [[= storm::fk<>]] BothSidesOwner owner;
     [[= storm::fk<>]] ShelfCode code;
 };
@@ -340,64 +345,64 @@ struct BothSidesLink {
 namespace fields {
 
 struct OrderLineT;
-consteval { std::meta::define_aggregate(^^OrderLineT, storm::field_specs_for(^^OrderLine)); }
+consteval { std::meta::define_aggregate(^^OrderLineT, field_specs_for(^^OrderLine)); }
 inline constexpr OrderLineT OrderLine{};
 
 struct InventoryT;
-consteval { std::meta::define_aggregate(^^InventoryT, storm::field_specs_for(^^Inventory)); }
+consteval { std::meta::define_aggregate(^^InventoryT, field_specs_for(^^Inventory)); }
 inline constexpr InventoryT Inventory{};
 
 struct LedgerT;
-consteval { std::meta::define_aggregate(^^LedgerT, storm::field_specs_for(^^Ledger)); }
+consteval { std::meta::define_aggregate(^^LedgerT, field_specs_for(^^Ledger)); }
 inline constexpr LedgerT Ledger{};
 
 struct WidgetT;
-consteval { std::meta::define_aggregate(^^WidgetT, storm::field_specs_for(^^Widget)); }
+consteval { std::meta::define_aggregate(^^WidgetT, field_specs_for(^^Widget)); }
 inline constexpr WidgetT Widget{};
 
 struct StockEntryT;
-consteval { std::meta::define_aggregate(^^StockEntryT, storm::field_specs_for(^^StockEntry)); }
+consteval { std::meta::define_aggregate(^^StockEntryT, field_specs_for(^^StockEntry)); }
 inline constexpr StockEntryT StockEntry{};
 
 struct LedgerWithTagsT;
-consteval { std::meta::define_aggregate(^^LedgerWithTagsT, storm::field_specs_for(^^LedgerWithTags)); }
+consteval { std::meta::define_aggregate(^^LedgerWithTagsT, field_specs_for(^^LedgerWithTags)); }
 inline constexpr LedgerWithTagsT LedgerWithTags{};
 
 struct OptionalShipmentT;
-consteval { std::meta::define_aggregate(^^OptionalShipmentT, storm::field_specs_for(^^OptionalShipment)); }
+consteval { std::meta::define_aggregate(^^OptionalShipmentT, field_specs_for(^^OptionalShipment)); }
 inline constexpr OptionalShipmentT OptionalShipment{};
 
 struct OrderLineWithShipmentsT;
-consteval { std::meta::define_aggregate(^^OrderLineWithShipmentsT, storm::field_specs_for(^^OrderLineWithShipments)); }
+consteval { std::meta::define_aggregate(^^OrderLineWithShipmentsT, field_specs_for(^^OrderLineWithShipments)); }
 inline constexpr OrderLineWithShipmentsT OrderLineWithShipments{};
 
 struct ShelfAssignmentT;
-consteval { std::meta::define_aggregate(^^ShelfAssignmentT, storm::field_specs_for(^^ShelfAssignment)); }
+consteval { std::meta::define_aggregate(^^ShelfAssignmentT, field_specs_for(^^ShelfAssignment)); }
 inline constexpr ShelfAssignmentT ShelfAssignment{};
 
 struct ShipmentT;
-consteval { std::meta::define_aggregate(^^ShipmentT, storm::field_specs_for(^^Shipment)); }
+consteval { std::meta::define_aggregate(^^ShipmentT, field_specs_for(^^Shipment)); }
 inline constexpr ShipmentT Shipment{};
 
 struct TagRegistryT;
-consteval { std::meta::define_aggregate(^^TagRegistryT, storm::field_specs_for(^^TagRegistry)); }
+consteval { std::meta::define_aggregate(^^TagRegistryT, field_specs_for(^^TagRegistry)); }
 inline constexpr TagRegistryT TagRegistry{};
 
 // #536 — through-model m2m over composite PKs.
 struct RegionEntryT;
-consteval { std::meta::define_aggregate(^^RegionEntryT, storm::field_specs_for(^^RegionEntry)); }
+consteval { std::meta::define_aggregate(^^RegionEntryT, field_specs_for(^^RegionEntry)); }
 inline constexpr RegionEntryT RegionEntry{};
 
 struct ShelfOwnerT;
-consteval { std::meta::define_aggregate(^^ShelfOwnerT, storm::field_specs_for(^^ShelfOwner)); }
+consteval { std::meta::define_aggregate(^^ShelfOwnerT, field_specs_for(^^ShelfOwner)); }
 inline constexpr ShelfOwnerT ShelfOwner{};
 
 struct FkPartEntryT;
-consteval { std::meta::define_aggregate(^^FkPartEntryT, storm::field_specs_for(^^FkPartEntry)); }
+consteval { std::meta::define_aggregate(^^FkPartEntryT, field_specs_for(^^FkPartEntry)); }
 inline constexpr FkPartEntryT FkPartEntry{};
 
 struct BothSidesOwnerT;
-consteval { std::meta::define_aggregate(^^BothSidesOwnerT, storm::field_specs_for(^^BothSidesOwner)); }
+consteval { std::meta::define_aggregate(^^BothSidesOwnerT, field_specs_for(^^BothSidesOwner)); }
 inline constexpr BothSidesOwnerT BothSidesOwner{};
 } // namespace fields
 

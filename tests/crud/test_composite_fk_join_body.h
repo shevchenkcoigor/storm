@@ -14,7 +14,14 @@
 #error "test_composite_fk_join_body.h: define STORM_SPLIT_TYPES/STORM_SPLIT_TYPE_NAMES before including"
 #endif
 
-import storm;
+import storm_db_default_connection;
+import storm_db_postgresql;
+import storm_db_sqlite;
+import storm_meta;
+import storm_orm_indexes;
+import storm_orm_schema;
+import storm_orm_statements_insert;
+import storm_orm_statements_select;
 import std;
 
 #include "../../shared/models/message.h" // NOSONAR cpp:S954 — Message/Person
@@ -23,6 +30,9 @@ import std;
 
 // Must follow the shared model headers: OrderLineWithShipments/Shipment name storm:: annotations.
 #include "test_composite_pk_models.h" // NOSONAR cpp:S954
+using storm::create_table_sql;
+using storm::orm::statements::InsertStatement;
+using storm::orm::statements::SelectStatement;
 
 // ── #504: composite FK bind + extract (INSERT/SELECT plain FK column) ───────
 // Shipment::line is a plain (non-JOIN) FK member whose target
@@ -45,16 +55,14 @@ template <typename ConnType> class CompositeFkJoinTest : public StormTestFixture
 TYPED_TEST_SUITE(CompositeFkJoinTest, STORM_SPLIT_TYPES, STORM_SPLIT_TYPE_NAMES);
 
 TYPED_TEST(CompositeFkJoinTest, InsertAndSelectRoundTripsCompositeFkColumns) {
-    storm::QuerySet<OrderLineWithShipments, TypeParam> line_qs;
     const OrderLineWithShipments line{.order_id = 5, .product_id = 12, .quantity = 3, .note = "first"};
-    ASSERT_TRUE(line_qs.insert(line).execute().has_value());
+    ASSERT_TRUE((InsertStatement<OrderLineWithShipments, TypeParam>{}).query(line).execute().has_value());
 
-    storm::QuerySet<Shipment, TypeParam> ship_qs;
     const Shipment ship{.line = line, .carrier = "UPS"};
-    auto insert_result = ship_qs.insert(ship).execute();
+    auto insert_result = (InsertStatement<Shipment, TypeParam>{}).query(ship).execute();
     ASSERT_TRUE(insert_result.has_value());
 
-    auto rows = ship_qs.select().execute();
+    auto rows = (SelectStatement<Shipment, TypeParam>{}).all().execute();
     ASSERT_TRUE(rows.has_value());
     ASSERT_EQ(rows.value().size(), 1U);
     const Shipment &loaded = *rows.value().begin();
@@ -67,17 +75,21 @@ TYPED_TEST(CompositeFkJoinTest, InsertAndSelectRoundTripsCompositeFkColumns) {
 // would have this test pass if the bind/extract order matched a coincidental
 // symmetry, but the two rows below share no value across order_id/product_id.
 TYPED_TEST(CompositeFkJoinTest, MultipleShipmentsResolveDistinctCompositeFkTargets) {
-    storm::QuerySet<OrderLineWithShipments, TypeParam> line_qs;
     const OrderLineWithShipments line_a{.order_id = 1, .product_id = 100, .quantity = 1, .note = "a"};
     const OrderLineWithShipments line_b{.order_id = 2, .product_id = 200, .quantity = 2, .note = "b"};
-    ASSERT_TRUE(line_qs.insert(line_a).execute().has_value());
-    ASSERT_TRUE(line_qs.insert(line_b).execute().has_value());
+    ASSERT_TRUE((InsertStatement<OrderLineWithShipments, TypeParam>{}).query(line_a).execute().has_value());
+    ASSERT_TRUE((InsertStatement<OrderLineWithShipments, TypeParam>{}).query(line_b).execute().has_value());
 
-    storm::QuerySet<Shipment, TypeParam> ship_qs;
-    ASSERT_TRUE(ship_qs.insert(Shipment{.line = line_a, .carrier = "DHL"}).execute().has_value());
-    ASSERT_TRUE(ship_qs.insert(Shipment{.line = line_b, .carrier = "FedEx"}).execute().has_value());
+    ASSERT_TRUE((InsertStatement<Shipment, TypeParam>{})
+                    .query(Shipment{.line = line_a, .carrier = "DHL"})
+                    .execute()
+                    .has_value());
+    ASSERT_TRUE((InsertStatement<Shipment, TypeParam>{})
+                    .query(Shipment{.line = line_b, .carrier = "FedEx"})
+                    .execute()
+                    .has_value());
 
-    auto rows = ship_qs.select().execute();
+    auto rows = (SelectStatement<Shipment, TypeParam>{}).all().execute();
     ASSERT_TRUE(rows.has_value());
     ASSERT_EQ(rows.value().size(), 2U);
 
@@ -100,7 +112,7 @@ TYPED_TEST(CompositeFkJoinTest, MultipleShipmentsResolveDistinctCompositeFkTarge
 
 TYPED_TEST(CompositeFkJoinTest, SchemaEmitsTwoColumnsForCompositeFk) {
     // line_order_id, line_product_id must both exist as columns.
-    const std::string &sql = storm::create_table_sql<Shipment>();
+    const std::string &sql = create_table_sql<Shipment>();
     EXPECT_NE(sql.find("line_order_id"), std::string::npos) << sql;
     EXPECT_NE(sql.find("line_product_id"), std::string::npos) << sql;
 }
@@ -124,14 +136,15 @@ class OptionalShipmentTest : public StormTestFixture<OptionalShipment, ConnType,
 TYPED_TEST_SUITE(OptionalShipmentTest, STORM_SPLIT_TYPES, STORM_SPLIT_TYPE_NAMES);
 
 TYPED_TEST(OptionalShipmentTest, PlainSelectRoundTripsNonNullCompositeFk) {
-    storm::QuerySet<OrderLineWithShipments, TypeParam> line_qs;
     const OrderLineWithShipments line{.order_id = 5, .product_id = 12, .quantity = 3, .note = "first"};
-    ASSERT_TRUE(line_qs.insert(line).execute().has_value());
+    ASSERT_TRUE((InsertStatement<OrderLineWithShipments, TypeParam>{}).query(line).execute().has_value());
 
-    storm::QuerySet<OptionalShipment, TypeParam> ship_qs;
-    ASSERT_TRUE(ship_qs.insert(OptionalShipment{.line = line, .carrier = "UPS"}).execute().has_value());
+    ASSERT_TRUE((InsertStatement<OptionalShipment, TypeParam>{})
+                    .query(OptionalShipment{.line = line, .carrier = "UPS"})
+                    .execute()
+                    .has_value());
 
-    auto rows = ship_qs.select().execute();
+    auto rows = (SelectStatement<OptionalShipment, TypeParam>{}).all().execute();
     ASSERT_TRUE(rows.has_value());
     ASSERT_EQ(rows.value().size(), 1U);
     const OptionalShipment &loaded = *rows.value().begin();
@@ -142,10 +155,12 @@ TYPED_TEST(OptionalShipmentTest, PlainSelectRoundTripsNonNullCompositeFk) {
 }
 
 TYPED_TEST(OptionalShipmentTest, PlainSelectRoundTripsNullCompositeFk) {
-    storm::QuerySet<OptionalShipment, TypeParam> ship_qs;
-    ASSERT_TRUE(ship_qs.insert(OptionalShipment{.line = std::nullopt, .carrier = "FedEx"}).execute().has_value());
+    ASSERT_TRUE((InsertStatement<OptionalShipment, TypeParam>{})
+                    .query(OptionalShipment{.line = std::nullopt, .carrier = "FedEx"})
+                    .execute()
+                    .has_value());
 
-    auto rows = ship_qs.select().execute();
+    auto rows = (SelectStatement<OptionalShipment, TypeParam>{}).all().execute();
     ASSERT_TRUE(rows.has_value());
     ASSERT_EQ(rows.value().size(), 1U);
     const OptionalShipment &loaded = *rows.value().begin();
@@ -167,20 +182,18 @@ class MixedFkOrderTest : public StormTestFixture<MixedFkOrder, ConnType, OrderLi
 // MixedFkOrder::composite's target in both tests below.
 template <typename ConnType>
 auto insert_mixed_fk_order_line(int order_id, int product_id, std::string note) -> OrderLineWithShipments {
-    storm::QuerySet<OrderLineWithShipments, ConnType> line_qs;
     const OrderLineWithShipments line{
         .order_id = order_id, .product_id = product_id, .quantity = 1, .note = std::move(note)};
-    EXPECT_TRUE(line_qs.insert(line).execute().has_value());
+    EXPECT_TRUE((InsertStatement<OrderLineWithShipments, ConnType>{}).query(line).execute().has_value());
     return line;
 }
 
 // Shared verification: insert `order`, select it back, and return the
 // sole loaded row for the caller to assert on.
 template <typename ConnType> auto insert_and_reload_mixed_fk_order(const MixedFkOrder &order) -> MixedFkOrder {
-    storm::QuerySet<MixedFkOrder, ConnType> order_qs;
-    EXPECT_TRUE(order_qs.insert(order).execute().has_value());
+    EXPECT_TRUE((InsertStatement<MixedFkOrder, ConnType>{}).query(order).execute().has_value());
 
-    auto rows = order_qs.select().execute();
+    auto rows = (SelectStatement<MixedFkOrder, ConnType>{}).all().execute();
     EXPECT_TRUE(rows.has_value());
     EXPECT_EQ(rows.value().size(), 1U);
     return *rows.value().begin();
@@ -192,9 +205,8 @@ TYPED_TEST_SUITE(MixedFkOrderTest, STORM_SPLIT_TYPES, STORM_SPLIT_TYPE_NAMES);
 TYPED_TEST(MixedFkOrderTest, ExtractsOptionalSingleColumnFkAfterPrecedingCompositeFk) {
     const OrderLineWithShipments line = insert_mixed_fk_order_line<TypeParam>(7, 42, "n");
 
-    storm::QuerySet<Person, TypeParam> person_qs;
     const Person owner{.name = "Carol", .age = 40};
-    ASSERT_TRUE(person_qs.insert(owner).execute().has_value());
+    ASSERT_TRUE((InsertStatement<Person, TypeParam>{}).query(owner).execute().has_value());
 
     const MixedFkOrder order{.composite = line, .single = Person{.id = 1}};
     const MixedFkOrder loaded = insert_and_reload_mixed_fk_order<TypeParam>(order);
@@ -226,15 +238,13 @@ template <typename ConnType> class SingleColumnFkRegressionTest : public StormTe
 TYPED_TEST_SUITE(SingleColumnFkRegressionTest, STORM_SPLIT_TYPES, STORM_SPLIT_TYPE_NAMES);
 
 TYPED_TEST(SingleColumnFkRegressionTest, InsertAndSelectRoundTripsSingleColumnFk) {
-    storm::QuerySet<Person, TypeParam> person_qs;
     const Person sender{.name = "Alice", .age = 30};
-    ASSERT_TRUE(person_qs.insert(sender).execute().has_value());
+    ASSERT_TRUE((InsertStatement<Person, TypeParam>{}).query(sender).execute().has_value());
 
-    storm::QuerySet<Message, TypeParam> msg_qs;
     const Message msg{.content = "hi", .sender = {.id = 1}};
-    ASSERT_TRUE(msg_qs.insert(msg).execute().has_value());
+    ASSERT_TRUE((InsertStatement<Message, TypeParam>{}).query(msg).execute().has_value());
 
-    auto rows = msg_qs.select().execute();
+    auto rows = (SelectStatement<Message, TypeParam>{}).all().execute();
     ASSERT_TRUE(rows.has_value());
     ASSERT_EQ(rows.value().size(), 1U);
     EXPECT_EQ(rows.value().begin()->sender.id, 1);

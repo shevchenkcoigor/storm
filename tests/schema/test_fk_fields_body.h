@@ -27,39 +27,43 @@ import std;
 #include "test_fixture.h"
 
 #include "test_seed_helpers.h"
+using storm::field_specs_for;
+using storm::primary;
+using storm::db::DefaultConnection;
+using storm::orm::schema::SchemaStatement;
 
 // ── Local structs (used only in this file) ──────────────────────────────────
 struct NullableFKMessage {
-    [[= storm::primary]] int id{};
+    [[= primary]] int id{};
     [[= storm::fk<>]] std::optional<Person> sender;
     [[= storm::fk<>]] Person receiver;
     std::string text;
 };
 struct Project {
-    [[= storm::primary]] int id{};
+    [[= primary]] int id{};
     [[= storm::fk<>]] Person manager;
     std::string title;
     double budget{};
 };
 struct Measurement {
-    [[= storm::primary]] int id{};
+    [[= primary]] int id{};
     std::string sensor_name;
     float temperature{};
     long long timestamp{};
 };
 struct Counter {
-    [[= storm::primary]] int id{};
+    [[= primary]] int id{};
     std::string name;
     long count{};
 };
 struct Reading {
-    [[= storm::primary]] int id{};
+    [[= primary]] int id{};
     [[= storm::fk<>]] Measurement measurement;
     std::string reading_type;
     float value{};
 };
 struct Summary {
-    [[= storm::primary]] int id{};
+    [[= primary]] int id{};
     [[= storm::fk<>]] Counter counter;
     std::string report_type;
 };
@@ -68,19 +72,19 @@ struct Summary {
 namespace fields {
 
 struct NullableFKMessageT;
-consteval { std::meta::define_aggregate(^^NullableFKMessageT, storm::field_specs_for(^^NullableFKMessage)); }
+consteval { std::meta::define_aggregate(^^NullableFKMessageT, field_specs_for(^^NullableFKMessage)); }
 inline constexpr NullableFKMessageT NullableFKMessage{};
 
 struct ProjectT;
-consteval { std::meta::define_aggregate(^^ProjectT, storm::field_specs_for(^^Project)); }
+consteval { std::meta::define_aggregate(^^ProjectT, field_specs_for(^^Project)); }
 inline constexpr ProjectT Project{};
 
 struct ReadingT;
-consteval { std::meta::define_aggregate(^^ReadingT, storm::field_specs_for(^^Reading)); }
+consteval { std::meta::define_aggregate(^^ReadingT, field_specs_for(^^Reading)); }
 inline constexpr ReadingT Reading{};
 
 struct SummaryT;
-consteval { std::meta::define_aggregate(^^SummaryT, storm::field_specs_for(^^Summary)); }
+consteval { std::meta::define_aggregate(^^SummaryT, field_specs_for(^^Summary)); }
 inline constexpr SummaryT Summary{};
 
 } // namespace fields
@@ -153,7 +157,7 @@ TYPED_TEST(FKFieldTest, InsertWithFKField) {
     EXPECT_GT(msg_id, 0) << "Expected valid message ID";
 
     // Verify FKs were stored correctly by querying database directly
-    const auto &conn = QuerySet<Person, TypeParam>::get_default_connection();
+    const auto &conn = DefaultConnection<TypeParam>::get();
     auto stmt_res = conn->prepare("SELECT assignee_id, reviewer_id FROM Task WHERE id = ?");
     ASSERT_TRUE(stmt_res.has_value());
 
@@ -378,9 +382,7 @@ TYPED_TEST(FKFieldTest, MultipleFKFieldsToSameType) {
     QuerySet<Person, TypeParam> user_qs;
     QuerySet<Task, TypeParam> conv_qs;
 
-    // Create conversation table
-    const auto &conn = QuerySet<Person, TypeParam>::get_default_connection();
-    auto create_conv_result = storm::orm::schema::SchemaStatement<Task>::create_table_if_not_exists(conn);
+    auto create_conv_result = SchemaStatement<Task>::create_table_if_not_exists<TypeParam>();
     ASSERT_TRUE(create_conv_result.has_value());
 
     // Insert users
@@ -838,9 +840,7 @@ TYPED_TEST(ExtendedTypesJoinTest, MultiJoinWithExtendedTypes) {
     QuerySet<Person, TypeParam> employee_qs;
     QuerySet<Task, TypeParam> task_qs;
 
-    // Create Task table
-    const auto &conn = QuerySet<Person, TypeParam>::get_default_connection();
-    auto create_task_result = storm::orm::schema::SchemaStatement<Task>::create_table_if_not_exists(conn);
+    auto create_task_result = SchemaStatement<Task>::create_table_if_not_exists<TypeParam>();
     ASSERT_TRUE(create_task_result.has_value());
 
     // Insert employees
@@ -904,14 +904,11 @@ TYPED_TEST(ExtendedTypesJoinTest, JoinWithFloatAndLongLongTypes) {
     QuerySet<Measurement, TypeParam> measurement_qs;
     QuerySet<Reading, TypeParam> reading_qs;
 
-    // Create tables
-    const auto &conn = QuerySet<Person, TypeParam>::get_default_connection();
-
-    auto create_measurement_result = storm::orm::schema::SchemaStatement<Measurement>::create_table_if_not_exists(conn);
+    auto create_measurement_result = SchemaStatement<Measurement>::create_table_if_not_exists<TypeParam>();
     ASSERT_TRUE(create_measurement_result.has_value())
         << "Failed to create Measurement table: " << create_measurement_result.error().message();
 
-    auto create_reading_result = storm::orm::schema::SchemaStatement<Reading>::create_table_if_not_exists(conn);
+    auto create_reading_result = SchemaStatement<Reading>::create_table_if_not_exists<TypeParam>();
     ASSERT_TRUE(create_reading_result.has_value())
         << "Failed to create Reading table: " << create_reading_result.error().message();
 
@@ -965,14 +962,11 @@ TYPED_TEST(ExtendedTypesJoinTest, JoinWithLongType) {
     QuerySet<Counter, TypeParam> counter_qs;
     QuerySet<Summary, TypeParam> summary_qs;
 
-    // Create tables
-    const auto &conn = QuerySet<Person, TypeParam>::get_default_connection();
-
-    auto create_counter_result = storm::orm::schema::SchemaStatement<Counter>::create_table_if_not_exists(conn);
+    auto create_counter_result = SchemaStatement<Counter>::create_table_if_not_exists<TypeParam>();
     ASSERT_TRUE(create_counter_result.has_value())
         << "Failed to create Counter table: " << create_counter_result.error().message();
 
-    auto create_summary_result = storm::orm::schema::SchemaStatement<Summary>::create_table_if_not_exists(conn);
+    auto create_summary_result = SchemaStatement<Summary>::create_table_if_not_exists<TypeParam>();
     ASSERT_TRUE(create_summary_result.has_value())
         << "Failed to create Summary table: " << create_summary_result.error().message();
 

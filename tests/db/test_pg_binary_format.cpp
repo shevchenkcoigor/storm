@@ -3,7 +3,12 @@
 
 #include "test_db_helpers.h"
 
-import storm;
+import storm_db_postgresql;
+import storm_db_sqlite;
+import storm_meta;
+import storm_orm_indexes;
+import storm_orm_transaction;
+import storm_orm_utilities;
 import std;
 
 #include "test_pg_binary_models.h" // NOSONAR cpp:S954 — models + compile-time classification gates

@@ -8,6 +8,7 @@ import storm;
 import std;
 
 using storm::QuerySet;
+using storm::db::DefaultConnection;
 
 #include "../../shared/models/message.h" // NOSONAR cpp:S954
 #include "../../shared/models/person.h"
@@ -644,7 +645,7 @@ TYPED_TEST(DistinctTest, DesiredSQLForDistinctWithJoin) {
 TYPED_TEST(DistinctTest, RawSQLWorkaround) {
     storm::test::populate_join_test_data<TypeParam>();
 
-    const auto& conn = QuerySet<Message, TypeParam>::get_default_connection();
+    const auto& conn = DefaultConnection<TypeParam>::get();
 
     // Workaround: Use raw SQL for DISTINCT + JOIN
     std::string const sql = "SELECT DISTINCT Person.name "

@@ -8,6 +8,8 @@ import std;
 
 #include "test_fixture.h"          // NOSONAR cpp:S954 — StormTestFixture
 #include "test_pg_binary_models.h" // NOSONAR cpp:S954 — models + compile-time classification gates
+using storm::QuerySet;
+using storm::UUID;
 
 // ============================================================================
 // #600 Phase 1 — binary result format on PostgreSQL: the ORM ROUND-TRIPS
@@ -33,7 +35,7 @@ namespace {
 
     // Select the whole table and hand back its single row. ADD_FAILURE + a default
     // row (rather than ASSERT_) keeps this usable from a non-void helper.
-    template <typename Model> auto select_single(storm::QuerySet<Model, PgConn>& qs) -> Model {
+    template <typename Model> auto select_single(QuerySet<Model, PgConn>& qs) -> Model {
         auto rows = qs.select().execute();
         if (!rows.has_value()) {
             ADD_FAILURE() << "select failed: " << rows.error().message();
@@ -51,7 +53,7 @@ namespace {
     class PgBinarySafeRowTest : public StormTestFixture<BinSafeRow, PgConn> {};
 
     TEST_F(PgBinarySafeRowTest, EveryBinarySafeTypeRoundTrips) {
-        storm::QuerySet<BinSafeRow, PgConn> qs;
+        QuerySet<BinSafeRow, PgConn> qs;
 
         const BinSafeRow row{
                 .big        = 9'876'543'210LL,
@@ -87,7 +89,7 @@ namespace {
     }
 
     TEST_F(PgBinarySafeRowTest, NullsRoundTripForEveryNullableColumn) {
-        storm::QuerySet<BinSafeRow, PgConn> qs;
+        QuerySet<BinSafeRow, PgConn> qs;
         ASSERT_TRUE(qs.insert(BinSafeRow{.label = "nulls"}).execute().has_value());
 
         const BinSafeRow got = select_single(qs);
@@ -99,7 +101,7 @@ namespace {
     }
 
     TEST_F(PgBinarySafeRowTest, BoundaryValuesSurviveTheDecode) {
-        storm::QuerySet<BinSafeRow, PgConn> qs;
+        QuerySet<BinSafeRow, PgConn> qs;
 
         const std::vector<BinSafeRow> batch{
                 {.big   = std::numeric_limits<std::int64_t>::max(),
@@ -135,7 +137,7 @@ namespace {
     }
 
     TEST_F(PgBinarySafeRowTest, EmptyStringsAndEmptyBlobsAreNotNull) {
-        storm::QuerySet<BinSafeRow, PgConn> qs;
+        QuerySet<BinSafeRow, PgConn> qs;
         ASSERT_TRUE(qs.insert(BinSafeRow{.label = "", .payload = {}, .opt_text = std::string{}}).execute().has_value());
 
         const BinSafeRow got = select_single(qs);
@@ -148,10 +150,10 @@ namespace {
     // Projections and set operations read real model columns through their own
     // call sites, each opting in separately.
     TEST_F(PgBinarySafeRowTest, ProjectionsAndSetOpsRoundTrip) {
-        storm::QuerySet<BinSafeRow, PgConn> qs;
-        const std::vector<BinSafeRow>       batch{
-                      {.big = 1, .dbl = 1.5, .flt = 1.0F, .label = "a"},
-                      {.big = 2, .dbl = 2.5, .flt = 2.0F, .label = "b"},
+        QuerySet<BinSafeRow, PgConn>  qs;
+        const std::vector<BinSafeRow> batch{
+                {.big = 1, .dbl = 1.5, .flt = 1.0F, .label = "a"},
+                {.big = 2, .dbl = 2.5, .flt = 2.0F, .label = "b"},
         };
         ASSERT_TRUE(qs.insert(std::span<const BinSafeRow>(batch)).execute().has_value());
 
@@ -177,7 +179,7 @@ namespace {
     // first()/get() take the zero-parameter fast paths, which prepare their own
     // cached statement — separate call sites from execute()'s.
     TEST_F(PgBinarySafeRowTest, FirstAndGetFastPathsRoundTrip) {
-        storm::QuerySet<BinSafeRow, PgConn> qs;
+        QuerySet<BinSafeRow, PgConn> qs;
         ASSERT_TRUE(qs.insert(BinSafeRow{.big = 5, .dbl = 0.25, .flt = 0.5F, .label = "solo"}).execute().has_value());
 
         auto first = qs.first().execute();
@@ -197,10 +199,10 @@ namespace {
     // swap-based, so the format flag survives only because swap() carries it —
     // drop it from swap and this decodes binary bytes with the text parsers.
     TEST_F(PgBinarySafeRowTest, RowsGeneratorStreamsOverTheBinaryPath) {
-        storm::QuerySet<BinSafeRow, PgConn> qs;
-        const std::vector<BinSafeRow>       batch{
-                      {.big = 11, .dbl = 1.5, .flt = 1.25F, .flag = true, .label = "r1"},
-                      {.big = 22, .dbl = 2.5, .flt = 2.25F, .flag = false, .label = "r2"},
+        QuerySet<BinSafeRow, PgConn>  qs;
+        const std::vector<BinSafeRow> batch{
+                {.big = 11, .dbl = 1.5, .flt = 1.25F, .flag = true, .label = "r1"},
+                {.big = 22, .dbl = 2.5, .flt = 2.25F, .flag = false, .label = "r2"},
         };
         ASSERT_TRUE(qs.insert(std::span<const BinSafeRow>(batch)).execute().has_value());
 
@@ -226,11 +228,11 @@ namespace {
     // member takes the binary path — relation members are filtered out of the
     // classification before it runs. Q2 (the related rows) stays on text.
     TEST_F(PgBinaryM2MTest, EagerLoadQ1DecodesOverTheBinaryPath) {
-        storm::QuerySet<BinTag, PgConn> tag_qs;
-        const std::vector<BinTag>       tags{{.label = "alpha"}, {.label = "beta"}};
+        QuerySet<BinTag, PgConn>  tag_qs;
+        const std::vector<BinTag> tags{{.label = "alpha"}, {.label = "beta"}};
         ASSERT_TRUE(tag_qs.insert(std::span<const BinTag>(tags)).execute().has_value());
 
-        storm::QuerySet<BinDoc, PgConn> doc_qs;
+        QuerySet<BinDoc, PgConn> doc_qs;
         ASSERT_TRUE(doc_qs.insert(BinDoc{.title = "Doc", .rank = 4242}).execute().has_value());
 
         // Plain select first: Q1's column shape, without the eager load.
@@ -257,7 +259,7 @@ namespace {
     // (binary requested anyway), `stamp` would decode an int64 microsecond count
     // as a text timestamp and the value would collapse.
     TEST_F(PgBinaryMixedRowTest, OneUnsafeColumnKeepsTheWholeRowOnText) {
-        storm::QuerySet<BinMixedRow, PgConn> qs;
+        QuerySet<BinMixedRow, PgConn> qs;
 
         const auto when = std::chrono::floor<std::chrono::seconds>(std::chrono::system_clock::now());
         ASSERT_TRUE(qs.insert(BinMixedRow{.n = 4242, .label = "mixed", .stamp = when}).execute().has_value());
@@ -277,14 +279,14 @@ namespace {
     struct UnsafeSeed {
         std::chrono::system_clock::time_point when;
         std::chrono::year_month_day           day;
-        storm::UUID                           uid;
+        UUID                                  uid;
     };
 
-    auto seed_unsafe_row(storm::QuerySet<BinUnsafeRow, PgConn>& qs) -> UnsafeSeed {
+    auto seed_unsafe_row(QuerySet<BinUnsafeRow, PgConn>& qs) -> UnsafeSeed {
         const UnsafeSeed seed{
                 .when = std::chrono::floor<std::chrono::seconds>(std::chrono::system_clock::now()),
                 .day  = std::chrono::year{2024} / std::chrono::March / std::chrono::day{17},
-                .uid  = storm::UUID{"aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa"},
+                .uid  = UUID{"aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa"},
         };
         EXPECT_TRUE(qs.insert(BinUnsafeRow{
                                       .huge  = std::numeric_limits<std::uint64_t>::max(),
@@ -302,8 +304,8 @@ namespace {
     // 16 raw UUID bytes, int32 days since 2000-01-01, int64 microseconds), so
     // wrongly classifying any of them as safe corrupts it silently.
     TEST_F(PgBinaryUnsafeRowTest, UuidDateTimestampAndFullUnsignedStillRoundTrip) {
-        storm::QuerySet<BinUnsafeRow, PgConn> qs;
-        const UnsafeSeed                      seed = seed_unsafe_row(qs);
+        QuerySet<BinUnsafeRow, PgConn> qs;
+        const UnsafeSeed               seed = seed_unsafe_row(qs);
 
         const BinUnsafeRow got = select_single(qs);
         EXPECT_EQ(got.huge, std::numeric_limits<std::uint64_t>::max())
@@ -318,8 +320,8 @@ namespace {
     // compile time in the header); the other four stay on text. Both verdicts
     // must produce correct values.
     TEST_F(PgBinaryUnsafeRowTest, ProjectionsDivergeFromTheWholeRowVerdict) {
-        storm::QuerySet<BinUnsafeRow, PgConn> qs;
-        const UnsafeSeed                      seed = seed_unsafe_row(qs);
+        QuerySet<BinUnsafeRow, PgConn> qs;
+        const UnsafeSeed               seed = seed_unsafe_row(qs);
 
         auto ids = qs.values<fields::BinUnsafeRow.id>().execute();
         ASSERT_TRUE(ids.has_value()) << ids.error().message();
@@ -375,8 +377,8 @@ namespace {
     // Set operations over an unsafe model must take the text path and still
     // round-trip — pinning the fallback rather than assuming it.
     TEST_F(PgBinaryUnsafeRowTest, SetOpOnAnUnsafeModelStaysOnText) {
-        storm::QuerySet<BinUnsafeRow, PgConn> qs;
-        const UnsafeSeed                      seed = seed_unsafe_row(qs);
+        QuerySet<BinUnsafeRow, PgConn> qs;
+        const UnsafeSeed               seed = seed_unsafe_row(qs);
 
         auto combined = qs.where(fields::BinUnsafeRow.id > 0).union_(qs.where(fields::BinUnsafeRow.id > 0)).execute();
         ASSERT_TRUE(combined.has_value()) << combined.error().message();

@@ -12,6 +12,7 @@ import std;
 #include "test_fixture.h"
 #include "test_seed_helpers.h"
 #include "test_select_runner.h"
+using storm::orm::utilities::Collate;
 
 using storm::QuerySet;
 using storm::orm::where::ComparisonExpr;
@@ -543,6 +544,17 @@ TYPED_TEST(WhereTest, IsNull_EmptyResult) {
     EXPECT_EQ(result.value().size(), 0) << "IS NOT NULL AND IS NULL should match nothing";
 }
 
+// Test: chaining an empty (null) expression keeps the existing filter instead of clearing it
+TYPED_TEST(WhereTest, ChainedNullExpressionKeepsFilter) {
+    QuerySet<Person, TypeParam> queryset;
+
+    auto filtered = queryset.where(fields::Person.score.is_not_null()).select().to_sql();
+    auto chained  = queryset.where(fields::Person.score.is_not_null()).where(nullptr).select().to_sql();
+    ASSERT_TRUE(filtered.has_value());
+    ASSERT_TRUE(chained.has_value());
+    EXPECT_EQ(chained.value(), filtered.value()) << "where(nullptr) must be a no-op";
+}
+
 // Test: IS NULL with JOIN
 TYPED_TEST(WhereJoinTest, IsNull_WithJoin) {
     QuerySet<Message, TypeParam> queryset;
@@ -572,9 +584,7 @@ class WhereNullCollateTest : public StormTestFixture<Person, SqliteConn> {
 TEST_F(WhereNullCollateTest, IsNull_Collated) {
     QuerySet<Person, SqliteConn> queryset;
 
-    auto result = queryset.where(fields::Person.nickname.collate(storm::orm::utilities::Collate::NoCase).is_null())
-                          .select()
-                          .execute();
+    auto result = queryset.where(fields::Person.nickname.collate(Collate::NoCase).is_null()).select().execute();
     ASSERT_TRUE(result.has_value()) << "Collated IS NULL failed: " << result.error().message();
     std::size_t expected_null_nicknames = 0;
     for (const auto& p : storm::test::PEOPLE_25) {

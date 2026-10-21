@@ -23,7 +23,7 @@ Storm ORM returns auto-generated IDs from all INSERT operations:
 Tables use a plain integer primary key, which SQLite auto-assigns on insert (it
 aliases the rowid). Since #379 Storm emits plain `INTEGER PRIMARY KEY` by default —
 `AUTOINCREMENT` (the never-reuse guarantee, ~358 ns/insert) is opt-in via
-`storm::primary_autoincrement`.
+`primary_autoincrement`.
 
 ```cpp
 conn.execute("CREATE TABLE Person ("
@@ -37,7 +37,7 @@ To opt into the never-reuse guarantee for a specific model, annotate its PK with
 
 ```cpp
 struct Audit {
-    [[= storm::primary_autoincrement]] int id{};  // id INTEGER PRIMARY KEY AUTOINCREMENT
+    [[= primary_autoincrement]] int id{};  // id INTEGER PRIMARY KEY AUTOINCREMENT
     // ...
 };
 ```
@@ -46,7 +46,7 @@ struct Audit {
 
 ```cpp
 struct Person {
-    [[= storm::primary]] int id;
+    [[= primary]] int id;
     std::string name;
     int age;
     double salary;
@@ -199,7 +199,7 @@ members as well as a single `primary`:
 
 ```cpp
 struct Bad {
-    [[= storm::primary]] [[= storm::auto_update]]      // ERROR: constraint not satisfied
+    [[= primary]] [[= storm::auto_update]]      // ERROR: constraint not satisfied
     std::chrono::system_clock::time_point id{};
 };
 ```
@@ -427,7 +427,7 @@ static auto bind_value_by_type(Statement& stmt, int idx, const FieldType& value)
 
 ```cpp
 struct Message {
-    [[=storm::primary]] int id;
+    [[=primary]] int id;
     std::string content;
     User sender;  // FK field - entire object
 };
@@ -469,7 +469,7 @@ To run several CRUD operations atomically, wrap them in a `storm::begin()` scope
 auto-`ROLLBACK`s on any early return, exception, or scope exit without a commit.
 
 ```cpp
-auto conn = storm::QuerySet<Person, ConnType>::get_default_connection();
+auto conn = DefaultConnection<ConnType>::get();
 
 auto txn = storm::begin(conn);
 if (!txn) return std::unexpected(txn.error());

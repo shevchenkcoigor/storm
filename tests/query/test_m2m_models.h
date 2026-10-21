@@ -2,7 +2,7 @@
 #define TESTS_QUERY_TEST_M2M_MODELS_H
 
 // Many-to-many test models (#203). Include AFTER `import storm;` — the
-// [[= storm::many_to_many*]] annotations need the storm module, and
+// [[= many_to_many*]] annotations need the storm module, and
 // model structs stay textual because clang-p2996 loses annotations across
 // BMI boundaries (#262).
 //
@@ -15,18 +15,25 @@
 #include <plf_hive/plf_hive.h>
 #include <string>
 #include <vector>
+using storm::field_specs_for;
+using storm::many_to_many;
+using storm::primary;
+using storm::RefAction;
+using storm::orm::statements::InsertStatement;
+
+using storm::db::DefaultConnection;
 
 struct Course {
-    [[= storm::primary]] int id{};
+    [[= primary]] int id{};
     std::string title;
 };
 
 // Phase 1: auto-generated junction table Student_Course (Student_id, Course_id).
 struct Student {
-    [[= storm::primary]] int id{};
+    [[= primary]] int id{};
     std::string name;
     int age{};
-    [[= storm::many_to_many<>]] std::vector<Course> courses;
+    [[= many_to_many<>]] std::vector<Course> courses;
 };
 
 // Phase 2: explicit junction model with metadata. ManyToMany<Enrollment> only
@@ -34,14 +41,14 @@ struct Student {
 struct Enrollment;
 
 struct Pupil {
-    [[= storm::primary]] int id{};
+    [[= primary]] int id{};
     std::string name;
     int age{};
     [[= storm::many_to_many_through<Enrollment>]] std::vector<Course> courses;
 };
 
 struct Enrollment {
-    [[= storm::primary]] int id{};
+    [[= primary]] int id{};
     [[= storm::fk<>]] Pupil pupil;
     [[= storm::fk<>]] Course course;
     std::string grade;
@@ -49,66 +56,66 @@ struct Enrollment {
 
 // Container-coverage models (Phase 1 edge cases: plf::hive and shared_ptr elements).
 struct Track {
-    [[= storm::primary]] int id{};
+    [[= primary]] int id{};
     std::string title;
 };
 
 struct Playlist {
-    [[= storm::primary]] int id{};
+    [[= primary]] int id{};
     std::string name;
-    [[= storm::many_to_many<>]] plf::hive<Track> tracks;
+    [[= many_to_many<>]] plf::hive<Track> tracks;
 };
 
 struct Album {
-    [[= storm::primary]] int id{};
+    [[= primary]] int id{};
     std::string name;
-    [[= storm::many_to_many<>]] std::vector<std::shared_ptr<Track>> tracks;
+    [[= many_to_many<>]] std::vector<std::shared_ptr<Track>> tracks;
 };
 
 // Multi-relation model (#392): two auto-junction m2m fields on one owner.
 struct Club {
-    [[= storm::primary]] int id{};
+    [[= primary]] int id{};
     std::string name;
 };
 
 struct Member {
-    [[= storm::primary]] int id{};
+    [[= primary]] int id{};
     std::string name;
     int age{};
-    [[= storm::many_to_many<>]] std::vector<Course> courses;
-    [[= storm::many_to_many<>]] std::vector<Club> clubs;
+    [[= many_to_many<>]] std::vector<Course> courses;
+    [[= many_to_many<>]] std::vector<Club> clubs;
 };
 
 // Related model WITH an FK field (#392): the aggregate complete SQL must emit
 // the related FK column as "<field>_id".
 struct Topic {
-    [[= storm::primary]] int id{};
+    [[= primary]] int id{};
     std::string name;
 };
 
 struct Lesson {
-    [[= storm::primary]] int id{};
+    [[= primary]] int id{};
     std::string title;
     [[= storm::fk<>]] Topic topic;
 };
 
 struct Tutor {
-    [[= storm::primary]] int id{};
+    [[= primary]] int id{};
     std::string name;
-    [[= storm::many_to_many<>]] std::vector<Lesson> lessons;
+    [[= many_to_many<>]] std::vector<Lesson> lessons;
 };
 
 // Junction ON DELETE override (#431): many_to_many<RefAction::Restrict> on the m2m
 // field flips BOTH junction FK sides from the CASCADE default to RESTRICT.
 struct RestrictedClub {
-    [[= storm::primary]] int id{};
+    [[= primary]] int id{};
     std::string name;
 };
 
 struct RestrictedMember {
-    [[= storm::primary]] int id{};
+    [[= primary]] int id{};
     std::string name;
-    [[= storm::many_to_many<storm::RefAction::Restrict>]] std::vector<RestrictedClub> clubs;
+    [[= many_to_many<RefAction::Restrict>]] std::vector<RestrictedClub> clubs;
 };
 
 namespace storm::test {
@@ -116,16 +123,14 @@ namespace storm::test {
 // Seeds: Alice(20)→[Math, Physics], Bob(22)→[Math], Carol(25)→[] (no courses).
 // Junction rows go through raw SQL — Phase 1 has no model for the auto junction.
 template <typename ConnType> inline auto seed_students() -> void {
-    storm::QuerySet<Student, ConnType> sqs;
     std::vector<Student> const students = {
         {.name = "Alice", .age = 20}, {.name = "Bob", .age = 22}, {.name = "Carol", .age = 25}};
-    ASSERT_TRUE(sqs.insert(std::span<const Student>(students)).execute().has_value());
+    ASSERT_TRUE((InsertStatement<Student, ConnType>{}).query(std::span<const Student>(students)).execute().has_value());
 
-    storm::QuerySet<Course, ConnType> cqs;
     std::vector<Course> const courses = {{.title = "Math"}, {.title = "Physics"}};
-    ASSERT_TRUE(cqs.insert(std::span<const Course>(courses)).execute().has_value());
+    ASSERT_TRUE((InsertStatement<Course, ConnType>{}).query(std::span<const Course>(courses)).execute().has_value());
 
-    auto conn = storm::QuerySet<Student, ConnType>::get_default_connection();
+    auto conn = DefaultConnection<ConnType>::get();
     for (const auto *pair : {"(1, 1)", "(1, 2)", "(2, 1)"}) {
         ASSERT_TRUE(conn->execute(std::format("INSERT INTO Student_Course (Student_id, Course_id) VALUES {}", pair))
                         .has_value());
@@ -135,20 +140,17 @@ template <typename ConnType> inline auto seed_students() -> void {
 // Seeds (#392 multi-relation): Ann→courses[Math,Physics] clubs[Chess],
 // Ben→courses[Math] clubs[], Cat→courses[] clubs[Chess,Robotics], Dan→[] [].
 template <typename ConnType> inline auto seed_members() -> void {
-    storm::QuerySet<Member, ConnType> mqs;
     std::vector<Member> const members = {
         {.name = "Ann", .age = 20}, {.name = "Ben", .age = 22}, {.name = "Cat", .age = 25}, {.name = "Dan", .age = 30}};
-    ASSERT_TRUE(mqs.insert(std::span<const Member>(members)).execute().has_value());
+    ASSERT_TRUE((InsertStatement<Member, ConnType>{}).query(std::span<const Member>(members)).execute().has_value());
 
-    storm::QuerySet<Course, ConnType> cqs;
     std::vector<Course> const courses = {{.title = "Math"}, {.title = "Physics"}};
-    ASSERT_TRUE(cqs.insert(std::span<const Course>(courses)).execute().has_value());
+    ASSERT_TRUE((InsertStatement<Course, ConnType>{}).query(std::span<const Course>(courses)).execute().has_value());
 
-    storm::QuerySet<Club, ConnType> kqs;
     std::vector<Club> const clubs = {{.name = "Chess"}, {.name = "Robotics"}};
-    ASSERT_TRUE(kqs.insert(std::span<const Club>(clubs)).execute().has_value());
+    ASSERT_TRUE((InsertStatement<Club, ConnType>{}).query(std::span<const Club>(clubs)).execute().has_value());
 
-    auto conn = storm::QuerySet<Member, ConnType>::get_default_connection();
+    auto conn = DefaultConnection<ConnType>::get();
     for (const auto *pair : {"(1, 1)", "(1, 2)", "(2, 1)"}) {
         ASSERT_TRUE(
             conn->execute(std::format("INSERT INTO Member_Course (Member_id, Course_id) VALUES {}", pair)).has_value());
@@ -166,31 +168,31 @@ template <typename ConnType> inline auto seed_members() -> void {
 namespace fields {
 
 struct StudentT;
-consteval { std::meta::define_aggregate(^^StudentT, storm::field_specs_for(^^Student)); }
+consteval { std::meta::define_aggregate(^^StudentT, field_specs_for(^^Student)); }
 inline constexpr StudentT Student{};
 
 struct PupilT;
-consteval { std::meta::define_aggregate(^^PupilT, storm::field_specs_for(^^Pupil)); }
+consteval { std::meta::define_aggregate(^^PupilT, field_specs_for(^^Pupil)); }
 inline constexpr PupilT Pupil{};
 
 struct EnrollmentT;
-consteval { std::meta::define_aggregate(^^EnrollmentT, storm::field_specs_for(^^Enrollment)); }
+consteval { std::meta::define_aggregate(^^EnrollmentT, field_specs_for(^^Enrollment)); }
 inline constexpr EnrollmentT Enrollment{};
 
 struct MemberT;
-consteval { std::meta::define_aggregate(^^MemberT, storm::field_specs_for(^^Member)); }
+consteval { std::meta::define_aggregate(^^MemberT, field_specs_for(^^Member)); }
 inline constexpr MemberT Member{};
 
 struct AlbumT;
-consteval { std::meta::define_aggregate(^^AlbumT, storm::field_specs_for(^^Album)); }
+consteval { std::meta::define_aggregate(^^AlbumT, field_specs_for(^^Album)); }
 inline constexpr AlbumT Album{};
 
 struct PlaylistT;
-consteval { std::meta::define_aggregate(^^PlaylistT, storm::field_specs_for(^^Playlist)); }
+consteval { std::meta::define_aggregate(^^PlaylistT, field_specs_for(^^Playlist)); }
 inline constexpr PlaylistT Playlist{};
 
 struct TutorT;
-consteval { std::meta::define_aggregate(^^TutorT, storm::field_specs_for(^^Tutor)); }
+consteval { std::meta::define_aggregate(^^TutorT, field_specs_for(^^Tutor)); }
 inline constexpr TutorT Tutor{};
 } // namespace fields
 

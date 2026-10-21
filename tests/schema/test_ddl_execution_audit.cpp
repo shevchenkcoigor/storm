@@ -4,7 +4,15 @@
 
 #include "test_db_helpers.h"
 
-import storm;
+import storm_db_default_connection;
+import storm_db_postgresql;
+import storm_db_sqlite;
+import storm_meta;
+import storm_orm_indexes;
+import storm_orm_schema;
+import storm_orm_statements_insert;
+import storm_orm_transaction;
+import storm_orm_utilities;
 import std;
 
 // The DDL audit sweeps every shared model, so it takes the umbrella rather than
@@ -18,7 +26,6 @@ import std;
 #include "query/test_reverse_fk_models.h"  // NOSONAR cpp:S954
 
 namespace orm = storm::orm;
-using storm::QuerySet;
 
 // Model only selects the default-connection QuerySet type — on_setup is overridden
 // to create nothing, since each DDL_AUDIT_MODEL test creates its own table.
@@ -31,7 +38,7 @@ TYPED_TEST_SUITE(DdlExecutionAudit, DatabaseTypes);
 
 #define DDL_AUDIT_MODEL(M)                                                                                             \
     TYPED_TEST(DdlExecutionAudit, Create##M##TableSucceeds) {                                                          \
-        const auto& conn   = QuerySet<SimpleRecord, TypeParam>::get_default_connection();                              \
+        const auto& conn   = DefaultConnection<TypeParam>::get();                                                      \
         auto        result = orm::schema::SchemaStatement<M>::create_table_if_not_exists(conn);                        \
         ASSERT_TRUE(result.has_value()) << #M " DDL failed: " << result.error().message();                             \
     }

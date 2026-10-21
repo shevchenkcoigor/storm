@@ -3,14 +3,30 @@
 
 #include "test_db_helpers.h"
 
-import storm;
+import storm_db_default_connection;
+import storm_db_postgresql;
+import storm_db_sqlite;
+import storm_meta;
+import storm_orm_indexes;
+import storm_orm_schema;
 import std;
+import storm_orm_statements_base;
 
 #include "../../shared/models/person.h" // NOSONAR cpp:S954
 #include "test_fixture.h"
+using storm::create_index_sql;
+using storm::create_table_sql;
+using storm::many_to_many;
+using storm::primary;
+using storm::primary_autoincrement;
+using storm::primary_part;
+using storm::RefAction;
+using storm::db::DefaultConnection;
+using storm::orm::schema::Dialect;
+using storm::orm::statements::BaseStatement;
 
 // ── #500: composite primary key — annotation, concept widening, CREATE TABLE DDL ──
-// Step 1 of #90. Introduces the storm::primary_part annotation and widens the
+// Step 1 of #90. Introduces the primary_part annotation and widens the
 // compile-time PK machinery from "exactly one member" to "one or more", WITHOUT
 // touching any CRUD path. At the end of this issue a composite-PK model compiles,
 // produces correct CREATE TABLE DDL on both dialects, and is still rejected by
@@ -28,39 +44,39 @@ namespace {
 
     // Canonical composite-PK model: two primary_part members.
     struct OrderItem {
-        [[= storm::primary_part]] int order_id{};
-        [[= storm::primary_part]] int product_id{};
-        int                           quantity{};
+        [[= primary_part]] int order_id{};
+        [[= primary_part]] int product_id{};
+        int                    quantity{};
     };
 
     // Three-part composite, mixed types, to prove the list is not arity-limited
     // and that a non-integer part is accepted.
     struct TripleKey {
-        [[= storm::primary_part]] int          region{};
-        [[= storm::primary_part]] std::string  sku;
-        [[= storm::primary_part]] std::int64_t revision{};
-        double                                 price{};
+        [[= primary_part]] int          region{};
+        [[= primary_part]] std::string  sku;
+        [[= primary_part]] std::int64_t revision{};
+        double                          price{};
     };
 
     // Single-PK control, unchanged behaviour.
     struct SinglePk {
-        [[= storm::primary]] int id{};
-        std::string              name;
+        [[= primary]] int id{};
+        std::string       name;
     };
 
     // Single-PK control for the SQLite AUTOINCREMENT branch — the one path the
     // composite change must route around rather than through.
     struct AutoincrementModel {
-        [[= storm::primary_autoincrement]] int id{};
-        std::string                            name;
+        [[= primary_autoincrement]] int id{};
+        std::string                     name;
     };
 
     // ── Rejected combinations (ModelPrimaryKeyValid) ─────────────────────────
 
     // primary + primary_part on the same model: two competing PK declarations.
     struct MixedPrimaryAndPart {
-        [[= storm::primary]] int      id{};
-        [[= storm::primary_part]] int order_id{};
+        [[= primary]] int      id{};
+        [[= primary_part]] int order_id{};
     };
 
     // primary_autoincrement + primary_part: autoincrement is UNREPRESENTABLE with a
@@ -70,36 +86,36 @@ namespace {
     // equivalent (GENERATED AS IDENTITY is single-column). So it must be a
     // compile-time rejection, not a DDL we emit and let the backend refuse.
     struct MixedAutoincrementAndPart {
-        [[= storm::primary_autoincrement]] int id{};
-        [[= storm::primary_part]] int          order_id{};
+        [[= primary_autoincrement]] int id{};
+        [[= primary_part]] int          order_id{};
     };
 
     // Exactly one primary_part is a plain PK spelled the wrong way.
     struct LonelyPart {
-        [[= storm::primary_part]] int order_id{};
-        std::string                   name;
+        [[= primary_part]] int order_id{};
+        std::string            name;
     };
 
     // The accidental double-`primary` typo. Keeping THIS an error is the entire reason
     // primary_part is a separate tag — the widened PK machinery would otherwise treat it
     // as a composite key and silently emit different DDL than before composite support.
     struct DoublePrimary {
-        [[= storm::primary]] int a{};
-        [[= storm::primary]] int b{};
+        [[= primary]] int a{};
+        [[= primary]] int b{};
     };
 
     // A PK annotation on an m2m container: never emitted as a column, so the key would
     // name something no column definition provides (the #485 class of leak).
     struct PartOnRelation {
-        [[= storm::primary_part]] int                                            a{};
-        [[= storm::primary_part]][[= storm::many_to_many<>]] std::vector<Person> members;
+        [[= primary_part]] int                                     a{};
+        [[= primary_part]][[= many_to_many<>]] std::vector<Person> members;
     };
 
     // A nullable PK part is not a key: SQLite's legacy NULL quirk even lets duplicate
     // keys through, so the same DDL behaves differently on SQLite and PG.
     struct NullablePart {
-        [[= storm::primary_part]] int                a{};
-        [[= storm::primary_part]] std::optional<int> b{};
+        [[= primary_part]] int                a{};
+        [[= primary_part]] std::optional<int> b{};
     };
 
     // The nullable rejection is gated on is_primary_member, so it covers a plain
@@ -107,34 +123,34 @@ namespace {
     // PK was accepted before #500 and is now refused, for the same reason as above. No
     // in-tree model used the shape. Pinned here so the widening stays intentional.
     struct NullableSinglePrimary {
-        [[= storm::primary]] std::optional<int> id{};
-        std::string                             name;
+        [[= primary]] std::optional<int> id{};
+        std::string                      name;
     };
 
     // UNIQUE on one part allows at most one row per that part alone, which defeats the
     // composite key it belongs to.
     struct UniquePart {
-        [[= storm::primary_part]] int                    a{};
-        [[= storm::primary_part]][[= storm::unique]] int b{};
+        [[= primary_part]] int                    a{};
+        [[= primary_part]][[= storm::unique]] int b{};
     };
 
     // A composite key whose parts are FKs — the canonical reason composite keys exist
     // (association tables). The FK part's COLUMN is "warehouse_id", so the key clause
     // must name that, not the bare member.
     struct StockLine {
-        [[= storm::primary_part]][[= storm::fk<>]] Person warehouse;
-        [[= storm::primary_part]] int                     sku{};
-        int                                               qty{};
+        [[= primary_part]][[= storm::fk<>]] Person warehouse;
+        [[= primary_part]] int                     sku{};
+        int                                        qty{};
     };
 
     // Several FK columns with long names and an ON DELETE clause — the shape that
     // exhausts the fixed buffer slack first if FK columns are sized as regular columns.
     // Guards the CREATE TABLE buffer against silent truncation.
     struct WideFkComposite {
-        [[= storm::primary_part]][[= storm::fk<>]] Person                          first_ref;
-        [[= storm::primary_part]][[= storm::fk<storm::RefAction::Cascade>]] Person second_ref;
-        std::string                                                                some_reasonably_long_label;
-        std::string                                                                another_reasonably_long_label;
+        [[= primary_part]][[= storm::fk<>]] Person                   first_ref;
+        [[= primary_part]][[= storm::fk<RefAction::Cascade>]] Person second_ref;
+        std::string                                                  some_reasonably_long_label;
+        std::string                                                  another_reasonably_long_label;
     };
 
     // ── is_primary_part_member / is_primary_member ───────────────────────────
@@ -169,9 +185,18 @@ namespace {
 
     // ── ModelWithPrimaryKey accepts a composite PK ───────────────────────────
 
-    static_assert(ModelWithPrimaryKey<OrderItem>, "a composite-PK model must satisfy ModelWithPrimaryKey");
-    static_assert(ModelWithPrimaryKey<TripleKey>, "a 3-part composite-PK model must satisfy ModelWithPrimaryKey");
-    static_assert(ModelWithPrimaryKey<SinglePk>, "a single-PK model must still satisfy ModelWithPrimaryKey");
+    static_assert(
+            storm::orm::statements::ModelWithPrimaryKey<OrderItem>,
+            "a composite-PK model must satisfy ModelWithPrimaryKey"
+    );
+    static_assert(
+            storm::orm::statements::ModelWithPrimaryKey<TripleKey>,
+            "a 3-part composite-PK model must satisfy ModelWithPrimaryKey"
+    );
+    static_assert(
+            storm::orm::statements::ModelWithPrimaryKey<SinglePk>,
+            "a single-PK model must still satisfy ModelWithPrimaryKey"
+    );
 
     // ── ModelPrimaryKeyValid rejections ──────────────────────────────────────
     // Asserted on the gate predicate directly, not as !requires on a public call:
@@ -210,8 +235,7 @@ namespace {
 // so the failed-constraint case is a dependent SFINAE soft-fail (naming the
 // constrained specialization directly in a namespace-scope `requires` is eagerly
 // instantiated by clang-p2996 and hard-errors) — same pattern as #472/#492.
-template <class T>
-constexpr bool base_statement_instantiable = requires { typename storm::orm::statements::BaseStatement<T>; };
+template <class T> constexpr bool base_statement_instantiable = requires { typename BaseStatement<T>; };
 
 static_assert(base_statement_instantiable<OrderItem>, "a composite-PK model must back a statement");
 static_assert(base_statement_instantiable<SinglePk>, "a single-PK model must still back a statement");
@@ -233,7 +257,7 @@ static_assert(base_statement_instantiable<StockLine>, "a composite key over FK p
 // The widened PK list sits alongside the existing primary_key_ / pk_name_ statics.
 
 namespace {
-    template <typename T> using Base = storm::orm::statements::BaseStatement<T>;
+    template <typename T> using Base = BaseStatement<T>;
 
     static_assert(Base<OrderItem>::primary_key_members_.size() == 2, "OrderItem has a 2-part primary key");
     static_assert(Base<TripleKey>::primary_key_members_.size() == 3, "TripleKey has a 3-part primary key");
@@ -291,24 +315,22 @@ auto order_item_ddl(std::string_view int_type) -> std::string {
 }
 
 TEST(CompositePrimaryKeyDDL, SqliteEmitsTableLevelPrimaryKey) {
-    EXPECT_EQ(storm::create_table_sql<OrderItem>(), order_item_ddl("INTEGER"));
+    EXPECT_EQ(create_table_sql<OrderItem>(), order_item_ddl("INTEGER"));
 }
 
 TEST(CompositePrimaryKeyDDL, PostgresEmitsTableLevelPrimaryKey) {
-    EXPECT_EQ(
-            (storm::create_table_sql<OrderItem, storm::orm::schema::Dialect::PostgreSQL>()), order_item_ddl("INTEGER")
-    );
+    EXPECT_EQ((create_table_sql<OrderItem, Dialect::PostgreSQL>()), order_item_ddl("INTEGER"));
 }
 
 TEST(CompositePrimaryKeyDDL, ThreePartKeyEmitsAllPartsInOrder) {
-    const std::string& sql = storm::create_table_sql<TripleKey>();
+    const std::string& sql = create_table_sql<TripleKey>();
     EXPECT_TRUE(sql.contains("PRIMARY KEY (region, sku, revision)")) << sql;
     // No column-level PRIMARY KEY anywhere: the table-level clause is the only one.
     EXPECT_EQ(sql.find("PRIMARY KEY"), sql.rfind("PRIMARY KEY")) << sql;
 }
 
 TEST(CompositePrimaryKeyDDL, ThreePartKeyPgEmitsAllPartsInOrder) {
-    const std::string& sql = storm::create_table_sql<TripleKey, storm::orm::schema::Dialect::PostgreSQL>();
+    const std::string& sql = create_table_sql<TripleKey, Dialect::PostgreSQL>();
     EXPECT_TRUE(sql.contains("PRIMARY KEY (region, sku, revision)")) << sql;
     EXPECT_TRUE(sql.contains("sku TEXT NOT NULL")) << sql;
     EXPECT_FALSE(sql.contains("IDENTITY")) << sql;
@@ -320,7 +342,7 @@ TEST(CompositePrimaryKeyDDL, ThreePartKeyPgEmitsAllPartsInOrder) {
 // DDL would fail at parse time on both backends — and a composite key over FKs is the
 // canonical association-table case, not an exotic one.
 TEST(CompositePrimaryKeyDDL, FkPartUsesColumnNameNotIdentifier) {
-    const std::string& sql = storm::create_table_sql<StockLine>();
+    const std::string& sql = create_table_sql<StockLine>();
     EXPECT_TRUE(sql.contains("PRIMARY KEY (warehouse_id, sku)")) << sql;
     EXPECT_FALSE(sql.contains("PRIMARY KEY (warehouse,")) << sql;
     // The part is still emitted as a normal FK column, REFERENCES intact.
@@ -328,7 +350,7 @@ TEST(CompositePrimaryKeyDDL, FkPartUsesColumnNameNotIdentifier) {
 }
 
 TEST(CompositePrimaryKeyDDL, FkPartUsesColumnNameNotIdentifierPg) {
-    const std::string& sql = storm::create_table_sql<StockLine, storm::orm::schema::Dialect::PostgreSQL>();
+    const std::string& sql = create_table_sql<StockLine, Dialect::PostgreSQL>();
     EXPECT_TRUE(sql.contains("PRIMARY KEY (warehouse_id, sku)")) << sql;
     EXPECT_TRUE(sql.contains("warehouse_id BIGINT NOT NULL REFERENCES Person(id)")) << sql;
 }
@@ -339,14 +361,14 @@ TEST(CompositePrimaryKeyDDL, FkPartUsesColumnNameNotIdentifierPg) {
 // diagnostic. Long related-type names exhaust the fixed slack first, which is what this
 // model is built to do. Reaching this assertion at all means the DDL was not truncated.
 TEST(CompositePrimaryKeyDDL, CompositeWithFksIsNotTruncated) {
-    const std::string& sql = storm::create_table_sql<WideFkComposite>();
+    const std::string& sql = create_table_sql<WideFkComposite>();
     EXPECT_TRUE(sql.ends_with(")")) << sql;
     EXPECT_TRUE(sql.contains("PRIMARY KEY (first_ref_id, second_ref_id)")) << sql;
     EXPECT_TRUE(sql.contains("second_ref_id INTEGER NOT NULL REFERENCES Person(id) ON DELETE CASCADE")) << sql;
 }
 
 TEST(CompositePrimaryKeyDDL, CompositePartsAreNotAutoincrement) {
-    const std::string& sql = storm::create_table_sql<OrderItem>();
+    const std::string& sql = create_table_sql<OrderItem>();
     EXPECT_FALSE(sql.contains("AUTOINCREMENT")) << sql;
 }
 
@@ -359,20 +381,20 @@ TEST(CompositePrimaryKeyDDL, SinglePkDdlIsByteIdentical) {
                                  "    id INTEGER PRIMARY KEY,\n"
                                  "    name TEXT NOT NULL\n"
                                  ")";
-    EXPECT_EQ(storm::create_table_sql<SinglePk>(), expected);
+    EXPECT_EQ(create_table_sql<SinglePk>(), expected);
 }
 
 TEST(CompositePrimaryKeyDDL, SinglePkAutoincrementDdlUnchanged) {
     // The column-level AUTOINCREMENT branch is untouched by the composite path. The
     // trailing "PRIMARY KEY (" check pins that a single-PK model never grows a
     // table-level clause.
-    const std::string& sql = storm::create_table_sql<AutoincrementModel>();
+    const std::string& sql = create_table_sql<AutoincrementModel>();
     EXPECT_TRUE(sql.contains("id INTEGER PRIMARY KEY AUTOINCREMENT")) << sql;
     EXPECT_FALSE(sql.contains("PRIMARY KEY (")) << sql;
 }
 
 TEST(CompositePrimaryKeyDDL, SinglePkPgDdlUnchanged) {
-    const std::string& sql = storm::create_table_sql<Person, storm::orm::schema::Dialect::PostgreSQL>();
+    const std::string& sql = create_table_sql<Person, Dialect::PostgreSQL>();
     EXPECT_TRUE(sql.contains("id BIGINT PRIMARY KEY GENERATED BY DEFAULT AS IDENTITY")) << sql;
     EXPECT_FALSE(sql.contains("PRIMARY KEY (")) << sql;
 }
@@ -381,7 +403,7 @@ TEST(CompositePrimaryKeyDDL, SinglePkPgDdlUnchanged) {
 // single-column CREATE INDEX (the PK is already an index), matching how the
 // single-PK path excludes primary_key_ from needs_index().
 TEST(CompositePrimaryKeyDDL, CompositePartsGetNoSeparateIndex) {
-    const std::vector<std::string>& indexes = storm::create_index_sql<OrderItem>();
+    const std::vector<std::string>& indexes = create_index_sql<OrderItem>();
     for (const std::string& idx : indexes) {
         EXPECT_FALSE(idx.contains("(order_id)")) << idx;
         EXPECT_FALSE(idx.contains("(product_id)")) << idx;
@@ -403,11 +425,10 @@ template <typename ConnType> class CompositePkExecutionTest : public StormTestFi
 TYPED_TEST_SUITE(CompositePkExecutionTest, DatabaseTypes);
 
 TYPED_TEST(CompositePkExecutionTest, CompositeDdlExecutesAndEnforcesKey) {
-    const auto& conn = storm::QuerySet<Person, TypeParam>::get_default_connection();
+    const auto& conn = DefaultConnection<TypeParam>::get();
 
-    const std::string ddl = storm::test::is_postgresql<TypeParam>()
-                                    ? storm::create_table_sql<OrderItem, storm::orm::schema::Dialect::PostgreSQL>()
-                                    : storm::create_table_sql<OrderItem>();
+    const std::string ddl = storm::test::is_postgresql<TypeParam>() ? create_table_sql<OrderItem, Dialect::PostgreSQL>()
+                                                                    : create_table_sql<OrderItem>();
     ASSERT_TRUE(conn->execute(ddl).has_value()) << ddl;
 
     ASSERT_TRUE(conn->execute("INSERT INTO OrderItem (order_id, product_id, quantity) VALUES (1, 2, 5)").has_value());
@@ -421,14 +442,12 @@ TYPED_TEST(CompositePkExecutionTest, CompositeDdlExecutesAndEnforcesKey) {
 // the bare member instead of the "<name>_id" column produces DDL the backend rejects
 // with "no such column", which only a live execution catches.
 TYPED_TEST(CompositePkExecutionTest, FkPartCompositeDdlExecutes) {
-    const auto& conn = storm::QuerySet<Person, TypeParam>::get_default_connection();
+    const auto& conn = DefaultConnection<TypeParam>::get();
 
     const bool        is_pg      = storm::test::is_postgresql<TypeParam>();
-    const std::string person_ddl = is_pg ? storm::create_table_sql<Person, storm::orm::schema::Dialect::PostgreSQL>()
-                                         : storm::create_table_sql<Person>();
+    const std::string person_ddl = is_pg ? create_table_sql<Person, Dialect::PostgreSQL>() : create_table_sql<Person>();
     ASSERT_TRUE(conn->execute(person_ddl).has_value()) << person_ddl;
 
-    const std::string ddl = is_pg ? storm::create_table_sql<StockLine, storm::orm::schema::Dialect::PostgreSQL>()
-                                  : storm::create_table_sql<StockLine>();
+    const std::string ddl = is_pg ? create_table_sql<StockLine, Dialect::PostgreSQL>() : create_table_sql<StockLine>();
     ASSERT_TRUE(conn->execute(ddl).has_value()) << ddl;
 }

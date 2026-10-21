@@ -21,7 +21,7 @@ Two mechanical lines per model, placed **after** the model struct is complete:
 
 ```cpp
 struct Person {
-    [[= storm::primary]] int id{};
+    [[= primary]] int id{};
     std::string              name;
     int                      age{};
 };

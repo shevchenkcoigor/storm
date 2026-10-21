@@ -34,7 +34,7 @@ using storm::QuerySet;
 
 // Probe: is join<Fields...>() well-formed on QuerySet<M>?
 template <typename M, auto... Fields>
-concept CanJoin = requires(storm::QuerySet<M> qs) { qs.template join<Fields...>(); };
+concept CanJoin = requires(QuerySet<M> qs) { qs.template join<Fields...>(); };
 
 static_assert(CanJoin<Member, fields::Member.courses, fields::Member.clubs>, "multi m2m join must be accepted");
 static_assert(CanJoin<Member, fields::Member.clubs>, "single m2m join still accepted");
@@ -230,7 +230,7 @@ template <typename ConnType> class M2MRelatedFkTest : public StormTestFixture<Tu
 TYPED_TEST_SUITE(M2MRelatedFkTest, STORM_SPLIT_TYPES, STORM_SPLIT_TYPE_NAMES);
 
 TYPED_TEST(M2MRelatedFkTest, M2MWithFkRelatedModelLoadsAndCounts) {
-    auto conn = QuerySet<Tutor, TypeParam>::get_default_connection();
+    auto conn = DefaultConnection<TypeParam>::get();
     QuerySet<Topic, TypeParam> tqs;
     ASSERT_TRUE(tqs.insert(Topic{.name = "Algebra"}).execute().has_value());
     QuerySet<Lesson, TypeParam> lqs;

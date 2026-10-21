@@ -14,7 +14,14 @@
 #error "test_composite_m2m_through_body.h: define STORM_SPLIT_TYPES/STORM_SPLIT_TYPE_NAMES before including"
 #endif
 
-import storm;
+import storm_db_default_connection;
+import storm_db_sqlite;
+import storm_meta;
+import storm_orm_indexes;
+import storm_orm_schema;
+import storm_orm_statements_insert;
+import storm_orm_statements_select;
+import storm_db_postgresql;
 import std;
 
 #include "../../shared/models/person.h" // NOSONAR cpp:S954 — Person
@@ -25,6 +32,8 @@ import std;
 // Pupil/Course/Enrollment — the single-PK through model, used as the
 // byte-identity anchor below.
 #include "test_m2m_models.h" // NOSONAR cpp:S954
+using storm::orm::statements::InsertStatement;
+using storm::orm::statements::SelectStatement;
 
 // ── #536: many_to_many_through<> over a composite primary key ────────────────
 //
@@ -63,9 +72,10 @@ class ThroughBothSidesTest : public StormTestFixture<Person, ConnType, ShelfCode
 
 // Two topics, 'audit' then 'review' — autoincrement, so ids are 1 and 2.
 template <typename ConnType> auto seed_topics() -> void {
-    storm::QuerySet<ThroughTopic, ConnType> topic_qs;
-    ASSERT_TRUE(topic_qs.insert(ThroughTopic{.label = "audit"}).execute().has_value());
-    ASSERT_TRUE(topic_qs.insert(ThroughTopic{.label = "review"}).execute().has_value());
+    ASSERT_TRUE(
+        (InsertStatement<ThroughTopic, ConnType>{}).query(ThroughTopic{.label = "audit"}).execute().has_value());
+    ASSERT_TRUE(
+        (InsertStatement<ThroughTopic, ConnType>{}).query(ThroughTopic{.label = "review"}).execute().has_value());
 }
 
 // Shared seeding for the FK-part suite: topics, one depot Person (the FK
@@ -76,24 +86,30 @@ template <typename ConnType> auto seed_topics() -> void {
 template <typename ConnType> auto seed_fk_part_entries(bool with_decoy) -> void {
     seed_topics<ConnType>();
 
-    storm::QuerySet<Person, ConnType> person_qs;
-    ASSERT_TRUE(person_qs.insert(Person{.name = "depot-1", .age = 30}).execute().has_value());
+    ASSERT_TRUE(
+        (InsertStatement<Person, ConnType>{}).query(Person{.name = "depot-1", .age = 30}).execute().has_value());
 
-    storm::QuerySet<FkPartEntry, ConnType> entry_qs;
-    ASSERT_TRUE(entry_qs.insert(FkPartEntry{.warehouse = {.id = 1}, .sku = 10, .title = "ten"}).execute().has_value());
-
-    storm::QuerySet<FkPartLink, ConnType> link_qs;
-    ASSERT_TRUE(link_qs.insert(FkPartLink{.entry = {.warehouse = {.id = 1}, .sku = 10}, .topic = {.id = 1}})
+    ASSERT_TRUE((InsertStatement<FkPartEntry, ConnType>{})
+                    .query(FkPartEntry{.warehouse = {.id = 1}, .sku = 10, .title = "ten"})
                     .execute()
                     .has_value());
-    ASSERT_TRUE(link_qs.insert(FkPartLink{.entry = {.warehouse = {.id = 1}, .sku = 10}, .topic = {.id = 2}})
+
+    ASSERT_TRUE((InsertStatement<FkPartLink, ConnType>{})
+                    .query(FkPartLink{.entry = {.warehouse = {.id = 1}, .sku = 10}, .topic = {.id = 1}})
+                    .execute()
+                    .has_value());
+    ASSERT_TRUE((InsertStatement<FkPartLink, ConnType>{})
+                    .query(FkPartLink{.entry = {.warehouse = {.id = 1}, .sku = 10}, .topic = {.id = 2}})
                     .execute()
                     .has_value());
 
     if (with_decoy) {
-        ASSERT_TRUE(
-            entry_qs.insert(FkPartEntry{.warehouse = {.id = 1}, .sku = 20, .title = "twenty"}).execute().has_value());
-        ASSERT_TRUE(link_qs.insert(FkPartLink{.entry = {.warehouse = {.id = 1}, .sku = 20}, .topic = {.id = 2}})
+        ASSERT_TRUE((InsertStatement<FkPartEntry, ConnType>{})
+                        .query(FkPartEntry{.warehouse = {.id = 1}, .sku = 20, .title = "twenty"})
+                        .execute()
+                        .has_value());
+        ASSERT_TRUE((InsertStatement<FkPartLink, ConnType>{})
+                        .query(FkPartLink{.entry = {.warehouse = {.id = 1}, .sku = 20}, .topic = {.id = 2}})
                         .execute()
                         .has_value());
     }
@@ -116,24 +132,32 @@ TYPED_TEST_SUITE(ThroughBothSidesTest, STORM_SPLIT_TYPES, STORM_SPLIT_TYPE_NAMES
 TYPED_TEST(ThroughCompositeOwnerTest, StitchesOnFullCompositeOwnerKey) {
     seed_topics<TypeParam>();
 
-    storm::QuerySet<RegionEntry, TypeParam> entry_qs;
-    ASSERT_TRUE(entry_qs.insert(RegionEntry{.region = 1, .code = "A", .title = "alpha"}).execute().has_value());
-    ASSERT_TRUE(entry_qs.insert(RegionEntry{.region = 1, .code = "B", .title = "bravo"}).execute().has_value());
+    ASSERT_TRUE((InsertStatement<RegionEntry, TypeParam>{})
+                    .query(RegionEntry{.region = 1, .code = "A", .title = "alpha"})
+                    .execute()
+                    .has_value());
+    ASSERT_TRUE((InsertStatement<RegionEntry, TypeParam>{})
+                    .query(RegionEntry{.region = 1, .code = "B", .title = "bravo"})
+                    .execute()
+                    .has_value());
 
     // The junction is a model — its rows are plain Storm inserts, no raw SQL.
     // A/audit, A/review, B/review.
-    storm::QuerySet<RegionEntryLink, TypeParam> link_qs;
-    ASSERT_TRUE(link_qs.insert(RegionEntryLink{.entry = {.region = 1, .code = "A"}, .topic = {.id = 1}, .note = "n1"})
+    ASSERT_TRUE((InsertStatement<RegionEntryLink, TypeParam>{})
+                    .query(RegionEntryLink{.entry = {.region = 1, .code = "A"}, .topic = {.id = 1}, .note = "n1"})
                     .execute()
                     .has_value());
-    ASSERT_TRUE(link_qs.insert(RegionEntryLink{.entry = {.region = 1, .code = "A"}, .topic = {.id = 2}, .note = "n2"})
+    ASSERT_TRUE((InsertStatement<RegionEntryLink, TypeParam>{})
+                    .query(RegionEntryLink{.entry = {.region = 1, .code = "A"}, .topic = {.id = 2}, .note = "n2"})
                     .execute()
                     .has_value());
-    ASSERT_TRUE(link_qs.insert(RegionEntryLink{.entry = {.region = 1, .code = "B"}, .topic = {.id = 2}, .note = "n3"})
+    ASSERT_TRUE((InsertStatement<RegionEntryLink, TypeParam>{})
+                    .query(RegionEntryLink{.entry = {.region = 1, .code = "B"}, .topic = {.id = 2}, .note = "n3"})
                     .execute()
                     .has_value());
 
-    const auto results = entry_qs.template join<fields::RegionEntry.topics>().select().execute();
+    const auto results =
+        (SelectStatement<RegionEntry, TypeParam>{}).all().template join<fields::RegionEntry.topics>().execute();
     ASSERT_TRUE(results.has_value()) << results.error().message();
     ASSERT_EQ(results->size(), 2U);
 
@@ -150,15 +174,19 @@ TYPED_TEST(ThroughCompositeOwnerTest, StitchesOnFullCompositeOwnerKey) {
 
 // LEFT keeps a composite through-owner with no junction rows; INNER drops it.
 TYPED_TEST(ThroughCompositeOwnerTest, LeftJoinKeepsCompositeOwnerWithNoTopics) {
-    storm::QuerySet<RegionEntry, TypeParam> entry_qs;
-    ASSERT_TRUE(entry_qs.insert(RegionEntry{.region = 9, .code = "Z", .title = "lonely"}).execute().has_value());
+    ASSERT_TRUE((InsertStatement<RegionEntry, TypeParam>{})
+                    .query(RegionEntry{.region = 9, .code = "Z", .title = "lonely"})
+                    .execute()
+                    .has_value());
 
-    const auto left = entry_qs.template left_join<fields::RegionEntry.topics>().select().execute();
+    const auto left =
+        (SelectStatement<RegionEntry, TypeParam>{}).all().template left_join<fields::RegionEntry.topics>().execute();
     ASSERT_TRUE(left.has_value()) << left.error().message();
     ASSERT_EQ(left->size(), 1U);
     EXPECT_TRUE(left->begin()->topics.empty());
 
-    const auto inner = entry_qs.template join<fields::RegionEntry.topics>().select().execute();
+    const auto inner =
+        (SelectStatement<RegionEntry, TypeParam>{}).all().template join<fields::RegionEntry.topics>().execute();
     ASSERT_TRUE(inner.has_value()) << inner.error().message();
     EXPECT_EQ(inner->size(), 0U) << "INNER drops a through-owner with zero junction rows";
 }
@@ -167,20 +195,26 @@ TYPED_TEST(ThroughCompositeOwnerTest, LeftJoinKeepsCompositeOwnerWithNoTopics) {
 // junction⟷related ON clause must AND-join one equality per related PK part;
 // matching only the first would attach both codes to the owner linked to one.
 TYPED_TEST(ThroughCompositeRelatedTest, JoinsRelatedOnFullCompositeKey) {
-    storm::QuerySet<ShelfCode, TypeParam> code_qs;
-    ASSERT_TRUE(code_qs.insert(ShelfCode{.aisle = 4, .code = "C1", .label = "first"}).execute().has_value());
-    ASSERT_TRUE(code_qs.insert(ShelfCode{.aisle = 4, .code = "C2", .label = "second"}).execute().has_value());
+    ASSERT_TRUE((InsertStatement<ShelfCode, TypeParam>{})
+                    .query(ShelfCode{.aisle = 4, .code = "C1", .label = "first"})
+                    .execute()
+                    .has_value());
+    ASSERT_TRUE((InsertStatement<ShelfCode, TypeParam>{})
+                    .query(ShelfCode{.aisle = 4, .code = "C2", .label = "second"})
+                    .execute()
+                    .has_value());
 
-    storm::QuerySet<ShelfOwner, TypeParam> owner_qs;
-    ASSERT_TRUE(owner_qs.insert(ShelfOwner{.name = "owner-1"}).execute().has_value());
+    ASSERT_TRUE((InsertStatement<ShelfOwner, TypeParam>{}).query(ShelfOwner{.name = "owner-1"}).execute().has_value());
 
     // Link the owner to C1 only. The two codes share aisle == 4, so a related-side
     // comparison that stops after the first part would also attach C2.
-    storm::QuerySet<ShelfCodeLink, TypeParam> link_qs;
-    ASSERT_TRUE(
-        link_qs.insert(ShelfCodeLink{.owner = {.id = 1}, .code = {.aisle = 4, .code = "C1"}}).execute().has_value());
+    ASSERT_TRUE((InsertStatement<ShelfCodeLink, TypeParam>{})
+                    .query(ShelfCodeLink{.owner = {.id = 1}, .code = {.aisle = 4, .code = "C1"}})
+                    .execute()
+                    .has_value());
 
-    const auto results = owner_qs.template join<fields::ShelfOwner.codes>().select().execute();
+    const auto results =
+        (SelectStatement<ShelfOwner, TypeParam>{}).all().template join<fields::ShelfOwner.codes>().execute();
     ASSERT_TRUE(results.has_value()) << results.error().message();
     ASSERT_EQ(results->size(), 1U);
     ASSERT_EQ(results->begin()->codes.size(), 1U) << "related side must match on BOTH parts, not just `aisle`";
@@ -197,8 +231,7 @@ TYPED_TEST(ThroughCompositeRelatedTest, JoinsRelatedOnFullCompositeKey) {
 //
 // Pupil/Course/Enrollment is the canonical single-PK through model from #203.
 TYPED_TEST(ThroughCompositeOwnerTest, SinglePkThroughSqlIsUnchanged) {
-    storm::QuerySet<Pupil, TypeParam> qs;
-    const auto sql = qs.template join<fields::Pupil.courses>().select().sql();
+    const auto sql = (SelectStatement<Pupil, TypeParam>{}).all().template join<fields::Pupil.courses>().sql();
     EXPECT_TRUE(sql.contains("FROM Enrollment t2 INNER JOIN Course t3 ON t2.course_id = t3.id")) << sql;
     EXPECT_TRUE(sql.contains("WHERE t2.pupil_id IN (SELECT id FROM Pupil)")) << sql;
 }
@@ -208,8 +241,8 @@ TYPED_TEST(ThroughCompositeOwnerTest, SinglePkThroughSqlIsUnchanged) {
 // "<Side>_<part>" spelling (and the `_id` an FK part would gain) against the
 // Through branch bleeding into it.
 TYPED_TEST(ThroughCompositeOwnerTest, AutoJunctionCompositeSqlIsUnchanged) {
-    storm::QuerySet<LedgerWithTags, TypeParam> qs;
-    const auto sql = qs.template join<fields::LedgerWithTags.tags>().select().sql();
+    const auto sql =
+        (SelectStatement<LedgerWithTags, TypeParam>{}).all().template join<fields::LedgerWithTags.tags>().sql();
     EXPECT_TRUE(sql.contains("t2.LedgerWithTags_region, t2.LedgerWithTags_account, t2.LedgerWithTags_period")) << sql;
     EXPECT_TRUE(sql.contains("ON t2.LedgerTag_id = t3.id")) << sql;
 }
@@ -225,8 +258,8 @@ TYPED_TEST(ThroughFkPartTest, StitchesOnCompositeKeyWithForeignKeyPart) {
     // a stitch keyed on that part alone hands sku 20 both of sku 10's topics.
     seed_fk_part_entries<TypeParam>(/*with_decoy=*/true);
 
-    storm::QuerySet<FkPartEntry, TypeParam> entry_qs;
-    const auto results = entry_qs.template join<fields::FkPartEntry.topics>().select().execute();
+    const auto results =
+        (SelectStatement<FkPartEntry, TypeParam>{}).all().template join<fields::FkPartEntry.topics>().execute();
     // The regression guard: before the fix this errored rather than returning rows.
     ASSERT_TRUE(results.has_value()) << results.error().message();
     ASSERT_EQ(results->size(), 2U);
@@ -253,8 +286,8 @@ TYPED_TEST(ThroughFkPartTest, AggregateOverCompositeThroughJunction) {
     // one unambiguous expected value.
     seed_fk_part_entries<TypeParam>(/*with_decoy=*/false);
 
-    storm::QuerySet<FkPartEntry, TypeParam> entry_qs;
-    const auto total = entry_qs.template join<fields::FkPartEntry.topics>().count().execute();
+    const auto total =
+        (SelectStatement<FkPartEntry, TypeParam>{}).all().template join<fields::FkPartEntry.topics>().count().execute();
     ASSERT_TRUE(total.has_value()) << total.error().message();
     EXPECT_EQ(*total, 2) << "COUNT over the composite through junction must see both linked topics";
 }
@@ -264,36 +297,44 @@ TYPED_TEST(ThroughFkPartTest, AggregateOverCompositeThroughJunction) {
 // contributes 2 more (code_aisle, code_code); every one of the four must be
 // named by the FK rule.
 TYPED_TEST(ThroughBothSidesTest, JoinsWhenBothSidesAreComposite) {
-    storm::QuerySet<Person, TypeParam> person_qs;
-    ASSERT_TRUE(person_qs.insert(Person{.name = "depot-1", .age = 40}).execute().has_value());
+    ASSERT_TRUE(
+        (InsertStatement<Person, TypeParam>{}).query(Person{.name = "depot-1", .age = 40}).execute().has_value());
 
-    storm::QuerySet<ShelfCode, TypeParam> code_qs;
-    ASSERT_TRUE(code_qs.insert(ShelfCode{.aisle = 7, .code = "D1", .label = "dee-one"}).execute().has_value());
-    ASSERT_TRUE(code_qs.insert(ShelfCode{.aisle = 7, .code = "D2", .label = "dee-two"}).execute().has_value());
+    ASSERT_TRUE((InsertStatement<ShelfCode, TypeParam>{})
+                    .query(ShelfCode{.aisle = 7, .code = "D1", .label = "dee-one"})
+                    .execute()
+                    .has_value());
+    ASSERT_TRUE((InsertStatement<ShelfCode, TypeParam>{})
+                    .query(ShelfCode{.aisle = 7, .code = "D2", .label = "dee-two"})
+                    .execute()
+                    .has_value());
 
     // Two owners sharing the FK part (depot == 1) and differing in `slot`.
-    storm::QuerySet<BothSidesOwner, TypeParam> owner_qs;
-    ASSERT_TRUE(
-        owner_qs.insert(BothSidesOwner{.depot = {.id = 1}, .slot = 1, .name = "slot-one"}).execute().has_value());
-    ASSERT_TRUE(
-        owner_qs.insert(BothSidesOwner{.depot = {.id = 1}, .slot = 2, .name = "slot-two"}).execute().has_value());
+    ASSERT_TRUE((InsertStatement<BothSidesOwner, TypeParam>{})
+                    .query(BothSidesOwner{.depot = {.id = 1}, .slot = 1, .name = "slot-one"})
+                    .execute()
+                    .has_value());
+    ASSERT_TRUE((InsertStatement<BothSidesOwner, TypeParam>{})
+                    .query(BothSidesOwner{.depot = {.id = 1}, .slot = 2, .name = "slot-two"})
+                    .execute()
+                    .has_value());
 
     // slot 1 → D1 and D2; slot 2 → D2 only.
-    storm::QuerySet<BothSidesLink, TypeParam> link_qs;
-    ASSERT_TRUE(
-        link_qs.insert(BothSidesLink{.owner = {.depot = {.id = 1}, .slot = 1}, .code = {.aisle = 7, .code = "D1"}})
-            .execute()
-            .has_value());
-    ASSERT_TRUE(
-        link_qs.insert(BothSidesLink{.owner = {.depot = {.id = 1}, .slot = 1}, .code = {.aisle = 7, .code = "D2"}})
-            .execute()
-            .has_value());
-    ASSERT_TRUE(
-        link_qs.insert(BothSidesLink{.owner = {.depot = {.id = 1}, .slot = 2}, .code = {.aisle = 7, .code = "D2"}})
-            .execute()
-            .has_value());
+    ASSERT_TRUE((InsertStatement<BothSidesLink, TypeParam>{})
+                    .query(BothSidesLink{.owner = {.depot = {.id = 1}, .slot = 1}, .code = {.aisle = 7, .code = "D1"}})
+                    .execute()
+                    .has_value());
+    ASSERT_TRUE((InsertStatement<BothSidesLink, TypeParam>{})
+                    .query(BothSidesLink{.owner = {.depot = {.id = 1}, .slot = 1}, .code = {.aisle = 7, .code = "D2"}})
+                    .execute()
+                    .has_value());
+    ASSERT_TRUE((InsertStatement<BothSidesLink, TypeParam>{})
+                    .query(BothSidesLink{.owner = {.depot = {.id = 1}, .slot = 2}, .code = {.aisle = 7, .code = "D2"}})
+                    .execute()
+                    .has_value());
 
-    const auto results = owner_qs.template join<fields::BothSidesOwner.codes>().select().execute();
+    const auto results =
+        (SelectStatement<BothSidesOwner, TypeParam>{}).all().template join<fields::BothSidesOwner.codes>().execute();
     ASSERT_TRUE(results.has_value()) << results.error().message();
     ASSERT_EQ(results->size(), 2U);
 

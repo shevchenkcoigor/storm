@@ -3,11 +3,21 @@
 
 // NOLINTBEGIN(misc-const-correctness,performance-unnecessary-value-param)
 
-import storm;
+import storm_db_default_connection;
+import storm_db_postgresql;
+import storm_db_sqlite;
+import storm_meta;
+import storm_orm_schema;
+import storm_orm_statements_insert;
+import storm_orm_statements_select;
+import storm_orm_transaction;
+import storm_orm_utilities;
 import std;
 
 #include "../../shared/models/extended_types.h" // NOSONAR cpp:S954
 #include "test_fixture.h"
+using storm::orm::statements::InsertStatement;
+using storm::orm::statements::SelectStatement;
 
 using std::chrono::day;
 using std::chrono::hours;
@@ -18,7 +28,6 @@ using std::chrono::sys_days;
 using std::chrono::system_clock;
 using std::chrono::year;
 using std::chrono::year_month_day;
-using storm::QuerySet;
 using storm::UUID;
 
 namespace {
@@ -42,27 +51,25 @@ template <typename ConnType> class WhereTemporalTest : public StormTestFixture<E
 
   protected:
     auto on_after_setup(const std::shared_ptr<ConnType>&) -> void override {
-        QuerySet<ExtendedTypes, ConnType> qs;
-        std::vector<ExtendedTypes>        batch = {
+        std::vector<ExtendedTypes> batch = {
                 {.label          = "r1",
-                        .date_field     = year_month_day{year{2024}, month{1}, day{1}},
-                        .datetime_field = make_tp(2024, 1, 1, 8, 0, 0),
-                        .uuid_field     = UUID{kUuid1}},
+                 .date_field     = year_month_day{year{2024}, month{1}, day{1}},
+                 .datetime_field = make_tp(2024, 1, 1, 8, 0, 0),
+                 .uuid_field     = UUID{kUuid1}},
                 {.label          = "r2",
-                        .date_field     = year_month_day{year{2024}, month{6}, day{15}},
-                        .datetime_field = make_tp(2024, 6, 15, 12, 30, 0),
-                        .uuid_field     = UUID{kUuid2}},
+                 .date_field     = year_month_day{year{2024}, month{6}, day{15}},
+                 .datetime_field = make_tp(2024, 6, 15, 12, 30, 0),
+                 .uuid_field     = UUID{kUuid2}},
                 {.label          = "r3",
-                        .date_field     = year_month_day{year{2024}, month{12}, day{31}},
-                        .datetime_field = make_tp(2024, 12, 31, 23, 59, 59),
-                        .uuid_field     = UUID{kUuid3}},
+                 .date_field     = year_month_day{year{2024}, month{12}, day{31}},
+                 .datetime_field = make_tp(2024, 12, 31, 23, 59, 59),
+                 .uuid_field     = UUID{kUuid3}},
         };
-        ASSERT_TRUE(qs.insert(batch).execute().has_value());
+        ASSERT_TRUE((InsertStatement<ExtendedTypes, ConnType>{}).query(batch).execute().has_value());
     }
 
     static auto count_where(auto expr) -> std::size_t {
-        QuerySet<ExtendedTypes, ConnType> qs;
-        auto                              result = qs.where(expr).select().execute();
+        auto result = (SelectStatement<ExtendedTypes, ConnType>{}).where(expr).execute();
         EXPECT_TRUE(result.has_value()) << "WHERE failed: " << result.error().message();
         return result.has_value() ? result.value().size() : 0;
     }

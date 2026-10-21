@@ -37,34 +37,22 @@ extern "C" int LLVMFuzzerTestOneInput(const uint8_t* data, size_t size) {
 
     try {
         // Equal int
-        (void)storm::QuerySet<FuzzModel>()
-                .where(storm::orm::where::field<^^FuzzModel::value>() == val1)
-                .select()
-                .execute();
+        (void)QuerySet<FuzzModel>().where(storm::orm::where::field<^^FuzzModel::value>() == val1).select().execute();
         // Not equal
-        (void)storm::QuerySet<FuzzModel>()
-                .where(storm::orm::where::field<^^FuzzModel::value>() != val1)
-                .select()
-                .execute();
+        (void)QuerySet<FuzzModel>().where(storm::orm::where::field<^^FuzzModel::value>() != val1).select().execute();
         // Greater than
-        (void)storm::QuerySet<FuzzModel>()
-                .where(storm::orm::where::field<^^FuzzModel::value>() > val1)
-                .select()
-                .execute();
+        (void)QuerySet<FuzzModel>().where(storm::orm::where::field<^^FuzzModel::value>() > val1).select().execute();
         // Less than
-        (void)storm::QuerySet<FuzzModel>()
-                .where(storm::orm::where::field<^^FuzzModel::value>() < val2)
-                .select()
-                .execute();
+        (void)QuerySet<FuzzModel>().where(storm::orm::where::field<^^FuzzModel::value>() < val2).select().execute();
         // IN with two values
-        (void)storm::QuerySet<FuzzModel>()
+        (void)QuerySet<FuzzModel>()
                 .where(storm::orm::where::field<^^FuzzModel::value>().in(val1, val2))
                 .select()
                 .execute();
         // BETWEEN (ensure lower <= upper to form a valid range)
         const int lower = val1 < val2 ? val1 : val2;
         const int upper = val1 < val2 ? val2 : val1;
-        (void)storm::QuerySet<FuzzModel>()
+        (void)QuerySet<FuzzModel>()
                 .where(storm::orm::where::field<^^FuzzModel::value>().between(lower, upper))
                 .select()
                 .execute();

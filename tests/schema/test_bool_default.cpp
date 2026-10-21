@@ -9,13 +9,18 @@
 
 #include "test_db_helpers.h"
 
-import storm;
+import storm_db_default_connection;
+import storm_db_postgresql;
+import storm_db_sqlite;
+import storm_meta;
+import storm_orm_indexes;
+import storm_orm_schema;
 import std;
-
-using storm::QuerySet;
 
 #include "../../shared/models/person.h" // NOSONAR cpp:S954
 #include "test_fixture.h"
+using storm::primary;
+using storm::db::DefaultConnection;
 
 using storm::orm::schema::Dialect;
 using storm::orm::schema::SchemaStatement;
@@ -23,9 +28,9 @@ using storm::orm::schema::SchemaStatement;
 // Local models exercising both default values. Defined after `import storm;`
 // so the storm:: annotation binds to the imported object.
 struct BoolDefaultModel {
-    [[= storm::primary]] int id{};
-    bool                     flag_false{false};
-    bool                     flag_true{true};
+    [[= primary]] int id{};
+    bool              flag_false{false};
+    bool              flag_true{true};
 };
 
 // ============================================================================
@@ -103,7 +108,7 @@ template <typename ConnType> class BoolDefaultAlterTest : public StormTestFixtur
 TYPED_TEST_SUITE(BoolDefaultAlterTest, DatabaseTypes);
 
 TYPED_TEST(BoolDefaultAlterTest, AddBoolNotNullColumnOnPopulatedTableSucceeds) {
-    const auto& conn = QuerySet<Person, TypeParam>::get_default_connection();
+    const auto& conn = DefaultConnection<TypeParam>::get();
 
     // Bare table with a single row already present.
     ASSERT_TRUE(conn->execute("CREATE TABLE t (id INTEGER PRIMARY KEY)").has_value());

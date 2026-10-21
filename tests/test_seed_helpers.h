@@ -18,6 +18,11 @@
 #include <gtest/gtest.h>
 #include <span>
 #include <vector>
+import storm_orm_statements_update;
+import storm_orm_statements_erase;
+using storm::orm::statements::EraseStatement;
+using storm::orm::statements::InsertStatement;
+using storm::orm::statements::UpdateStatement;
 
 namespace storm::test {
 
@@ -28,8 +33,7 @@ template <typename Model, typename ConnType> auto batch_insert(const std::vector
     if (objects.empty())
         return true;
 
-    storm::QuerySet<Model, ConnType> qs;
-    auto result = qs.insert(std::span<const Model>(objects)).execute();
+    auto result = (InsertStatement<Model, ConnType>{}).query(std::span<const Model>(objects)).execute();
     if (!result.has_value()) {
         ADD_FAILURE() << "batch_insert failed: " << result.error().message();
         return false;
@@ -44,8 +48,7 @@ template <typename Model, typename ConnType> auto batch_update(const std::vector
     if (objects.empty())
         return true;
 
-    storm::QuerySet<Model, ConnType> qs;
-    auto result = qs.update(std::span<const Model>(objects)).execute();
+    auto result = (UpdateStatement<Model, ConnType>{}).query(std::span<const Model>(objects)).execute();
     if (!result.has_value()) {
         ADD_FAILURE() << "batch_update failed: " << result.error().message();
         return false;
@@ -60,8 +63,7 @@ template <typename Model, typename ConnType> auto batch_remove(const std::vector
     if (objects.empty())
         return true;
 
-    storm::QuerySet<Model, ConnType> qs;
-    auto result = qs.erase(std::span<const Model>(objects)).execute();
+    auto result = (EraseStatement<Model, ConnType>{}).query(std::span<const Model>(objects)).execute();
     if (!result.has_value()) {
         ADD_FAILURE() << "batch_remove failed: " << result.error().message();
         return false;

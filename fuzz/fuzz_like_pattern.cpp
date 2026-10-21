@@ -26,7 +26,7 @@ extern "C" int LLVMFuzzerTestOneInput(const uint8_t* data, size_t size) {
     const std::string pattern(reinterpret_cast<const char*>(data), size);
 
     try {
-        (void)storm::QuerySet<FuzzModel>()
+        (void)QuerySet<FuzzModel>()
                 .where(storm::orm::where::field<^^FuzzModel::name>().like(pattern))
                 .select()
                 .execute();

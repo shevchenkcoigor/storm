@@ -25,13 +25,16 @@
 #include <plf_hive/plf_hive.h>
 #include <string>
 #include <vector>
+using storm::field_specs_for;
+using storm::primary;
+using storm::orm::statements::InsertStatement;
 
 struct RfTask; // forward declaration breaks the Base⟷Owner cycle
 
 // Base model: owns a reverse_fk container of the tasks pointing at it. The
 // annotation names the OWNER TYPE; the unique FK back at RfPerson is resolved.
 struct RfPerson {
-    [[= storm::primary]] int id{};
+    [[= primary]] int id{};
     std::string name;
     int age{};
     // Not a column — invisible to CRUD, filled on eager load.
@@ -39,7 +42,7 @@ struct RfPerson {
 };
 
 struct RfTask {
-    [[= storm::primary]] int id{};
+    [[= primary]] int id{};
     std::string title;
     [[= storm::fk<>]] RfPerson assignee;
 };
@@ -48,13 +51,13 @@ struct RfTask {
 struct RfNote;
 
 struct RfBoard {
-    [[= storm::primary]] int id{};
+    [[= primary]] int id{};
     std::string name;
     [[= storm::reverse_fk<^^RfNote>]] std::vector<std::shared_ptr<RfNote>> notes;
 };
 
 struct RfNote {
-    [[= storm::primary]] int id{};
+    [[= primary]] int id{};
     std::string body;
     [[= storm::fk<>]] RfBoard board;
 };
@@ -62,12 +65,12 @@ struct RfNote {
 // Multi-FK disambiguation (aggregate/selector path — no reverse container, no
 // cycle, so RfReporter is complete before RfBug): two FKs back at RfReporter.
 struct RfReporter {
-    [[= storm::primary]] int id{};
+    [[= primary]] int id{};
     std::string name;
 };
 
 struct RfBug {
-    [[= storm::primary]] int id{};
+    [[= primary]] int id{};
     std::string summary;
     [[= storm::fk<>]] RfReporter author;
     [[= storm::fk<>]] RfReporter reviewer;
@@ -77,16 +80,14 @@ namespace storm::test {
 
 // Seeds: Alice(20)→[T1,T2], Bob(22)→[T3], Carol(25)→[] (no tasks).
 template <typename ConnType> inline auto seed_rf_people() -> void {
-    storm::QuerySet<RfPerson, ConnType> pqs;
     std::vector<RfPerson> const people = {
         {.name = "Alice", .age = 20}, {.name = "Bob", .age = 22}, {.name = "Carol", .age = 25}};
-    ASSERT_TRUE(pqs.insert(std::span<const RfPerson>(people)).execute().has_value());
+    ASSERT_TRUE((InsertStatement<RfPerson, ConnType>{}).query(std::span<const RfPerson>(people)).execute().has_value());
 
-    storm::QuerySet<RfTask, ConnType> tqs;
     std::vector<RfTask> const tasks = {{.title = "T1", .assignee = {.id = 1}},
                                        {.title = "T2", .assignee = {.id = 1}},
                                        {.title = "T3", .assignee = {.id = 2}}};
-    ASSERT_TRUE(tqs.insert(std::span<const RfTask>(tasks)).execute().has_value());
+    ASSERT_TRUE((InsertStatement<RfTask, ConnType>{}).query(std::span<const RfTask>(tasks)).execute().has_value());
 }
 
 } // namespace storm::test
@@ -95,15 +96,15 @@ template <typename ConnType> inline auto seed_rf_people() -> void {
 namespace fields {
 
 struct RfPersonT;
-consteval { std::meta::define_aggregate(^^RfPersonT, storm::field_specs_for(^^RfPerson)); }
+consteval { std::meta::define_aggregate(^^RfPersonT, field_specs_for(^^RfPerson)); }
 inline constexpr RfPersonT RfPerson{};
 
 struct RfTaskT;
-consteval { std::meta::define_aggregate(^^RfTaskT, storm::field_specs_for(^^RfTask)); }
+consteval { std::meta::define_aggregate(^^RfTaskT, field_specs_for(^^RfTask)); }
 inline constexpr RfTaskT RfTask{};
 
 struct RfBugT;
-consteval { std::meta::define_aggregate(^^RfBugT, storm::field_specs_for(^^RfBug)); }
+consteval { std::meta::define_aggregate(^^RfBugT, field_specs_for(^^RfBug)); }
 inline constexpr RfBugT RfBug{};
 } // namespace fields
 

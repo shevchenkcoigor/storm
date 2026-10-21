@@ -6,12 +6,34 @@
 
 // NOLINTBEGIN(misc-const-correctness)
 
-import storm;
+import storm_db_default_connection;
+import storm_db_postgresql;
+import storm_db_sqlite;
+import storm_meta;
+import storm_orm_indexes;
+import storm_orm_schema;
+import storm_orm_statements_erase;
+import storm_orm_statements_insert;
+import storm_orm_statements_select;
+import storm_orm_statements_update;
+import storm_orm_fields;
 import std;
 
 #include "../../shared/models/message.h" // NOSONAR cpp:S954
 #include "../../shared/models/person.h"
 #include "test_fixture.h"
+using storm::create_table_sql;
+using storm::field_specs_for;
+using storm::many_to_many;
+using storm::primary;
+using storm::primary_autoincrement;
+using storm::db::DefaultConnection;
+using storm::meta::selector_info;
+using storm::orm::schema::SchemaStatement;
+using storm::orm::statements::EraseStatement;
+using storm::orm::statements::InsertStatement;
+using storm::orm::statements::SelectStatement;
+using storm::orm::statements::UpdateStatement;
 
 // ============================================================================
 // PK column name must come from the member's identifier, not a hardcoded "id"
@@ -20,36 +42,34 @@ import std;
 // clause naming the TARGET model's PK — did not, so a model whose PK member is
 // not called `id` got DDL and queries that disagreed ("no such column").
 // ============================================================================
-
-using storm::QuerySet;
 using storm::orm::schema::Dialect;
 
 namespace {
 
     // Single-PK model whose PK member is NOT named "id".
     struct Widget {
-        [[= storm::primary]] int widget_id{};
-        std::string              name;
+        [[= primary]] int widget_id{};
+        std::string       name;
     };
 
     // Single-PK model using primary_autoincrement with a non-"id" PK name — the
     // AUTOINCREMENT branch must also use the real identifier.
     struct Gadget {
-        [[= storm::primary_autoincrement]] int gadget_id{};
-        std::string                            name;
+        [[= primary_autoincrement]] int gadget_id{};
+        std::string                     name;
     };
 
     // FK TARGET whose PK member is not named "id". The REFERENCING model's FK
     // column must emit "REFERENCES Owner(owner_id)", not "REFERENCES Owner(id)".
     struct Owner {
-        [[= storm::primary]] int owner_id{};
-        std::string              label;
+        [[= primary]] int owner_id{};
+        std::string       label;
     };
 
     struct Item {
-        [[= storm::primary]] int id{};
-        [[= storm::fk<>]] Owner  owner;
-        std::string              description;
+        [[= primary]] int       id{};
+        [[= storm::fk<>]] Owner owner;
+        std::string             description;
     };
 
     // A deliberately long PK member name — proves the consteval size calculations
@@ -61,7 +81,7 @@ namespace {
             "this_is_a_deliberately_very_long_primary_key_identifier_that_exceeds_one_hundred_characters_long";
 
     struct LongPkNameRecord {
-        [[= storm::primary]] int
+        [[= primary]] int
                     this_is_a_deliberately_very_long_primary_key_identifier_that_exceeds_one_hundred_characters_long{};
         std::string name;
     };
@@ -70,13 +90,13 @@ namespace {
     // max_fk_references_len were widened for a variable-length target PK
     // identifier too (not just the referencing side).
     struct LongPkTarget {
-        [[= storm::primary]] int
+        [[= primary]] int
                     this_is_a_deliberately_very_long_primary_key_identifier_that_exceeds_one_hundred_characters_long{};
         std::string label;
     };
 
     struct RefersToLongPkTarget {
-        [[= storm::primary]] int       id{};
+        [[= primary]] int              id{};
         [[= storm::fk<>]] LongPkTarget target;
     };
 
@@ -85,58 +105,58 @@ namespace {
     // target-side "REFERENCES <Model>(...)" must name each model's REAL PK
     // member — the same failure class as #506, in the junction DDL path.
     struct Badge {
-        [[= storm::primary]] int badge_id{};
-        std::string              label;
+        [[= primary]] int badge_id{};
+        std::string       label;
     };
 
     struct Hero {
-        [[= storm::primary]] int                       hero_id{};
-        std::string                                    name;
-        [[= storm::many_to_many<>]] std::vector<Badge> badges;
+        [[= primary]] int                       hero_id{};
+        std::string                             name;
+        [[= many_to_many<>]] std::vector<Badge> badges;
     };
 
     // Mixed shape: owner PK is "id", related PK is not — proves the two sides
     // are resolved independently rather than from one shared lookup.
     struct Sticker {
-        [[= storm::primary]] int sticker_id{};
-        std::string              label;
+        [[= primary]] int sticker_id{};
+        std::string       label;
     };
 
     struct Notebook {
-        [[= storm::primary]] int                         id{};
-        std::string                                      title;
-        [[= storm::many_to_many<>]] std::vector<Sticker> stickers;
+        [[= primary]] int                         id{};
+        std::string                               title;
+        [[= many_to_many<>]] std::vector<Sticker> stickers;
     };
 
     // Both sides PK-named "id" — the byte-identical regression guard.
     struct Tag {
-        [[= storm::primary]] int id{};
-        std::string              label;
+        [[= primary]] int id{};
+        std::string       label;
     };
 
     struct Post {
-        [[= storm::primary]] int                     id{};
-        std::string                                  title;
-        [[= storm::many_to_many<>]] std::vector<Tag> tags;
+        [[= primary]] int                     id{};
+        std::string                           title;
+        [[= many_to_many<>]] std::vector<Tag> tags;
     };
 
     // Long PK names on both junction sides — proves build_junction_sql's
     // consteval buffer folds in the two PK identifier lengths instead of
     // budgeting for the fixed 2-char literal "id".
     struct LongPkRelated {
-        [[= storm::primary]] int
+        [[= primary]] int
                     this_is_a_deliberately_very_long_primary_key_identifier_that_exceeds_one_hundred_characters_long{};
         std::string label;
     };
 
     struct LongPkOwner {
-        [[= storm::primary]] int
+        [[= primary]] int
                 this_is_a_deliberately_very_long_primary_key_identifier_that_exceeds_one_hundred_characters_long{};
-        [[= storm::many_to_many<>]] std::vector<LongPkRelated> links;
+        [[= many_to_many<>]] std::vector<LongPkRelated> links;
     };
 
-    template <typename Model, storm::orm::schema::Dialect D> auto junction_sql() -> const std::string& {
-        return storm::orm::schema::SchemaStatement<Model>::template junction_table_sql<D>();
+    template <typename Model, Dialect D> auto junction_sql() -> const std::string& {
+        return SchemaStatement<Model>::template junction_table_sql<D>();
     }
 
 } // namespace
@@ -148,19 +168,19 @@ namespace fields {
 
     struct WidgetT;
     consteval {
-        std::meta::define_aggregate(^^WidgetT, storm::field_specs_for(^^Widget));
+        std::meta::define_aggregate(^^WidgetT, field_specs_for(^^Widget));
     }
     inline constexpr WidgetT Widget{};
 
     struct ItemT;
     consteval {
-        std::meta::define_aggregate(^^ItemT, storm::field_specs_for(^^Item));
+        std::meta::define_aggregate(^^ItemT, field_specs_for(^^Item));
     }
     inline constexpr ItemT Item{};
 
     struct HeroT;
     consteval {
-        std::meta::define_aggregate(^^HeroT, storm::field_specs_for(^^Hero));
+        std::meta::define_aggregate(^^HeroT, field_specs_for(^^Hero));
     }
     inline constexpr HeroT Hero{};
 } // namespace fields
@@ -170,27 +190,27 @@ namespace fields {
 // ============================================================================
 
 TEST(PkColumnNameTest, NonIdPkNameEmittedSqlite) {
-    const std::string& sql = storm::create_table_sql<Widget>();
+    const std::string& sql = create_table_sql<Widget>();
     EXPECT_NE(sql.find("widget_id INTEGER PRIMARY KEY"), std::string::npos)
             << "Expected PK column named 'widget_id' in: " << sql;
     EXPECT_EQ(sql.find("    id "), std::string::npos) << "Must not fall back to the literal 'id' in: " << sql;
 }
 
 TEST(PkColumnNameTest, NonIdPkNameEmittedPostgres) {
-    const std::string& sql = storm::create_table_sql<Widget, Dialect::PostgreSQL>();
+    const std::string& sql = create_table_sql<Widget, Dialect::PostgreSQL>();
     EXPECT_NE(sql.find("widget_id BIGINT PRIMARY KEY GENERATED BY DEFAULT AS IDENTITY"), std::string::npos)
             << "Expected PK column named 'widget_id' in: " << sql;
 }
 
 TEST(PkColumnNameTest, NonIdPkNameWithAutoincrementSqlite) {
-    const std::string& sql = storm::create_table_sql<Gadget>();
+    const std::string& sql = create_table_sql<Gadget>();
     EXPECT_NE(sql.find("gadget_id INTEGER PRIMARY KEY AUTOINCREMENT"), std::string::npos)
             << "Expected AUTOINCREMENT PK column named 'gadget_id' in: " << sql;
 }
 
 // Regression guard: Person's PK is named "id" — DDL must stay byte-identical.
 TEST(PkColumnNameTest, IdNamedPkUnchanged) {
-    const std::string& sql = storm::create_table_sql<Person>();
+    const std::string& sql = create_table_sql<Person>();
     EXPECT_NE(sql.find("    id INTEGER PRIMARY KEY,\n"), std::string::npos)
             << "Person's id-named PK DDL must be byte-identical: " << sql;
 }
@@ -200,14 +220,14 @@ TEST(PkColumnNameTest, IdNamedPkUnchanged) {
 // buffer, not just the column, and that it renders untruncated rather than
 // std::unreachable()-ing at compile time (which would fail the build).
 TEST(PkColumnNameTest, LongPkNameNotTruncatedSqlite) {
-    const std::string& sql = storm::create_table_sql<LongPkNameRecord>();
+    const std::string& sql = create_table_sql<LongPkNameRecord>();
     EXPECT_NE(sql.find(std::string(kLongPkName) + " INTEGER PRIMARY KEY"), std::string::npos)
             << "Long PK name was truncated in:\n"
             << sql;
 }
 
 TEST(PkColumnNameTest, LongPkNameNotTruncatedPostgres) {
-    const std::string& sql = storm::create_table_sql<LongPkNameRecord, Dialect::PostgreSQL>();
+    const std::string& sql = create_table_sql<LongPkNameRecord, Dialect::PostgreSQL>();
     EXPECT_NE(
             sql.find(std::string(kLongPkName) + " BIGINT PRIMARY KEY GENERATED BY DEFAULT AS IDENTITY"),
             std::string::npos
@@ -220,13 +240,13 @@ TEST(PkColumnNameTest, LongPkNameNotTruncatedPostgres) {
 // ============================================================================
 
 TEST(PkColumnNameTest, FkReferencesTargetNonIdPkSqlite) {
-    const std::string& sql = storm::create_table_sql<Item>();
+    const std::string& sql = create_table_sql<Item>();
     EXPECT_NE(sql.find("owner_id INTEGER NOT NULL REFERENCES Owner(owner_id)"), std::string::npos)
             << "Expected REFERENCES Owner(owner_id) in: " << sql;
 }
 
 TEST(PkColumnNameTest, FkReferencesTargetNonIdPkPostgres) {
-    const std::string& sql = storm::create_table_sql<Item, Dialect::PostgreSQL>();
+    const std::string& sql = create_table_sql<Item, Dialect::PostgreSQL>();
     EXPECT_NE(sql.find("owner_id BIGINT NOT NULL REFERENCES Owner(owner_id)"), std::string::npos)
             << "Expected REFERENCES Owner(owner_id) in: " << sql;
 }
@@ -234,7 +254,7 @@ TEST(PkColumnNameTest, FkReferencesTargetNonIdPkPostgres) {
 // Regression guard: Message REFERENCES Person(id) — target's PK is "id" — must
 // stay byte-identical.
 TEST(PkColumnNameTest, FkReferencesIdNamedTargetUnchanged) {
-    const std::string& sql = storm::create_table_sql<Message>();
+    const std::string& sql = create_table_sql<Message>();
     EXPECT_NE(sql.find("sender_id INTEGER NOT NULL REFERENCES Person(id)"), std::string::npos)
             << "Expected REFERENCES Person(id) unchanged in: " << sql;
 }
@@ -242,14 +262,14 @@ TEST(PkColumnNameTest, FkReferencesIdNamedTargetUnchanged) {
 // A long PK name on the FK TARGET must not overflow fk_references_len /
 // max_fk_references_len (widened for a variable-length target PK identifier).
 TEST(PkColumnNameTest, FkReferencesLongTargetPkNotTruncatedSqlite) {
-    const std::string& sql = storm::create_table_sql<RefersToLongPkTarget>();
+    const std::string& sql = create_table_sql<RefersToLongPkTarget>();
     EXPECT_NE(sql.find("REFERENCES LongPkTarget(" + std::string(kLongPkName) + ")"), std::string::npos)
             << "Long target PK name was truncated in:\n"
             << sql;
 }
 
 TEST(PkColumnNameTest, FkReferencesLongTargetPkNotTruncatedPostgres) {
-    const std::string& sql = storm::create_table_sql<RefersToLongPkTarget, Dialect::PostgreSQL>();
+    const std::string& sql = create_table_sql<RefersToLongPkTarget, Dialect::PostgreSQL>();
     EXPECT_NE(sql.find("REFERENCES LongPkTarget(" + std::string(kLongPkName) + ")"), std::string::npos)
             << "Long target PK name was truncated in:\n"
             << sql;
@@ -268,35 +288,35 @@ template <typename ConnType> class NonIdPkCrudTest : public StormTestFixture<Wid
 TYPED_TEST_SUITE(NonIdPkCrudTest, DatabaseTypes);
 
 TYPED_TEST(NonIdPkCrudTest, InsertSelectUpdateDeleteRoundTrip) {
-    QuerySet<Widget, TypeParam> qs;
-
-    auto inserted = qs.insert(Widget{.widget_id = 0, .name = "Sprocket"}).execute();
+    auto inserted = (InsertStatement<Widget, TypeParam>{}).query(Widget{.widget_id = 0, .name = "Sprocket"}).execute();
     ASSERT_TRUE(inserted.has_value()) << "Insert failed: "
                                       << (inserted.has_value() ? std::string{} : inserted.error().message());
     const auto new_id = static_cast<int>(inserted.value());
 
-    auto selected = qs.where(fields::Widget.widget_id == new_id).select().execute();
+    auto selected = (SelectStatement<Widget, TypeParam>{}).where(fields::Widget.widget_id == new_id).execute();
     ASSERT_TRUE(selected.has_value()) << "Select by widget_id failed: "
                                       << (selected.has_value() ? std::string{} : selected.error().message());
     ASSERT_EQ(selected->size(), 1U);
     EXPECT_EQ(selected->begin()->name, "Sprocket");
 
-    auto updated = qs.where(fields::Widget.widget_id == new_id)
-                           .template update<fields::Widget.name>(Widget{.name = "Cog"})
+    auto updated = (UpdateStatement<Widget, TypeParam>{})
+                           .template query_where<selector_info<fields::Widget.name>()>(
+                                   Widget{.name = "Cog"}, fields::Widget.widget_id == new_id
+                           )
                            .execute();
     ASSERT_TRUE(updated.has_value()) << "Update by widget_id failed: "
                                      << (updated.has_value() ? std::string{} : updated.error().message());
 
-    auto reselected = qs.where(fields::Widget.widget_id == new_id).select().execute();
+    auto reselected = (SelectStatement<Widget, TypeParam>{}).where(fields::Widget.widget_id == new_id).execute();
     ASSERT_TRUE(reselected.has_value());
     ASSERT_EQ(reselected->size(), 1U);
     EXPECT_EQ(reselected->begin()->name, "Cog");
 
-    auto deleted = qs.where(fields::Widget.widget_id == new_id).erase().execute();
+    auto deleted = (EraseStatement<Widget, TypeParam>{}).query_where(fields::Widget.widget_id == new_id).execute();
     ASSERT_TRUE(deleted.has_value()) << "Delete by widget_id failed: "
                                      << (deleted.has_value() ? std::string{} : deleted.error().message());
 
-    auto empty = qs.where(fields::Widget.widget_id == new_id).select().execute();
+    auto empty = (SelectStatement<Widget, TypeParam>{}).where(fields::Widget.widget_id == new_id).execute();
     ASSERT_TRUE(empty.has_value());
     EXPECT_EQ(empty->size(), 0U);
 }
@@ -310,20 +330,18 @@ template <typename ConnType> class FkTargetNonIdPkTest : public StormTestFixture
 TYPED_TEST_SUITE(FkTargetNonIdPkTest, DatabaseTypes);
 
 TYPED_TEST(FkTargetNonIdPkTest, InsertWithFkToNonIdPkTargetSucceeds) {
-    QuerySet<Owner, TypeParam> owner_qs;
-    QuerySet<Item, TypeParam>  item_qs;
-
-    auto owner_result = owner_qs.insert(Owner{.owner_id = 0, .label = "Acme"}).execute();
+    auto owner_result = (InsertStatement<Owner, TypeParam>{}).query(Owner{.owner_id = 0, .label = "Acme"}).execute();
     ASSERT_TRUE(owner_result.has_value())
             << "Owner insert failed: " << (owner_result.has_value() ? std::string{} : owner_result.error().message());
     const auto owner_id = static_cast<int>(owner_result.value());
 
-    auto item_result =
-            item_qs.insert(Item{.id = 0, .owner = Owner{.owner_id = owner_id}, .description = "Widget A"}).execute();
+    auto item_result = (InsertStatement<Item, TypeParam>{})
+                               .query(Item{.id = 0, .owner = Owner{.owner_id = owner_id}, .description = "Widget A"})
+                               .execute();
     ASSERT_TRUE(item_result.has_value()) << "Item insert (FK to non-id PK target) failed: "
                                          << (item_result.has_value() ? std::string{} : item_result.error().message());
 
-    auto joined = item_qs.template join<fields::Item.owner>().select().execute();
+    auto joined = (SelectStatement<Item, TypeParam>{}).all().template join<fields::Item.owner>().execute();
     ASSERT_TRUE(joined.has_value()) << "Join on FK to non-id PK target failed: "
                                     << (joined.has_value() ? std::string{} : joined.error().message());
     ASSERT_EQ(joined->size(), 1U);
@@ -399,11 +417,9 @@ template <typename ConnType> class M2MNonIdPkTest : public StormTestFixture<Hero
     // false on a fatal failure so the caller can bail (ASSERT_* cannot cross a
     // helper's return).
     static auto seed_linked_pair(const std::shared_ptr<ConnType>& conn) -> bool {
-        QuerySet<Hero, ConnType>  hero_qs;
-        QuerySet<Badge, ConnType> badge_qs;
-        auto                      hero_id = hero_qs.insert(Hero{.hero_id = 0, .name = "Rook"}).execute();
+        auto hero_id = (InsertStatement<Hero, ConnType>{}).query(Hero{.hero_id = 0, .name = "Rook"}).execute();
         EXPECT_TRUE(hero_id.has_value());
-        auto badge_id = badge_qs.insert(Badge{.badge_id = 0, .label = "Gold"}).execute();
+        auto badge_id = (InsertStatement<Badge, ConnType>{}).query(Badge{.badge_id = 0, .label = "Gold"}).execute();
         EXPECT_TRUE(badge_id.has_value());
         if (!hero_id.has_value() || !badge_id.has_value()) {
             return false;
@@ -421,7 +437,7 @@ template <typename ConnType> class M2MNonIdPkTest : public StormTestFixture<Hero
 TYPED_TEST_SUITE(M2MNonIdPkTest, DatabaseTypes);
 
 TYPED_TEST(M2MNonIdPkTest, JunctionDdlIsExecutableAndEnforcesFks) {
-    auto conn = QuerySet<Hero, TypeParam>::get_default_connection();
+    auto conn = DefaultConnection<TypeParam>::get();
     ASSERT_TRUE(TestFixture::seed_linked_pair(conn)) << "junction insert must succeed on executable DDL";
 
     // The FK really points at Hero(hero_id)/Badge(badge_id) — a dangling pair is rejected.
@@ -430,11 +446,10 @@ TYPED_TEST(M2MNonIdPkTest, JunctionDdlIsExecutableAndEnforcesFks) {
 }
 
 TYPED_TEST(M2MNonIdPkTest, EagerLoadThroughNonIdPkJunction) {
-    auto conn = QuerySet<Hero, TypeParam>::get_default_connection();
+    auto conn = DefaultConnection<TypeParam>::get();
     ASSERT_TRUE(TestFixture::seed_linked_pair(conn));
 
-    QuerySet<Hero, TypeParam> hero_qs;
-    auto                      loaded = hero_qs.template join<fields::Hero.badges>().select().execute();
+    auto loaded = (SelectStatement<Hero, TypeParam>{}).all().template join<fields::Hero.badges>().execute();
     ASSERT_TRUE(loaded.has_value()) << loaded.error().message();
     ASSERT_EQ(loaded->size(), 1U);
     ASSERT_EQ(loaded->begin()->badges.size(), 1U);

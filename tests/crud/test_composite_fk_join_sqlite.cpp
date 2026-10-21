@@ -9,6 +9,7 @@
 #define STORM_SPLIT_TYPES DatabaseTypesSqliteHalf
 #define STORM_SPLIT_TYPE_NAMES DatabaseTypesSqliteHalfNames
 #include "test_composite_fk_join_body.h"
+using storm::create_table_sql;
 #undef STORM_SPLIT_TYPE_NAMES
 #undef STORM_SPLIT_TYPES
 
@@ -22,7 +23,7 @@
 // since the FK member itself is nullable. Also proves the non-optional case
 // (Shipment above) never emitted a doubled "NOT NULL NOT NULL" suffix.
 TEST(CompositeFkSchemaTest, NullableCompositeFkColumnsOmitNotNull) {
-    const std::string& sql = storm::create_table_sql<OptionalShipment>();
+    const std::string& sql = create_table_sql<OptionalShipment>();
     EXPECT_NE(sql.find("line_order_id INTEGER,"), std::string::npos) << sql;
     EXPECT_NE(sql.find("line_product_id INTEGER,"), std::string::npos) << sql;
     EXPECT_EQ(sql.find("line_order_id INTEGER NOT NULL"), std::string::npos) << sql;
@@ -30,6 +31,6 @@ TEST(CompositeFkSchemaTest, NullableCompositeFkColumnsOmitNotNull) {
 }
 
 TEST(CompositeFkSchemaTest, NonOptionalCompositeFkColumnsHaveExactlyOneNotNull) {
-    const std::string& sql = storm::create_table_sql<Shipment>();
+    const std::string& sql = create_table_sql<Shipment>();
     EXPECT_EQ(sql.find("NOT NULL NOT NULL"), std::string::npos) << sql;
 }

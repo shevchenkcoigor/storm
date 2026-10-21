@@ -3,11 +3,20 @@
 
 #include "test_db_helpers.h"
 
-import storm;
+import storm_db_postgresql;
+import storm_db_sqlite;
+import storm_meta;
+import storm_orm_indexes;
 import std;
+import storm_orm_utilities;
+import storm_orm_statements_base;
 
 #include "../../shared/models/person.h" // NOSONAR cpp:S954
 #include "../../shared/models/task.h"
+using storm::primary_part;
+using storm::orm::statements::BaseStatement;
+using storm::orm::statements::ModelPrimaryKeyPartLimit;
+using storm::orm::utilities::StitchKey;
 
 // Tests for ModelPrimaryKeyPartLimit<T> (#537): a composite primary key with more
 // parts than the m2m/reverse-FK stitch key can hold is a compile-time error.
@@ -32,51 +41,51 @@ namespace {
     // ---- Accepted: 2, 3 and 4 parts — at and below the ceiling ----
 
     struct PkParts2 {
-        [[= storm::primary_part]] int          tenant_id{};
-        [[= storm::primary_part]] std::int64_t entry_id{};
-        int                                    payload{};
+        [[= primary_part]] int          tenant_id{};
+        [[= primary_part]] std::int64_t entry_id{};
+        int                             payload{};
     };
 
     struct PkParts3 {
-        [[= storm::primary_part]] int          tenant_id{};
-        [[= storm::primary_part]] std::string  sku{};
-        [[= storm::primary_part]] std::int64_t entry_id{};
-        int                                    payload{};
+        [[= primary_part]] int          tenant_id{};
+        [[= primary_part]] std::string  sku{};
+        [[= primary_part]] std::int64_t entry_id{};
+        int                             payload{};
     };
 
     // The exact ceiling: 4 x 8 == StitchKey::CAPACITY, filling the buffer with zero
     // slack. This is the boundary case the gate must ACCEPT — an off-by-one in the
     // comparison would reject it, silently narrowing what the ORM supports.
     struct PkParts4 {
-        [[= storm::primary_part]] int          tenant_id{};
-        [[= storm::primary_part]] std::string  sku{};
-        [[= storm::primary_part]] std::int64_t entry_id{};
-        [[= storm::primary_part]] int          region_id{};
-        int                                    payload{};
+        [[= primary_part]] int          tenant_id{};
+        [[= primary_part]] std::string  sku{};
+        [[= primary_part]] std::int64_t entry_id{};
+        [[= primary_part]] int          region_id{};
+        int                             payload{};
     };
 
     // ---- Rejected: 5 parts — one past the ceiling, the overrun this closes ----
 
     struct PkParts5 {
-        [[= storm::primary_part]] int          tenant_id{};
-        [[= storm::primary_part]] std::string  sku{};
-        [[= storm::primary_part]] std::int64_t entry_id{};
-        [[= storm::primary_part]] int          region_id{};
-        [[= storm::primary_part]] int          shard_id{};
-        int                                    payload{};
+        [[= primary_part]] int          tenant_id{};
+        [[= primary_part]] std::string  sku{};
+        [[= primary_part]] std::int64_t entry_id{};
+        [[= primary_part]] int          region_id{};
+        [[= primary_part]] int          shard_id{};
+        int                             payload{};
     };
 
     // Well past the ceiling — pins that the gate is a bound, not a check for exactly
     // one surplus part.
     struct PkParts7 {
-        [[= storm::primary_part]] int          a{};
-        [[= storm::primary_part]] int          b{};
-        [[= storm::primary_part]] int          c{};
-        [[= storm::primary_part]] int          d{};
-        [[= storm::primary_part]] int          e{};
-        [[= storm::primary_part]] std::string  f{};
-        [[= storm::primary_part]] std::int64_t g{};
-        int                                    payload{};
+        [[= primary_part]] int          a{};
+        [[= primary_part]] int          b{};
+        [[= primary_part]] int          c{};
+        [[= primary_part]] int          d{};
+        [[= primary_part]] int          e{};
+        [[= primary_part]] std::string  f{};
+        [[= primary_part]] std::int64_t g{};
+        int                             payload{};
     };
 
 } // namespace
@@ -94,15 +103,14 @@ namespace {
 // The load-bearing one: holds under ANY capacity, so it keeps guarding the derivation
 // if CAPACITY is ever raised.
 static_assert(
-        storm::orm::utilities::StitchKey::MAX_PARTS * sizeof(std::uint64_t) ==
-                storm::orm::utilities::StitchKey::CAPACITY,
+        StitchKey::MAX_PARTS * sizeof(std::uint64_t) == StitchKey::CAPACITY,
         "MAX_PARTS must be exactly the capacity in 8-byte words — every part writes one word"
 );
 // Pins today's ceiling, which the docs and the base.cppm rationale both quote as 4.
 // NOTE: raising CAPACITY (the escape hatch base.cppm describes, for a real >4-part key)
 // means updating this line together with the PkParts5 / PkParts7 expectations below —
 // they encode "one past the ceiling" and "well past it" as literal part counts.
-static_assert(storm::orm::utilities::StitchKey::MAX_PARTS == 4, "the documented ceiling today is 4 parts");
+static_assert(StitchKey::MAX_PARTS == 4, "the documented ceiling today is 4 parts");
 
 // ============================================================================
 // Compile-time concept gate — ModelPrimaryKeyPartLimit<T>
@@ -112,27 +120,21 @@ static_assert(storm::orm::utilities::StitchKey::MAX_PARTS == 4, "the documented 
 // a negative-compile test must pin the concept, not a loosely constrained API that
 // could reject for an unrelated reason (matching test_timestamp_pk.cpp, #511).
 
-static_assert(storm::orm::statements::ModelPrimaryKeyPartLimit<PkParts2>, "a 2-part composite PK must be accepted");
-static_assert(storm::orm::statements::ModelPrimaryKeyPartLimit<PkParts3>, "a 3-part composite PK must be accepted");
-static_assert(
-        storm::orm::statements::ModelPrimaryKeyPartLimit<PkParts4>,
-        "a 4-part composite PK fills StitchKey exactly and must be accepted"
-);
+static_assert(ModelPrimaryKeyPartLimit<PkParts2>, "a 2-part composite PK must be accepted");
+static_assert(ModelPrimaryKeyPartLimit<PkParts3>, "a 3-part composite PK must be accepted");
+static_assert(ModelPrimaryKeyPartLimit<PkParts4>, "a 4-part composite PK fills StitchKey exactly and must be accepted");
 
+static_assert(!ModelPrimaryKeyPartLimit<PkParts5>, "a 5-part composite PK overflows StitchKey and must be rejected");
 static_assert(
-        !storm::orm::statements::ModelPrimaryKeyPartLimit<PkParts5>,
-        "a 5-part composite PK overflows StitchKey and must be rejected"
-);
-static_assert(
-        !storm::orm::statements::ModelPrimaryKeyPartLimit<PkParts7>,
+        !ModelPrimaryKeyPartLimit<PkParts7>,
         "a 7-part composite PK must be rejected — the gate is a bound, not an off-by-one check"
 );
 
 // Single-PK models take the bare std::uint64_t stitch path and never build a
 // StitchKey at all, so they are unaffected by construction. Pinned on in-tree models
 // (the "existing models keep compiling" clause) rather than left implicit.
-static_assert(storm::orm::statements::ModelPrimaryKeyPartLimit<Person>, "Person must be unaffected");
-static_assert(storm::orm::statements::ModelPrimaryKeyPartLimit<Task>, "Task must be unaffected");
+static_assert(ModelPrimaryKeyPartLimit<Person>, "Person must be unaffected");
+static_assert(ModelPrimaryKeyPartLimit<Task>, "Task must be unaffected");
 
 // ============================================================================
 // The gate is REACHED — an over-wide model cannot instantiate a statement class
@@ -150,8 +152,7 @@ static_assert(storm::orm::statements::ModelPrimaryKeyPartLimit<Task>, "Task must
 // yielding false. Same pattern and same spelling as test_composite_primary_key.cpp
 // (#500) and test_annotation_conflicts.cpp (#492).
 
-template <class M>
-constexpr bool base_statement_instantiable = requires { typename storm::orm::statements::BaseStatement<M>; };
+template <class M> constexpr bool base_statement_instantiable = requires { typename BaseStatement<M>; };
 
 static_assert(
         !base_statement_instantiable<PkParts5>,
@@ -191,8 +192,8 @@ namespace {
     // key would not exercise append_string's word-writing at the last slot, which is
     // the one adjacent to the end of the buffer.
     auto make_four_part_key(std::int64_t tenant, std::string_view sku, std::int64_t entry, std::int64_t region)
-            -> storm::orm::utilities::StitchKey {
-        storm::orm::utilities::StitchKey key;
+            -> StitchKey {
+        StitchKey key;
         key.append_int64(tenant);
         key.append_string(sku);
         key.append_int64(entry);
@@ -219,7 +220,7 @@ namespace {
     // overrun past. Pinned separately as a map round-trip: the stitch reaches the key
     // only through hash + operator==, so both must see the final word.
     TEST(PkPartLimitTest, FourPartKeysStitchDistinctlyInAMap) {
-        std::unordered_map<storm::orm::utilities::StitchKey, int> map;
+        std::unordered_map<StitchKey, int> map;
         map[make_four_part_key(1, "sku-1", 2, 3)] = 10;
         map[make_four_part_key(1, "sku-1", 2, 4)] = 20; // differs in the final slot only
 

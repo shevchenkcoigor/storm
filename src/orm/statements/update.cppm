@@ -17,6 +17,8 @@ import storm_orm_utilities;
 import storm_orm_transaction;
 import storm_orm_where;
 import storm_db_concept;
+import storm_db_default_connection;
+import storm_db_sqlite;
 
 export namespace storm::orm::statements {
 
@@ -101,7 +103,8 @@ export namespace storm::orm::statements {
     } // namespace detail
 
     // Statement class for ORM update operations
-    template <typename T, storm::db::DatabaseConnection ConnType> class UpdateStatement : private BaseStatement<T> {
+    template <typename T, storm::db::DatabaseConnection ConnType = storm::db::sqlite::Connection>
+    class UpdateStatement : private BaseStatement<T> {
         friend class BaseStatement<T>; // Allow BaseStatement to access protected/private members
         using Base       = BaseStatement<T>;
         using Connection = ConnType;
@@ -162,7 +165,8 @@ export namespace storm::orm::statements {
         }
 
       public:
-        explicit UpdateStatement(std::shared_ptr<ConnType> conn) : conn_(std::move(conn)) {}
+        explicit UpdateStatement(std::shared_ptr<ConnType> conn = storm::db::DefaultConnection<ConnType>::get())
+            : conn_(std::move(conn)) {}
 
         [[nodiscard]] auto query(const T& obj [[clang::lifetimebound]]) -> detail::SingleQuery<T, ConnType> {
             return {{}, std::move(*this), obj};

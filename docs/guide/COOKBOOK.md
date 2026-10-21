@@ -10,7 +10,7 @@ using namespace storm;
 
 // Define a model — reflection maps fields to columns automatically
 struct Person {
-    [[= storm::primary]] int id{};
+    [[= primary]] int id{};
     std::string name;
     int age;
     double salary;
@@ -19,7 +19,7 @@ struct Person {
 };
 
 // Connect (thread-local, one per thread)
-QuerySet<Person>::set_default_connection(":memory:");
+DefaultConnection<>::set(":memory:");
 QuerySet<Person> qs;
 ```
 
@@ -113,7 +113,7 @@ See [reference/FIELD_TYPES.md](reference/FIELD_TYPES.md) and the QuerySet API se
 
 ```cpp
 struct Article {
-    [[=storm::primary]] int id;
+    [[=primary]] int id;
     std::string title;
     [[=storm::auto_create]] std::chrono::system_clock::time_point created_at;
     [[=storm::auto_update]] std::chrono::system_clock::time_point updated_at;
@@ -217,9 +217,9 @@ auto pairs = qs.values<fields::Person.name, fields::Person.age>().execute();
 
 ```cpp
 struct Message {
-    [[= storm::primary]] int id{};
+    [[= primary]] int id{};
     std::string content;
-    [[= storm::fk<>]] Person sender;
+    [[= fk<>]] Person sender;
 };
 
 QuerySet<Message> msg_qs;
@@ -248,7 +248,7 @@ auto diff   = qs1.where(...).except_(qs2.where(...)).select().execute();
 ## Transactions
 
 ```cpp
-auto conn = QuerySet<Person>::get_default_connection();
+auto conn = DefaultConnection<>::get();
 
 // RAII guard — explicit commit; rollback on early return/throw/scope exit.
 auto txn = storm::begin(conn);
@@ -279,16 +279,16 @@ and WAL recommendations (#410).
 ```cpp
 // Each thread gets its own connection — safe
 void worker() {
-    QuerySet<Person>::set_default_connection(":memory:");
+    DefaultConnection<>::set(":memory:");
     QuerySet<Person> qs;
     qs.where(fields::Person.age > 30).select().execute();
 }
 
 std::jthread t1(worker), t2(worker);
 
-// Check before use — has_default_connection() avoids the assert in
-// get_default_connection() when a thread might not have set one yet.
-if (!QuerySet<Person>::has_default_connection()) {
-    QuerySet<Person>::set_default_connection(":memory:");
+// Check before use — DefaultConnection::has() avoids the abort in
+// DefaultConnection::get() when a thread might not have set one yet.
+if (!DefaultConnection<>::has()) {
+    DefaultConnection<>::set(":memory:");
 }
 ```

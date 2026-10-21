@@ -3,7 +3,8 @@
 
 // NOLINTBEGIN(cppcoreguidelines-non-private-member-variables-in-classes,misc-non-private-member-variables-in-classes,readability-identifier-length)
 
-import storm;
+import storm_db_postgresql;
+import storm_db_sqlite;
 import std;
 
 // ============================================================================

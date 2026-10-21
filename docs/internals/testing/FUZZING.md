@@ -10,7 +10,7 @@ Storm uses **libFuzzer** (built into the custom Clang at `../clang-p2996/`) to s
 | `fuzz_where_int` | Integer WHERE filters: `==`, `!=`, `>`, `<`, `IN`, `BETWEEN` |
 | `fuzz_like_pattern` | LIKE patterns with adversarial input (null bytes, `%`, `_`, quotes, unicode) |
 | `fuzz_batch_insert` | Batch insert sizes around the SQLite 999-parameter limit |
-| `fuzz_connection_string` | Malformed connection strings passed to `set_default_connection()` |
+| `fuzz_connection_string` | Malformed connection strings passed to `DefaultConnection::set()` |
 
 ### How harnesses work
 
@@ -22,7 +22,7 @@ Each harness receives a random byte sequence from libFuzzer and uses it as **run
 | `fuzz_where_int` | Fuzz bytes → two `int` values (via `memcpy`) bound to `==`, `!=`, `>`, `<`, `IN`, `BETWEEN` |
 | `fuzz_like_pattern` | Fuzz bytes → `std::string` LIKE pattern (null bytes, `%`, `_`, quotes, unicode) |
 | `fuzz_batch_insert` | Input **size** (mod 1100) → batch count; byte **values** → row field values; probes around the SQLite 999-param boundary |
-| `fuzz_connection_string` | Fuzz bytes → raw connection string passed to `set_default_connection()` |
+| `fuzz_connection_string` | Fuzz bytes → raw connection string passed to `DefaultConnection::set()` |
 
 SQL errors (e.g. malformed patterns) are **expected and caught** inside every harness. Only crashes or sanitizer reports (ASAN/UBSAN) indicate real bugs.
 

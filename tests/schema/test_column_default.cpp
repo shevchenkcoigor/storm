@@ -10,13 +10,18 @@
 
 #include "test_db_helpers.h"
 
-import storm;
+import storm_db_default_connection;
+import storm_db_postgresql;
+import storm_db_sqlite;
+import storm_meta;
+import storm_orm_indexes;
+import storm_orm_schema;
 import std;
-
-using storm::QuerySet;
 
 #include "../../shared/models/person.h" // NOSONAR cpp:S954
 #include "test_fixture.h"
+using storm::primary;
+using storm::db::DefaultConnection;
 
 using storm::orm::schema::Dialect;
 using storm::orm::schema::SchemaStatement;
@@ -24,15 +29,15 @@ using storm::orm::schema::SchemaStatement;
 // Local model exercising every covered scalar/text default. Defined after
 // `import storm;` so the storm:: annotation binds to the imported object.
 struct ColumnDefaultModel {
-    [[= storm::primary]] int id{};
-    int                      priority{1};
-    std::int64_t             big{1000000000000};
-    int                      neg{-5};
-    double                   rate{0.0};
-    double                   pi{3.14};
-    float                    ratio{2.5F};
-    std::string              status{"new"};
-    std::string              tricky{"O'Brien"};
+    [[= primary]] int id{};
+    int               priority{1};
+    std::int64_t      big{1000000000000};
+    int               neg{-5};
+    double            rate{0.0};
+    double            pi{3.14};
+    float             ratio{2.5F};
+    std::string       status{"new"};
+    std::string       tricky{"O'Brien"};
 };
 
 // A model whose non-bool columns carry NO default initializer at all (not even
@@ -40,9 +45,9 @@ struct ColumnDefaultModel {
 // from `int x = 0;`, so the "no DEFAULT" guarantee only holds for members with no
 // initializer token whatsoever.
 struct NoDefaultModel {
-    [[= storm::primary]] int id{};
-    int                      count;
-    std::string              label;
+    [[= primary]] int id{};
+    int               count;
+    std::string       label;
 };
 
 // ============================================================================
@@ -140,7 +145,7 @@ template <typename ConnType> class ColumnDefaultAlterTest : public StormTestFixt
 TYPED_TEST_SUITE(ColumnDefaultAlterTest, DatabaseTypes);
 
 TYPED_TEST(ColumnDefaultAlterTest, AddIntNotNullColumnOnPopulatedTableSucceeds) {
-    const auto& conn = QuerySet<Person, TypeParam>::get_default_connection();
+    const auto& conn = DefaultConnection<TypeParam>::get();
 
     ASSERT_TRUE(conn->execute("CREATE TABLE t (id INTEGER PRIMARY KEY)").has_value());
     ASSERT_TRUE(conn->execute("INSERT INTO t (id) VALUES (1)").has_value());
@@ -155,7 +160,7 @@ TYPED_TEST(ColumnDefaultAlterTest, AddIntNotNullColumnOnPopulatedTableSucceeds) 
 }
 
 TYPED_TEST(ColumnDefaultAlterTest, AddTextNotNullColumnOnPopulatedTableSucceeds) {
-    const auto& conn = QuerySet<Person, TypeParam>::get_default_connection();
+    const auto& conn = DefaultConnection<TypeParam>::get();
 
     ASSERT_TRUE(conn->execute("CREATE TABLE t2 (id INTEGER PRIMARY KEY)").has_value());
     ASSERT_TRUE(conn->execute("INSERT INTO t2 (id) VALUES (1)").has_value());
@@ -170,7 +175,7 @@ TYPED_TEST(ColumnDefaultAlterTest, AddTextNotNullColumnOnPopulatedTableSucceeds)
 // backends, so a DEFAULT value the dialect's parser actually rejects (#568 class)
 // would fail here instead of shipping behind a passing text assertion.
 TYPED_TEST(ColumnDefaultAlterTest, CreateTableWithDefaultsSucceeds) {
-    const auto& conn   = QuerySet<Person, TypeParam>::get_default_connection();
+    const auto& conn   = DefaultConnection<TypeParam>::get();
     auto        result = SchemaStatement<ColumnDefaultModel>::create_table_if_not_exists(conn);
     ASSERT_TRUE(result.has_value()) << "ColumnDefaultModel DDL failed: " << result.error().message();
 }

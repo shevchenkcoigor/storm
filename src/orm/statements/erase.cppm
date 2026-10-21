@@ -15,6 +15,8 @@ import storm_orm_utilities;
 import storm_orm_transaction;
 import storm_orm_where;
 import storm_db_concept;
+import storm_db_default_connection;
+import storm_db_sqlite;
 
 export namespace storm::orm::statements {
 
@@ -24,7 +26,8 @@ export namespace storm::orm::statements {
     using storm::orm::utilities::TransactionGuard;
 
     // Statement class for ORM erase operations
-    template <typename T, storm::db::DatabaseConnection ConnType> class EraseStatement : private BaseStatement<T> {
+    template <typename T, storm::db::DatabaseConnection ConnType = storm::db::sqlite::Connection>
+    class EraseStatement : private BaseStatement<T> {
         friend class BaseStatement<T>; // Allow BaseStatement to access protected/private members
         using Base       = BaseStatement<T>;
         using Connection = ConnType;
@@ -82,7 +85,8 @@ export namespace storm::orm::statements {
         }
 
       public:
-        explicit EraseStatement(std::shared_ptr<ConnType> conn) : conn_(std::move(conn)) {}
+        explicit EraseStatement(std::shared_ptr<ConnType> conn = storm::db::DefaultConnection<ConnType>::get())
+            : conn_(std::move(conn)) {}
 
         struct SingleQuery {
             EraseStatement     stmt;
