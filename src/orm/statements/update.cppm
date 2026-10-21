@@ -165,9 +165,8 @@ export namespace storm::orm::statements {
         }
 
       public:
-        UpdateStatement() : conn_(storm::db::DefaultConnection<ConnType>::get()) {}
-
-        explicit UpdateStatement(std::shared_ptr<ConnType> conn) : conn_(std::move(conn)) {}
+        explicit UpdateStatement(std::shared_ptr<ConnType> conn = storm::db::DefaultConnection<ConnType>::get())
+            : conn_(std::move(conn)) {}
 
         [[nodiscard]] auto query(const T& obj [[clang::lifetimebound]]) -> detail::SingleQuery<T, ConnType> {
             return {{}, std::move(*this), obj};

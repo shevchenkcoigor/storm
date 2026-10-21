@@ -338,9 +338,8 @@ export namespace storm::orm::statements {
         }
 
       public:
-        InsertStatement() : conn_(storm::db::DefaultConnection<ConnType>::get()) {}
-
-        explicit InsertStatement(std::shared_ptr<ConnType> conn) : conn_(std::move(conn)) {}
+        explicit InsertStatement(std::shared_ptr<ConnType> conn = storm::db::DefaultConnection<ConnType>::get())
+            : conn_(std::move(conn)) {}
 
         // Single-row insert proxy. R selects RETURNING (execute() yields the generated id)
         // or the plain void path. on_conflict() starts the upsert chain (#205):

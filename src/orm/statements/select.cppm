@@ -92,9 +92,8 @@ export namespace storm::orm::statements {
             return select_sql_string;
         }
 
-        SelectStatement() : conn_(storm::db::DefaultConnection<ConnType>::get()) {}
-
-        explicit SelectStatement(std::shared_ptr<ConnType> conn) : conn_(std::move(conn)) {}
+        explicit SelectStatement(std::shared_ptr<ConnType> conn = storm::db::DefaultConnection<ConnType>::get())
+            : conn_(std::move(conn)) {}
 
         [[nodiscard]] auto connection() const -> const std::shared_ptr<ConnType>& {
             return conn_;

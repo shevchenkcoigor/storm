@@ -85,9 +85,8 @@ export namespace storm::orm::statements {
         }
 
       public:
-        EraseStatement() : conn_(storm::db::DefaultConnection<ConnType>::get()) {}
-
-        explicit EraseStatement(std::shared_ptr<ConnType> conn) : conn_(std::move(conn)) {}
+        explicit EraseStatement(std::shared_ptr<ConnType> conn = storm::db::DefaultConnection<ConnType>::get())
+            : conn_(std::move(conn)) {}
 
         struct SingleQuery {
             EraseStatement     stmt;
