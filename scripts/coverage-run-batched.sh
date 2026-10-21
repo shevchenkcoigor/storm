@@ -50,8 +50,15 @@ TEST_BIN="${BUILD_DIR}/tests/storm_tests"
 # clear the libpq defaults too:
 #   env -u STORM_PG_CONNSTR -u PGHOST -u PGUSER -u PGDATABASE ...
 # — which fails the 100% gate by design, since the PG-only lines go uncovered.
+#
+# The default's socket directory depends on the host OS (Linux /var/run/postgresql,
+# macOS /tmp) and is owned by pg-default-connstr.sh so commit.sh agrees with it.
 if [[ -z "${STORM_PG_CONNSTR+set}" ]]; then
-    export STORM_PG_CONNSTR="host=/var/run/postgresql dbname=storm_db user=storm_db"
+    # shellcheck source=pg-default-connstr.sh
+    source "$(dirname "${BASH_SOURCE[0]}")/pg-default-connstr.sh"
+    # Separate statement: `export x="$(f)"` would mask f's failure under set -e.
+    default_connstr="$(storm_pg_default_connstr)"
+    export STORM_PG_CONNSTR="$default_connstr"
 fi
 
 # Fail-loud diagnostic: without a reachable server the PG suites SKIP silently

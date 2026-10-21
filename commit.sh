@@ -404,6 +404,23 @@ if [[ -n "$STAGED_FILES" ]] \
     echo -e "${DIM}✓ SessionStart hook wiring self-test passed${RESET}"
 fi
 
+# --- Per-OS PostgreSQL socket default self-test ---
+# scripts/pg-default-connstr.sh picks the default STORM_PG_CONNSTR socket directory
+# (Linux /var/run/postgresql, macOS /tmp). A commit touching only it, its two callers
+# or dev-container.sh has no src/tests/cmake changes, so TOTAL_STEPS would be 0 and
+# nothing would run — yet a wrong branch there silently skips every PG test and
+# leaves the coverage gate stuck at ~99.8%. Same reasoning as the guards above, so
+# it sits BEFORE the TOTAL_STEPS==0 early exit. Cheap pure-bash check.
+if [[ -n "$STAGED_FILES" ]] \
+   && grep -qE '^(commit\.sh|scripts/(pg-default-connstr|coverage-run-batched|dev-container)\.sh|scripts/tests/test_pg_default_connstr\.sh)$' <<< "$STAGED_FILES"; then
+    if ! "$(dirname "${BASH_SOURCE[0]}")/scripts/tests/test_pg_default_connstr.sh"; then
+        echo ""
+        echo -e "${RED}${BOLD} COMMIT BLOCKED — per-OS PostgreSQL socket default self-test failed${RESET}"
+        exit 1
+    fi
+    echo -e "${DIM}✓ per-OS PostgreSQL socket default self-test passed${RESET}"
+fi
+
 # --- Count total steps ---
 TOTAL_STEPS=0
 [[ "$RUN_FORMAT" == true ]] && ((TOTAL_STEPS++))
@@ -532,11 +549,18 @@ if [[ "$RUN_TESTS" == true ]]; then
         cmake --build --preset ninja-debug || return 1
 
         # Soft default (not an override): an already-exported STORM_PG_CONNSTR
-        # wins, matching scripts/coverage-run-batched.sh's policy for the same
-        # variable — a hard override here would silently point tests at a
-        # different DB than coverage uses in the same commit.sh run. Also
-        # duplicated in CMakePresets.json's ninja-debug testPreset; keep in sync.
-        : "${STORM_PG_CONNSTR:=host=/var/run/postgresql dbname=storm_db user=storm_db}"
+        # wins, as in scripts/coverage-run-batched.sh — a hard override here would
+        # silently point tests at a different DB than coverage uses in the same
+        # commit.sh run. The two share the DEFAULT (per-OS socket directory, from
+        # scripts/pg-default-connstr.sh) but not the empty-value rule: this treats
+        # a set-but-empty value as unset, the coverage script passes it through.
+        # CMakePresets.json's testPresets still carry the Linux path (`ctest
+        # --preset` only).
+        if [[ -z "${STORM_PG_CONNSTR:-}" ]]; then
+            # shellcheck source=scripts/pg-default-connstr.sh
+            source "$(dirname "${BASH_SOURCE[0]}")/scripts/pg-default-connstr.sh"
+            STORM_PG_CONNSTR="$(storm_pg_default_connstr)" || return 1
+        fi
         export STORM_PG_CONNSTR
 
         # PG unreachable means every PG-backed test GTEST_SKIPs (gtest still
