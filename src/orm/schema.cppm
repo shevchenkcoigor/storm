@@ -1866,8 +1866,10 @@ export namespace storm::orm::schema {
         }
 
         // Execute all CREATE INDEX IF NOT EXISTS statements on the given connection.
-        template <db::DatabaseConnection ConnType>
-        [[nodiscard]] static auto create_indexes_if_not_exist(std::shared_ptr<ConnType> conn)
+        // Defaults to the calling thread's default connection for ConnType.
+        template <db::DatabaseConnection ConnType = db::sqlite::Connection>
+        [[nodiscard]] static auto
+        create_indexes_if_not_exist(std::shared_ptr<ConnType> conn = db::DefaultConnection<ConnType>::get())
                 -> std::expected<void, typename ConnType::Error> {
             for (const auto& sql : index_sql_strings_) {
                 auto result = conn->execute(sql);
@@ -1970,22 +1972,13 @@ export namespace storm::orm::schema {
         // Execute CREATE TABLE IF NOT EXISTS on the given connection.
         // Selects the appropriate dialect at compile time. FK-referenced parent tables
         // are created first so always-on referential integrity (#412) is satisfied.
-        template <db::DatabaseConnection ConnType>
-        [[nodiscard]] static auto create_table_if_not_exists(std::shared_ptr<ConnType> conn)
+        // Defaults to the calling thread's default connection for ConnType.
+        template <db::DatabaseConnection ConnType = db::sqlite::Connection>
+        [[nodiscard]] static auto
+        create_table_if_not_exists(std::shared_ptr<ConnType> conn = db::DefaultConnection<ConnType>::get())
                 -> std::expected<void, typename ConnType::Error> {
             std::set<std::string, std::less<>> done;
             return create_table_if_not_exists(conn, done);
-        }
-
-        // Uses the calling thread's default connection for ConnType.
-        template <db::DatabaseConnection ConnType = db::sqlite::Connection>
-        [[nodiscard]] static auto create_table_if_not_exists() -> std::expected<void, typename ConnType::Error> {
-            return create_table_if_not_exists(db::DefaultConnection<ConnType>::get());
-        }
-
-        template <db::DatabaseConnection ConnType = db::sqlite::Connection>
-        [[nodiscard]] static auto create_indexes_if_not_exist() -> std::expected<void, typename ConnType::Error> {
-            return create_indexes_if_not_exist(db::DefaultConnection<ConnType>::get());
         }
     };
 

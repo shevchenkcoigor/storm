@@ -69,7 +69,7 @@ export namespace storm {
     using meta::reverse_fk;           // NOLINT(misc-unused-using-decls)
     using meta::ReverseFk;            // NOLINT(misc-unused-using-decls)
 
-    // Field-selector proxies (#518)
+    // Field-selector proxies (issue 518)
     using meta::AnySelector;      // NOLINT(misc-unused-using-decls)
     using meta::field_specs_for;  // NOLINT(misc-unused-using-decls)
     using meta::FieldRef;         // NOLINT(misc-unused-using-decls)

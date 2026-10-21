@@ -210,7 +210,7 @@ export namespace storm::orm::statements {
             // cached fast statement. Re-checked at execute time, since chain methods inherited by
             // FirstQuery/GetQuery can add any of these after first()/get() was called.
             [[nodiscard]] auto is_plain() const -> bool {
-                return !where_expr && !join_wrapper && !order_by_wrapper && !offset_value;
+                return !where_expr && !join_wrapper && !order_by_wrapper && !offset_value.has_value();
             }
 
             // Chain methods mirror QuerySet. `this Self self` takes the proxy by value: an
