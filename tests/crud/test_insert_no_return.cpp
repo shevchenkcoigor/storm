@@ -171,7 +171,8 @@ TYPED_TEST(InsertNoReturnTest, BatchSizeZeroVoidDoesNotHang) {
     EXPECT_EQ(count.value(), 3) << "All rows should be inserted";
 }
 
-// Bug 1 (RETURNING path): same lower-clamp protection in execute_returning.
+// Bug 1 (RETURNING path): same lower-clamp protection when R = ReturnId::Yes
+// (InsertStatement::execute_batched<R>).
 TYPED_TEST(InsertNoReturnTest, BatchSizeZeroReturningDoesNotHang) {
     using ReturnId = storm::orm::statements::ReturnId;
     using storm::orm::statements::InsertOptions;
@@ -184,7 +185,7 @@ TYPED_TEST(InsertNoReturnTest, BatchSizeZeroReturningDoesNotHang) {
     EXPECT_EQ(result.value().size(), 3) << "All inserted IDs should be returned";
 }
 
-// Bug 2: BulkQuery::sql() on an empty span hit (count - 1) → SIZE_MAX in
+// Bug 2: BulkInsertQuery<R>::sql() on an empty span hit (count - 1) → SIZE_MAX in
 // build_bulk_insert_body's reserve(). It must return the bare prefix instead.
 TYPED_TEST(InsertNoReturnTest, EmptyBulkSqlNoUnderflow) {
     storm::QuerySet<Person, TypeParam> qs;

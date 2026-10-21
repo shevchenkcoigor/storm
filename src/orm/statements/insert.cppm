@@ -24,7 +24,7 @@ export namespace storm::orm::statements {
     using storm::orm::utilities::ConstexprString;
     using storm::orm::utilities::TransactionGuard;
 
-    // Controls whether single INSERT returns the auto-generated ID
+    // Controls whether INSERT returns the auto-generated ID(s)
     enum class ReturnId : bool { No = false, Yes = true };
 
     // Configuration options for batch INSERT operations
@@ -127,28 +127,15 @@ export namespace storm::orm::statements {
             const T&                     obj;
             template <auto... S>
                 requires UpsertSettable<T, storm::meta::selector_info<S>()...>
-            [[nodiscard]] auto update() -> UpdateUpsertQuery<
+            [[nodiscard]] auto update() && -> UpdateUpsertQuery<
                     T,
                     ConnType,
                     ConflictTargetTag<Target...>,
                     storm::meta::selector_info<S>()...> {
                 return {std::move(stmt), obj};
             }
-            [[nodiscard]] auto nothing() -> NothingUpsertQuery<T, ConnType, Target...> {
+            [[nodiscard]] auto nothing() && -> NothingUpsertQuery<T, ConnType, Target...> {
                 return {std::move(stmt), obj};
-            }
-        };
-
-        // Shared upsert entry point (#205) for the single-row query proxies (SingleQuery/
-        // VoidQuery): INSERT ... ON CONFLICT (Target...) DO {UPDATE|NOTHING}. CRTP base so
-        // both proxies offer on_conflict() without duplicating the method body — the derived
-        // proxy supplies `stmt`/`obj` via Derived's own members.
-        template <typename T, storm::db::DatabaseConnection ConnType, typename Derived> struct OnConflictMixin {
-            template <auto... S>
-                requires ConflictTargetUnique<T, storm::meta::selector_info<S>()...>
-            [[nodiscard]] auto on_conflict() -> ConflictTarget<T, ConnType, storm::meta::selector_info<S>()...> {
-                auto* self = static_cast<Derived*>(this);
-                return {std::move(self->stmt), self->obj};
             }
         };
 
@@ -226,6 +213,12 @@ export namespace storm::orm::statements {
         static inline const std::string insert_sql_string = std::string(insert_sql_array);
 
       private:
+        // Result of a bulk insert: the generated ids with ReturnId::Yes, void otherwise.
+        // Declared before the public proxies because it appears in their return types.
+        template <ReturnId R>
+        using BulkResult =
+                std::expected<std::conditional_t<R == ReturnId::Yes, std::vector<std::int64_t>, void>, Error>;
+
         // Compile-time bulk INSERT prefix calculation
         static consteval auto calculate_bulk_insert_prefix_size() -> std::size_t {
             using utilities::sql_len::INSERT_INTO;
@@ -270,7 +263,7 @@ export namespace storm::orm::statements {
         static inline const std::string returning_suffix = std::string(returning_suffix_array);
 
         // Build bulk INSERT SQL body (shared by both returning and non-returning variants)
-        static auto build_bulk_insert_body(std::size_t count) -> std::string {
+        static __attribute__((cold)) auto build_bulk_insert_body(std::size_t count) -> std::string {
             // Guard count == 0: (count - 1) below wraps to SIZE_MAX, and an empty
             // VALUES list is invalid SQL anyway. Return the bare prefix. See #359.
             if (count == 0) {
@@ -299,23 +292,11 @@ export namespace storm::orm::statements {
             return sql;
         }
 
-        // Generate bulk INSERT SQL with multiple value sets (with caching)
-        // Returns const reference to avoid expensive string copy
-        static auto get_bulk_insert_sql(std::size_t count) -> const std::string& {
-            // Thread-local cache for common batch sizes
-            static thread_local BulkSQLCache cache;
-
-            // Check cache first
-            if (const auto* cached = cache.find(count)) {
-                return *cached; // Return by reference - no copy
-            }
-
-            cache.insert(count, build_bulk_insert_body(count));
-            return *cache.find(count); // Guaranteed to exist after insert
-        }
-
-        // Generate bulk INSERT ... RETURNING <pk> SQL (with separate cache)
-        static auto get_bulk_insert_returning_sql(std::size_t count) -> const std::string& {
+        // Bulk INSERT SQL for `count` rows, with or without " RETURNING <pk>" (with caching).
+        // Returns const reference to avoid expensive string copy. The function-local
+        // thread_local cache is per instantiation, so the RETURNING and plain variants
+        // (R = Yes / No) keep separate caches without needing two functions.
+        template <ReturnId R> static auto get_bulk_insert_sql(std::size_t count) -> const std::string& {
             static thread_local BulkSQLCache cache;
 
             if (const auto* cached = cache.find(count)) {
@@ -323,132 +304,123 @@ export namespace storm::orm::statements {
             }
 
             std::string sql = build_bulk_insert_body(count);
-            sql += returning_suffix;
-
+            if constexpr (R == ReturnId::Yes) {
+                sql += returning_suffix;
+            }
             cache.insert(count, std::move(sql));
-            return *cache.find(count);
+            return *cache.find(count); // Guaranteed to exist after insert
+        }
+
+        // Rows per bulk statement: the bind-variable limit divided by field_count_.
+        // Dividing by placeholders_count() instead would be tighter for a DB-generated PK
+        // (it is not bound) and exact for a composite-FK member (N placeholders, one
+        // field), but it grew the chunk from 249 to 333 rows on the INSERT benchmark model
+        // and measured ~2.6% slower at N=1000. Until that is resolved, a model with a
+        // composite-FK member can still overshoot the parameter limit.
+        // Clamped to [1, max_allowed]: a caller-supplied 0 would never advance the chunk
+        // loop (offset += 0, see #359), and the upper bound caps at the parameter limit.
+        static auto effective_batch_size(const std::optional<InsertOptions>& opts) -> std::size_t {
+            constexpr std::size_t max_allowed =
+                    std::max<std::size_t>(1, Base::MAX_DB_VARIABLES / std::max<std::size_t>(1, Base::field_count_));
+            const std::size_t requested = opts.value_or(InsertOptions{}).batch_size.value_or(max_allowed);
+            return std::clamp<std::size_t>(requested, 1, max_allowed);
+        }
+
+        template <ReturnId R> static auto __attribute__((always_inline)) single_insert_sql() -> const std::string& {
+            if constexpr (R == ReturnId::Yes) {
+                return insert_returning_sql_string;
+            } else {
+                return insert_sql_string;
+            }
         }
 
       public:
         explicit InsertStatement(std::shared_ptr<ConnType> conn) : conn_(std::move(conn)) {}
 
-        struct SingleQuery : detail::OnConflictMixin<T, ConnType, SingleQuery> {
-            InsertStatement    stmt;
-            const T&           obj;
-            [[nodiscard]] auto execute() -> std::expected<std::int64_t, Error> {
-                return stmt.execute_single_optimized(obj, true);
+        // Single-row insert proxy. R selects RETURNING (execute() yields the generated id)
+        // or the plain void path. on_conflict() starts the upsert chain (#205):
+        // INSERT ... ON CONFLICT (Target...) DO {UPDATE|NOTHING}; it is rvalue-only
+        // because it consumes the statement.
+        template <ReturnId R> struct SingleInsertQuery {
+            InsertStatement stmt;
+            const T&        obj;
+
+            using Result = std::
+                    conditional_t<R == ReturnId::Yes, std::expected<std::int64_t, Error>, std::expected<void, Error>>;
+
+            [[nodiscard]] auto execute() -> Result {
+                return stmt.template execute_single<R>(obj);
+            }
+
+            template <auto... S>
+                requires ConflictTargetUnique<T, storm::meta::selector_info<S>()...>
+            [[nodiscard]] auto
+            on_conflict() && -> detail::ConflictTarget<T, ConnType, storm::meta::selector_info<S>()...> {
+                return {std::move(stmt), obj};
             }
             [[nodiscard]] auto to_sql() -> std::expected<std::string, Error> {
-                return stmt.to_sql(obj);
+                return stmt.template to_sql<R>(obj);
             }
             [[nodiscard]] static auto sql() -> std::string {
-                return insert_returning_sql_string;
+                return single_insert_sql<R>();
             }
         };
 
-        struct VoidQuery : detail::OnConflictMixin<T, ConnType, VoidQuery> {
-            InsertStatement    stmt;
-            const T&           obj;
-            [[nodiscard]] auto execute() -> std::expected<void, Error> {
-                return stmt.execute_single_void(obj);
-            }
-            [[nodiscard]] auto to_sql() -> std::expected<std::string, Error> {
-                return stmt.to_sql_no_returning(obj);
-            }
-            [[nodiscard]] static auto sql() -> std::string {
-                return insert_sql_string;
-            }
-        };
-
-        struct BulkQuery {
+        // Bulk insert proxy. R = Yes: execute() yields the generated ids; R = No: void.
+        template <ReturnId R> struct BulkInsertQuery {
             InsertStatement              stmt;
             std::span<const T>           objects;
             std::optional<InsertOptions> opts;
-            [[nodiscard]] auto           execute() -> std::expected<void, Error> {
-                return stmt.execute(objects, opts);
+
+            [[nodiscard]] auto execute() -> BulkResult<R> {
+                return stmt.template execute_batched<R>(objects, opts);
             }
             [[nodiscard]] auto to_sql() -> std::expected<std::string, Error> {
-                return stmt.to_sql(objects);
+                return stmt.template to_sql_bulk<R>(objects);
             }
             [[nodiscard]] auto sql() -> std::string {
-                return std::string(get_bulk_insert_sql(objects.size()));
+                return get_bulk_insert_sql<R>(objects.size());
             }
         };
 
-        struct BulkReturningQuery {
-            InsertStatement              stmt; // NOSONAR(cpp:S1659) — aggregate struct, same pattern as BulkQuery
-            std::span<const T>           objects;
-            std::optional<InsertOptions> opts;
-
-            [[nodiscard]] auto execute() -> std::expected<std::vector<std::int64_t>, Error> { // NOSONAR(cpp:S1659)
-                return stmt.execute_returning(objects, opts);
-            }
-            [[nodiscard]] auto to_sql() -> std::expected<std::string, Error> { // NOSONAR(cpp:S1659)
-                return stmt.to_sql_returning(objects);
-            }
-            [[nodiscard]] auto sql() -> std::string { // NOSONAR(cpp:S1659)
-                return std::string(get_bulk_insert_returning_sql(objects.size()));
-            }
-        };
-
+        // Single-row query. R defaults per model shape (default_return_id<T>()).
         template <ReturnId R = default_return_id<T>()>
             requires ReturnIdSupported<T, R>
-        [[nodiscard]] auto query(const T& obj [[clang::lifetimebound]]) {
-            if constexpr (R == ReturnId::Yes) {
-                return SingleQuery{{}, std::move(*this), obj};
-            } else {
-                return VoidQuery{{}, std::move(*this), obj};
-            }
+        [[nodiscard]] auto query(const T& obj [[clang::lifetimebound]]) -> SingleInsertQuery<R> {
+            return {std::move(*this), obj};
         }
-        // LIFETIME CONTRACT (issue #357, finding B): the returned BulkQuery holds a
+
+        // Bulk query. Unlike the single-row overload, R deliberately defaults to No on
+        // every model: ids from a bulk insert are opt-in via query<ReturnId::Yes>(span).
+        //
+        // LIFETIME CONTRACT (issue #357, finding B): the returned BulkInsertQuery holds a
         // std::span<const T> aliasing the caller's container. `[[clang::lifetimebound]]`
         // (+ -Werror=dangling) catches the inline-temporary case at compile time, but a
         // span built from a container that dies before .execute()/.to_sql() runs still
         // dangles silently at runtime. Treat the proxy as single-expression-use: keep the
-        // backing container alive until the terminal call completes. Same for the
-        // ReturnId-templated overload below.
-        [[nodiscard]] auto
-        query(std::span<const T> objects [[clang::lifetimebound]], std::optional<InsertOptions> opts = std::nullopt)
-                -> BulkQuery {
-            return {std::move(*this), objects, opts};
-        }
-        template <ReturnId R>
+        // backing container alive until the terminal call completes.
+        template <ReturnId R = ReturnId::No>
             requires ReturnIdSupported<T, R>
         [[nodiscard]] auto
-        query(std::span<const T> objects [[clang::lifetimebound]], std::optional<InsertOptions> opts = std::nullopt) {
-            if constexpr (R == ReturnId::Yes) {
-                return BulkReturningQuery{std::move(*this), objects, opts};
-            } else {
-                return BulkQuery{std::move(*this), objects, opts};
-            }
+        query(std::span<const T> objects [[clang::lifetimebound]], std::optional<InsertOptions> opts = std::nullopt)
+                -> BulkInsertQuery<R> {
+            return {std::move(*this), objects, opts};
         }
 
         // Returns SQL string with bound parameters inlined for a single INSERT (for debugging)
-        [[nodiscard]] auto to_sql(const T& obj) -> std::expected<std::string, Error> {
-            return to_sql_impl(insert_returning_sql_string, [&](Statement& s) { return bind_single(s, obj); });
+        template <ReturnId R> [[nodiscard]] auto to_sql(const T& obj) -> std::expected<std::string, Error> {
+            return to_sql_impl(single_insert_sql<R>(), [&](Statement& s) { return bind_single(s, obj); });
         }
 
-        // Returns SQL string for INSERT without RETURNING (for debugging)
-        [[nodiscard]] auto to_sql_no_returning(const T& obj) -> std::expected<std::string, Error> {
-            return to_sql_impl(insert_sql_string, [&](Statement& s) { return bind_single(s, obj); });
-        }
-
-        // Returns SQL string with bound parameters inlined for a bulk INSERT (for debugging)
-        [[nodiscard]] auto to_sql(std::span<const T> objects) -> std::expected<std::string, Error> {
+        // Returns SQL string with bound parameters inlined for a bulk INSERT, with or
+        // without RETURNING (for debugging)
+        template <ReturnId R>
+        [[nodiscard]] __attribute__((cold)) auto to_sql_bulk(std::span<const T> objects)
+                -> std::expected<std::string, Error> {
             if (objects.empty()) {
                 return std::string{};
             }
-            return to_sql_impl(get_bulk_insert_sql(objects.size()), [&](Statement& s) {
-                return bind_bulk(s, objects);
-            });
-        }
-
-        // Returns SQL string with bound parameters inlined for a bulk INSERT ... RETURNING (for debugging)
-        [[nodiscard]] auto to_sql_returning(std::span<const T> objects) -> std::expected<std::string, Error> {
-            if (objects.empty()) {
-                return std::string{};
-            }
-            return to_sql_impl(get_bulk_insert_returning_sql(objects.size()), [&](Statement& s) {
+            return to_sql_impl(get_bulk_insert_sql<R>(objects.size()), [&](Statement& s) {
                 return bind_bulk(s, objects);
             });
         }
@@ -458,7 +430,8 @@ export namespace storm::orm::statements {
         // plus the auto_update now() tail (#209) for any auto_update column not in SetCols —
         // empty SetCols (the DO NOTHING proxy) binds just the non-PK fields.
         template <std::meta::info... SetCols>
-        [[nodiscard]] auto to_sql_with(const std::string& sql, const T& obj) -> std::expected<std::string, Error> {
+        [[nodiscard]] __attribute__((cold)) auto to_sql_with(const std::string& sql, const T& obj)
+                -> std::expected<std::string, Error> {
             return to_sql_impl(sql, [&](Statement& s) -> std::expected<void, Error> {
                 if (auto bound = bind_single(s, obj); !bound) {
                     return std::unexpected(bound.error());
@@ -467,95 +440,52 @@ export namespace storm::orm::statements {
             });
         }
 
-        // Batch insert with RETURNING — returns all inserted IDs
-        [[nodiscard]] auto // NOSONAR(cpp:S1659)
-        execute_returning(std::span<const T> objects, std::optional<InsertOptions> opts = std::nullopt)
-                -> std::expected<std::vector<std::int64_t>, Error> {
+        // Batch insert (single statement, or chunked inside one transaction when the rows
+        // exceed the batch size). R = Yes collects the generated ids in input order.
+        template <ReturnId R>
+        [[nodiscard]] auto execute_batched(std::span<const T> objects, std::optional<InsertOptions> opts = std::nullopt)
+                -> BulkResult<R> {
             if (objects.empty()) {
-                return std::vector<std::int64_t>{};
+                return BulkResult<R>{};
             }
 
-            InsertOptions const options = opts.value_or(InsertOptions{});
-
-            constexpr std::size_t max_allowed          = Base::MAX_DB_VARIABLES / Base::field_count_;
-            std::size_t           effective_batch_size = options.batch_size.value_or(max_allowed);
-            // Clamp to [1, max_allowed]: a caller-supplied batch_size of 0 would otherwise
-            // never advance the chunk loop (offset += 0) — see issue #359.
-            effective_batch_size = std::max<std::size_t>(1, std::min(effective_batch_size, max_allowed));
-
-            if (objects.size() <= effective_batch_size) {
-                return execute_bulk_returning(objects);
+            const std::size_t batch = effective_batch_size(opts);
+            if (objects.size() <= batch) {
+                return execute_bulk<R>(objects); // fits in one bulk SQL
             }
-            return execute_chunked_bulk_returning(objects, effective_batch_size);
+            return execute_chunked_bulk<R>(objects, batch);
         }
 
-        // Batch insert operation with optional configuration
-        // NOTE: Returns void — use execute_returning() when IDs are needed
-        [[nodiscard]] auto execute(std::span<const T> objects, std::optional<InsertOptions> opts = std::nullopt)
-                -> std::expected<void, Error> {
-            if (objects.empty()) {
-                return {};
-            }
-
-            // Use default options if not provided
-            InsertOptions const options = opts.value_or(InsertOptions{});
-
-            // Calculate effective batch size
-            constexpr std::size_t max_allowed          = Base::MAX_DB_VARIABLES / Base::field_count_;
-            std::size_t           effective_batch_size = options.batch_size.value_or(max_allowed);
-            // Clamp to [1, max_allowed]: 0 would never advance the chunk loop (offset += 0,
-            // see issue #359); the upper bound caps at the SQLite parameter limit.
-            effective_batch_size = std::max<std::size_t>(1, std::min(effective_batch_size, max_allowed));
-
-            // Batch path with custom batch size
-            if (objects.size() <= effective_batch_size) {
-                // Fits in one bulk SQL
-                return execute_bulk(objects);
-            }
-            // Need chunking with custom batch size
-            return execute_chunked_bulk_custom(objects, effective_batch_size);
-        }
-
-        // Ultra-optimized single INSERT ... RETURNING <pk>
-        [[nodiscard]] __attribute__((hot)) auto execute_single_optimized(const T& obj, bool return_id = true) noexcept
-                -> std::expected<std::int64_t, Error> {
-            // Both SQLite 3.35+ and PostgreSQL support RETURNING
-            auto prepared = prepare_and_bind(insert_returning_sql_string, obj);
+        // Single INSERT; R = Yes appends RETURNING <pk> and yields the id.
+        template <ReturnId R>
+        [[nodiscard]] __attribute__((hot)) auto execute_single(const T& obj) noexcept -> std::
+                conditional_t<R == ReturnId::Yes, std::expected<std::int64_t, Error>, std::expected<void, Error>> {
+            auto prepared = prepare_and_bind(single_insert_sql<R>(), obj);
             if (!prepared) [[unlikely]] {
                 return std::unexpected(prepared.error());
             }
             Statement* stmt = *prepared;
 
-            // Execute — step_raw() avoids std::expected overhead on hot path
+            // step_raw() avoids std::expected overhead on the hot path
             const int rc = stmt->step_raw();
-            if (rc == Statement::ROW_AVAILABLE) [[likely]] {
-                // RETURNING produced a row — extract the ID
-                std::int64_t id = return_id ? stmt->extract_int64(0) : 0;
+            if constexpr (R == ReturnId::Yes) {
+                if (rc == Statement::ROW_AVAILABLE) [[likely]] {
+                    const auto id = stmt->extract_int64(0);
+                    stmt->reset();
+                    return id;
+                }
                 stmt->reset();
-                return id;
+                if (rc == Statement::NO_MORE_ROWS) [[unlikely]] {
+                    return std::int64_t{0}; // No row returned (shouldn't happen with RETURNING)
+                }
+                return make_error(rc, stmt);
+            } else {
+                stmt->reset();
+                if (rc == Statement::NO_MORE_ROWS) [[likely]] {
+                    return {};
+                }
+                return make_error(rc, stmt);
             }
-            stmt->reset();
-            if (rc == Statement::NO_MORE_ROWS) [[unlikely]] {
-                return 0; // No row returned (shouldn't happen with RETURNING)
-            }
-            return std::unexpected(Error{rc, stmt->get_error_message()});
-        }
-
-        // Optimized single INSERT without RETURNING — no ID extraction overhead
-        [[nodiscard]] __attribute__((hot)) auto execute_single_void(const T& obj) noexcept
-                -> std::expected<void, Error> {
-            auto prepared = prepare_and_bind(insert_sql_string, obj);
-            if (!prepared) [[unlikely]] {
-                return std::unexpected(prepared.error());
-            }
-            Statement* stmt = *prepared;
-
-            const int rc = stmt->step_raw();
-            stmt->reset();
-            if (rc == Statement::NO_MORE_ROWS) [[likely]] {
-                return {};
-            }
-            return std::unexpected(Error{rc, stmt->get_error_message()});
         }
 
         // The number of VALUES placeholders in a plain INSERT. Used by the DO UPDATE
@@ -576,17 +506,33 @@ export namespace storm::orm::statements {
         }
 
         // Step a prepared statement to completion and collapse it to void: a plain
-        // NO_MORE_ROWS is success, anything else is an Error. Shared by the
-        // composite-PK branches of execute_upsert_nothing and UpsertUpdateRunner::run
-        // — a composite key never has RETURNING to extract, so both just need
-        // "did it execute", not a row.
-        [[nodiscard]] static auto finish_void_step(Statement* stmt) -> std::expected<void, Error> {
+        // NO_MORE_ROWS is success, anything else is an Error. Used by the upsert paths
+        // (execute_upsert_nothing, UpsertUpdateRunner::run) on a model whose key is not
+        // DB-generated — there is no RETURNING to extract, only "did it execute".
+        [[nodiscard]] static __attribute__((always_inline)) auto finish_void_step(Statement* stmt)
+                -> std::expected<void, Error> {
             const int rc = stmt->step_raw();
             stmt->reset();
             if (rc == Statement::NO_MORE_ROWS) {
                 return {};
             }
-            return std::unexpected(Error{rc, stmt->get_error_message()});
+            return make_error(rc, stmt);
+        }
+
+        // Step a RETURNING statement that may legitimately yield no row (DO NOTHING):
+        // a row means "inserted" (value = new id), no row means "skipped" (nullopt).
+        [[nodiscard]] static __attribute__((always_inline)) auto finish_optional_id_step(Statement* stmt)
+                -> std::expected<std::optional<std::int64_t>, Error> {
+            const int                   rc = stmt->step_raw();
+            std::optional<std::int64_t> out;
+            if (rc == Statement::ROW_AVAILABLE) {
+                out = stmt->extract_int64(0);
+            }
+            stmt->reset();
+            if (rc == Statement::ROW_AVAILABLE || rc == Statement::NO_MORE_ROWS) {
+                return out;
+            }
+            return make_error(rc, stmt);
         }
 
         // Upsert DO NOTHING — RETURNING yields the new id, or no row when skipped.
@@ -597,33 +543,22 @@ export namespace storm::orm::statements {
         // there (documented in #502's DoD), and this resolves to
         // std::expected<void, Error>. Branch on the same predicate the grammar
         // uses, or this reads a row the statement never asked for.
-        template <std::meta::info... Target> [[nodiscard]] auto execute_upsert_nothing(const T& obj) {
-            const std::string& sql      = Grammar::template nothing_sql<Target...>();
-            auto               prepared = prepare_and_bind(sql, obj);
+        template <std::meta::info... Target>
+        [[nodiscard]] __attribute__((hot)) auto execute_upsert_nothing(const T& obj) {
+            using Result = std::conditional_t<
+                    Base::pk_is_db_generated_(),
+                    std::expected<std::optional<std::int64_t>, Error>,
+                    std::expected<void, Error>>;
+
+            auto prepared = prepare_and_bind(Grammar::template nothing_sql<Target...>(), obj);
+            if (!prepared) {
+                return Result(std::unexpected(prepared.error()));
+            }
+            Statement* stmt = *prepared;
             if constexpr (!Base::pk_is_db_generated_()) {
-                if (!prepared) {
-                    return std::expected<void, Error>(std::unexpected(prepared.error()));
-                }
-                return finish_void_step(*prepared);
+                return finish_void_step(stmt);
             } else {
-                if (!prepared) {
-                    return std::expected<std::optional<std::int64_t>, Error>(std::unexpected(prepared.error()));
-                }
-                Statement*                  stmt = *prepared;
-                const int                   rc   = stmt->step_raw();
-                std::optional<std::int64_t> out;
-                if (rc == Statement::ROW_AVAILABLE) {
-                    out = stmt->extract_int64(0);
-                }
-                stmt->reset();
-                if (rc == Statement::ROW_AVAILABLE || rc == Statement::NO_MORE_ROWS) {
-                    return std::expected<std::optional<std::int64_t>, Error>(
-                            out
-                    ); // value() set when a row came back, nullopt when skipped
-                }
-                return std::expected<std::optional<std::int64_t>, Error>(
-                        std::unexpected(Error{rc, stmt->get_error_message()})
-                );
+                return finish_optional_id_step(stmt);
             }
         }
 
@@ -646,43 +581,39 @@ export namespace storm::orm::statements {
         template <std::meta::info... Target> struct UpsertUpdateRunner {
             InsertStatement*                                         self;
             template <std::meta::info... SetCols> [[nodiscard]] auto run(const T& obj) {
+                using Result = std::conditional_t<
+                        Base::pk_is_db_generated_(),
+                        std::expected<std::int64_t, Error>,
+                        std::expected<void, Error>>;
+
                 const std::string sql = Grammar::template update_sql<Target...>(
                         Grammar::template build_excluded_set_clause<SetCols...>()
                 );
                 auto stmt_result = self->conn_->prepare_cached(sql);
+                if (!stmt_result) {
+                    return Result(std::unexpected(stmt_result.error()));
+                }
+                Statement* stmt = *stmt_result;
+                // (1) bind VALUES params (non-PK fields, same as plain INSERT).
+                if (auto bind_result = self->bind_all_fields(*stmt, obj); !bind_result) {
+                    return Result(std::unexpected(bind_result.error()));
+                }
+                // (2) bind the trailing auto_update now() params (excluded.col targets bind nothing).
+                if (auto bind_result = self->template bind_upsert_auto_updates<SetCols...>(stmt); !bind_result) {
+                    return Result(std::unexpected(bind_result.error()));
+                }
+
                 if constexpr (!Base::pk_is_db_generated_()) {
-                    if (!stmt_result) {
-                        return std::expected<void, Error>(std::unexpected(stmt_result.error()));
-                    }
-                    Statement* stmt = *stmt_result;
-                    if (auto bind_result = self->bind_all_fields(*stmt, obj); !bind_result) {
-                        return std::expected<void, Error>(std::unexpected(bind_result.error()));
-                    }
-                    if (auto bind_result = self->template bind_upsert_auto_updates<SetCols...>(stmt); !bind_result) {
-                        return std::expected<void, Error>(std::unexpected(bind_result.error()));
-                    }
                     return InsertStatement::finish_void_step(stmt);
                 } else {
-                    if (!stmt_result) {
-                        return std::expected<std::int64_t, Error>(std::unexpected(stmt_result.error()));
-                    }
-                    Statement* stmt = *stmt_result;
-                    // (1) bind VALUES params (non-PK fields, same as plain INSERT).
-                    if (auto bind_result = self->bind_all_fields(*stmt, obj); !bind_result) {
-                        return std::expected<std::int64_t, Error>(std::unexpected(bind_result.error()));
-                    }
-                    // (2) bind the trailing auto_update now() params (excluded.col targets bind nothing).
-                    if (auto bind_result = self->template bind_upsert_auto_updates<SetCols...>(stmt); !bind_result) {
-                        return std::expected<std::int64_t, Error>(std::unexpected(bind_result.error()));
-                    }
                     const int rc = stmt->step_raw();
                     if (rc == Statement::ROW_AVAILABLE) {
-                        std::int64_t id = stmt->extract_int64(0);
+                        const std::int64_t id = stmt->extract_int64(0);
                         stmt->reset();
-                        return std::expected<std::int64_t, Error>(id);
+                        return Result(id);
                     }
                     stmt->reset();
-                    return std::expected<std::int64_t, Error>(std::unexpected(Error{rc, stmt->get_error_message()}));
+                    return Result(InsertStatement::make_error(rc, stmt));
                 }
             }
         };
@@ -690,127 +621,96 @@ export namespace storm::orm::statements {
         // Entry point: fixes Target... via UpsertUpdateRunner; callers then supply
         // SetCols... via run<>(). Used by the detail::UpdateUpsertQuery proxy.
         template <std::meta::info... Target>
-        [[nodiscard]] auto upsert_update_runner() -> UpsertUpdateRunner<Target...> {
+        [[nodiscard]] __attribute__((always_inline)) auto upsert_update_runner() -> UpsertUpdateRunner<Target...> {
             return {this};
         }
 
       protected: // Changed to protected so BaseStatement can access
         // Bind non-PK fields for INSERT (skips primary key for auto-increment)
-        [[nodiscard]] auto bind_all_fields(Statement& stmt, const T& obj) noexcept -> std::expected<void, Error> {
-            return Base::template bind_non_pk_fields_impl<ConnType, Statement>(
-                    stmt, obj, typename Base::field_indices_t()
-            );
-        }
-
-        // Execute bulk INSERT with multiple VALUES clauses
-        // NOTE: No transaction wrapper needed - single INSERT statement is already atomic
-        [[nodiscard]] __attribute__((hot)) auto execute_bulk(std::span<const T> objects) -> std::expected<void, Error> {
-            const auto& sql = get_bulk_insert_sql(objects.size());
-
-            // Use prepare_cached to reuse prepared statements across iterations
-            return conn_->prepare_cached(sql).and_then([this, objects](Statement* stmt) -> std::expected<void, Error> {
-                return Base::template bind_non_pk_objects_bulk_impl<ConnType, Statement>(
-                               *stmt, objects, typename Base::field_indices_t()
-                )
-                        .and_then([stmt]() -> decltype(auto) { return stmt->execute(); });
-            });
-        }
-
-        // Execute CHUNKED bulk inserts with custom batch size
-        // NOTE: Transaction wrapper required - multiple INSERT statements need atomicity
-        [[nodiscard]] auto execute_chunked_bulk_custom(std::span<const T> objects, std::size_t custom_bulk_size)
+        [[nodiscard]] __attribute__((always_inline)) auto bind_all_fields(Statement& stmt, const T& obj) noexcept
                 -> std::expected<void, Error> {
-            auto txn = TransactionGuard<ConnType>::begin(conn_);
-            if (!txn) {
-                return std::unexpected(txn.error());
-            }
-
-            // Process in chunks of custom_bulk_size
-            for (std::size_t offset = 0; offset < objects.size(); offset += custom_bulk_size) {
-                std::size_t chunk_size = std::min(custom_bulk_size, objects.size() - offset);
-                auto        chunk      = objects.subspan(offset, chunk_size);
-
-                const auto& sql = get_bulk_insert_sql(chunk.size());
-
-                auto chunk_result = conn_->prepare_cached(sql).and_then(
-                        [this, chunk](Statement* stmt) -> std::expected<void, Error> {
-                            return Base::template bind_non_pk_objects_bulk_impl<ConnType, Statement>(
-                                           *stmt, chunk, typename Base::field_indices_t()
-                            )
-                                    .and_then([stmt]() -> decltype(auto) { return stmt->execute(); });
-                        }
-                );
-
-                if (!chunk_result) {
-                    return std::unexpected(chunk_result.error()); // ~TransactionGuard auto-rollbacks
-                }
-            }
-
-            return txn->commit();
+            return bind_single(stmt, obj);
         }
 
-        // Execute bulk INSERT ... RETURNING — single chunk, returns all IDs
-        [[nodiscard]] auto execute_bulk_returning(std::span<const T> objects)
-                -> std::expected<std::vector<std::int64_t>, Error> {
-            const auto& sql      = get_bulk_insert_returning_sql(objects.size());
-            auto        stmt_res = conn_->prepare_cached(sql);
+        // Execute ONE bulk INSERT with multiple VALUES clauses.
+        // NOTE: No transaction wrapper needed - a single INSERT statement is already atomic.
+        // R = Yes appends RETURNING <pk> and collects every returned id.
+        template <ReturnId R>
+        [[nodiscard]] __attribute__((hot)) auto execute_bulk(std::span<const T> objects) -> BulkResult<R> {
+            // prepare_cached reuses prepared statements across iterations
+            auto stmt_res = conn_->prepare_cached(get_bulk_insert_sql<R>(objects.size()));
             if (!stmt_res) {
                 return std::unexpected(stmt_res.error());
             }
-            auto* stmt = *stmt_res;
+            Statement* stmt = *stmt_res;
 
-            auto bind_result = Base::template bind_non_pk_objects_bulk_impl<ConnType, Statement>(
-                    *stmt, objects, typename Base::field_indices_t()
-            );
-            if (!bind_result) {
-                return std::unexpected(bind_result.error());
+            if (auto bound = bind_bulk(*stmt, objects); !bound) {
+                return std::unexpected(bound.error());
             }
 
-            std::vector<std::int64_t> ids;
-            ids.reserve(objects.size());
+            if constexpr (R == ReturnId::Yes) {
+                std::vector<std::int64_t> ids;
+                ids.reserve(objects.size());
 
-            int rc = 0;
-            while ((rc = stmt->step_raw()) == Statement::ROW_AVAILABLE) {
-                ids.push_back(stmt->extract_int64(0));
-            }
-            stmt->reset();
+                int rc = 0;
+                while ((rc = stmt->step_raw()) == Statement::ROW_AVAILABLE) {
+                    ids.push_back(stmt->extract_int64(0));
+                }
+                stmt->reset();
 
-            if (rc != Statement::NO_MORE_ROWS) {
-                return std::unexpected(Error{rc, stmt->get_error_message()});
+                if (rc != Statement::NO_MORE_ROWS) {
+                    return make_error(rc, stmt);
+                }
+                return ids;
+            } else {
+                return stmt->execute();
             }
-            return ids;
         }
 
-        // Execute chunked bulk INSERT ... RETURNING — multiple chunks with transaction
-        [[nodiscard]] auto execute_chunked_bulk_returning(std::span<const T> objects, std::size_t custom_bulk_size)
-                -> std::expected<std::vector<std::int64_t>, Error> {
+        // Execute CHUNKED bulk inserts with a given chunk size.
+        // NOTE: Transaction wrapper required - multiple INSERT statements need atomicity.
+        template <ReturnId R>
+        [[nodiscard]] auto execute_chunked_bulk(std::span<const T> objects, std::size_t chunk_max) -> BulkResult<R> {
             auto txn = TransactionGuard<ConnType>::begin(conn_);
             if (!txn) {
                 return std::unexpected(txn.error());
             }
 
-            std::vector<std::int64_t> all_ids;
-            all_ids.reserve(objects.size());
-
-            for (std::size_t offset = 0; offset < objects.size(); offset += custom_bulk_size) {
-                std::size_t chunk_size = std::min(custom_bulk_size, objects.size() - offset);
-                auto        chunk      = objects.subspan(offset, chunk_size);
-
-                auto chunk_result = execute_bulk_returning(chunk);
-                if (!chunk_result) {
-                    return std::unexpected(chunk_result.error());
-                }
-                all_ids.insert(all_ids.end(), chunk_result.value().begin(), chunk_result.value().end());
+            [[maybe_unused]] std::vector<std::int64_t> all_ids;
+            if constexpr (R == ReturnId::Yes) {
+                all_ids.reserve(objects.size());
             }
 
-            auto commit_result = txn->commit();
-            if (!commit_result) {
+            for (std::size_t offset = 0; offset < objects.size(); offset += chunk_max) {
+                const std::size_t chunk_size = std::min(chunk_max, objects.size() - offset);
+
+                auto chunk_result = execute_bulk<R>(objects.subspan(offset, chunk_size));
+                if (!chunk_result) {
+                    return std::unexpected(chunk_result.error()); // ~TransactionGuard auto-rollbacks
+                }
+                if constexpr (R == ReturnId::Yes) {
+                    all_ids.insert(all_ids.end(), chunk_result->begin(), chunk_result->end());
+                }
+            }
+
+            if (auto commit_result = txn->commit(); !commit_result) {
                 return std::unexpected(commit_result.error());
             }
-            return all_ids;
+            if constexpr (R == ReturnId::Yes) {
+                return all_ids;
+            } else {
+                return {};
+            }
         }
 
       private:
+        // Error path shared by every step_raw() failure, kept out of line so the hot
+        // paths stay compact.
+        [[nodiscard]] static __attribute__((cold, noinline)) auto make_error(int rc, Statement* stmt)
+                -> std::unexpected<Error> {
+            return std::unexpected(Error{rc, stmt->get_error_message()});
+        }
+
         // Bind now() for each unlisted auto_update column (#209), in declaration order,
         // starting right after the VALUES placeholders (excluded.col SET targets need
         // no params; only the trailing "col=?" auto_update tail does). Mirrors
@@ -844,8 +744,8 @@ export namespace storm::orm::statements {
         }
 
         // Prepare (L3-cached) the given INSERT SQL and bind the object's non-PK
-        // fields. Both single-row execute paths share this so the prepare +
-        // bind + error-check sequence lives in one place.
+        // fields. Both single-row execute paths and the DO NOTHING upsert share this
+        // so the prepare + bind + error-check sequence lives in one place.
         [[nodiscard]] __attribute__((always_inline)) auto
         prepare_and_bind(const std::string& sql, const T& obj) noexcept -> std::expected<Statement*, Error> {
             auto stmt_result = conn_->prepare_cached(sql);
@@ -862,10 +762,11 @@ export namespace storm::orm::statements {
             return stmt;
         }
 
-        // Shared body of the four to_sql* debug helpers: prepare the given SQL,
+        // Shared body of the to_sql* debug helpers: prepare the given SQL,
         // delegate binding to the caller, then return the expanded SQL string.
         template <typename BindFn>
-        [[nodiscard]] auto to_sql_impl(const std::string& sql, BindFn&& bind_fn) -> std::expected<std::string, Error> {
+        [[nodiscard]] __attribute__((cold)) auto to_sql_impl(const std::string& sql, BindFn&& bind_fn)
+                -> std::expected<std::string, Error> {
             auto stmt_result = conn_->prepare_cached(sql);
             if (!stmt_result) {
                 return std::unexpected(stmt_result.error());
@@ -878,14 +779,16 @@ export namespace storm::orm::statements {
             return stmt->expanded_sql();
         }
 
-        // Binders shared between the single-row and bulk to_sql variants.
-        [[nodiscard]] static auto bind_single(Statement& stmt, const T& obj) -> std::expected<void, Error> {
+        // Binders shared between the single-row and bulk paths.
+        [[nodiscard]] static __attribute__((always_inline)) auto bind_single(Statement& stmt, const T& obj)
+                -> std::expected<void, Error> {
             return Base::template bind_non_pk_fields_impl<ConnType, Statement>(
                     stmt, obj, typename Base::field_indices_t()
             );
         }
 
-        [[nodiscard]] static auto bind_bulk(Statement& stmt, std::span<const T> objects) -> std::expected<void, Error> {
+        [[nodiscard]] static __attribute__((always_inline)) auto bind_bulk(Statement& stmt, std::span<const T> objects)
+                -> std::expected<void, Error> {
             return Base::template bind_non_pk_objects_bulk_impl<ConnType, Statement>(
                     stmt, objects, typename Base::field_indices_t()
             );

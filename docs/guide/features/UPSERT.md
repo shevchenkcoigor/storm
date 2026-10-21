@@ -7,6 +7,11 @@ exactly match a declared `UniqueIndex`, or exactly match a composite primary key
 (#503, see below). A single-column primary key is omitted from inserts and
 therefore cannot be a conflict target.
 
+The chain consumes the insert proxy: `on_conflict()`, `update()` and `nothing()`
+are callable on an rvalue only, so write it as one expression (as in every
+example below). A proxy kept in a variable must be moved first —
+`std::move(proxy).on_conflict<...>()`; calling it on the lvalue is a compile error.
+
 ## DO UPDATE
 
 `update<Members...>()` overwrites the listed columns with the attempted
