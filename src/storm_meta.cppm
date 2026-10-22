@@ -4,8 +4,6 @@ module;
 
 export module storm_meta;
 
-import std;
-
 // storm::meta flag objects, RefAction, is_primary_member: re-exported to users
 export import storm_orm_field_attr;
 
@@ -32,18 +30,6 @@ export namespace storm {
         // Text length (#493)
         using orm::statements::meta::max_length; // NOLINT(misc-unused-using-decls)
         using orm::statements::meta::MaxLength;  // NOLINT(misc-unused-using-decls)
-
-        template <typename T>
-            requires orm::statements::ModelWithPrimaryKey<T>
-        consteval auto find_primary_key() -> std::meta::info {
-            for (const std::meta::info member :
-                 std::meta::nonstatic_data_members_of(^^T, std::meta::access_context::unchecked())) {
-                if (is_primary_member(member)) {
-                    return member;
-                }
-            }
-            std::unreachable();
-        }
     } // namespace meta
 
     // Short spellings: primary, fk<>, ...

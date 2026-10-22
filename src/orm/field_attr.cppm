@@ -110,6 +110,37 @@ export namespace storm::meta {
                has_annotation_type<PrimaryAssigned>(member) || is_primary_part_member(member);
     }
 
+    // True iff `type` has at least one non-static data member annotated with
+    // storm::primary/primary_autoincrement/primary_part (#500 — a composite key
+    // satisfies this like any other). The info-value core of the ModelWithPrimaryKey<T> concept
+    // (in base.cppm), factored out so it can also run on an info VALUE — needed by
+    // valid_fk_target, whose target type is derived from a range-for loop variable
+    // over nonstatic_data_members_of and so cannot be spliced into a type template
+    // argument (splice operands must be constant expressions; a plain for-loop
+    // variable over a heap-backed std::vector<info> range is not one).
+    consteval auto has_primary_key(std::meta::info type) -> bool {
+        return std::ranges::any_of(
+                std::meta::nonstatic_data_members_of(type, std::meta::access_context::unchecked()),
+                [](std::meta::info m) consteval { return is_primary_member(m); }
+        );
+    }
+
+    // The first primary-key member of `T`, in declaration order. For a composite key
+    // that is only the first part — use BaseStatement's primary_key_members_ for all
+    // of them. Constrained on has_primary_key, so a model without a key fails at the
+    // call site with a constraint violation rather than inside the loop.
+    template <typename T>
+        requires(has_primary_key(^^T))
+    consteval auto find_primary_key() -> std::meta::info {
+        for (const std::meta::info member :
+             std::meta::nonstatic_data_members_of(^^T, std::meta::access_context::unchecked())) {
+            if (is_primary_member(member)) {
+                return member;
+            }
+        }
+        std::unreachable();
+    }
+
     // True when `member` carries storm::primary_autoincrement (the SQLite never-reuse
     // rowid opt-in, #379) — drives the AUTOINCREMENT keyword in schema.cppm.
     consteval auto is_primary_autoincrement(std::meta::info member) -> bool {
