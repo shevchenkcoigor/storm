@@ -39,7 +39,7 @@ using storm::orm::statements::ModelTimestampPkValid;
 // by PrimaryKeyType<T> (#505), but only incidentally — time_point is a class
 // type that falls off the end of that concept's integral/UUID whitelist, is not
 // named in it, and was never pinned by a test. Composite primary_part members
-// are exempt from PrimaryKeyType entirely (base.cppm:305-306), so the composite
+// are exempt from PrimaryKeyType entirely (PrimaryKeyType, model_concepts.cppm), so the composite
 // models below are the genuinely live path.
 
 namespace {

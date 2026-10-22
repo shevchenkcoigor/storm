@@ -199,4 +199,44 @@ export namespace storm::orm::statements {
         }
     };
 
+    // ── Primary-key WHERE clause (#501) ──────────────────────────────────────────
+    // The by-key WHERE that UPDATE-by-object and DELETE-by-object share. For a single
+    // PK this emits exactly the "<pk> = ?" the two statements spelled inline before, so
+    // single-PK SQL stays byte-identical; for a composite key it AND-joins every part in
+    // declaration order — the same order pk_members binds in.
+    //
+    // Free function templates over the PK-member array rather than BaseStatement methods:
+    // SchemaStatement sits at the cpp:S1448 35-method ceiling and BaseStatement is the
+    // class both statements inherit, so anything added there is paid by every statement
+    // type. Taking the array as a parameter also lets erase.cppm and update_grammar.cppm
+    // call these without either one depending on the other.
+
+    // Byte length of "<a> = ? AND <b> = ?" for the given PK members. Exact — both callers
+    // size a ConstexprString with it, and ConstexprString truncates SILENTLY on overflow,
+    // so an under-count is a wrong-SQL bug with no diagnostic. Column names go through
+    // the canonical writer (#422) so an FK part is measured as "<name>_id".
+    template <std::size_t N>
+    consteval auto pk_where_clause_size(const std::array<std::meta::info, N>& pk_members) -> std::size_t {
+        constexpr std::size_t EQUALS_PLACEHOLDER = 4; // " = ?"
+        constexpr std::size_t AND_JOIN           = 5; // " AND "
+        std::size_t           size               = 0;
+        for (const std::meta::info member : pk_members) {
+            size += storm::meta::column_name_size(member) + EQUALS_PLACEHOLDER;
+        }
+        return size + (AND_JOIN * (N - 1));
+    }
+
+    // Append "<a> = ? AND <b> = ?" for the given PK members, in declaration order.
+    template <typename Buf, std::size_t N>
+    consteval auto append_pk_where_clause(Buf& buf, const std::array<std::meta::info, N>& pk_members) -> void {
+        bool first = true;
+        for (const std::meta::info member : pk_members) {
+            if (!first) {
+                buf.append(" AND ");
+            }
+            storm::meta::append_column_name(buf, member); // #422 — FK parts emit "<name>_id"
+            buf.append(" = ?");
+            first = false;
+        }
+    }
 } // namespace storm::orm::statements

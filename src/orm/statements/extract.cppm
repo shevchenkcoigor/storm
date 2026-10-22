@@ -232,4 +232,29 @@ export namespace storm::orm::statements {
         }
     };
 
+    // Parse a decimal string to uint64 for full_unsigned extraction (#436); leading
+    // zeros from the SQLite zero-padded TEXT (or PG NUMERIC) are ignored. Defensive 0
+    // on an unexpected empty/garbage value — the column is NOT NULL decimal by
+    // construction. Free function (no model state) so it stays off BaseStatement's
+    // method count (cpp:S1448).
+    inline auto parse_full_unsigned(std::string_view text) noexcept -> std::uint64_t {
+        std::uint64_t value = 0;
+        std::from_chars(text.data(), text.data() + text.size(), value);
+        return value;
+    }
+
+    // Extract a full_unsigned column (#436) into obj.[:Member:]: parse the decimal text
+    // (SQLite zero-padded TEXT or PG NUMERIC) back to uint64; nullopt on a NULL optional.
+    // Free function template (Member NTTP) so it stays off BaseStatement's method count
+    // (cpp:S1448) and keeps extract_column_fast's nesting under the limit (cpp:S134).
+    template <std::meta::info Member, typename FieldType, typename Obj, typename Statement>
+    __attribute__((always_inline)) void extract_full_unsigned_into(Statement* stmt, Obj& obj, int col_idx) noexcept {
+        if constexpr (utilities::is_optional_v<FieldType>) {
+            obj.[:Member:] = stmt->is_null(col_idx)
+                                     ? std::optional<std::uint64_t>(std::nullopt)
+                                     : parse_full_unsigned(ColumnExtractor::read_text_view(stmt, col_idx));
+        } else {
+            obj.[:Member:] = parse_full_unsigned(ColumnExtractor::read_text_view(stmt, col_idx));
+        }
+    }
 } // namespace storm::orm::statements

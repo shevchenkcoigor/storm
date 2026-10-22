@@ -705,7 +705,7 @@ export namespace storm::orm::utilities {
     // That ceiling is enforced at COMPILE TIME, at the model (#537). The only
     // guard used to be the assert in append_word, which NDEBUG compiles out —
     // i.e. it was absent from exactly the Release configuration where the
-    // overrun would matter. ModelPrimaryKeyPartLimit<T> (base.cppm) now rejects a
+    // overrun would matter. ModelPrimaryKeyPartLimit<T> (model_concepts.cppm) now rejects a
     // model with more parts than MAX_PARTS, so append_word cannot be reached with
     // a full buffer and the assert is a redundant backstop rather than the guard.
     //

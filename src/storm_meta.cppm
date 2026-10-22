@@ -8,7 +8,7 @@ export module storm_meta;
 export import storm_orm_field_attr;
 
 // Implementation dependencies: users see only the aliases declared below
-import storm_orm_statements_base;
+import storm_orm_model_concepts;
 import storm_orm_fields;
 
 export namespace storm {

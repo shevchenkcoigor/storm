@@ -12,7 +12,7 @@ import storm_orm_schema;
 import storm_orm_statements_insert;
 import storm_orm_statements_select;
 import std;
-import storm_orm_statements_base;
+import storm_orm_model_concepts;
 
 #include "test_fixture.h"
 using storm::create_table_sql;

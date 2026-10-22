@@ -2,7 +2,7 @@
 
 import storm_meta;
 import std;
-import storm_orm_statements_base;
+import storm_orm_model_concepts;
 using storm::primary;
 
 // Compile-time-only verification of the ValidForeignKey concept (#474). Every

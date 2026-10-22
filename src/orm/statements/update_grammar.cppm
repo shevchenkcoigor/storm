@@ -12,6 +12,7 @@ export module storm_orm_statements_update_grammar;
 import std;
 
 import storm_orm_statements_base;
+import storm_orm_statements_field_names; // pk_where_clause_size / append_pk_where_clause (#501)
 import storm_orm_utilities;
 
 export namespace storm::orm::statements {

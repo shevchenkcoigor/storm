@@ -14,7 +14,7 @@ import storm_orm_statements_select;
 import storm_orm_transaction;
 import storm_orm_utilities;
 import std;
-import storm_orm_statements_base;
+import storm_orm_model_concepts;
 
 #include "test_fixture.h" // NOSONAR cpp:S954
 using storm::full_unsigned;

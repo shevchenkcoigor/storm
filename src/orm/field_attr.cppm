@@ -23,7 +23,7 @@ export namespace storm::meta {
     // They replace the former `enum class FieldAttr` (breaking, no dual-spelling): the
     // free-standing spelling now reads uniformly next to fk<>/many_to_many<>. The
     // per-member exclusivity the enum gave for free (a field could carry at most one
-    // enumerator) is recovered by the ModelAnnotationsValid<T> concept in base.cppm,
+    // enumerator) is recovered by the ModelAnnotationsValid<T> concept in model_concepts.cppm,
     // which rejects conflicting combinations at compile time.
     //
     // NOTE: foreign keys use the templated annotation storm::meta::fk<RefAction> (below),
@@ -43,7 +43,7 @@ export namespace storm::meta {
     // composite key, whereas ModelAnnotationsValid keeps that an error. Two or more
     // primary_part members produce a table-level PRIMARY KEY (a, b); exactly one is
     // rejected (that is a plain `primary`), as is any mix with primary /
-    // primary_autoincrement — see ModelPrimaryKeyValid in base.cppm.
+    // primary_autoincrement — see ModelPrimaryKeyValid in model_concepts.cppm.
     struct PrimaryPart {};
     struct Indexed {};    // CREATE INDEX on the column
     struct Unique {};     // UNIQUE constraint on the column
@@ -113,7 +113,7 @@ export namespace storm::meta {
     // True iff `type` has at least one non-static data member annotated with
     // storm::primary/primary_autoincrement/primary_part (#500 — a composite key
     // satisfies this like any other). The info-value core of the ModelWithPrimaryKey<T> concept
-    // (in base.cppm), factored out so it can also run on an info VALUE — needed by
+    // (in model_concepts.cppm), factored out so it can also run on an info VALUE — needed by
     // valid_fk_target, whose target type is derived from a range-for loop variable
     // over nonstatic_data_members_of and so cannot be spliced into a type template
     // argument (splice operands must be constant expressions; a plain for-loop
@@ -191,7 +191,7 @@ export namespace storm::meta {
     // by one layer instead of being applied twice). Every caller honours it: the
     // sites that start from a member go through is_optional_member below, and the
     // two unwrapping predicates in this file plus unwrap_optional_type in
-    // statements/base.cppm all dealias into their local `t` first.
+    // model_concepts.cppm all dealias into their local `t` first.
     //
     // Reflection-level comparison rather than `if constexpr`, so it stays usable
     // inside a consteval loop where the loop variable is not a core constant
@@ -211,7 +211,7 @@ export namespace storm::meta {
     // keeping type_of/dealias inside means neither step can be forgotten, and it is
     // what satisfies is_optional_type's already-dealiased precondition for them. The
     // sites that already hold a dealiased type (the two unwrapping predicates below,
-    // and unwrap_optional_type in statements/base.cppm) call the core directly.
+    // and unwrap_optional_type in model_concepts.cppm) call the core directly.
     consteval auto is_optional_member(std::meta::info member) -> bool {
         return is_optional_type(std::meta::dealias(std::meta::type_of(member)));
     }
@@ -284,7 +284,7 @@ export namespace storm::meta {
     // Enforced by the database on every write path: PG emits VARCHAR(N), SQLite emits
     // TEXT ... CHECK(length(col) <= N). Only a text field accepts it (std::string /
     // std::string_view / std::optional<those>) — a non-text field is a compile-time error
-    // at the model boundary via ModelMaxLengthValid (statements/base.cppm).
+    // at the model boundary via ModelMaxLengthValid (model_concepts.cppm).
     //   [[= storm::max_length<50>]] std::string name;
     template <std::size_t N> struct MaxLength {
         static constexpr std::size_t value = N;
@@ -542,7 +542,7 @@ export namespace storm::meta {
     // Issue #472: Entity is the compile-time STRUCTURAL gate for model types —
     // "is T a reflectable class type at all?". It is layered ABOVE the semantic
     // model concepts (ModelWithPrimaryKey / ModelStorageAnnotated /
-    // ModelFkPoliciesValid in statements/base.cppm), which presuppose
+    // ModelFkPoliciesValid in model_concepts.cppm), which presuppose
     // reflectability. Constraining QuerySet<T> and BaseStatement<T> with it makes
     // a non-model T (int, a pointer, a function type) fail at this named boundary
     // instead of deep inside reflection-based code. is_class_type(^^T) is the gate
@@ -552,7 +552,7 @@ export namespace storm::meta {
     // structural requirements alone would accept int. The requirements are kept so
     // the concept still asserts T is reflectable the exact way the statement layer
     // uses it. access_context::unchecked() matches the semantic concepts' call
-    // sites in statements/base.cppm.
+    // sites in model_concepts.cppm.
     template <typename T>
     concept Entity = std::meta::is_class_type(^^T) && requires {
         { std::meta::nonstatic_data_members_of(^^T, std::meta::access_context::unchecked()) };

@@ -15,9 +15,10 @@ import storm_orm_ref_action; // RefAction (junction ON DELETE policy) — #562
 // would create a layering cycle — base.cppm already imports where.cppm). Same leaf
 // pattern as storm_orm_field_attr (#387), which holds the FK annotation + is_fk_field.
 //
-// Symbols live in storm::meta (alongside is_fk_field); storm_orm_statements_base
-// re-exposes them into storm::orm::statements::meta so existing meta:: callers and
-// the public storm.cppm re-exports are unchanged.
+// Symbols live in storm::meta (alongside is_fk_field); storm_orm_model_concepts
+// re-exposes them into storm::orm::statements::meta (storm_orm_statements_base
+// re-exports that module) so existing meta:: callers and the public storm.cppm
+// re-exports are unchanged.
 export namespace storm::meta {
 
     // Many-to-many annotation (#203, #431). Phase 1 (auto-generated junction table):
