@@ -374,7 +374,9 @@ src/
     ├── queryset.cppm           # QuerySet ORM interface
     ├── field_attr.cppm         # Free-standing flag annotation objects + is_primary_member (leaf module)
     ├── model_concepts.cppm     # Model-validation concepts (ModelWithPrimaryKey, Model*Valid, …); re-exported by statements/base.cppm
-    ├── utilities.cppm          # ConstexprString, SQLCache
+    ├── utilities.cppm          # ConstexprString, SQLCache, sql_len/buffer_size; re-exports value_bind + stitch_key (#671)
+    ├── value_bind.cppm         # UUID, chrono_conv, BindableType, bind_parameter_value/bind_* helpers (leaf module)
+    ├── stitch_key.cppm         # StitchKey — composite-PK m2m stitch-map key (leaf module, #504)
     ├── indexes.cppm            # Index, UniqueIndex, Indexes<T> trait (namespace storm)
     └── statements/             # INSERT, SELECT, UPDATE, DELETE, DISTINCT, JOIN
 ```

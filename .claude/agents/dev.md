@@ -31,7 +31,8 @@ When implementing features:
 **Module Hierarchy** (derive current state from `src/**/*.cppm`):
 - `storm_db_concept` at the base (no storm imports)
 - `storm_db_sqlite` / `storm_db_postgresql` implement concepts
-- `storm_orm_utilities`, `storm_orm_transaction` — no storm imports
+- `storm_orm_value_bind` (UUID, `chrono_conv`, `BindableType`, `bind_*`), `storm_orm_stitch_key` (`StitchKey`), `storm_orm_transaction` — no storm imports
+- `storm_orm_utilities` (`ConstexprString`, `SQLCache`, `sql_len`/`buffer_size`) — `export import`s `storm_orm_value_bind` + `storm_orm_stitch_key` (#671), so importers see all three unchanged
 - `storm_orm_model_concepts` — model-validation concepts (`ModelWithPrimaryKey`, `PrimaryKeyType`, `Model*Valid`, `FKFieldOf`/`M2MFieldOf`/`ReverseFK*`, `ValidForeignKey`, `ThroughWithFKTo`) + the `storm::orm::statements::meta` re-exports and relation/FK reflection helpers; imports only field_attr + relation_meta + utilities. `storm_meta` and concept-only tests import it directly
 - `storm_orm_statements_base` uses db_concept + utilities, and `export import`s `storm_orm_model_concepts` (so statement modules see the concepts unchanged)
 - Statement modules (insert, erase, update, select, upsert, etc.) use statements_base

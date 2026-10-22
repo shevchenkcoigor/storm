@@ -134,7 +134,7 @@ export namespace storm::db {
 
     // Database statement concept.
     // Issue #206: covers the full bind/extract/control surface actually used by
-    // orm/utilities.cppm and orm/statements/extract.cppm, not just the minimal
+    // orm/value_bind.cppm and orm/statements/extract.cppm, not just the minimal
     // insert-and-step path — so a non-compliant backend fails here, at the
     // static_assert boundary in sqlite.cppm / postgresql_connection.cppm, with a
     // clear concept violation instead of deep inside the binder/extractor.

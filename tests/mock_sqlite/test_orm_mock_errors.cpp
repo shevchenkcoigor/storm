@@ -3634,7 +3634,7 @@ namespace {
 
     // ============================================================================
     // SQLCache Round-Robin Eviction Test (#177)
-    // Covers utilities.cppm:497-502
+    // Covers SQLCache::insert's round-robin replacement branch (utilities.cppm)
     // ============================================================================
 
     TEST_F(ORMMockErrorTest, SQLCacheRoundRobinEviction) {

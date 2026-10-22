@@ -23,7 +23,6 @@ src/orm/statements/aggregate.cppm: file-size, duplicate
 # only the count_distinct requires-clause.
 src/orm/queryset.cppm:             file-size, duplicate
 src/orm/schema.cppm:               file-size
-src/orm/utilities.cppm:            file-size
 
 # Pre-existing test fixture; #295 is src/ only. See `tests/` exclusion in issue body.
 tests/db/test_pool.cpp:                          file-size, duplicate

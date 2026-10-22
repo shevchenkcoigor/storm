@@ -93,7 +93,9 @@ src/
     ├── generator.cppm              # storm-schema CLI codegen support
     ├── transaction.cppm            # TransactionGuard, storm::begin/transaction (#415)
     ├── where.cppm                  # WHERE-clause expression builders
-    ├── utilities.cppm              # ConstexprString, SQLCache
+    ├── utilities.cppm              # ConstexprString, SQLCache, sql_len/buffer_size; re-exports value_bind + stitch_key (#671)
+    ├── value_bind.cppm             # UUID, chrono_conv, BindableType, bind_parameter_value/bind_* helpers (leaf module, #671)
+    ├── stitch_key.cppm             # StitchKey — composite-PK m2m stitch-map key (leaf module, #504/#671)
     └── statements/
         ├── base.cppm               # BaseStatement utilities
         ├── extract.cppm            # ColumnExtractor — row→value converters (#434) + full_unsigned parse (#436)
@@ -127,7 +129,7 @@ storm (main module)
 ├── storm_orm_generator
 ├── storm_orm_transaction
 ├── storm_orm_where
-├── storm_orm_utilities
+├── storm_orm_utilities               (re-exports storm_orm_value_bind + storm_orm_stitch_key, #671)
 ├── storm_orm_model_concepts          (re-exported by storm_orm_statements_base)
 ├── storm_orm_statements_base
 ├── storm_orm_statements_{insert,update,update_grammar,upsert_grammar,erase,select,join}
