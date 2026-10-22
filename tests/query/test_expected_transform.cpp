@@ -4,6 +4,7 @@
 
 // NOLINTBEGIN(misc-const-correctness,cppcoreguidelines-rvalue-reference-param-not-moved)
 
+import storm_defaults;
 import storm_db_default_connection;
 import storm_db_postgresql;
 import storm_db_sqlite;

@@ -130,9 +130,10 @@ module;
 
 export module storm_orm_statements_select;
 
-import storm_db_sqlite;  // Import database backend
+import storm_db_concept;  // Concepts only — no concrete backend
 
-export class SelectStatement {
+export template <typename T, storm::db::DatabaseConnection ConnType>
+class BasicSelectStatement {
     // Extract column using Statement methods (database-agnostic)
     template <typename FieldType>
     static auto extract_column(Statement* stmt, int col_idx) -> FieldType {
@@ -217,6 +218,48 @@ considered and dropped: `SupportsRightJoin` (`right_join()` was removed — no c
 `SupportsReturning`/`SupportsStrictTables` (declared on the connections but never read by any
 call site).
 
+### Step 4: The Default Backend Lives in One Module (`storm_defaults`)
+
+The generic ORM templates name **no** backend — not even as a default template argument. Each
+public name is an alias in `src/storm_defaults.cppm`, the only module that binds a default
+backend:
+
+| Public name (alias, unchanged spelling) | Generic template (backend-free) | Module of the template |
+|---|---|---|
+| `storm::QuerySet<T, C = sqlite::Connection, F = false>` | `storm::BasicQuerySet<T, C, F>` | `storm_orm_queryset` |
+| `storm::orm::statements::SelectStatement<T, C = …>` | `BasicSelectStatement<T, C>` | `storm_orm_statements_select` |
+| `storm::orm::statements::InsertStatement<T, C = …>` | `BasicInsertStatement<T, C>` | `storm_orm_statements_insert` |
+| `storm::orm::statements::UpdateStatement<T, C = …>` | `BasicUpdateStatement<T, C>` | `storm_orm_statements_update` |
+| `storm::orm::statements::EraseStatement<T, C = …>` | `BasicEraseStatement<T, C>` | `storm_orm_statements_erase` |
+| `storm::db::DefaultConnection<C = sqlite::Connection>` | `storm::db::BasicDefaultConnection<C>` | `storm_db_default_connection` |
+
+```
+storm_db_concept ─> storm_db_pool ─> storm_db_default_connection ─> storm_orm_* (statements, schema, queryset) ─┐
+                                                                                                                 ├─> storm_defaults ─> storm
+storm_db_sqlite ─────────────────────────────────────────────────────────────────────────────────────────────────┘
+          (no edge from storm_db_sqlite into any storm_orm_* module, storm_db_pool or storm_db_default_connection)
+```
+
+`import storm;` re-exports `storm_defaults`, so code that imports the umbrella module is
+unchanged. A TU that imports individual statement/queryset modules and uses the short names must
+also `import storm_defaults;`. A PostgreSQL-only program can skip it and spell
+`BasicQuerySet<T, postgresql::Connection>` — no generic module it imports reaches the SQLite
+backend. (This is import-graph decoupling: the single `storm` CMake target still compiles and links
+every backend.)
+
+The `SchemaStatement` helpers `create_table_if_not_exists()` / `create_indexes_if_not_exist()` no
+longer default their `ConnType` either: pass a connection (`create_table_if_not_exists(conn)`
+deduces it) or name it (`create_table_if_not_exists<sqlite::Connection>()`).
+
+**BREAKING (pre-release)**: the class templates were renamed to `Basic*`; the old names survive
+as alias templates, so they cannot be forward-declared or specialised under the old name, and
+diagnostics, `display_string_of` and trait/partial-specialisation matching see `Basic*` (none of
+these occur in-tree). Two guards keep the layering: `scripts/check-orm-backend-imports.sh` (run
+by `commit.sh` and the `orm-backend-imports` CI job) fails if `src/orm/**`,
+`src/db/default_connection.cppm`, `src/db/pool.cppm` or `src/storm_meta.cppm` names
+`storm_db_sqlite`/`sqlite::` (or the PostgreSQL equivalents) or imports `storm_defaults`/`storm`, and `tests/db/test_backend_layering.cpp` static-asserts that the
+`Basic*` templates cannot be named without a backend.
+
 ## Performance Results
 
 The template trick enables cross-module inlining without LTO:
@@ -246,12 +289,14 @@ The ~1% difference from direct calls is acceptable for full database abstraction
 2. **Don't use database-specific types** in ORM module interfaces
 3. **Don't rely on LTO** for inlining - it may not be available
 4. **Don't make non-hot-path methods templates** - unnecessary complexity
+5. **Don't default a template to a concrete backend** in an ORM module — add the alias to `storm_defaults` instead (enforced by `scripts/check-orm-backend-imports.sh`)
 
 ## Verification Checklist
 
 Before committing database-agnostic changes:
 
 - [ ] No `#include <sqlite3.h>` (or other DB headers) in ORM modules
+- [ ] `scripts/check-orm-backend-imports.sh` passes (no `import storm_db_sqlite;` / `sqlite::` in ORM modules)
 - [ ] All hot-path Statement methods are templates
 - [ ] Run benchmarks: efficiency should be ≥95% vs raw database calls
 - [ ] All tests pass (290 tests)

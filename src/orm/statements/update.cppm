@@ -18,7 +18,6 @@ import storm_orm_transaction;
 import storm_orm_where;
 import storm_db_concept;
 import storm_db_default_connection;
-import storm_db_sqlite;
 
 export namespace storm::orm::statements {
 
@@ -26,7 +25,7 @@ export namespace storm::orm::statements {
     using storm::orm::utilities::ConstexprString;
     using storm::orm::utilities::TransactionGuard;
 
-    template <typename T, storm::db::DatabaseConnection ConnType> class UpdateStatement;
+    template <typename T, storm::db::DatabaseConnection ConnType> class BasicUpdateStatement;
 
     // Query-proxy structs (#438): lifted OUT of UpdateStatement so their sql()/execute()/to_sql()
     // methods no longer count toward UpdateStatement's method total (cpp:S1448 — SonarCloud sums
@@ -45,9 +44,9 @@ export namespace storm::orm::statements {
 
         template <typename T, storm::db::DatabaseConnection ConnType> struct SingleQuery : UpdateQueryBase<T> {
             using Error = typename ConnType::Error;
-            UpdateStatement<T, ConnType> stmt;
-            const T&                     obj;
-            [[nodiscard]] auto           execute() -> std::expected<void, Error> {
+            BasicUpdateStatement<T, ConnType> stmt;
+            const T&                          obj;
+            [[nodiscard]] auto                execute() -> std::expected<void, Error> {
                 return stmt.execute_single_optimized(obj);
             }
             [[nodiscard]] auto to_sql() -> std::expected<std::string, Error> {
@@ -57,9 +56,9 @@ export namespace storm::orm::statements {
 
         template <typename T, storm::db::DatabaseConnection ConnType> struct BulkQuery : UpdateQueryBase<T> {
             using Error = typename ConnType::Error;
-            UpdateStatement<T, ConnType> stmt;
-            std::span<const T>           objects;
-            [[nodiscard]] auto           execute() -> std::expected<void, Error> {
+            BasicUpdateStatement<T, ConnType> stmt;
+            std::span<const T>                objects;
+            [[nodiscard]] auto                execute() -> std::expected<void, Error> {
                 return stmt.execute(objects);
             }
             [[nodiscard]] auto to_sql() -> std::expected<std::string, Error> {
@@ -74,10 +73,10 @@ export namespace storm::orm::statements {
         template <typename T, storm::db::DatabaseConnection ConnType, std::meta::info... Members>
         struct ConditionalUpdateQuery {
             using Error = typename ConnType::Error;
-            UpdateStatement<T, ConnType>     stmt;
-            const T&                         proto;
-            orm::where::ExpressionVariantPtr where_expr;
-            [[nodiscard]] auto               execute() -> std::expected<void, Error> {
+            BasicUpdateStatement<T, ConnType> stmt;
+            const T&                          proto;
+            orm::where::ExpressionVariantPtr  where_expr;
+            [[nodiscard]] auto                execute() -> std::expected<void, Error> {
                 return stmt.template execute_where<Members...>(proto, where_expr);
             }
             [[nodiscard]] auto to_sql() -> std::expected<std::string, Error> {
@@ -90,9 +89,9 @@ export namespace storm::orm::statements {
         template <typename T, storm::db::DatabaseConnection ConnType, std::meta::info... Members>
         struct UpdateAllQuery {
             using Error = typename ConnType::Error;
-            UpdateStatement<T, ConnType> stmt;
-            const T&                     proto;
-            [[nodiscard]] auto           execute() -> std::expected<void, Error> {
+            BasicUpdateStatement<T, ConnType> stmt;
+            const T&                          proto;
+            [[nodiscard]] auto                execute() -> std::expected<void, Error> {
                 return stmt.template execute_all<Members...>(proto);
             }
             [[nodiscard]] auto to_sql() -> std::expected<std::string, Error> {
@@ -103,8 +102,8 @@ export namespace storm::orm::statements {
     } // namespace detail
 
     // Statement class for ORM update operations
-    template <typename T, storm::db::DatabaseConnection ConnType = storm::db::sqlite::Connection>
-    class UpdateStatement : private BaseStatement<T> {
+    template <typename T, storm::db::DatabaseConnection ConnType>
+    class BasicUpdateStatement : private BaseStatement<T> {
         friend class BaseStatement<T>; // Allow BaseStatement to access protected/private members
         using Base       = BaseStatement<T>;
         using Connection = ConnType;
@@ -165,7 +164,9 @@ export namespace storm::orm::statements {
         }
 
       public:
-        explicit UpdateStatement(std::shared_ptr<ConnType> conn = storm::db::DefaultConnection<ConnType>::get())
+        explicit BasicUpdateStatement(
+                std::shared_ptr<ConnType> conn = storm::db::BasicDefaultConnection<ConnType>::get()
+        )
             : conn_(std::move(conn)) {}
 
         [[nodiscard]] auto query(const T& obj [[clang::lifetimebound]]) -> detail::SingleQuery<T, ConnType> {

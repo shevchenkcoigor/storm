@@ -1,6 +1,7 @@
 #include <gtest/gtest.h>
 #include "test_db_helpers.h"
 
+import storm_defaults;
 import storm_db_default_connection;
 import storm_db_pool;
 import storm_db_postgresql;

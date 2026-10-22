@@ -179,7 +179,9 @@ alongside SQLite. To add another backend:
 
 ### ✅ Safe: Per-Thread Connections
 
-Default connection is thread-safe via `thread_local`:
+Default connection is thread-safe via `thread_local` (`DefaultConnection<>` is the
+`storm_defaults` alias for `db::BasicDefaultConnection<sqlite::Connection>`; one slot per thread
+per backend type):
 
 ```cpp
 // ✅ SAFE: Each thread gets its own connection

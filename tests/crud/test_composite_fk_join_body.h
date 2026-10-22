@@ -14,6 +14,7 @@
 #error "test_composite_fk_join_body.h: define STORM_SPLIT_TYPES/STORM_SPLIT_TYPE_NAMES before including"
 #endif
 
+import storm_defaults;
 import storm_db_default_connection;
 import storm_db_postgresql;
 import storm_db_sqlite;

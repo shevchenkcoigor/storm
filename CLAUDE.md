@@ -364,9 +364,11 @@ only the hook, `settings.json` or the test itself skips every other step.
 
 ```
 src/
-├── storm.cppm                  # Main module
+├── storm.cppm                  # Main module (re-exports storm_defaults)
+├── storm_defaults.cppm         # The ONLY default-backend binding: QuerySet<T>/…Statement<T>/DefaultConnection<> aliases
 ├── db/
 │   ├── concept.cppm            # Database concepts
+│   ├── default_connection.cppm # BasicDefaultConnection<ConnType> (backend-free)
 │   └── sqlite.cppm             # SQLite implementation
 └── orm/
     ├── queryset.cppm           # QuerySet ORM interface
@@ -834,10 +836,20 @@ auto r = storm::transaction(conn, [&](auto& txn) -> std::expected<int, Error> {
 **Transactions**: `storm::begin(conn)` → `storm::TransactionGuard` (RAII), or `storm::transaction(conn, body)` scope helper; both cooperative with batch ops (#415/#9)
 
 **Statements without QuerySet + `DefaultConnection`**: each statement (`InsertStatement`,
-`SelectStatement`, `UpdateStatement`, `EraseStatement`) defaults `ConnType` to `sqlite::Connection` and has a
+`SelectStatement`, `UpdateStatement`, `EraseStatement`) has a
 no-arg constructor that takes the thread's connection from `storm::db::DefaultConnection<ConnType>`
 (module `storm_db_default_connection`), so tests/callers import only the statement modules they use
-instead of `import storm;`. `SelectStatement::Query` carries the full QuerySet chain (`where`, `limit`,
+instead of `import storm;`. **Backend layering (BREAKING, pre-release)**: the generic templates are
+`BasicQuerySet<T, ConnType, F>`, `Basic{Insert,Select,Update,Erase}Statement<T, ConnType>` and
+`db::BasicDefaultConnection<ConnType>` — NO default backend, and no ORM module imports
+`storm_db_sqlite`. The familiar names are alias templates in `src/storm_defaults.cppm` (same
+namespaces) that default `ConnType = sqlite::Connection`; `import storm;` re-exports it, while a TU
+importing individual modules must add `import storm_defaults;` to use the short names. Aliases cannot
+be specialised/forward-declared under the old name, and diagnostics/traits see `Basic*`. `SchemaStatement::create_table_if_not_exists()`
+/ `create_indexes_if_not_exist()` no longer default `ConnType` — pass a connection or name it
+(`create_table_if_not_exists<sqlite::Connection>()`). Enforced by `scripts/check-orm-backend-imports.sh`
+(commit.sh + `orm-backend-imports` CI job) and `tests/db/test_backend_layering.cpp`. See
+[MODULE_SYSTEM.md](docs/internals/architecture/MODULE_SYSTEM.md#step-4-the-default-backend-lives-in-one-module-storm_defaults). `SelectStatement::Query` carries the full QuerySet chain (`where`, `limit`,
 `offset`, `order_by`, `join`, `left_join`, `distinct`, `values`, `group_by`, aggregates, `first`, `get`,
 `rows`) and `QuerySet` is a thin wrapper holding one `Query`. `DefaultConnection::set/get/try_get/has/clear`
 replace the removed `QuerySet::set_default_connection`/`get_default_connection`/`has_default_connection`/

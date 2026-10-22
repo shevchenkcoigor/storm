@@ -16,7 +16,6 @@ import storm_orm_transaction;
 import storm_orm_where;
 import storm_db_concept;
 import storm_db_default_connection;
-import storm_db_sqlite;
 
 export namespace storm::orm::statements {
 
@@ -26,8 +25,7 @@ export namespace storm::orm::statements {
     using storm::orm::utilities::TransactionGuard;
 
     // Statement class for ORM erase operations
-    template <typename T, storm::db::DatabaseConnection ConnType = storm::db::sqlite::Connection>
-    class EraseStatement : private BaseStatement<T> {
+    template <typename T, storm::db::DatabaseConnection ConnType> class BasicEraseStatement : private BaseStatement<T> {
         friend class BaseStatement<T>; // Allow BaseStatement to access protected/private members
         using Base       = BaseStatement<T>;
         using Connection = ConnType;
@@ -85,13 +83,15 @@ export namespace storm::orm::statements {
         }
 
       public:
-        explicit EraseStatement(std::shared_ptr<ConnType> conn = storm::db::DefaultConnection<ConnType>::get())
+        explicit BasicEraseStatement(
+                std::shared_ptr<ConnType> conn = storm::db::BasicDefaultConnection<ConnType>::get()
+        )
             : conn_(std::move(conn)) {}
 
         struct SingleQuery {
-            EraseStatement     stmt;
-            const T&           obj;
-            [[nodiscard]] auto execute() -> std::expected<void, Error> {
+            BasicEraseStatement stmt;
+            const T&            obj;
+            [[nodiscard]] auto  execute() -> std::expected<void, Error> {
                 return stmt.execute_one(obj);
             }
             [[nodiscard]] auto to_sql() -> std::expected<std::string, Error> {
@@ -103,9 +103,9 @@ export namespace storm::orm::statements {
         };
 
         struct BulkQuery {
-            EraseStatement     stmt;
-            std::span<const T> objects;
-            [[nodiscard]] auto execute() -> std::expected<void, Error> {
+            BasicEraseStatement stmt;
+            std::span<const T>  objects;
+            [[nodiscard]] auto  execute() -> std::expected<void, Error> {
                 return stmt.execute(objects);
             }
             [[nodiscard]] auto to_sql() -> std::expected<std::string, Error> {
@@ -117,8 +117,8 @@ export namespace storm::orm::statements {
         };
 
         struct DeleteAllQuery {
-            EraseStatement     stmt;
-            [[nodiscard]] auto execute() -> std::expected<void, Error> {
+            BasicEraseStatement stmt;
+            [[nodiscard]] auto  execute() -> std::expected<void, Error> {
                 return stmt.execute_all();
             }
             [[nodiscard]] auto to_sql() -> std::string {
@@ -134,7 +134,7 @@ export namespace storm::orm::statements {
         // at execute()/to_sql() time so a dropped where() cannot wipe the table
         // (erase_all() is the explicit full-wipe path).
         struct ConditionalDeleteQuery {
-            EraseStatement                   stmt;
+            BasicEraseStatement              stmt;
             orm::where::ExpressionVariantPtr where_expr;
             [[nodiscard]] auto               execute() -> std::expected<void, Error> {
                 return stmt.execute_where(where_expr);

@@ -6,6 +6,7 @@
 
 // NOLINTBEGIN(readability-uppercase-literal-suffix)
 
+import storm_defaults;
 import storm_db_default_connection;
 import storm_db_postgresql;
 import storm_db_sqlite;

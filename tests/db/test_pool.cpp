@@ -6,6 +6,7 @@
 
 // NOLINTBEGIN(cppcoreguidelines-non-private-member-variables-in-classes,misc-non-private-member-variables-in-classes,readability-identifier-length,cppcoreguidelines-special-member-functions) // GTest fixtures use protected connstr_; tests use short connection names c1/c2/c3; MockConfigGuard is RAII-only. Pre-existing; tracked under #262/#264.
 
+import storm_defaults;
 import storm_db_concept;
 import storm_db_default_connection;
 import storm_db_pool;

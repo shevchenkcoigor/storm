@@ -16,11 +16,14 @@ Key optimizations:
 ## Using SelectStatement Directly
 
 `QuerySet` is a thin wrapper over `SelectStatement<T, ConnType>::Query`, which exposes the same chain. Import
-only the statement module instead of `import storm;`:
+only the statement module instead of `import storm;` — plus `storm_defaults`, which provides the short
+names with their SQLite default (the statement module itself exports only the backend-free
+`BasicSelectStatement<T, ConnType>`):
 
 ```cpp
 import storm_db_default_connection;
 import storm_db_sqlite;
+import storm_defaults;                  // SelectStatement<T> / DefaultConnection<> aliases
 import storm_orm_statements_select;
 
 using storm::db::DefaultConnection;
@@ -28,7 +31,7 @@ using storm::orm::statements::SelectStatement;
 
 DefaultConnection<>::set(":memory:");   // replaces QuerySet::set_default_connection (removed)
 
-auto rows = SelectStatement<Person>{}   // ConnType defaults to sqlite::Connection
+auto rows = SelectStatement<Person>{}   // alias: BasicSelectStatement<Person, sqlite::Connection>
     .where(fields::Person.age > 30)
     .order_by<fields::Person.name>()
     .limit(10)

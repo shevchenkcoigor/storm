@@ -2,6 +2,7 @@
 #include "test_db_helpers.h"
 #include <sqlite3.h>
 
+import storm_defaults;
 import storm_db_default_connection;
 import storm_db_postgresql;
 import storm_db_sqlite;
