@@ -599,6 +599,27 @@ The ceiling is gtest's 2.2 s, but any framework includes standard headers
 textually, so the +2.1 s storm/libc++ reconciliation stays regardless. That
 ceiling is available from a PCH instead, without rewriting 3093 tests.
 
+### A per-field reflection cache in `SchemaStatement` — more work, not less (#670)
+
+The hypothesis: `SchemaStatement` asks the same questions of each field several
+times over (`identifier_of`, `dealias`, `find_fk_primary_key` in the column
+builder, the FK-clause sizer, the CREATE TABLE sizer and the index builder), so
+answer them once into a `static constexpr std::array<FieldMeta, N>` and read that
+everywhere. Measured as an ablation against the
+[lazy CREATE TABLE change](#lazy-per-dialect-create-table-sql-670) it shipped
+beside, same host, deterministic event counts:
+
+| TU | lazy only | lazy + `FieldMeta` |
+|---|---:|---:|
+| `test_orm_schema.cpp` — InstantiateFunction / EvaluateAsConstantExpr | 3387 / 17733 | 3415 / 17872 |
+| `test_referential_integrity.cpp` — same | 3942 / 17413 | 3975 / 17611 |
+
+It **adds** ~30 function instantiations and ~140-200 constant evaluations per TU
+and moved no wall time. The cache is itself a `static constexpr` member, so it is
+built eagerly for every instantiated `SchemaStatement<T>` — whether or not that
+TU ever generates DDL — and each repeated query it replaced was already cheap,
+memoised reflection. Dropped.
+
 ---
 
 ## What was fixed
@@ -610,6 +631,7 @@ ceiling is available from a PCH instead, without rewriting 3093 tests.
 | precompiled `<gtest/gtest.h>` for `storm_tests` | −2.15 s/TU ≈ **−220 s** (understated — see below) |
 | `run_clang_tidy.sh --diff` no longer reports a crashed clang-tidy as a clean pass | correctness |
 | split `shared/models.h` + `tests/test_models.h` so a TU pulls only the models and helpers it uses (#634) | −0.67 s/TU ≈ **−64 s** |
+| `SchemaStatement::create_table_sql<D>()` builds only the dialect a TU asks for (#670) | −8% function instantiations in a mostly-single-dialect schema TU, 0 in one using both; wall time below the noise floor — see [below](#lazy-per-dialect-create-table-sql-670) |
 
 ≈ **−344 s of ~3000 s (−11%)** — a sum of per-change deltas, not a measured
 total. For an actual whole-build number on the current tree (with the host it
@@ -732,6 +754,69 @@ mean **−0.67 s/TU**, median −0.66, 7 of 8 negative — ≈ **−64 s** over 
 remaining TUs. Still about 2x what the probes projected, and the same magnitude
 as the `create_table_sql` removal already in [What was fixed](#what-was-fixed).
 
+### The schema module under `-ftime-trace` (#670)
+
+Captured with `scripts/time_trace.py` (see [Method](#method)) at granularity 0,
+baseline develop `b199413`. **Different host from the rest of this document**:
+native macOS arm64, 8 cores, `ninja-debug` (coverage flags included), and
+another worktree's build shared the machine for part of the session (load
+average up to 77) — so wall times below are best-of-3 and still wander by
+several seconds between rounds. The event **counts** are deterministic and are
+what the conclusions rest on.
+
+**The BMI itself** (`src/orm/schema.cppm`, traced as its `--precompile` job):
+3.4 s on the quietest round, of which **`WriteAST` — serializing the BMI — is
+~70% (2.3 s)** and the whole frontend ~1.0 s (`ParseClass` 907 events / 0.43 s,
+the largest single one `SchemaStatement` itself at ~0.3-0.9 s;
+`InstantiateFunction` 201 events, almost all libc++ `vector<string>` /
+`set<string>` machinery; constant evaluation 6697 events / 0.01 s). Nothing in
+the module's own body is reflection-expensive: `SchemaStatement<T>` is a template
+and is not instantiated until a consumer names a model. The change below leaves
+every one of these counts identical, as it should.
+
+**The consumers** are where schema cost lands. In `tests/schema/test_orm_schema.cpp`
+(12 models, mostly SQLite DDL), top-level events naming `SchemaStatement` add up
+to ~1.9 s of a ~7 s TU. The trace showed why: the largest of them was the
+**class** instantiation — `SchemaStatement<Person>` 2.7 s — and inside it the
+`EvaluateAsInitializer` of `sqlite_create_table_sql_array_` **and**
+`pg_create_table_sql_array_`, for every model, in every TU.
+
+#### Lazy per-dialect CREATE TABLE SQL (#670)
+
+Those two arrays were `static constexpr` data members, and Clang instantiates a
+`static constexpr` member's initializer together with its class. So any TU that
+instantiated `SchemaStatement<T>` for any reason — `create_index_sql<T>()`,
+`create_table_sql<T>()` for one dialect — paid the full consteval CREATE TABLE
+build for **both** dialects. They are now a function-local `static constexpr`
+inside `create_table_sql<D>()`, generated only for the dialect a TU asks for.
+DDL text is unchanged (same `build_create_table_sql<D>()`; the suite's exact-DDL
+assertions pass on both backends).
+
+| TU | InstantiateFunction | EvaluateAsConstantExpr | best-of-3 wall, median of 3 rounds |
+|---|---:|---:|---:|
+| `test_orm_schema.cpp` before | 3683 | 18710 | 6.98 s |
+| `test_orm_schema.cpp` after | **3387 (−8.0%)** | **17733 (−5.2%)** | 6.50 s |
+| `test_referential_integrity.cpp` before | 3978 | 17557 | 8.32 s |
+| `test_referential_integrity.cpp` after | 3942 (−0.9%) | 17413 (−0.8%) | 7.81 s |
+| `test_types.cpp` before / after | 7216 / 7216 | 42314 / 42314 | — |
+
+Same-load single traces of `test_orm_schema.cpp` show where it went:
+`SchemaStatement<Person>` class instantiation **2.72 s → 1.02 s**, `<Task>`
+1.13 → 0.33 s, `<Message>` 1.08 → 0.35 s, and the `*_create_table_sql_array_`
+initializers gone from the class-instantiation path entirely.
+
+**What it is worth is bounded by how many dialects a TU uses.** A `TYPED_TEST`
+over both backends asks for both, and `test_types.cpp` gets nothing — its counts
+are identical. The saving is real only where a model is instantiated but one
+dialect (or no CREATE TABLE at all) is used. The wall-time column moves the
+right way on both TUs that changed, by ~0.5 s, but this session's noise was
+larger than that — and the "after" wall times come from a separate block of rounds
+(the shipped code built as an ablation tree), not interleaved with the "before"
+ones — so read it as consistent with the counts rather than as a measured number — per the [Method](#method) rule, a whole-build A/B on a quiet
+host is what would turn it into seconds.
+
+**Trade-off:** the consteval guards inside `build_create_table_sql<D>()` (the PG-only `has_pinned_bigint_pk` cross-check, the sizer-overflow `std::unreachable()` backstops) now fire per dialect, only in a TU that requests that dialect's DDL for a model — not for both on every instantiation.
+
 ### Two correctness bugs found along the way
 
 **`#embed` is invisible to the dependency scanner.** Clang does not list an
@@ -770,14 +855,15 @@ incremental behaviour (verified: the next build was `no work to do`, 0 s).
 | `ExpressionVariant`'s 27 alternatives | ~100 s, unmeasured | The variant-visitation machinery is 6.7% of a TU, and it scales with the ALTERNATIVE COUNT — which is a design choice, since `ComparisonExpr<T>`/`BetweenExpr<T>`/`InExpression<T>` each contribute one per value type. Replacing `std::visit` with a `switch` does **not** reach it ([measured and reverted](#stdvisit-over-expressionvariant--swapped-for-a-switch-no-reproducible-effect)); nesting the value variant inside one node type to make the outer variant ~5-wide might, at the cost of a refactor of every node's `to_sql`/`bind_impl`. Measure a prototype before opening it as work. |
 | the fixture + registration layer | ~0 reachable | **Closed by measurement.** Split into its axes [above](#inside-the-fixture-layer--and-why-its-biggest-item-cannot-be-moved): gtest's typed-test machinery is only ~10% of it, and the largest single item — 0.85 s per TU of `std::format` instantiation in `tests/test_db_helpers.h` — cannot be removed, moved, or reduced without the textual/modular `std` reconciliation collapsing in unrelated TUs. What remains is storm's `QuerySet` statics (~0.7 s) and its DDL generator (~0.9 s), both of which a test genuinely uses. |
 | the reflection intercept itself | unmeasured | What the row above leaves on the table: ~1.6 s per TU to enter the machinery (first annotated struct +0.65 s, first `define_aggregate`/`FieldRef` proxy +0.99 s). Library-side, so it would benefit users and not only tests — but it is the cost of the reflection a querying TU needs anyway, so whether *any* of it is removable is unknown. Measure before opening it as work. |
+| `storm_orm_schema`'s BMI serialization | ~2-7 s per library build, unmeasured as a saving | `WriteAST` is ~70% of building `schema.cppm`'s BMI; its frontend is ~1 s ([above](#the-schema-module-under--ftime-trace-670)). Paid once per library rebuild, not per test TU, so it bounds incremental rebuilds after a schema edit rather than the full build. Whether it is this module's own declarations or the imported ones it references (it imports `storm_orm_statements_base` and five more, re-exporting none) that dominate is not yet split. In the consumers, the largest remaining `SchemaStatement` instantiation is `create_index_sql`/`build_all_index_sql` (~1 s for `Person`) — single-dialect already, so laziness does not reach it. |
 
 ---
 
 ## Method
 
-Four scripts implement the measurements below, so a later investigation re-runs
+Five scripts implement the measurements below, so a later investigation re-runs
 them rather than rebuilding the harness (and rediscovering the mistakes in the
-bullets that follow). Three of them answer "what does one TU pay" from different
+bullets that follow). Four of them answer "what does one TU pay" from different
 angles; `ninjalog_stats.py` answers "where does the whole build's time go". They
 share one replay harness, `scripts/lib/compile_replay.py`, so they agree on what
 a timed compile is:
@@ -788,6 +874,7 @@ a timed compile is:
 | `scripts/typed_test_cost.py` | what the second backend costs — compiles real TUs as-is, then with `DatabaseTypes` narrowed to SQLite, bodies untouched |
 | `scripts/ninjalog_stats.py` | where the whole build's time goes — parses `.ninja_log` into the bucket table above, deduplicating module edges and excluding scan edges |
 | `scripts/tu_ablation.py` | what ONE TU's time is made of — ablates a real test file (drop bodies, merge them into one block, neuter the assertions, narrow the fixture) and recompiles each variant |
+| `scripts/time_trace.py` | where ONE TU's (or one module's) time goes inside the compiler — replays it with `-ftime-trace -ftime-trace-granularity=0`, best of N, and prints clang's `Total <event>` aggregates plus the longest `InstantiateFunction`/`InstantiateClass`/`ParseClass`/constant-evaluation events, optionally `--filter`ed by detail |
 
 ```bash
 scripts/dev-container.sh exec python3 scripts/compile_time_probe.py
@@ -796,9 +883,12 @@ scripts/dev-container.sh exec python3 scripts/typed_test_cost.py
 scripts/ninjalog_stats.py build/debug/.ninja_log     # after a build from scratch
 scripts/dev-container.sh exec python3 scripts/tu_ablation.py \
     tests/crud/test_conditional_update.cpp --variants full,merge,sink,trivial1,n=0
+scripts/dev-container.sh exec python3 scripts/time_trace.py src/orm/schema.cppm
+scripts/dev-container.sh exec python3 scripts/time_trace.py \
+    tests/schema/test_orm_schema.cpp --filter SchemaStatement --top 15
 ```
 
-All three replay scripts refuse to run if `compile_commands.json` shows a
+All four replay scripts refuse to run if `compile_commands.json` shows a
 compiler launcher, since timing through a cache measures nothing.
 `typed_test_cost.py` edits `tests/test_db_helpers.h` in place and restores it in
 a `finally` block — run it on a clean tree, and check `git diff` if it is
@@ -840,4 +930,15 @@ with `-Werror`.
   `scripts/ninjalog_stats.py` implements this; measure a build from scratch, as
   the log accumulates across runs.
 - **Inside one TU**: `-ftime-trace`, then aggregate `InstantiateFunction` /
-  `InstantiateClass` / `Source` events by `args.detail`.
+  `InstantiateClass` / `Source` events by `args.detail` — `scripts/time_trace.py`.
+  It needs no extra preset or build tree: it replays from an existing build's
+  `compile_commands.json` and writes the trace to `build/time-trace/`, so default
+  builds are untouched. Prefer its event **counts** for an A/B — they are
+  deterministic, while the durations carry the same noise as any replay.
+- **A module interface unit is two compiler jobs.** For a `.cppm` the driver runs
+  `-emit-module-interface` and then `-emit-obj` *from that BMI*, and both write
+  the one `-ftime-trace` file — so a naive `-c` replay reports only the second,
+  which never parses the source (`schema.cppm` read as **0.1 s** that way, against
+  ~3.4 s for the real BMI build). `time_trace.py` traces a `.cppm` with
+  `--precompile`, and drops the modmap's `-fmodule-output` so a replay can never
+  overwrite the build's own BMI (which would make ninja rebuild every importer).

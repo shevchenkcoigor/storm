@@ -1578,13 +1578,6 @@ export namespace storm::orm::schema {
             return build_sql_impl<D>(std::make_index_sequence<Base::field_count_>{});
         }
 
-        // Pre-computed CREATE TABLE SQL generated at compile-time (one per dialect)
-        static constexpr auto           sqlite_create_table_sql_array_  = build_create_table_sql<Dialect::SQLite>();
-        static inline const std::string sqlite_create_table_sql_string_ = std::string(sqlite_create_table_sql_array_);
-
-        static constexpr auto           pg_create_table_sql_array_  = build_create_table_sql<Dialect::PostgreSQL>();
-        static inline const std::string pg_create_table_sql_string_ = std::string(pg_create_table_sql_array_);
-
         // =====================================================================
         // INDEX SQL GENERATION
         // =====================================================================
@@ -1851,12 +1844,21 @@ export namespace storm::orm::schema {
             return junction_table_sqls<D>()[0];
         }
         // Return the pre-computed CREATE TABLE SQL for the given dialect.
+        //
+        // Function-local per dialect, NOT a pair of class-scope static constexpr members
+        // (#670): in practice Clang evaluates a static constexpr data member's initializer
+        // together with the class, so every TU that instantiated SchemaStatement<T> for any
+        // reason paid the consteval DDL build for BOTH dialects. Here a dialect's DDL is
+        // generated only in a TU that asks for it. The SQL is still generated at compile
+        // time (the constexpr local); the std::string copy is made on first call (a
+        // thread-safe function-local static, like junction_table_sqls) instead of during
+        // unordered dynamic initialization at startup.
         template <Dialect D = Dialect::SQLite> static auto create_table_sql() -> const std::string& {
-            if constexpr (D == Dialect::PostgreSQL) {
-                return pg_create_table_sql_string_;
-            } else {
-                return sqlite_create_table_sql_string_;
-            }
+            static const std::string sql = [] {
+                static constexpr auto arr = build_create_table_sql<D>();
+                return std::string(arr);
+            }();
+            return sql;
         }
 
         // Return pre-computed CREATE INDEX SQL statements for all indexed/unique/FK fields.
