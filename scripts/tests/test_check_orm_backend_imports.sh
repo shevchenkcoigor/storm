@@ -12,6 +12,7 @@ CHECKER="$REPO_ROOT/scripts/check-orm-backend-imports.sh"
 
 PASS=0
 FAIL=0
+SQLITE_IMPORT='import storm_db_sqlite;'
 
 check() {
     local tag="$1" want_rc="$2" want_text="$3" root="$4"
@@ -51,14 +52,17 @@ make_repo() {
 }
 
 TMPS=()
-cleanup() { rm -rf "${TMPS[@]}"; }
+cleanup() {
+    rm -rf "${TMPS[@]}"
+    return 0
+}
 trap cleanup EXIT
 
 r="$(make_repo)"; TMPS+=("$r")
 check clean 0 "names no concrete database backend" "$r"
 
 r="$(make_repo)"; TMPS+=("$r")
-echo 'import storm_db_sqlite;' >> "$r/src/orm/statements/select.cppm"
+echo "$SQLITE_IMPORT" >> "$r/src/orm/statements/select.cppm"
 check nested-orm-import 1 "src/orm/statements/select.cppm:2" "$r"
 
 r="$(make_repo)"; TMPS+=("$r")
@@ -66,7 +70,7 @@ echo 'template <class C = storm::db::sqlite::Connection> class X;' >> "$r/src/or
 check qualified-default 1 "src/orm/queryset.cppm:3" "$r"
 
 r="$(make_repo)"; TMPS+=("$r")
-echo 'import storm_db_sqlite;' >> "$r/src/db/default_connection.cppm"
+echo "$SQLITE_IMPORT" >> "$r/src/db/default_connection.cppm"
 check default-connection 1 "src/db/default_connection.cppm" "$r"
 
 r="$(make_repo)"; TMPS+=("$r")
@@ -74,13 +78,13 @@ echo 'import storm_db_postgresql;' >> "$r/src/db/pool.cppm"
 check pool-postgres 1 "src/db/pool.cppm" "$r"
 
 r="$(make_repo)"; TMPS+=("$r")
-echo 'import storm_db_sqlite;' >> "$r/src/orm/queryset.cppm"
-echo 'import storm_db_sqlite;' >> "$r/src/orm/statements/select.cppm"
+echo "$SQLITE_IMPORT" >> "$r/src/orm/queryset.cppm"
+echo "$SQLITE_IMPORT" >> "$r/src/orm/statements/select.cppm"
 check counts-all 1 "2 backend reference(s)" "$r"
 
 r="$(make_repo)"; TMPS+=("$r")
 mv "$r/src/db/pool.cppm" "$r/src/db/pool_v2.cppm"
-echo 'import storm_db_sqlite;' >> "$r/src/db/pool_v2.cppm"
+echo "$SQLITE_IMPORT" >> "$r/src/db/pool_v2.cppm"
 check renamed-listed-file 1 "listed path missing: src/db/pool.cppm" "$r"
 
 r="$(make_repo)"; TMPS+=("$r")
