@@ -30,7 +30,7 @@
 #
 # GTest / Test-file Exclusions: moved to tests/.clang-tidy (issue #314).
 # - google-explicit-constructor: Expr and UUID implicit conversions are intentional public API
-#   (src/orm/where.cppm, src/orm/utilities.cppm). Disabled globally — not just test files.
+#   (src/orm/where.cppm, src/orm/value_bind.cppm). Disabled globally — not just test files.
 #
 # ORM-specific Exclusions (issue #262 — added after clang-p2996 rebuild surfaced 48 pre-existing warnings):
 # - cppcoreguidelines-avoid-const-or-ref-data-members: Storm's INSERT/UPDATE/ERASE/SELECT statement
