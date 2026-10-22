@@ -917,7 +917,7 @@ concept ValidForeignKey = ModelWithPrimaryKey<utilities::optional_inner_type_t<F
 site instead of deep inside FK-column extraction. It is single-level only — it checks the target's
 own PK, never recursing into the target's FKs (a Base⟷Owner reference cycle would otherwise never
 terminate). Loop bodies that walk members at runtime (e.g. `FKFieldOf`) can't splice a loop variable
-into `ValidForeignKey<typename[:...:]>`, so `base.cppm` also carries an info-value twin,
+into `ValidForeignKey<typename[:...:]>`, so `model_concepts.cppm` also carries an info-value twin,
 `valid_fk_target(std::meta::info fk_type) -> bool`, computing the same "target, optional-unwrapped,
 has a PK" check for that path.
 

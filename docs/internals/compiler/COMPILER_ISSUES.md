@@ -283,7 +283,7 @@ for (auto m : std::meta::nonstatic_data_members_of(^^T, std::meta::access_contex
 }
 ```
 
-Found in #388: the `FKFieldOf<T, Member>` concept (base.cppm) constrains
+Found in #388: the `FKFieldOf<T, Member>` concept (model_concepts.cppm) constrains
 `join<fields::T.field>()` and must work with FK reflections produced by the benchmark
 registry module (`storm_benchmark_registry::resolve_fk_field`).
 

@@ -28,6 +28,7 @@ import std;
 
 import storm_orm_field_attr; // column_name_size / append_column_name (#422)
 import storm_orm_statements_base;
+import storm_orm_statements_field_names; // pk_where_clause_size / append_pk_where_clause (#501)
 import storm_orm_utilities;
 
 export namespace storm::orm::statements {

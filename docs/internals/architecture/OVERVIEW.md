@@ -87,6 +87,7 @@ src/
     ├── ref_action.cppm             # RefAction, ref_action_sql (leaf module, #562)
     ├── field_attr.cppm             # Free-standing flag annotation objects (leaf module, #387/#492)
     ├── relation_meta.cppm          # m2m/reverse-fk annotation types + is_relation_field (leaf module, #408)
+    ├── model_concepts.cppm         # Model-validation concepts (ModelWithPrimaryKey, PrimaryKeyType, …) + relation/FK helpers (leaf below statements_base)
     ├── indexes.cppm                # Index, UniqueIndex, Indexes<T> trait
     ├── schema.cppm                 # DDL/schema generation
     ├── generator.cppm              # storm-schema CLI codegen support
@@ -95,8 +96,8 @@ src/
     ├── utilities.cppm              # ConstexprString, SQLCache
     └── statements/
         ├── base.cppm               # BaseStatement utilities
-        ├── extract.cppm            # ColumnExtractor — row→value converters (#434)
-        ├── field_names.cppm        # FieldNameGrammar — column-list SQL builders (#434)
+        ├── extract.cppm            # ColumnExtractor — row→value converters (#434) + full_unsigned parse (#436)
+        ├── field_names.cppm        # FieldNameGrammar — column-list SQL builders (#434) + PK WHERE clause (#501)
         ├── insert.cppm             # InsertStatement
         ├── select.cppm             # SelectStatement + JOIN
         ├── update.cppm             # UpdateStatement
@@ -127,6 +128,7 @@ storm (main module)
 ├── storm_orm_transaction
 ├── storm_orm_where
 ├── storm_orm_utilities
+├── storm_orm_model_concepts          (re-exported by storm_orm_statements_base)
 ├── storm_orm_statements_base
 ├── storm_orm_statements_{insert,update,update_grammar,upsert_grammar,erase,select,join}
 ├── storm_orm_statements_{aggregate,distinct,orderby,setop,extract,field_names}

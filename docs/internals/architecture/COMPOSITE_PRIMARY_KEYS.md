@@ -64,7 +64,7 @@ See [FIELD_TYPES.md](../../guide/reference/FIELD_TYPES.md).
 The by-key `WHERE pk = ?` widens to
 `WHERE a = ? AND b = ?`, AND-joined in declaration order. Three things changed, each with its own
 failure mode. (1) **SQL text**: the clause writer/sizer pair `append_pk_where_clause` /
-`pk_where_clause_size` are free functions in `base.cppm` (NOT `BaseStatement` methods — that class is
+`pk_where_clause_size` are free functions in `statements/field_names.cppm` (NOT `BaseStatement` methods — that class is
 inherited by every statement type, and `SchemaStatement` already sits at the S1448 ceiling), taking
 the PK-member array as a parameter so `erase.cppm` and `update_grammar.cppm` share them without
 depending on each other. Parts go through `append_column_name` (#422), so an FK part emits
@@ -417,8 +417,8 @@ composite-PK part, its target value routes through `bind_pk_scalar` (which dispa
 single-column FK-target shape (`fk_primary_key_count<FKType>() == 1`, the shape #608 and its tests
 describe) — the composite-FK-target path (`bind_fk_parts`/`bind_one_fk_part`) is left alone because
 it is unreachable with `is_pk_member(member)` true, not merely untested: `valid_fk_key_target`
-(`base.cppm`, guarding `is_primary_key_part_typed_member`) rejects a `primary_part` FK whose target
+(`model_concepts.cppm`, guarding `is_primary_key_part_typed_member`) rejects a `primary_part` FK whose target
 itself has a composite key at the `PrimaryKeyType<T>` constraint, before such a model can even
 instantiate `BaseStatement`. The same constraint rejects an optional FK as a PK part, which is why
 the sibling optional-FK branch a few lines above is untouched too — both guards must move together
-if `valid_fk_key_target` is ever widened (see the warning already at `base.cppm:291`).
+if `valid_fk_key_target` is ever widened (see the warning above `valid_fk_key_target` in `model_concepts.cppm`).

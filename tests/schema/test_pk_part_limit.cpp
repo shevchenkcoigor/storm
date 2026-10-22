@@ -106,8 +106,8 @@ static_assert(
         StitchKey::MAX_PARTS * sizeof(std::uint64_t) == StitchKey::CAPACITY,
         "MAX_PARTS must be exactly the capacity in 8-byte words — every part writes one word"
 );
-// Pins today's ceiling, which the docs and the base.cppm rationale both quote as 4.
-// NOTE: raising CAPACITY (the escape hatch base.cppm describes, for a real >4-part key)
+// Pins today's ceiling, which the docs and the model_concepts.cppm rationale both quote as 4.
+// NOTE: raising CAPACITY (the escape hatch model_concepts.cppm describes, for a real >4-part key)
 // means updating this line together with the PkParts5 / PkParts7 expectations below —
 // they encode "one past the ceiling" and "well past it" as literal part counts.
 static_assert(StitchKey::MAX_PARTS == 4, "the documented ceiling today is 4 parts");

@@ -373,6 +373,7 @@ src/
 └── orm/
     ├── queryset.cppm           # QuerySet ORM interface
     ├── field_attr.cppm         # Free-standing flag annotation objects + is_primary_member (leaf module)
+    ├── model_concepts.cppm     # Model-validation concepts (ModelWithPrimaryKey, Model*Valid, …); re-exported by statements/base.cppm
     ├── utilities.cppm          # ConstexprString, SQLCache
     ├── indexes.cppm            # Index, UniqueIndex, Indexes<T> trait (namespace storm)
     └── statements/             # INSERT, SELECT, UPDATE, DELETE, DISTINCT, JOIN
@@ -440,7 +441,7 @@ dual-spelling). Each is an empty tag struct + `inline constexpr` object in the
 `is_auto_update`, `has_full_unsigned_attr`, `has_signed_storage_attr`) keep their
 names/signatures; PK detection routes through `is_primary_member(info)` (matches `primary`,
 `primary_autoincrement`, OR `primary_part`). The exclusivity the enum gave for free is restored by the
-`ModelAnnotationsValid<T>` concept (in `base.cppm`, ANDed into the `BaseStatement<T>`
+`ModelAnnotationsValid<T>` concept (in `model_concepts.cppm`, ANDed into the `BaseStatement<T>`
 constraint list), which rejects per member: `primary` + `primary_autoincrement`, or
 `signed_storage` + `full_unsigned`. DDL is byte-identical — pure spelling change.
 
