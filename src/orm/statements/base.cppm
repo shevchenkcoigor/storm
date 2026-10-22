@@ -25,9 +25,11 @@ export namespace storm::orm::statements {
     using storm::orm::utilities::ConstexprString;
 
     namespace meta {
-        // Canonical flag annotations + is_primary_member live in the dependency-free
-        // storm_orm_field_attr leaf module (#387, #492); re-exposed here so statement
-        // modules keep using the meta:: qualifier.
+        // Canonical flag annotations + is_primary_member / find_primary_key / has_primary_key live in the
+        // dependency-free storm_orm_field_attr leaf module (#387, #492); re-exposed here so statement modules keep
+        // using the meta:: qualifier.
+        using storm::meta::find_primary_key;
+        using storm::meta::has_primary_key; // the ModelWithPrimaryKey<T> core; also runs on an info VALUE
         using storm::meta::is_primary_member;
         using storm::meta::is_primary_part_member; // NOLINT(misc-unused-using-decls) — #500 composite PK
         using storm::meta::ref_action_sql;         // NOLINT(misc-unused-using-decls) — used by storm_orm_schema
@@ -77,23 +79,6 @@ export namespace storm::orm::statements {
         using storm::meta::max_length_of;  // NOLINT(misc-unused-using-decls)
         using storm::meta::MaxLength;      // NOLINT(misc-unused-using-decls) — re-exported for storm.cppm
 
-        // True iff `type` has at least one non-static data member annotated with
-        // storm::primary/primary_autoincrement/primary_part (#500 — a composite key
-        // satisfies this like any other). The info-value core of the ModelWithPrimaryKey<T> concept
-        // (below), factored out so it can also run on an info VALUE — needed by
-        // valid_fk_target, whose target type is derived from a range-for loop variable
-        // over nonstatic_data_members_of and so cannot be spliced into a type template
-        // argument (splice operands must be constant expressions; a plain for-loop
-        // variable over a heap-backed std::vector<info> range is not one).
-        consteval auto has_primary_key(std::meta::info type) -> bool {
-            for (auto m : std::meta::nonstatic_data_members_of(type, std::meta::access_context::unchecked())) {
-                if (meta::is_primary_member(m)) {
-                    return true;
-                }
-            }
-            return false;
-        }
-
         // std::optional<T> → T (dealiased); any other type returned dealiased unchanged.
         // Shared optional-unwrap for FK-target queries. Detection goes through the
         // leaf module's is_optional_type (#509) — this site previously spelled the
@@ -112,7 +97,7 @@ export namespace storm::orm::statements {
         // optional<Related> to Related structurally (same pattern as fk_member_points_at),
         // then delegate to has_primary_key. Used by FKFieldOf (#474), which cannot splice
         // its range-for loop variable into ValidForeignKey<typename[:...:]> directly (see
-        // has_primary_key above). Single-level: only the target's own PK, never recursing
+        // has_primary_key in storm_orm_field_attr). Single-level: only the target's own PK, never recursing
         // into the target's FKs. Intentionally parallel to ValidForeignKey<FieldType>: the
         // concept serves the type-argument path (find_fk_primary_key), this the loop-variable
         // path (FKFieldOf); both compute "the FK target, optional-unwrapped, has a PK".
@@ -859,13 +844,7 @@ export namespace storm::orm::statements {
       protected:
         // Helper to find primary key using storm::meta attributes
         static consteval auto find_primary_key_impl() -> std::meta::info {
-            for (const std::meta::info member :
-                 std::meta::nonstatic_data_members_of(^^T, std::meta::access_context::unchecked())) {
-                if (meta::is_primary_member(member)) {
-                    return member;
-                }
-            }
-            std::unreachable(); // never reached: ModelWithPrimaryKey<T> guarantees a primary key exists
+            return meta::find_primary_key<T>(); // ModelWithPrimaryKey<T> guarantees a primary key exists
         }
 
         // True when `member` is a primary-key COLUMN — a PK annotation on a member that is
