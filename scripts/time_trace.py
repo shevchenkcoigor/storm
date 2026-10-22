@@ -48,7 +48,8 @@ def expand_modmap(argv, cwd):
             expanded.append(arg)
             continue
         response = pathlib.Path(cwd) / arg[1:]
-        for flag in shlex.split(response.read_text(encoding="utf-8")):
+        text = pathlib.Path(safe_path(response)).read_text(encoding="utf-8")
+        for flag in shlex.split(text):
             if not flag.startswith("-fmodule-output"):
                 expanded.append(flag)
     return expanded

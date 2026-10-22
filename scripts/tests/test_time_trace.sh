@@ -91,7 +91,10 @@ SNIPPET
 # --- the build's BMI must never be an output of the replay -------------------
 scenario_modmap_module_output_dropped() {
     check "the modmap is inlined with -fmodule-output dropped, the rest kept" "OK" <<'SNIPPET'
-with tempfile.TemporaryDirectory() as tmp:
+scratch = pathlib.Path(mod.REPO_ROOT, "build")
+scratch.mkdir(exist_ok=True)
+# Inside the repository: expand_modmap confines the response file to it (safe_path).
+with tempfile.TemporaryDirectory(dir=scratch) as tmp:
     pathlib.Path(tmp, "x.modmap").write_text(
         '-x c++-module -fmodule-output="CMakeFiles/storm.dir/storm_orm_schema.pcm" '
         '-fmodule-file="std=CMakeFiles/std.pcm"\n', encoding="utf-8")
