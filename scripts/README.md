@@ -262,9 +262,9 @@ eval "$(git diff --cached --name-only | ./scripts/detect-changes.sh)"
 
 ## Script Self-Tests (scripts/tests/)
 
-Nine scripts have a `test_<name>.sh` self-test under `scripts/tests/` — including three whose
+Ten scripts have a `test_<name>.sh` self-test under `scripts/tests/` — including four whose
 subjects are not documented above (`coverage-run-batched.sh`, `ninjalog_stats.py`,
-`tu_ablation.py`), `test_pg_default_connstr.sh`, which covers the sourced helper
+`time_trace.py`, `tu_ablation.py`), `test_pg_default_connstr.sh`, which covers the sourced helper
 `pg-default-connstr.sh` (the per-OS default `STORM_PG_CONNSTR` socket: Linux
 `/var/run/postgresql`, macOS `/tmp`) plus its callers `commit.sh`, `coverage-run-batched.sh`
 and `dev-container.sh`, `test_libcxx_modules_symlink.sh`, which covers `cmake/libcxx.cmake` rather
@@ -280,13 +280,14 @@ for t in scripts/tests/test_*.sh; do "$t" || echo "FAILED: $t"; done
 
 ### Prerequisites
 
-All but four need nothing beyond bash and coreutils:
+All but five need nothing beyond bash and coreutils:
 
 | Test | Needs |
 |---|---|
 | `test_libcxx_modules_symlink.sh` | **cmake at the project's own `cmake_minimum_required`** (read from `CMakeLists.txt`, today 3.30) **and ninja** — its harness declares that same floor and configures with `-G Ninja`, so either one missing aborts every configure before `cmake/libcxx.cmake` is read |
 | `test_ninjalog_stats.sh` | `python3` (the script under test is Python) |
 | `test_session_start_hook.sh` | **`git`** — its subject is git behavior, so it `git init`s a throwaway repo and makes a real commit through the wired hook (`python3` optional: without it the `settings.json` JSON-validity assertion is reported as unchecked, the grep assertions still run) |
+| `test_time_trace.sh` | `python3`; no compiler — it pins the replay argv (a `.cppm` traced via `--precompile`, the modmap's `-fmodule-output` dropped) and the trace parsing, the two places a wrong answer is a plausible number rather than a crash |
 | `test_tu_ablation.sh` | `python3` (same as `test_ninjalog_stats.sh`); no compiler — it exercises the source transforms only, which is the point: a mis-parse there does not crash, it publishes a wrong number |
 | everything else | pure bash |
 
