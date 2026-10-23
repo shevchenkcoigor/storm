@@ -458,7 +458,7 @@ fi
 # the commit that can reintroduce the bug. The scripts the self-test copies into
 # its throwaway repo are listed too: changing one can break its scenarios.
 if [[ -n "$STAGED_FILES" ]] \
-   && grep -qE '^(commit\.sh|scripts/(detect-changes|pg-default-connstr)\.sh|scripts/lib/clang_tidy_skiplist\.sh|scripts/tests/test_commit_self_heal_configure\.sh)$' <<< "$STAGED_FILES"; then
+   && grep -qE '^(commit\.sh|scripts/(detect-changes|pg-default-connstr)\.sh|scripts/lib/(clang_tidy_skiplist|line_coverage)\.sh|scripts/tests/test_commit_self_heal_configure\.sh)$' <<< "$STAGED_FILES"; then
     if ! "$(dirname "${BASH_SOURCE[0]}")/scripts/tests/test_commit_self_heal_configure.sh" > "$LOG_DIR/storm_self_heal_test.log" 2>&1; then
         echo ""
         echo -e "${RED}${BOLD} COMMIT BLOCKED — self-heal configure self-test failed${RESET}"

@@ -109,7 +109,7 @@ if [[ "$1" == "--build" && "$2" == "--preset" ]]; then
         done
     fi
     [[ "$*" == *"--target coverage"* && "$*" != *coverage-clean* ]] \
-        && echo "  lines......: 100.0% (1 of 1 lines)"
+        && echo "  lines.......: 100.0% (1 of 1 lines)"
     exit 0
 fi
 echo "stub cmake: unexpected invocation: $*" >&2
@@ -133,6 +133,7 @@ make_repo() {
     cp "$REPO_ROOT/scripts/detect-changes.sh" "$REPO_ROOT/scripts/pg-default-connstr.sh" \
         "$REPO/scripts/"
     cp "$REPO_ROOT/scripts/lib/clang_tidy_skiplist.sh" "$REPO/scripts/lib/"
+    cp "$REPO_ROOT/scripts/lib/line_coverage.sh" "$REPO/scripts/lib/"
     printf '#!/bin/sh\nexit 0\n' > "$REPO/scripts/run_clang_tidy.sh"
     chmod +x "$REPO/scripts/run_clang_tidy.sh"
     # A failed fixture commit (e.g. a global signing setup) would leave every
@@ -287,6 +288,7 @@ scenario_warm_tree_never_configures() {
     expect_step passed "release prereqs"
     expect_step passed "release build"
     expect_step passed "tests (SQLite"
+    expect_step passed "coverage"
     return 0
 }
 
