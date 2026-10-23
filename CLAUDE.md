@@ -592,8 +592,8 @@ can't be templated, same as `fk<Action>`), in the `field_attr.cppm` leaf module,
 non-text field is a **compile-time error** via `ModelMaxLengthValid<T>` (a `BaseStatement` constraint).
 Nullable+bounded works: the SQLite CHECK passes on NULL. Combines with `unique`/auto-`DEFAULT` (#413)/
 `indexed`; SQLite order: `<name> TEXT [NOT NULL] [DEFAULT v] [CHECK(...)] [UNIQUE]`. Detection helper
-`max_length_of(member) -> optional<size_t>` mirrors `fk_on_delete_action_of`; the buffer grows via the
-`ClauseSizer` sizer (`max_max_length_clause_len` folded into `regular_suffix`). No `min_length`/`check<>`
+`max_length_of(member) -> optional<size_t>` mirrors `fk_on_delete_action_of`; the CREATE TABLE buffer is
+measured by running the same writer against `ClauseSizer` (#682), so the clause is sized exactly. No `min_length`/`check<>`
 (separate follow-ups) and no client-side validation — the DB enforces.
 
 **Field selectors — `fields::Model.field` (#518)**: the ONLY selector spelling. Both
