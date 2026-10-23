@@ -73,11 +73,11 @@ namespace {
         std::string             description;
     };
 
-    // A deliberately long PK member name — proves the consteval size calculations
-    // (column_size_budget's pk_size, col_def_buffer, calculate_column_defs_size)
-    // were widened for a variable-length PK identifier rather than the fixed
-    // literal "id", so this must build (and render untruncated) rather than
-    // overflow the ConstexprString buffer at compile time.
+    // A deliberately long PK member name — proves the consteval CREATE TABLE
+    // buffer (measured by running the writer against the counting sink, #682)
+    // fits a variable-length PK identifier rather than the fixed literal "id",
+    // so this must build (and render untruncated) rather than overflow the
+    // ConstexprString buffer at compile time.
     inline constexpr std::string_view kLongPkName =
             "this_is_a_deliberately_very_long_primary_key_identifier_that_exceeds_one_hundred_characters_long";
 
@@ -87,9 +87,9 @@ namespace {
         std::string name;
     };
 
-    // A deliberately long PK name on an FK TARGET — proves fk_references_len /
-    // max_fk_references_len were widened for a variable-length target PK
-    // identifier too (not just the referencing side).
+    // A deliberately long PK name on an FK TARGET — proves the CREATE TABLE
+    // buffer fits a variable-length target PK identifier in the REFERENCES
+    // clause too (not just the referencing side).
     struct LongPkTarget {
         [[= primary]] int
                     this_is_a_deliberately_very_long_primary_key_identifier_that_exceeds_one_hundred_characters_long{};
@@ -260,8 +260,8 @@ TEST(PkColumnNameTest, FkReferencesIdNamedTargetUnchanged) {
             << "Expected REFERENCES Person(id) unchanged in: " << sql;
 }
 
-// A long PK name on the FK TARGET must not overflow fk_references_len /
-// max_fk_references_len (widened for a variable-length target PK identifier).
+// A long PK name on the FK TARGET must not overflow the CREATE TABLE buffer
+// (its REFERENCES clause carries the variable-length target PK identifier).
 TEST(PkColumnNameTest, FkReferencesLongTargetPkNotTruncatedSqlite) {
     const std::string& sql = create_table_sql<RefersToLongPkTarget>();
     EXPECT_NE(sql.find("REFERENCES LongPkTarget(" + std::string(kLongPkName) + ")"), std::string::npos)

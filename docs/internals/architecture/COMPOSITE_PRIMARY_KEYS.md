@@ -53,7 +53,7 @@ PG rejects them). No in-tree model used that shape. The PK clause writes parts v
 canonical association-table case, and naming the bare member would emit a PK over a nonexistent
 column. `calculate_column_defs_size` keeps FK columns on the FK-suffix budget for composite models
 (the regular suffix under-counts and `ConstexprString` truncates silently); `build_sql_impl` gained a
-whole-SQL `std::unreachable()` backstop, since the per-column one can't catch a sizing shortfall. Autoincrement on a composite key is **unrepresentable**,
+whole-SQL `std::unreachable()` backstop, since the per-column one can't catch a sizing shortfall. (#682 later deleted both hand-maintained budgets: the CREATE TABLE buffer is now measured by running the writer itself against the counting sink — see [COMPILE_TIME.md](../performance/COMPILE_TIME.md#exact-size-create-table-buffer-682).) Autoincrement on a composite key is **unrepresentable**,
 not just useless — SQLite rejects both spellings at parse time and PG's identity is single-column —
 hence the compile-time rejection. **Scope**: annotation + DDL only; UPDATE/DELETE by composite key
 land in #501 (below), INSERT/JOIN and composite FKs in #502–#504.
@@ -216,7 +216,7 @@ model whose PK member was not named `id` got DDL and queries that disagreed at r
 column"). Composite-PK models are unaffected (routed around this branch, #500). The consteval size
 budgets (`column_size_budget`'s `pk_size`, `fk_references_len`) were widened to measure the real
 identifier length instead of assuming the fixed 2-char `"id"`; `id`-named models (the ~50 existing
-ones) stay byte-identical.
+ones) stay byte-identical. (Those budgets no longer exist since #682 — the buffer is measured from the emitted text.)
 
 ### m2m junction REFERENCES uses the real PK identifier (#519)
 
