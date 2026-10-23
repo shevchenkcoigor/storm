@@ -4,6 +4,8 @@
 #include "test_db_helpers.h"
 
 import storm;
+import storm_orm_statements_insert;         // default_return_id / ReturnIdSupported — not re-exported by `storm`
+import storm_orm_statements_upsert_grammar; // UpsertGrammar / ConflictTargetUnique — not re-exported by `storm`
 import std;
 
 #include "../../shared/models/person.h" // NOSONAR cpp:S954 — Person, the single-PK regression anchor

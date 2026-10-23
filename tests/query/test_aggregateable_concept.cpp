@@ -3,6 +3,7 @@
 #include "test_db_helpers.h"
 
 import storm;
+import storm_orm_utilities; // storm::orm::utilities::UUID (canonical name of storm::UUID) — not re-exported by `storm`
 import storm_orm_statements_aggregate;
 import std;
 

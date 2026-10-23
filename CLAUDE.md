@@ -364,7 +364,7 @@ only the hook, `settings.json` or the test itself skips every other step.
 
 ```
 src/
-├── storm.cppm                  # Main module (re-exports storm_defaults)
+├── storm.cppm                  # Umbrella: export-imports the public surface only; internals are plain imports (MODULE_SYSTEM.md Step 5)
 ├── storm_defaults.cppm         # The ONLY default-backend binding: QuerySet<T>/…Statement<T>/DefaultConnection<> aliases
 ├── storm_model.cppm            # Model-declaration vocabulary: annotations (primary, fk<>, …) + selector machinery (#671)
 ├── db/

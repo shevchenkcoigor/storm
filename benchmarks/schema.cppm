@@ -29,7 +29,10 @@ import std;
 // produced a `clang-scan-deps` crash inside ModuleMap::addHeader (PCM-cache
 // hash divergence vs the path main.cpp uses to see the same symbols). The
 // raw/base/registry modules that already work all use `import storm;`.
+// `storm` no longer re-exports utilities, so the leaf is imported too —
+// alongside the umbrella, not instead of it.
 import storm;
+import storm_orm_utilities; // ConstexprString — internal, not re-exported by `storm`
 
 export namespace storm::benchmark {
 

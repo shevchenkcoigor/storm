@@ -260,6 +260,40 @@ by `commit.sh` and the `orm-backend-imports` CI job) fails if `src/orm/**`,
 `storm_db_sqlite`/`sqlite::` (or the PostgreSQL equivalents) or imports `storm_defaults`/`storm`, and `tests/db/test_backend_layering.cpp` static-asserts that the
 `Basic*` templates cannot be named without a backend.
 
+### Step 5: `import storm;` Exports Only the Public Surface
+
+`src/storm.cppm` splits its imports in two. Modules that make up the public surface (re-exported whole) are
+`export import`ed: `storm_model`, `storm_defaults`, `storm_db_default_connection`,
+`storm_orm_transaction`, `storm_db_concept`, `storm_db_sqlite`, `storm_db_postgresql`,
+`storm_db_pool`, `storm_orm_where`, `storm_orm_fields`, `storm_orm_queryset`, `storm_orm_indexes`
+and `storm_orm_schema`. The implementation modules — `storm_orm_generator`,
+`storm_orm_utilities`, `storm_orm_statements_base` (and with it `storm_orm_model_concepts`),
+`_insert`, `_upsert_grammar`, `_select`, `_projection`, `_join`, `_setop`, `_orderby` — are
+plain `import`s: their declarations stay **reachable** (the `BasicInsertStatement` that
+`QuerySet::insert()` returns is fully usable), but an importer of `storm` alone cannot **name**
+them.
+
+The few user-facing names declared inside those implementation modules are re-exported one by
+one with a `using` declaration inside an `export namespace` block, in their original namespace,
+so their spelling is unchanged (`Collate` is additionally re-exported into `storm::`):
+
+| Name | Declared in | Why it is public |
+|---|---|---|
+| `storm::generator` | `storm_orm_generator` | return type of `rows()` |
+| `storm::UUID` | `storm_orm_utilities` (alias of `orm::utilities::UUID`) | UUID field / primary-key type |
+| `storm::orm::utilities::Collate` | `storm_orm_utilities` | `.collate(Collate::NoCase)`, `order_by<F, Collate::…>` |
+| `storm::Collate` | `storm.cppm` (`using` of the same `storm_orm_utilities` enum) | `using namespace storm;` + bare `Collate::NoCase`, as the guide writes it (#679); pinned by `tests/query/test_collate_umbrella.cpp` |
+| `storm::orm::statements::ReturnId` | `storm_orm_statements_insert` | `insert<ReturnId::Yes>` |
+| `storm::orm::statements::InsertOptions` | `storm_orm_statements_insert` | `insert(span, InsertOptions{.batch_size = …})` |
+
+Code that names an internal — a `JoinStatement`, a grammar (`UpsertGrammar`), a model-validation
+concept (`ModelWithPrimaryKey`, `ModelStorageAnnotated`, `NumericAggregateable`,
+`ValidForeignKey`), `BindableType`, `ConstexprString`, the canonical `orm::utilities::UUID`
+spelling — imports that module explicitly (`import storm_orm_model_concepts;`,
+`import storm_orm_utilities;`, …), the same way the tests already import individual statement
+modules. A new public name in an implementation module needs its own `using` line in
+`storm.cppm`; a new module whose entire surface is public is `export import`ed there instead.
+
 ## Performance Results
 
 The template trick enables cross-module inlining without LTO:

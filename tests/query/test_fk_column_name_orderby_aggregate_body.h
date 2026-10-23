@@ -19,6 +19,7 @@
 #include <meta>
 
 import storm;
+import storm_orm_statements_orderby; // OrderBySelectorsAreSingleColumn — not re-exported by `storm`
 import std;
 
 #include "../../shared/models/message.h" // NOSONAR cpp:S954
