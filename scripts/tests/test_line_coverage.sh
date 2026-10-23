@@ -127,12 +127,12 @@ fi
 # the hook runs ./commit.sh from the work-tree top, and this resolves the
 # helper's `source` to the same file wherever the test is run from.
 run_commit_check() { # <line-percent>
-    local block
+    local percent="$1" block
     block="$(sed -n '/^    run_coverage_check() {/,/^    }$/p' "$COMMIT")"
     block="${block//'${BASH_SOURCE[0]}'/$COMMIT}"
     bash -c "RED= BOLD= RESET= DIM=
 $(declare -f summary)
-cmake() { [[ \"\$*\" == *'--target coverage' ]] && summary '$1'; return 0; }
+cmake() { [[ \"\$*\" == *'--target coverage' ]] && summary '$percent'; return 0; }
 show_uncovered_lines() { echo '<uncovered>'; }
 $block
 run_coverage_check; echo \"rc=\$?\"" 2>&1
