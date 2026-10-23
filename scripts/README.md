@@ -262,12 +262,15 @@ eval "$(git diff --cached --name-only | ./scripts/detect-changes.sh)"
 
 ## Script Self-Tests (scripts/tests/)
 
-Twelve scripts have a `test_<name>.sh` self-test under `scripts/tests/` — including four whose
+Thirteen scripts have a `test_<name>.sh` self-test under `scripts/tests/` — including four whose
 subjects are not documented above (`coverage-run-batched.sh`, `ninjalog_stats.py`,
 `time_trace.py`, `tu_ablation.py`), `test_pg_default_connstr.sh`, which covers the sourced helper
 `pg-default-connstr.sh` (the per-OS default `STORM_PG_CONNSTR` socket: Linux
 `/var/run/postgresql`, macOS `/tmp`) plus its callers `commit.sh`, `coverage-run-batched.sh`
-and `dev-container.sh`, `test_libcxx_modules_symlink.sh`, which covers `cmake/libcxx.cmake` rather
+and `dev-container.sh`, `test_line_coverage.sh`, which covers the sourced helper
+`lib/line_coverage.sh` (the BSD/GNU-portable lcov line-coverage parser shared by `commit.sh`'s
+gate and CI's `coverage` job, #680) plus `commit.sh`'s `run_coverage_check()`,
+`test_libcxx_modules_symlink.sh`, which covers `cmake/libcxx.cmake` rather
 than a script, and `test_session_start_hook.sh`, which covers
 `.claude/hooks/session-start-docker.sh` — the SessionStart hook that wires `core.hooksPath` (and
 so decides whether `commit.sh` runs at all, #651) before taking any of its Docker-provisioning
