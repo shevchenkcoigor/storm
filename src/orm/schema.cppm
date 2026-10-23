@@ -409,9 +409,10 @@ export namespace storm::orm::schema {
         }
 
         // A length-counting sink mirroring the ConstexprString append/append_uint
-        // interface used by append_default_clause. Running the same clause builder
-        // against it yields the exact rendered length, so the column buffer budget
-        // stays in lock-step with the emitted SQL (no hand-maintained constant).
+        // interface every DDL writer here uses. Running the same writer against it yields
+        // the exact rendered length, so a buffer budget stays in lock-step with the
+        // emitted SQL (no hand-maintained constant): build_create_table_sql (#682) and
+        // build_junction_sql size their whole statement this way.
         struct ClauseSizer {
             std::size_t    len = 0;
             consteval void append(const char* str) {
@@ -431,15 +432,6 @@ export namespace storm::orm::schema {
                 }
             }
         };
-
-        // Rendered length of the " DEFAULT <value>" clause for one member (0 when
-        // the member carries no default initializer or its type is out of scope).
-        template <typename Owner, std::meta::info Member, Dialect D>
-        consteval auto default_clause_len() -> std::size_t {
-            ClauseSizer sizer;
-            append_default_clause<Owner, Member, D>(sizer);
-            return sizer.len;
-        }
 
         // Emit the type portion for a max_length<N> text field (#493).
         //   PostgreSQL: "VARCHAR(N)[ NOT NULL]" — a real bounded type.
@@ -507,39 +499,6 @@ export namespace storm::orm::schema {
                 first_part = false;
             }
             sql.append(")");
-        }
-
-        // Bytes append_composite_pk_clause writes, 0 for a single-PK model. Its byte-exact
-        // companion, measured the same way the max_length budget is: by rendering into the
-        // counting sink, so the two can never drift.
-        template <typename MembersT>
-        consteval auto composite_pk_clause_size(const MembersT& members, bool is_composite) -> std::size_t {
-            ClauseSizer sizer;
-            append_composite_pk_clause(sizer, members, is_composite);
-            return sizer.len;
-        }
-
-        // Rendered length of the max_length clause(s) for one field (0 when the field
-        // carries no max_length annotation). Measured by rendering into the counting sink,
-        // so the column budget stays byte-exact regardless of dialect or bound magnitude:
-        //   PG:     len("VARCHAR(N)") - len("TEXT")   (the type grows by this much)
-        //   SQLite: len(" CHECK(length(<name>) <= N)") (a trailing clause)
-        template <Dialect D> consteval auto max_length_clause_len(std::meta::info member) -> std::size_t {
-            const auto bound = storm::meta::max_length_of(member);
-            if (!bound.has_value()) {
-                return 0;
-            }
-            ClauseSizer sizer;
-            if constexpr (D == Dialect::PostgreSQL) {
-                // "VARCHAR(N)" replaces "TEXT" (4 chars) — count only the net growth.
-                sizer.append("VARCHAR(");
-                sizer.append_uint(bound.value());
-                sizer.append(")");
-                return sizer.len >= 4 ? sizer.len - 4 : 0;
-            } else {
-                append_max_length_check<D>(sizer, std::meta::identifier_of(member), bound.value());
-                return sizer.len;
-            }
         }
 
         // Map a C++ field type to its SQL column definition string for the given dialect.
@@ -728,7 +687,7 @@ export namespace storm::orm::schema {
         }
 
         // Append every column a composite-FK member emits, comma-joined: one column per
-        // target PK part (#504). Sits in build_column_def's FK branch alongside the
+        // target PK part (#504). Sits in append_column_def's FK branch alongside the
         // single-column append_fk_column_def.
         template <typename RelatedType, std::meta::info Member, Dialect D, typename SqlT>
         consteval void append_composite_fk_columns(SqlT& col) {
@@ -791,24 +750,6 @@ export namespace storm::orm::schema {
                     std::meta::identifier_of(std::meta::dealias(^^RelatedType)),
                     std::make_index_sequence<RelatedBase::primary_key_column_count_>{}
             );
-        }
-
-        // Byte size of append_composite_fk_columns<RelatedType, Member, D>()'s output —
-        // measured by rendering into the counting sink, mirroring every other exact-size
-        // companion in this file (max_length_clause_len, default_clause_len, ...).
-        template <typename RelatedType, std::meta::info Member, Dialect D>
-        consteval auto composite_fk_columns_size() -> std::size_t {
-            ClauseSizer sizer;
-            append_composite_fk_columns<RelatedType, Member, D>(sizer);
-            return sizer.len;
-        }
-
-        // Byte size of append_composite_fk_constraint<RelatedType, Member, D>()'s output.
-        template <typename RelatedType, std::meta::info Member, Dialect D>
-        consteval auto composite_fk_constraint_size() -> std::size_t {
-            ClauseSizer sizer;
-            append_composite_fk_constraint<RelatedType, Member, D>(sizer);
-            return sizer.len;
         }
 
         // ---- Auto-junction table DDL (#203, widened for composite PKs in #504) ----
@@ -1029,7 +970,7 @@ export namespace storm::orm::schema {
             return sizer.len;
         }
 
-        // ---- Composite-FK sizing helpers (#504) ----
+        // ---- Composite-FK helpers (#504) ----
         //
         // These live here rather than on SchemaStatement so that class stays under the
         // 35-method ceiling (S1448); they are the same shape as every other `detail`
@@ -1038,7 +979,7 @@ export namespace storm::orm::schema {
 
         // True when Base::all_members_[Index] is an FK field whose target has a COMPOSITE
         // primary key (#500/#504) — the shared gate every composite-FK DDL helper below
-        // (sizing AND emission) branches on, so the "is this member a composite FK" check
+        // (index sizing AND emission) branches on, so the "is this member a composite FK" check
         // is written exactly once. Index-templated (not a runtime-loop predicate): naming
         // the target's own BaseStatement<RelatedType> needs Index as a template argument,
         // which a runtime loop variable cannot supply.
@@ -1060,92 +1001,6 @@ export namespace storm::orm::schema {
         template <typename Base, std::size_t Index>
         using composite_fk_related_t =
                 col_inner_t<std::remove_cvref_t<typename[:std::meta::type_of(Base::all_members_[Index]):]>>;
-
-        // Full rendered length of a composite-FK member's column list at compile-time index
-        // (#504) — the WHOLE "<name>_a TYPE, <name>_b TYPE, ..." text, not decomposed into a
-        // name+suffix pair the way a single-column FK is: a composite target's column count
-        // and per-part types make that decomposition impossible to bound with one shared
-        // suffix constant. Zero for anything but an FK field with a composite-PK target.
-        template <typename Base, std::size_t Index, Dialect D>
-        consteval auto composite_fk_columns_len() -> std::size_t {
-            if constexpr (has_composite_fk_target<Base, Index>()) {
-                return composite_fk_columns_size<composite_fk_related_t<Base, Index>, Base::all_members_[Index], D>();
-            } else {
-                return 0;
-            }
-        }
-
-        // Longest composite-FK column-list text across this model's fields, for the given
-        // dialect. Zero when the model has no composite-FK field, so every other model's
-        // buffer size is unchanged.
-        template <typename Base, Dialect D> consteval auto max_composite_fk_columns_len() -> std::size_t {
-            return [&]<std::size_t... Is>(std::index_sequence<Is...> /*unused*/) {
-                std::size_t longest = 0;
-                ((longest = std::max(longest, composite_fk_columns_len<Base, Is, D>())), ...);
-                return longest;
-            }(std::make_index_sequence<Base::field_count_>{});
-        }
-
-        // Byte size of one composite-FK member's table-level FOREIGN KEY (...) constraint
-        // clause at compile-time index (#504); 0 for anything but an FK field with a
-        // composite-PK target — the emission-side counterpart of composite_fk_columns_len.
-        template <typename Base, std::size_t Index, Dialect D>
-        consteval auto composite_fk_constraint_len() -> std::size_t {
-            if constexpr (has_composite_fk_target<Base, Index>()) {
-                return composite_fk_constraint_size<
-                        composite_fk_related_t<Base, Index>,
-                        Base::all_members_[Index],
-                        D>();
-            } else {
-                return 0;
-            }
-        }
-
-        // Sum of every composite-FK member's table-level FOREIGN KEY (...) constraint clause
-        // (#504), for the given dialect — one clause per such member, appended after every
-        // column (see append_composite_pk_clause's placement). Zero when the model has no
-        // composite-FK field.
-        template <typename Base, Dialect D> consteval auto composite_fk_constraints_size() -> std::size_t {
-            return [&]<std::size_t... Is>(std::index_sequence<Is...> /*unused*/) {
-                std::size_t total = 0;
-                ((total += composite_fk_constraint_len<Base, Is, D>()), ...);
-                return total;
-            }(std::make_index_sequence<Base::field_count_>{});
-        }
-
-        // Dispatches calculate_column_defs_size's runtime loop index i to the
-        // Index-templated composite_fk_columns_len<Base, Index, D>() / the caller's
-        // fk_suffix budget — a plain `if` (not `if constexpr`) chain over the same fold
-        // pattern col_def_buffer/max_composite_fk_columns_len already use, since a runtime
-        // loop variable cannot itself be spliced as a template argument. Reuses
-        // has_composite_fk_target<Base, Is>()/composite_fk_columns_len<Base, Is, D>() rather
-        // than re-deriving RelatedType, so the composite-vs-single-column FK test stays
-        // single-sourced. `fk_suffix` is passed in (not recomputed) because the sole caller
-        // already holds the whole ColumnSizeBudget in scope.
-        template <typename Base, Dialect D, std::size_t... Is>
-        consteval auto
-        fk_column_size_at_dispatch(std::size_t i, std::size_t fk_suffix, std::index_sequence<Is...> /*unused*/)
-                -> std::size_t {
-            std::size_t result = 0;
-            (
-                    [&] {
-                        if (i == Is) {
-                            if constexpr (has_composite_fk_target<Base, Is>()) {
-                                result = composite_fk_columns_len<Base, Is, D>();
-                            } else {
-                                result = std::meta::identifier_of(Base::all_members_[Is]).size() + fk_suffix;
-                            }
-                        }
-                    }(),
-                    ...
-            );
-            return result;
-        }
-
-        template <typename Base, Dialect D>
-        consteval auto fk_column_size_at(std::size_t i, std::size_t fk_suffix) -> std::size_t {
-            return fk_column_size_at_dispatch<Base, D>(i, fk_suffix, std::make_index_sequence<Base::field_count_>{});
-        }
 
         // A composite-FK member's index (#504) names N columns ("<name>_a, <name>_b, ...")
         // instead of the single "<name>_id" index_sql_buffer's (name+3+2)*2 term budgets
@@ -1180,125 +1035,6 @@ export namespace storm::orm::schema {
     template <typename T> class SchemaStatement : private storm::orm::statements::BaseStatement<T> {
         using Base = storm::orm::statements::BaseStatement<T>;
 
-        // Per-column buffer size — derived from the same data the table-level
-        // estimator uses (max reflected identifier length + the largest fixed
-        // suffix budget) so a long field name can never truncate (#361). The
-        // table estimator (calculate_column_defs_size) already grows with the
-        // identifier length; this keeps the per-column buffer in lockstep.
-        // " REFERENCES <Related>(<pk>)" clause length for one FK field at compile-time index,
-        // or 0 if the field is not an FK. The related table is the FK field's C++ type
-        // identifier (optional-unwrapped); the related PK name is the target model's actual
-        // PK member identifier (#506, not the literal "id"); 12 = len(" REFERENCES "),
-        // 2 = len("(") + len(")").
-        // Index-templated (not a runtime loop) so the FK check and the type splice both run
-        // in a constant context — annotation_of_type on a runtime-loop member info reads
-        // empty across a BMI boundary (#262), which would silently under-size the buffer.
-        template <std::size_t Index> static consteval auto fk_references_len() -> std::size_t {
-            constexpr auto member = Base::all_members_[Index];
-            if constexpr (Base::is_fk_field(member)) {
-                using FieldType             = std::remove_cvref_t<typename[:std::meta::type_of(member):]>;
-                using RelatedType           = detail::col_inner_t<FieldType>;
-                constexpr auto fk_pk_member = Base::template find_fk_primary_key<FieldType>();
-                std::size_t    len = 12 + std::meta::identifier_of(std::meta::dealias(^^RelatedType)).size() + 2 +
-                                  std::meta::identifier_of(fk_pk_member).size();
-                // " ON DELETE <action>" when the FK carries an on_delete policy (#431):
-                // 11 = len(" ON DELETE ") + the action keyword (NO ACTION = 9 is longest).
-                if constexpr (constexpr auto action = statements::meta::fk_on_delete_action_of(member);
-                              action.has_value()) {
-                    len += 11 + statements::meta::ref_action_sql(action.value()).size();
-                }
-                return len;
-            } else {
-                return 0;
-            }
-        }
-
-        // Longest " REFERENCES <Related>(<pk>)" clause across this model's FK fields (#412).
-        // Zero when the model has no FK fields, so non-FK models keep their prior buffer size.
-        static consteval auto max_fk_references_len() -> std::size_t {
-            return [&]<std::size_t... Is>(std::index_sequence<Is...> /*unused*/) {
-                std::size_t longest = 0;
-                ((longest = std::max(longest, fk_references_len<Is>())), ...);
-                return longest;
-            }(std::make_index_sequence<Base::field_count_>{});
-        }
-
-        // Longest " DEFAULT <value>" clause across the model's fields, measured by
-        // rendering each field's clause into the counting sink — keeps the column
-        // budget exact for non-bool defaults (#413), where the clause length is
-        // value-driven (e.g. a long string default), not a fixed 14 chars.
-        template <Dialect D> static consteval auto max_default_clause_len() -> std::size_t {
-            return [&]<std::size_t... Is>(std::index_sequence<Is...> /*unused*/) {
-                std::size_t longest = 0;
-                ((longest = std::max(longest, detail::default_clause_len<T, Base::all_members_[Is], D>())), ...);
-                return longest;
-            }(std::make_index_sequence<Base::field_count_>{});
-        }
-
-        // Longest max_length<N> clause across the model's fields (#493), measured by
-        // rendering — PG's VARCHAR(N) net growth over TEXT, or SQLite's trailing
-        // CHECK(length(<name>) <= N). Zero for models with no max_length field, so their
-        // column budget is unchanged. Added to regular_suffix below.
-        template <Dialect D> static consteval auto max_max_length_clause_len() -> std::size_t {
-            return [&]<std::size_t... Is>(std::index_sequence<Is...> /*unused*/) {
-                std::size_t longest = 0;
-                ((longest = std::max(longest, detail::max_length_clause_len<D>(Base::all_members_[Is]))), ...);
-                return longest;
-            }(std::make_index_sequence<Base::field_count_>{});
-        }
-
-        // Per-column byte budgets shared by the buffer sizer (col_def_buffer) and the
-        // CREATE TABLE size estimator (calculate_column_defs_size). Both must agree on
-        // every constant or the buffer drifts from the emitted SQL — keep them in one
-        // place (DRY). `pk_size`/`fk_suffix`/`regular_suffix` are the three column shapes;
-        // `regular_suffix` already folds in the per-model widest DEFAULT clause (#413).
-        struct ColumnSizeBudget {
-            std::size_t pk_size;
-            std::size_t fk_suffix;
-            std::size_t regular_suffix;
-        };
-        template <Dialect D = Dialect::SQLite> static consteval auto column_size_budget() -> ColumnSizeBudget {
-            using enum Dialect;
-            // PK suffix (name excluded — the PK member's identifier is sized separately via
-            // max_name_len/identifier_of, same as every other column, #506):
-            // PG: " BIGINT PRIMARY KEY GENERATED BY DEFAULT AS IDENTITY" = 52
-            // SQLite: " INTEGER PRIMARY KEY AUTOINCREMENT" = 34
-            constexpr std::size_t pk_size = (D == PostgreSQL) ? 52 : 34;
-            // " " + max type def ("DOUBLE PRECISION NOT NULL"=25 PG / "INTEGER NOT NULL"=16
-            // SQLite) + " DEFAULT <value>" (measured, #413) + max_length clause (measured,
-            // #493) + " UNIQUE" (7)
-            constexpr std::size_t max_type_def = (D == PostgreSQL) ? 25 : 16;
-            constexpr std::size_t regular_suffix =
-                    1 + max_type_def + max_default_clause_len<D>() + max_max_length_clause_len<D>() + 7;
-            // FK suffix: "_id INTEGER NOT NULL" (20) / "_id BIGINT NOT NULL" (19),
-            // plus the longest " REFERENCES <Related>(<pk>)" clause across this model (#412).
-            constexpr std::size_t fk_suffix = 3 + ((D == PostgreSQL) ? 16 : 20) + max_fk_references_len();
-            return {.pk_size = pk_size, .fk_suffix = fk_suffix, .regular_suffix = regular_suffix};
-        }
-
-        template <Dialect D = Dialect::SQLite> static consteval auto col_def_buffer() -> std::size_t {
-            constexpr auto        budget = column_size_budget<D>();
-            constexpr std::size_t max_fixed_suffix =
-                    std::max({budget.pk_size, budget.regular_suffix, budget.fk_suffix});
-
-            std::size_t max_name_len = 0;
-            for (std::size_t i = 0; i < Base::field_count_; ++i) {
-                max_name_len = std::max(max_name_len, std::meta::identifier_of(Base::all_members_[i]).size());
-            }
-            // +2 for the trailing '\0' guard in ConstexprString (len < N - 1): a column
-            // whose name IS the longest field and is itself an FK (e.g. CascadeChild::owner
-            // with an ON DELETE clause, #431) makes max_name_len + max_fixed_suffix an exact
-            // fit, so N must exceed len by 2, not 1.
-            //
-            // A composite-FK member's column list (#504) does not decompose into this
-            // name+suffix model at all — it is N whole "<name>_<part> <TYPE>" columns,
-            // comma-joined, in ONE build_column_def<Index>() buffer. max_composite_fk_columns_len
-            // measures that text directly, so it is taken as an independent floor rather than
-            // folded into max_fixed_suffix (which is added to max_name_len — double-counting
-            // the name would still under-size a two-part-or-more composite target).
-            return std::max(max_name_len + max_fixed_suffix, detail::max_composite_fk_columns_len<Base, D>()) + 2;
-        }
-
         // True when the model's PK opted into the SQLite never-reuse guarantee
         // via storm::primary_autoincrement (#379). Drives the AUTOINCREMENT keyword.
         static consteval auto pk_wants_autoincrement() -> bool {
@@ -1312,7 +1048,7 @@ export namespace storm::orm::schema {
         // identifier (#506, not the literal "id"). An unannotated FK emits plain REFERENCES
         // (= ON DELETE NO ACTION / RESTRICT, the SQL default); an fk<RefAction::...> policy
         // (#431) appends the chosen ON DELETE clause.
-        // Extracted from build_column_def to keep it single-purpose.
+        // Extracted from append_column_def to keep it single-purpose.
         template <std::meta::info Member, Dialect D, typename SqlT>
         static consteval void append_fk_column_def(SqlT& col) {
             using FieldType   = std::remove_cvref_t<typename[:std::meta::type_of(Member):]>;
@@ -1364,7 +1100,7 @@ export namespace storm::orm::schema {
         // CHECK(length(<name>) <= N). SQLite emission order is
         //   <name> TEXT [NOT NULL] [DEFAULT v] [CHECK(...)] [UNIQUE]
         // — the DEFAULT sits between the type and the CHECK, matching #413. Extracted from
-        // build_column_def to keep the regular and unique branches from duplicating.
+        // append_column_def to keep the regular and unique branches from duplicating.
         template <std::meta::info Member, Dialect D, bool Unique, typename SqlT>
         static consteval void append_regular_column_def(SqlT& col) {
             using FieldType = std::remove_cvref_t<typename[:std::meta::type_of(Member):]>;
@@ -1423,10 +1159,12 @@ export namespace storm::orm::schema {
             }
         }
 
-        // Build column definition for field at compile-time index
-        template <std::size_t Index, Dialect D = Dialect::SQLite> static consteval auto build_column_def() {
-            ConstexprString<col_def_buffer<D>()> col;
-            constexpr auto                       member = Base::all_members_[Index];
+        // Append the column definition for the field at compile-time index straight into
+        // the CREATE TABLE sink (#682) — no per-column buffer, and no separate size
+        // estimate: build_create_table_sql measures the whole statement by running this
+        // same writer against the counting sink first, so it cannot truncate.
+        template <std::size_t Index, Dialect D, typename SqlT> static consteval void append_column_def(SqlT& col) {
+            constexpr auto member = Base::all_members_[Index];
 
             // Column-level primary key — SINGLE-PK models only. A composite key (#500) is
             // emitted once as a table-level PRIMARY KEY (a, b) clause after all columns
@@ -1445,7 +1183,7 @@ export namespace storm::orm::schema {
             // A composite-PK target (#504) has no single PK column to reference, so it
             // takes a DIFFERENT shape: one plain column per target PK part here
             // (append_composite_fk_columns), plus a table-level FOREIGN KEY (...) constraint
-            // appended after every column (build_sql_impl, mirroring the composite-PK clause).
+            // appended after every column (append_create_table_sql, mirroring the composite-PK clause).
             // Checked BEFORE the single-column FK branch: append_fk_column_def's
             // find_fk_primary_key names one column, which a composite target does not have.
             else if constexpr (detail::has_composite_fk_target<Base, Index>()) {
@@ -1474,64 +1212,12 @@ export namespace storm::orm::schema {
             else {
                 append_regular_column_def<member, D, /*Unique=*/false>(col);
             }
-            // Backstop (#361): col_def_buffer<D>() is sized to fit every column,
-            // so this can only fire if the suffix budget above drifts. In a
-            // consteval context a hit makes compilation fail (no silent
-            // truncation), which is exactly the guarantee we want.
-            if (col.len >= col_def_buffer<D>() - 1) {
-                std::unreachable();
-            }
-            return col;
         }
 
-        // Compile-time SQL size calculation for CREATE TABLE
-        template <Dialect D = Dialect::SQLite> static consteval auto calculate_column_defs_size() -> std::size_t {
-            constexpr auto budget = column_size_budget<D>();
-
-            std::size_t size = 0;
-            for (std::size_t i = 0; i < Base::field_count_; ++i) {
-                if (i > 0) {
-                    size += 2; // ",\n"
-                }
-                size += 4; // "    " indent
-
-                // The composite guard replaces only the PK case (#500): a composite model
-                // has no column-level PK column, so every column is sized by its own kind.
-                // It must NOT collapse the FK case — an FK column emits the far longer
-                // "... REFERENCES <R>(<pk>) [ON DELETE ...]", and crediting it the regular
-                // suffix under-counts, which ConstexprString would silently truncate.
-                if (!Base::has_composite_pk_ && Base::all_members_[i] == Base::primary_key_) {
-                    // pk_size no longer bundles the column name (#506) — add the PK
-                    // member's own identifier length, same as every other column shape.
-                    size += std::meta::identifier_of(Base::all_members_[i]).size() + budget.pk_size;
-                } else if (statements::meta::is_fk_field(Base::all_members_[i])) {
-                    // A composite-FK-target column (#504) is sized directly by its own
-                    // whole-list text (composite_fk_columns_len), not name+fk_suffix: that
-                    // decomposition assumes exactly one "_id" column, which a composite
-                    // target never has. fk_column_size_at adds the member's own identifier
-                    // length for the single-column case, so the name is counted exactly once
-                    // on both paths.
-                    size += detail::fk_column_size_at<Base, D>(i, budget.fk_suffix);
-                } else {
-                    size += std::meta::identifier_of(Base::all_members_[i]).size();
-                    size += budget.regular_suffix;
-                }
-            }
-            return size;
-        }
-
-        template <Dialect D = Dialect::SQLite> static consteval auto calculate_create_table_sql_size() -> std::size_t {
-            return 13 + Base::table_name_.size() + 3 + calculate_column_defs_size<D>() +
-                   detail::composite_pk_clause_size(Base::primary_key_members_, Base::has_composite_pk_) +
-                   detail::composite_fk_constraints_size<Base, D>() + 2;
-        }
-
-        // Build the full CREATE TABLE SQL at compile-time using index sequence fold
-        template <Dialect D = Dialect::SQLite, std::size_t... Is>
-        static consteval auto build_sql_impl(std::index_sequence<Is...> /*unused*/) {
-            constexpr std::size_t     sql_size = calculate_create_table_sql_size<D>() + utilities::sql_len::XL_BUFFER;
-            ConstexprString<sql_size> sql;
-
+        // Write the full CREATE TABLE SQL into any sink with the ConstexprString/ClauseSizer
+        // `.append` interface, using an index sequence fold over the columns.
+        template <Dialect D, typename SqlT, std::size_t... Is>
+        static consteval void append_create_table_sql(SqlT& sql, std::index_sequence<Is...> /*unused*/) {
             sql.append("CREATE TABLE ");
             sql.append(Base::table_name_);
             sql.append(" (\n");
@@ -1542,7 +1228,7 @@ export namespace storm::orm::schema {
                      sql.append(",\n");
                  }
                  sql.append("    ");
-                 sql.append(build_column_def<Is, D>());
+                 append_column_def<Is, D>(sql);
                  first = false;
              }()),
              ...);
@@ -1550,7 +1236,7 @@ export namespace storm::orm::schema {
             detail::append_composite_pk_clause(sql, Base::primary_key_members_, Base::has_composite_pk_);
             // One table-level FOREIGN KEY (...) constraint per composite-FK member (#504),
             // in declaration order — the multi-column counterpart of the column-level
-            // REFERENCES a single-column FK gets inline in build_column_def.
+            // REFERENCES a single-column FK gets inline in append_column_def.
             (
                     [&] {
                         if constexpr (detail::has_composite_fk_target<Base, Is>()) {
@@ -1563,26 +1249,36 @@ export namespace storm::orm::schema {
                     ...
             );
             sql.append("\n)");
-            // Whole-SQL backstop, mirroring the per-column one in build_column_def (#361).
-            // The per-column check cannot catch a shortfall in calculate_column_defs_size
-            // itself: ConstexprString::append silently drops overflow, so an under-count
-            // there would truncate the CREATE TABLE with no diagnostic. In a consteval
-            // context a hit fails the build instead.
-            if (sql.len >= sql_size - 1) {
-                std::unreachable();
-            }
-            return sql;
+        }
+
+        // Exact rendered length of the CREATE TABLE SQL: the writer run against the
+        // counting sink, so the buffer is measured by the SAME code that fills it.
+        template <Dialect D> static consteval auto create_table_sql_len() -> std::size_t {
+            detail::ClauseSizer sizer;
+            append_create_table_sql<D>(sizer, std::make_index_sequence<Base::field_count_>{});
+            return sizer.len;
         }
 
         template <Dialect D = Dialect::SQLite> static consteval auto build_create_table_sql() {
-            return build_sql_impl<D>(std::make_index_sequence<Base::field_count_>{});
+            // +1 for ConstexprString's NUL terminator (its append stops at len < N - 1),
+            // as in build_junction_sql.
+            constexpr std::size_t size = create_table_sql_len<D>() + 1;
+            ConstexprString<size> sql;
+            append_create_table_sql<D>(sql, std::make_index_sequence<Base::field_count_>{});
+            // Backstop (#361): ConstexprString::append drops overflow SILENTLY, so a sink
+            // that ever counted differently from the writer would truncate the DDL with no
+            // diagnostic. In a consteval context a hit fails the build instead.
+            if (sql.len != size - 1) {
+                std::unreachable();
+            }
+            return sql;
         }
 
         // =====================================================================
         // INDEX SQL GENERATION
         // =====================================================================
 
-        // Index SQL buffer sized from reflected lengths (#355, mirrors col_def_buffer)
+        // Index SQL buffer sized from reflected lengths (#355)
         // so a long table/field name can never silently truncate. Sums EVERY field
         // name x2 (+"_id"+", " worst case), strictly bounding both the single-field
         // and composite builders; 64 covers table*2 + "CREATE UNIQUE INDEX ... ON

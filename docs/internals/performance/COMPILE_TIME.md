@@ -599,6 +599,17 @@ The ceiling is gtest's 2.2 s, but any framework includes standard headers
 textually, so the +2.1 s storm/libc++ reconciliation stays regardless. That
 ceiling is available from a PCH instead, without rewriting 3093 tests.
 
+### Computing `col_def_buffer` once and passing it as an NTTP — half the win (#682)
+
+The first fix for the per-column re-evaluation [below](#exact-size-create-table-buffer-682):
+evaluate `col_def_buffer<D>()` once in the table builder and pass it to
+`build_column_def` as a template argument. It removes the 0.66 s template-argument
+hotspot and halves `arr`, but leaves every function instantiation in place
+(16270 → 16270), costs a new 0.16 s `col_buf` initializer, and keeps both the
+per-column buffer copy and the hand-maintained sizers. Superseded by writing columns
+straight into one buffer sized by the writer itself, which is cheaper on every
+counter and deletes code instead of adding a parameter.
+
 ### A per-field reflection cache in `SchemaStatement` — more work, not less (#670)
 
 The hypothesis: `SchemaStatement` asks the same questions of each field several
@@ -632,6 +643,7 @@ memoised reflection. Dropped.
 | `run_clang_tidy.sh --diff` no longer reports a crashed clang-tidy as a clean pass | correctness |
 | split `shared/models.h` + `tests/test_models.h` so a TU pulls only the models and helpers it uses (#634) | −0.67 s/TU ≈ **−64 s** |
 | `SchemaStatement::create_table_sql<D>()` builds only the dialect a TU asks for (#670) | −8% function instantiations in a mostly-single-dialect schema TU, 0 in one using both; wall time below the noise floor — see [below](#lazy-per-dialect-create-table-sql-670) |
+| CREATE TABLE written straight into one exact-size buffer, measured by the writer itself (#682) | slowest TU `test_ddl_execution_audit.cpp` 13.10 → 10.33 s (−21%, median of 3 alternated rounds), −16.8% function instantiations; ~−6% instantiations in a light schema TU — see [below](#exact-size-create-table-buffer-682) |
 
 ≈ **−344 s of ~3000 s (−11%)** — a sum of per-change deltas, not a measured
 total. For an actual whole-build number on the current tree (with the host it
@@ -815,7 +827,74 @@ larger than that — and the "after" wall times come from a separate block of ro
 ones — so read it as consistent with the counts rather than as a measured number — per the [Method](#method) rule, a whole-build A/B on a quiet
 host is what would turn it into seconds.
 
-**Trade-off:** the consteval guards inside `build_create_table_sql<D>()` (the PG-only `has_pinned_bigint_pk` cross-check, the sizer-overflow `std::unreachable()` backstops) now fire per dialect, only in a TU that requests that dialect's DDL for a model — not for both on every instantiation.
+**Trade-off:** the consteval guards inside `build_create_table_sql<D>()` (the PG-only `has_pinned_bigint_pk` cross-check, the sizer-overflow `std::unreachable()` backstops — one exact-length check since [#682](#exact-size-create-table-buffer-682)) now fire per dialect, only in a TU that requests that dialect's DDL for a model — not for both on every instantiation.
+
+#### Exact-size CREATE TABLE buffer (#682)
+
+`tests/schema/test_ddl_execution_audit.cpp` is the slowest TU in the tree: ~61
+models × 2 dialects through `TYPED_TEST`, so ~122 `build_create_table_sql<D>()`
+evaluations. Traced at granularity 0 (same host and method as #670 above), the
+`arr` initializer in `create_table_sql<D>()` was 1.08 s over 122 evaluations, and
+a further **0.66 s / 416 events** sat on one line: `build_column_def<Index, D>`
+declared its buffer as `ConstexprString<col_def_buffer<D>()>`. A consteval call in
+a template argument is **not memoised** — it is re-evaluated for every column
+instantiation, and the #361 backstop `col.len >= col_def_buffer<D>() - 1` ran it
+once more per column inside `arr`. `col_def_buffer` loops every field
+(`identifier_of`) and folds `max_composite_fk_columns_len`, so the DDL build was
+O(fields²) per model per dialect.
+
+Three steps, each measured (deterministic counts, `test_ddl_execution_audit.cpp`):
+
+| variant | InstantiateFunction | EvaluateAsConstantExpr | EvaluateAsRValue | `arr` |
+|---|---:|---:|---:|---:|
+| baseline (develop `82e7cfd`) | 16270 | 84303 | 66908 | 1.08 s |
+| `col_def_buffer` computed once, passed as an NTTP | 16270 | 84009 | 66908 | 0.59 s (+0.16 s `col_buf`) |
+| columns appended straight into the table buffer (hand sizers kept) | 15352 | 79782 | 60813 | 0.39 s |
+| **+ buffer sized by running the writer against `ClauseSizer` (shipped)** | **13539 (−16.8%)** | **72521 (−14.0%)** | **55206 (−17.5%)** | 0.29 s |
+
+What shipped is the last row. Each column is written straight into the CREATE
+TABLE sink (`append_column_def<Index, D>(sql)`) — no per-column `ConstexprString`,
+whose by-value copy into the table SQL was itself a measurable share of `arr` —
+and the whole statement is sized by running the **same writer** against
+`detail::ClauseSizer` first, the technique `build_junction_sql` already used
+(#504). That made the hand-maintained sizers dead, and they were deleted:
+`col_def_buffer`, `column_size_budget`/`ColumnSizeBudget`, `calculate_column_defs_size`,
+`calculate_create_table_sql_size`, `fk_references_len`/`max_fk_references_len`,
+`max_default_clause_len`/`max_max_length_clause_len`, and the composite-FK
+column/constraint size helpers — about 300 lines whose only job was to predict
+text the writer then emitted, and which #361, #412, #413, #493, #504 and #506 each
+had to widen by hand when a clause grew. The buffer is now exact (it used to carry
+`XL_BUFFER` = 100 bytes of slack per table), and the backstop becomes
+`sql.len != size - 1` → `std::unreachable()`: if the sink and `ConstexprString`
+ever counted differently the build fails rather than truncating.
+
+Wall time, best-of-3 per round, three rounds alternated A/B/A/B/A/B with a BMI
+rebuild before each (per [Method](#method)):
+
+| TU | baseline rounds | shipped rounds | median Δ |
+|---|---|---|---:|
+| `test_ddl_execution_audit.cpp` | 13.04 / 13.10 / 13.43 s | 10.33 / 10.24 / 10.56 s | **−2.77 s (−21%)** |
+| `test_orm_schema.cpp` (12 models, mostly one dialect) | 4.47 / 4.30 / 4.57 s | 4.99 / 4.18 / 4.25 s | −0.21 s, within noise |
+
+The second TU's counts move the same way (InstantiateFunction 3404 → 3198, −6.1%;
+EvaluateAsConstantExpr 18164 → 17231, −5.1%), but that is below its wall-time noise
+floor. The saving scales with columns × dialects actually generated, so the
+heavy DDL TU is where it shows. DDL text is unchanged — the writer's append
+sequence is the same, only the buffer it lands in moved — and the suite's
+exact-DDL assertions pass on both backends.
+
+**What is left in the DDL path is not worth chasing.** After the change the
+largest DDL events are `arr` (0.29 s / 122) and the exact sizing pass (~0.12 s /
+122); everything above them in the trace is per-model concept checking (below)
+and gtest. The class-scope `index_sql_strings_` is still built eagerly per model
+(#670's lesson) but was not on this TU's top list.
+
+**Follow-up, not done here:** `count_primary_key_flavours<T>()` (`model_concepts.cppm`)
+is evaluated twice per model — once by `ModelPrimaryKeyValid`, once by
+`ModelPrimaryKeyPartLimit` — ~0.23 s each over 61 models in this TU. Every TU that
+instantiates a `BaseStatement<T>` pays it, so it is a library-wide lever outside
+#682's DDL scope; a variable template (instantiated, hence memoised, once) would
+halve it. Measure before adopting.
 
 ### Two correctness bugs found along the way
 
