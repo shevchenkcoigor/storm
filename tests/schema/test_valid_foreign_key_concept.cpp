@@ -1,6 +1,6 @@
 #include <gtest/gtest.h>
 
-import storm_meta;
+import storm_model;
 import std;
 import storm_orm_model_concepts;
 using storm::primary;

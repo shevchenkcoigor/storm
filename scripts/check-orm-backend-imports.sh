@@ -36,7 +36,7 @@ NEUTRAL_PATHS=(
     "$ROOT/src/orm"
     "$ROOT/src/db/default_connection.cppm"
     "$ROOT/src/db/pool.cppm"
-    "$ROOT/src/storm_meta.cppm"
+    "$ROOT/src/storm_model.cppm"
 )
 
 # Every listed path must exist: a renamed or split file would otherwise drop

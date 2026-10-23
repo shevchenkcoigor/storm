@@ -5,7 +5,7 @@
 import storm_defaults;
 import storm_db_postgresql;
 import storm_db_sqlite;
-import storm_meta;
+import storm_model;
 import storm_orm_schema;
 import std;
 using storm::create_table_sql;

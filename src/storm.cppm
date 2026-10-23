@@ -6,7 +6,7 @@ export module storm;
 
 import std;
 
-export import storm_meta;
+export import storm_model;
 export import storm_db_default_connection;
 export import storm_defaults;
 export import storm_orm_generator;

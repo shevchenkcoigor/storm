@@ -10,7 +10,7 @@ import storm_defaults;
 import storm_db_default_connection;
 import storm_db_postgresql;
 import storm_db_sqlite;
-import storm_meta;
+import storm_model;
 import storm_orm_schema;
 import storm_orm_statements_insert;
 import storm_orm_statements_select;

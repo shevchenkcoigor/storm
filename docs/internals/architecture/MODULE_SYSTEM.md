@@ -256,7 +256,7 @@ as alias templates, so they cannot be forward-declared or specialised under the 
 diagnostics, `display_string_of` and trait/partial-specialisation matching see `Basic*` (none of
 these occur in-tree). Two guards keep the layering: `scripts/check-orm-backend-imports.sh` (run
 by `commit.sh` and the `orm-backend-imports` CI job) fails if `src/orm/**`,
-`src/db/default_connection.cppm`, `src/db/pool.cppm` or `src/storm_meta.cppm` names
+`src/db/default_connection.cppm`, `src/db/pool.cppm` or `src/storm_model.cppm` names
 `storm_db_sqlite`/`sqlite::` (or the PostgreSQL equivalents) or imports `storm_defaults`/`storm`, and `tests/db/test_backend_layering.cpp` static-asserts that the
 `Basic*` templates cannot be named without a backend.
 

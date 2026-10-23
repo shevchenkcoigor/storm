@@ -1,7 +1,7 @@
 #include <gtest/gtest.h>
 #include <meta>
 
-import storm_meta;
+import storm_model;
 import std;
 import storm_orm_fields;
 
