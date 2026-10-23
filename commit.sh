@@ -421,6 +421,22 @@ if [[ -n "$STAGED_FILES" ]] \
     echo -e "${DIM}✓ per-OS PostgreSQL socket default self-test passed${RESET}"
 fi
 
+# --- Line-coverage parser self-test (issue #680) ---
+# scripts/lib/line_coverage.sh reads the percentage the coverage gate below and
+# CI's coverage job compare against 100.0. A GNU-only grep flag there (it was
+# `grep -oP`) breaks the gate on macOS BSD grep while CI's GNU grep stays green.
+# Same placement reasoning as the guards above: a commit touching only these
+# files skips every step, so it sits BEFORE the TOTAL_STEPS==0 early exit.
+if [[ -n "$STAGED_FILES" ]] \
+   && grep -qE '^(commit\.sh|scripts/lib/line_coverage\.sh|scripts/tests/test_line_coverage\.sh)$' <<< "$STAGED_FILES"; then
+    if ! "$(dirname "${BASH_SOURCE[0]}")/scripts/tests/test_line_coverage.sh"; then
+        echo ""
+        echo -e "${RED}${BOLD} COMMIT BLOCKED — line-coverage parser self-test failed${RESET}"
+        exit 1
+    fi
+    echo -e "${DIM}✓ line-coverage parser self-test passed${RESET}"
+fi
+
 # --- ORM backend-neutrality guard ---
 # src/orm/** and the generic db facades must name no concrete backend; the
 # SQLite default lives only in src/storm_defaults.cppm. A stray
@@ -733,9 +749,11 @@ if [[ "$RUN_COVERAGE" == true ]]; then
             return 1
         fi
 
-        # Extract line coverage percentage
+        # Extract line coverage percentage (portable across BSD/GNU grep, #680)
+        # shellcheck source=scripts/lib/line_coverage.sh
+        source "$(dirname "${BASH_SOURCE[0]}")/scripts/lib/line_coverage.sh"
         local line_cov
-        line_cov=$(echo "$output" | grep "lines\.\.\.\.\.\.\." | tail -1 | grep -oP '[0-9.]+(?=%)')
+        line_cov=$(storm_parse_line_coverage <<< "$output")
 
         if [[ -z "$line_cov" ]]; then
             echo ""
