@@ -82,6 +82,7 @@ preset_dir() {
         ninja-release) echo build/release ;;
         *) echo "stub cmake: unknown preset $1" >&2; exit 2 ;;
     esac
+    return 0
 }
 if [[ "$1" == "--preset" ]]; then
     if [[ " ${FAIL_PRESETS:-} " == *" $2 "* ]]; then
@@ -170,18 +171,20 @@ expect_blocked() {
     else
         fail "commit was NOT blocked (rc=0)"
     fi
+    return 0
 }
 
 # Matches run_step's own verdict line ("✓ <name> passed" / "✗ <name> FAILED"),
 # not the summary table, which pads the icon with two spaces.
 expect_step() { # <passed|FAILED> <step-name-prefix>
-    local icon="✗"
-    [[ "$1" == passed ]] && icon="✓"
-    if grep -F "$icon $2" <<< "$OUT" | grep -qF " $1"; then
-        pass "step '$2' $1"
+    local verdict="$1" step="$2" icon="✗"
+    [[ "$verdict" == passed ]] && icon="✓"
+    if grep -F "$icon $step" <<< "$OUT" | grep -qF " $verdict"; then
+        pass "step '$step' $verdict"
     else
-        fail "step '$2' did not report $1"
+        fail "step '$step' did not report $verdict"
     fi
+    return 0
 }
 
 # The step that needed the failed configure carries the CMake error in its own
@@ -204,6 +207,7 @@ expect_configure_error_in() { # <step-name-prefix> <log basename>
     else
         fail "'$step' does not print its log path"
     fi
+    return 0
 }
 
 # --- Scenarios ---
@@ -214,6 +218,7 @@ scenario_tidy_release_configure_fails() {
     run_commit "ninja-release"
     expect_blocked
     expect_configure_error_in "release prereqs" storm_tidy_bmi.log
+    return 0
 }
 
 # Cold build/release with a bench change: the bench release build.
@@ -222,6 +227,7 @@ scenario_bench_release_configure_fails() {
     run_commit "ninja-release"
     expect_blocked
     expect_configure_error_in "release build" storm_release.log
+    return 0
 }
 
 # Cold build/debug, debug configure fails: clang-format, tests and coverage
@@ -233,6 +239,7 @@ scenario_debug_configure_fails() {
     expect_configure_error_in "clang-format" storm_format.log
     expect_configure_error_in "tests (SQLite" storm_tests.log
     expect_configure_error_in "coverage" storm_coverage.log
+    return 0
 }
 
 # cmake-only commits run cmake-format without clang-format — the #643 path.
@@ -241,6 +248,7 @@ scenario_cmake_format_debug_configure_fails() {
     run_commit "ninja-debug"
     expect_blocked
     expect_configure_error_in "cmake-format" storm_cmake_format.log
+    return 0
 }
 
 # compile_commands.json present but no build.ninja: the tidy self-heal sentinel
@@ -259,6 +267,7 @@ scenario_tidy_tree_without_build_ninja() {
     else
         fail "release prereqs log does not report 'not configured' cleanly"
     fi
+    return 0
 }
 
 # Warm path: both trees configured. Every configure would fail if it ran, so a
@@ -278,6 +287,7 @@ scenario_warm_tree_never_configures() {
     expect_step passed "release prereqs"
     expect_step passed "release build"
     expect_step passed "tests (SQLite"
+    return 0
 }
 
 # --- Dispatcher ---
@@ -291,6 +301,7 @@ run_scenario() {
     : > "$TMP/calls"
     "scenario_$CURRENT_TAG"
     rm -rf "$TMP"
+    return 0
 }
 
 run_scenario tidy_release_configure_fails

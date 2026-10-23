@@ -109,9 +109,10 @@ configure_if_missing() {
     [[ -f "$sentinel" ]] && return 0
     echo "Configuring $preset ($sentinel is absent)..."
     if ! cmake --preset "$preset"; then
-        echo "cmake --preset $preset FAILED — the CMake error is above; nothing was built."
+        echo "cmake --preset $preset FAILED — the CMake error is above; nothing was built." >&2
         return 1
     fi
+    return 0
 }
 
 # configure_if_missing, then `cmake --build --preset <preset> [args...]`.
