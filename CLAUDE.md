@@ -379,6 +379,7 @@ src/
     ├── stitch_key.cppm         # StitchKey — composite-PK m2m stitch-map key (leaf module, #504)
     ├── indexes.cppm            # Index, UniqueIndex, Indexes<T> trait (namespace storm)
     └── statements/             # INSERT, SELECT, UPDATE, DELETE, DISTINCT, JOIN
+        └── *_grammar.cppm      # consteval SQL-text builders per statement: insert/select (#671), update, erase, upsert
 ```
 
 See [docs/internals/architecture/](docs/internals/architecture/) for design decisions.

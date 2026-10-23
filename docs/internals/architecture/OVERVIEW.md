@@ -101,11 +101,14 @@ src/
         ├── extract.cppm            # ColumnExtractor — row→value converters (#434) + full_unsigned parse (#436)
         ├── field_names.cppm        # FieldNameGrammar — column-list SQL builders (#434) + PK WHERE clause (#501)
         ├── insert.cppm             # InsertStatement
+        ├── insert_grammar.cppm     # InsertGrammar — INSERT / bulk-VALUES SQL builders (#671)
         ├── select.cppm             # SelectStatement + JOIN
+        ├── select_grammar.cppm     # SelectGrammar — base SELECT + LIMIT 1/2 SQL builders (#671)
         ├── update.cppm             # UpdateStatement
         ├── update_grammar.cppm     # UpdateGrammar — UPDATE SQL builders (#434)
         ├── upsert_grammar.cppm     # Upsert (ON CONFLICT) SQL builders (#205)
         ├── erase.cppm              # EraseStatement
+        ├── erase_grammar.cppm      # EraseGrammar — DELETE SQL builders (#501)
         ├── join.cppm               # JoinStatement (SQL builder)
         ├── aggregate.cppm          # COUNT/SUM/AVG/MIN/MAX (#475)
         ├── distinct.cppm           # DISTINCT
@@ -132,7 +135,7 @@ storm (main module)
 ├── storm_orm_utilities               (re-exports storm_orm_value_bind + storm_orm_stitch_key, #671)
 ├── storm_orm_model_concepts          (re-exported by storm_orm_statements_base)
 ├── storm_orm_statements_base
-├── storm_orm_statements_{insert,update,update_grammar,upsert_grammar,erase,select,join}
+├── storm_orm_statements_{insert,insert_grammar,update,update_grammar,upsert_grammar,erase,erase_grammar,select,select_grammar,join}
 ├── storm_orm_statements_{aggregate,distinct,orderby,setop,extract,field_names}
 └── storm_orm_queryset
 ```

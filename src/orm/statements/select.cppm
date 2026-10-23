@@ -16,7 +16,7 @@ import storm_orm_generator;
 import storm_orm_statements_aggregate;
 import storm_orm_statements_base;
 import storm_orm_statements_projection;
-import storm_orm_statements_field_names;
+import storm_orm_statements_select_grammar;
 import storm_orm_fields;
 import storm_orm_statements_join;
 import storm_orm_statements_orderby;
@@ -45,50 +45,15 @@ export namespace storm::orm::statements {
     class BasicSelectStatement : private BaseStatement<T> {
         friend class BaseStatement<T>; // Allow BaseStatement to access protected/private members
         using Base      = BaseStatement<T>;
+        using Grammar   = SelectGrammar<T>;
         using Error     = typename ConnType::Error;
         using Statement = typename ConnType::Statement;
         using PkKeyType = detail::pk_key_type_t<T>; // Primary key type for m2m stitch maps (#507)
 
-        // Compile-time SQL size calculation for SELECT statement
-        static consteval auto calculate_select_sql_size() -> std::size_t {
-            using utilities::sql_len::FROM;
-            using utilities::sql_len::SELECT;
-            std::size_t size = 0;
-            size += SELECT; // "SELECT "
-            size += FieldNameGrammar<Base>::calculate_field_names_size();
-            size += FROM; // " FROM "
-            size += Base::table_name_.size();
-            size += 1; // null terminator
-            return size;
-        }
-
-        // Build SELECT SQL at compile-time using ConstexprString
-        static consteval auto build_select_sql_array() {
-            constexpr std::size_t     sql_size = calculate_select_sql_size() + utilities::sql_len::LARGE_BUFFER;
-            ConstexprString<sql_size> result;
-
-            result.append("SELECT ");
-            result.append(FieldNameGrammar<Base>::build_all_field_names_list());
-            result.append(" FROM ");
-            result.append(Base::table_name_);
-
-            return result;
-        }
-
-        // Pre-computed SELECT SQL generated at compile-time
-        static constexpr auto           select_sql_array  = build_select_sql_array();
-        static inline const std::string select_sql_string = std::string(select_sql_array);
-
-        // Pre-computed SELECT ... LIMIT 1 SQL for first() fast path
-        static inline const std::string select_limit1_sql_string = std::string(select_sql_array) + " LIMIT 1";
-
-        // Pre-computed SELECT ... LIMIT 2 SQL for get() fast path
-        static inline const std::string select_limit2_sql_string = std::string(select_sql_array) + " LIMIT 2";
-
       public:
         // Generate SELECT SQL string (compile-time computed, runtime accessible)
         static auto get_select_sql() -> const std::string& {
-            return select_sql_string;
+            return Grammar::select_sql_string;
         }
 
         explicit BasicSelectStatement(
@@ -471,7 +436,7 @@ export namespace storm::orm::statements {
         // Called by QuerySet::first() when no WHERE/JOIN/ORDER BY/OFFSET modifiers are set
         [[nodiscard]] __attribute__((hot)) __attribute__((flatten)) auto execute_one_fast()
                 -> std::expected<std::optional<T>, Error> {
-            auto prepare_result = conn_->prepare_cached(select_limit1_sql_string);
+            auto prepare_result = conn_->prepare_cached(Grammar::select_limit1_sql_string);
             if (!prepare_result) [[unlikely]] {
                 return std::unexpected(prepare_result.error());
             }
@@ -497,7 +462,7 @@ export namespace storm::orm::statements {
         // Zero-parameter fast path for get() — no checks, no parameter passing overhead
         // Called by QuerySet::get() when no WHERE/JOIN/ORDER BY/OFFSET modifiers are set
         [[nodiscard]] __attribute__((hot)) __attribute__((flatten)) auto execute_get_fast() -> std::expected<T, Error> {
-            auto prepare_result = conn_->prepare_cached(select_limit2_sql_string);
+            auto prepare_result = conn_->prepare_cached(Grammar::select_limit2_sql_string);
             if (!prepare_result) [[unlikely]] {
                 return std::unexpected(prepare_result.error());
             }

@@ -10,7 +10,7 @@ export module storm_orm_statements_insert;
 import std;
 
 import storm_orm_statements_base;
-import storm_orm_statements_field_names;
+import storm_orm_statements_insert_grammar;
 import storm_orm_statements_upsert_grammar;
 import storm_orm_fields; // selector_info — #518 proxy selectors
 import storm_orm_utilities;
@@ -147,152 +147,17 @@ export namespace storm::orm::statements {
     class BasicInsertStatement : private BaseStatement<T> {
         friend class BaseStatement<T>; // Allow BaseStatement to access protected/private members
         using Base       = BaseStatement<T>;
-        using Grammar    = UpsertGrammar<T>;
+        using InsertG    = InsertGrammar<T>;
+        using UpsertG    = UpsertGrammar<T>;
         using Connection = ConnType;
         using Error      = typename ConnType::Error;
         using Statement  = typename ConnType::Statement;
 
-        // Pre-computed placeholders (excludes PK for auto-increment). Shared with
-        // UpsertGrammar via FieldNameGrammar<Base>::build_placeholders() (#205).
-        static constexpr auto placeholders_ = FieldNameGrammar<Base>::build_placeholders();
-
-        // Compile-time SQL size calculation
-        static consteval auto calculate_insert_sql_size() -> std::size_t {
-            using utilities::sql_len::INSERT_INTO;
-            using utilities::sql_len::VALUES_OPEN;
-            std::size_t size = 0;
-            size += INSERT_INTO; // "INSERT INTO "
-
-            // Table name length
-            size += Base::table_name_.size();
-
-            size += 2; // " ("
-
-            // Field names length
-            size += FieldNameGrammar<Base>::calculate_field_names_size();
-
-            size += VALUES_OPEN; // ") VALUES ("
-
-            // Placeholders length
-            size += placeholders_.len;
-
-            size += 1; // ")"
-            size += 1; // null terminator
-
-            return size;
-        }
-
-        // Shared compile-time INSERT SQL builder for the RETURNING and non-RETURNING variants.
-        // The +64 padding on the RETURNING path covers " RETURNING <pk_name>".
-        template <bool WithReturning> static consteval auto build_insert_sql_array_impl() {
-            constexpr std::size_t extra =
-                    WithReturning ? (utilities::sql_len::XL_BUFFER + 64) : utilities::sql_len::XL_BUFFER;
-            constexpr std::size_t     sql_size = calculate_insert_sql_size() + extra;
-            ConstexprString<sql_size> result;
-
-            result.append("INSERT INTO ");
-            result.append(Base::table_name_);
-            result.append(" (");
-            result.append(FieldNameGrammar<Base>::build_non_pk_field_names_list());
-            result.append(") VALUES (");
-            result.append(placeholders_);
-            if constexpr (WithReturning) {
-                result.append(") RETURNING ");
-                result.append(Base::pk_name_);
-            } else {
-                result.append(")");
-            }
-
-            return result;
-        }
-
-        // Pre-computed INSERT ... RETURNING SQL (both SQLite 3.35+ and PostgreSQL)
-        static constexpr auto           insert_returning_sql_array  = build_insert_sql_array_impl<true>();
-        static inline const std::string insert_returning_sql_string = std::string(insert_returning_sql_array);
-
-        // Pre-computed INSERT SQL without RETURNING (faster path when ID not needed)
-        static constexpr auto           insert_sql_array  = build_insert_sql_array_impl<false>();
-        static inline const std::string insert_sql_string = std::string(insert_sql_array);
-
-      private:
         // Result of a bulk insert: the generated ids with ReturnId::Yes, void otherwise.
         // Declared before the public proxies because it appears in their return types.
         template <ReturnId R>
         using BulkResult =
                 std::expected<std::conditional_t<R == ReturnId::Yes, std::vector<std::int64_t>, void>, Error>;
-
-        // Compile-time bulk INSERT prefix calculation
-        static consteval auto calculate_bulk_insert_prefix_size() -> std::size_t {
-            using utilities::sql_len::INSERT_INTO;
-            using utilities::sql_len::VALUES_OPEN;
-            std::size_t size = 0;
-            size += INSERT_INTO; // "INSERT INTO "
-            size += Base::table_name_.size();
-            size += 2; // " ("
-            size += FieldNameGrammar<Base>::calculate_field_names_size();
-            size += VALUES_OPEN; // ") VALUES "
-            size += 1;           // null terminator
-            return size;
-        }
-
-        // Build bulk INSERT prefix at compile-time using ConstexprString
-        static consteval auto build_bulk_insert_prefix() {
-            constexpr std::size_t prefix_size = calculate_bulk_insert_prefix_size() + utilities::sql_len::LARGE_BUFFER;
-            ConstexprString<prefix_size> result;
-
-            result.append("INSERT INTO ");
-            result.append(Base::table_name_);
-            result.append(" (");
-            result.append(FieldNameGrammar<Base>::build_non_pk_field_names_list());
-            result.append(") VALUES ");
-
-            return result;
-        }
-
-        // Pre-computed bulk INSERT prefix generated at compile-time
-        static constexpr auto           bulk_insert_prefix_array = build_bulk_insert_prefix();
-        static inline const std::string bulk_insert_prefix       = std::string(bulk_insert_prefix_array);
-        static constexpr std::size_t    bulk_insert_prefix_size =
-                calculate_bulk_insert_prefix_size() - 1; // Exclude null terminator
-
-        // Pre-computed RETURNING suffix: " RETURNING <pk_name>"
-        static constexpr auto returning_suffix_array = [] consteval {
-            ConstexprString<64> result;
-            result.append(" RETURNING ");
-            result.append(Base::pk_name_);
-            return result;
-        }();
-        static inline const std::string returning_suffix = std::string(returning_suffix_array);
-
-        // Build bulk INSERT SQL body (shared by both returning and non-returning variants)
-        static __attribute__((cold)) auto build_bulk_insert_body(std::size_t count) -> std::string {
-            // Guard count == 0: (count - 1) below wraps to SIZE_MAX, and an empty
-            // VALUES list is invalid SQL anyway. Return the bare prefix. See #359.
-            if (count == 0) {
-                return bulk_insert_prefix;
-            }
-
-            std::string value_template = "(";
-            value_template += placeholders_;
-            value_template += ")";
-
-            const std::size_t value_size     = value_template.size();
-            const std::size_t separator_size = 2; // ", "
-            const std::size_t total_size =
-                    bulk_insert_prefix_size + (value_size * count) + (separator_size * (count - 1));
-
-            std::string sql;
-            sql.reserve(total_size);
-
-            sql = bulk_insert_prefix;
-            for (std::size_t i = 0; i < count; ++i) {
-                if (i > 0) {
-                    sql += ", ";
-                }
-                sql += value_template;
-            }
-            return sql;
-        }
 
         // Bulk INSERT SQL for `count` rows, with or without " RETURNING <pk>" (with caching).
         // Returns const reference to avoid expensive string copy. The function-local
@@ -305,16 +170,16 @@ export namespace storm::orm::statements {
                 return *cached;
             }
 
-            std::string sql = build_bulk_insert_body(count);
+            std::string sql = InsertG::build_bulk_insert_body(count);
             if constexpr (R == ReturnId::Yes) {
-                sql += returning_suffix;
+                sql += InsertG::returning_suffix;
             }
             cache.insert(count, std::move(sql));
             return *cache.find(count); // Guaranteed to exist after insert
         }
 
         // Rows per bulk statement: the bind-variable limit divided by field_count_.
-        // Dividing by placeholders_count() instead would be tighter for a DB-generated PK
+        // Dividing by InsertG::placeholders_count() instead would be tighter for a DB-generated PK
         // (it is not bound) and exact for a composite-FK member (N placeholders, one
         // field), but it grew the chunk from 249 to 333 rows on the INSERT benchmark model
         // and measured ~2.6% slower at N=1000. Until that is resolved, a model with a
@@ -330,9 +195,9 @@ export namespace storm::orm::statements {
 
         template <ReturnId R> static auto __attribute__((always_inline)) single_insert_sql() -> const std::string& {
             if constexpr (R == ReturnId::Yes) {
-                return insert_returning_sql_string;
+                return InsertG::insert_returning_sql_string;
             } else {
-                return insert_sql_string;
+                return InsertG::insert_sql_string;
             }
         }
 
@@ -493,23 +358,6 @@ export namespace storm::orm::statements {
             }
         }
 
-        // The number of VALUES placeholders in a plain INSERT. Used by the DO UPDATE
-        // upsert path to find where the auto_update now() tail starts binding (right
-        // after the VALUES params).
-        //
-        // Delegated to the grammar rather than re-derived here: this must equal exactly
-        // what build_placeholders() WROTE. The former arithmetic form
-        // (field_count_ - 1, special-cased per key shape) went stale every time a new
-        // "the key is caller data" shape appeared — composite (#502), then UUID (#565) —
-        // binding the tail over the last VALUES slot and leaving one parameter unbound.
-        // PG rejects that outright ("bind message supplies 3 parameters, but prepared
-        // statement requires 4"); SQLite binds NULL and silently writes the auto_update
-        // column NULL. Counting through the writer's own iterator also fixes the latent
-        // undercount for a composite-FK member, which contributes N placeholders.
-        static consteval auto placeholders_count() -> std::size_t {
-            return FieldNameGrammar<Base>::placeholder_count();
-        }
-
         // Step a prepared statement to completion and collapse it to void: a plain
         // NO_MORE_ROWS is success, anything else is an Error. Used by the upsert paths
         // (execute_upsert_nothing, UpsertUpdateRunner::run) on a model whose key is not
@@ -555,7 +403,7 @@ export namespace storm::orm::statements {
                     std::expected<std::optional<std::int64_t>, Error>,
                     std::expected<void, Error>>;
 
-            auto prepared = prepare_and_bind(Grammar::template nothing_sql<Target...>(), obj);
+            auto prepared = prepare_and_bind(UpsertG::template nothing_sql<Target...>(), obj);
             if (!prepared) {
                 return Result(std::unexpected(prepared.error()));
             }
@@ -591,8 +439,8 @@ export namespace storm::orm::statements {
                         std::expected<std::int64_t, Error>,
                         std::expected<void, Error>>;
 
-                const std::string sql = Grammar::template update_sql<Target...>(
-                        Grammar::template build_excluded_set_clause<SetCols...>()
+                const std::string sql = UpsertG::template update_sql<Target...>(
+                        UpsertG::template build_excluded_set_clause<SetCols...>()
                 );
                 auto stmt_result = self->conn_->prepare_cached(sql);
                 if (!stmt_result) {
@@ -722,7 +570,7 @@ export namespace storm::orm::statements {
         // UpdateStatement::bind_unlisted_auto_updates (update.cppm).
         template <std::meta::info... SetCols>
         [[nodiscard]] auto bind_upsert_auto_updates(Statement* stmt) noexcept -> std::expected<void, Error> {
-            int        param_index = static_cast<int>(placeholders_count()) + 1; // 1-based, after VALUES
+            int        param_index = static_cast<int>(InsertG::placeholders_count()) + 1; // 1-based, after VALUES
             const auto now         = Base::batch_now();
             return bind_upsert_auto_updates_impl<SetCols...>(stmt, param_index, now, typename Base::field_indices_t{});
         }
@@ -737,7 +585,7 @@ export namespace storm::orm::statements {
             std::expected<void, Error> result{};
             (
                     [&] {
-                        if constexpr (Grammar::template is_unlisted_auto_update<SetCols...>(Base::all_members_[Is])) {
+                        if constexpr (UpsertG::template is_unlisted_auto_update<SetCols...>(Base::all_members_[Is])) {
                             if (result.has_value()) {
                                 result = Base::template bind_one<ConnType>(stmt, param_index, now);
                             }
