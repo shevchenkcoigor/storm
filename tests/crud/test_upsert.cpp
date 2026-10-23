@@ -4,6 +4,7 @@
 #include <sqlite3.h>
 
 import storm;
+import storm_orm_statements_upsert_grammar; // UpsertGrammar / ConflictTargetUnique / UpsertSettable — not re-exported by `storm`
 import std;
 
 #include "../../shared/models/person.h" // NOSONAR cpp:S954

@@ -5,6 +5,7 @@
 #include "test_db_helpers.h"
 
 import storm;
+import storm_orm_statements_join; // JoinStatement / M2MJoinStatement / JoinType — not re-exported by `storm`
 import std;
 
 #include "../../shared/models/message.h" // NOSONAR cpp:S954 — Message/Person

@@ -6,6 +6,7 @@
 // NOLINTBEGIN(misc-const-correctness)
 
 import storm;
+import storm_orm_model_concepts; // ModelStorageAnnotated / ModelFkPoliciesValid — not re-exported by `storm`
 import std;
 
 using storm::db::DefaultConnection;

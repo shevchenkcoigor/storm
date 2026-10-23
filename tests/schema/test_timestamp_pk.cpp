@@ -4,6 +4,7 @@
 #include "test_db_helpers.h"
 
 import storm;
+import storm_orm_model_concepts; // ModelTimestampPkValid / ModelPrimaryKeyValid — not re-exported by `storm`
 import storm_orm_statements_update_grammar; // UpdateGrammar / UpsertGrammar — PK gate on the auto_update SET tail (#511); not re-exported by `storm`
 import storm_orm_statements_upsert_grammar;
 import std;

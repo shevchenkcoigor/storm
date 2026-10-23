@@ -28,6 +28,7 @@ import std;
 import storm_orm_utilities;
 import storm_orm_transaction;
 import storm;
+import storm_orm_statements_upsert_grammar; // UpsertGrammar — internal, not re-exported by `storm`
 using storm::auto_update;
 using storm::field_specs_for;
 using storm::many_to_many;

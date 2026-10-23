@@ -807,6 +807,8 @@ static constexpr auto bind_value_by_type(Statement& stmt, int index, const U& va
 
 ### `BindableType` concept (#473)
 
+> Not exported by `import storm;` (#679) — add `import storm_orm_value_bind;` to name it directly. See [MODULE_SYSTEM.md Step 5](../../internals/architecture/MODULE_SYSTEM.md#step-5-import-storm-exports-only-the-public-surface).
+
 The parameter binder (`bind_parameter_value`) and the WHERE operand path
 (`normalize_operand`) are both constrained by
 `storm::orm::utilities::BindableType<T>` — a concept whose disjunction mirrors the
@@ -903,6 +905,8 @@ call site's extra `!is_relation_field(MemberInfo)` check, which excludes `many_t
 
 ## Foreign Key Target Validation (`ValidForeignKey`) (#474)
 
+> Not exported by `import storm;` (#679) — add `import storm_orm_model_concepts;` to name it directly. See [MODULE_SYSTEM.md Step 5](../../internals/architecture/MODULE_SYSTEM.md#step-5-import-storm-exports-only-the-public-surface).
+
 `storm::orm::statements::ValidForeignKey<FieldType>` is the compile-time gate that an FK field's
 target has a primary key — a plain alias over the existing model concept, unwrapping one level of
 `std::optional` first (an FK field is often `std::optional<Related>`):
@@ -922,6 +926,8 @@ into `ValidForeignKey<typename[:...:]>`, so `model_concepts.cppm` also carries a
 has a PK" check for that path.
 
 ## Numeric Aggregate Validation (`NumericAggregateable`) (#475)
+
+> Not exported by `import storm;` (#679) — add `import storm_orm_statements_aggregate;` to name it directly. See [MODULE_SYSTEM.md Step 5](../../internals/architecture/MODULE_SYSTEM.md#step-5-import-storm-exports-only-the-public-surface).
 
 `storm::orm::statements::NumericAggregateable<T>` is the compile-time gate on the target field(s)
 of `sum()` / `avg()` / `min()` / `max()` — true for an arithmetic, non-`bool` type, unwrapping one
@@ -945,6 +951,8 @@ at the aggregate call site, not a silent coercion. `count()` / `count_distinct()
 — `COUNT` is type-agnostic and accepts any column.
 
 ## Primary Key Type Validation (`PrimaryKeyType`) (#505)
+
+> Not exported by `import storm;` (#679) — add `import storm_orm_model_concepts;` to name it directly. See [MODULE_SYSTEM.md Step 5](../../internals/architecture/MODULE_SYSTEM.md#step-5-import-storm-exports-only-the-public-surface).
 
 `storm::orm::statements::PrimaryKeyType<T>` is the compile-time gate on the type of `T`'s
 primary-key member (the field annotated `primary` / `primary_autoincrement`).
