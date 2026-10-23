@@ -82,7 +82,6 @@ preset_dir() {
         ninja-release) echo build/release ;;
         *) echo "stub cmake: unknown preset $1" >&2; exit 2 ;;
     esac
-    return 0
 }
 if [[ "$1" == "--preset" ]]; then
     if [[ " ${FAIL_PRESETS:-} " == *" $2 "* ]]; then
@@ -122,6 +121,7 @@ STUB
     printf '#!/bin/sh\nexit 0\n' > "$bin/ninja"
     printf '#!/bin/sh\nexit 0\n' > "$bin/pg_isready"
     chmod +x "$bin/cmake" "$bin/ninja" "$bin/pg_isready"
+    return 0
 }
 
 # A throwaway repo holding the real commit.sh and the scripts it runs, committed
