@@ -237,7 +237,8 @@ git add -A && git commit -m "message"
 #   build/debug before running the test binaries directly (so none of the three
 #   — storm_tests, storm_mock_tests, storm_pq_mock_tests — is missing). No-op on
 #   the warm path; covers both the git-hook path and a manual ./commit.sh on a
-#   fresh worktree.
+#   fresh worktree. Each configure runs INSIDE the step that needs it, so a
+#   failed configure fails that step with the CMake error in its log (#674).
 # The hook reformats + re-stages (git add -u) BEFORE the commit object is
 # created, so this single command already captures the final, formatted
 # state — no separate format-then-commit dance needed (#605).
