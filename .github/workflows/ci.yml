@@ -250,6 +250,24 @@ jobs:
       - name: Self-test the per-OS PostgreSQL socket default
         run: ./scripts/tests/test_pg_default_connstr.sh
 
+  # scripts/lib/line_coverage.sh reads the line-coverage percentage for both
+  # commit.sh's gate and the `coverage` job below. It used `grep -oP`, which
+  # macOS BSD grep lacks, so the pre-commit gate failed on every Mac while this
+  # Linux CI (GNU grep) stayed green (#680). The self-test runs the helper and
+  # commit.sh's real run_coverage_check() against a stubbed lcov summary, behind
+  # a `grep` shim that rejects GNU-only usage (-P, PCRE-only syntax) — so a
+  # reintroduced `grep -oP` fails here even though this runner's GNU grep would
+  # accept it. Pure bash.
+  line-coverage-parser:
+    name: line-coverage parser (#680)
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Self-test the line-coverage parser
+        run: ./scripts/tests/test_line_coverage.sh
+
   # cmake/clang_p2996_host.cmake resolves clang-p2996's on-disk layout
   # (Linux/amd64 Docker vs. native macOS/arm64) for CMAKE_CXX_STDLIB_MODULES_JSON
   # and cmake/libcxx.cmake's compile/link flags. Nothing else in CI exercises
@@ -589,9 +607,9 @@ jobs:
           # Parse the LINE row specifically. lcov --summary prints
           # "lines.......: 100.0% (8613 of 8613 lines)" alongside functions/branches
           # rows; anchoring on the wrong one would gate against ~81% or ~92% and
-          # look like a broken job. Same expression commit.sh's run_coverage_check() uses.
-          line_cov=$(grep 'lines\.\.\.\.\.\.\.' "$summary" \
-                     | tail -1 | grep -oP '[0-9.]+(?=%)')
+          # look like a broken job. Same helper commit.sh's run_coverage_check() uses.
+          source scripts/lib/line_coverage.sh
+          line_cov=$(storm_parse_line_coverage < "$summary")
 
           # An unparseable summary must fail loudly, not silently pass — a missing
           # number here would otherwise be indistinguishable from a clean run.
@@ -731,6 +749,7 @@ jobs:
       - githooks-wiring
       - orm-backend-imports
       - pg-default-connstr
+      - line-coverage-parser
       - clang-p2996-host-layout
       - test
       - coverage
