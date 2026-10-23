@@ -28,7 +28,7 @@ constexpr int kInsertChunkRows = 999 / 4;
 
 // Build "INSERT INTO person(name, age, salary) VALUES (?,?,?),(?,?,?),..." for
 // `rows` tuples, appending RETURNING id when `returning`. Mirrors Storm's
-// multi-row VALUES SQL (insert.cppm build_bulk_insert_body).
+// multi-row VALUES SQL (insert_grammar.cppm build_bulk_insert_body).
 auto build_bulk_insert_sql(int rows, bool returning) -> std::string {
     std::string sql = "INSERT INTO person(name, age, salary) VALUES ";
     for (int i = 0; i < rows; ++i) {

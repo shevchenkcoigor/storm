@@ -12,7 +12,7 @@ export module storm_orm_statements_upsert_grammar;
 import std;
 
 import storm_orm_statements_base;
-import storm_orm_statements_field_names;
+import storm_orm_statements_insert_grammar;
 import storm_orm_utilities;
 import storm_orm_indexes;
 import storm_orm_field_attr;
@@ -103,23 +103,6 @@ export namespace storm::orm::statements {
             return result;
         }
 
-        // INSERT INTO <table> (<non-pk cols>) VALUES (<placeholders>) — the same
-        // prefix InsertStatement builds, re-derived here from reflection so this
-        // module stays connection-free (it has no ConnType to reach InsertStatement
-        // through). Placeholders come from FieldNameGrammar<Base>::build_placeholders(),
-        // the single shared source of that text (#205).
-        static consteval auto build_insert_prefix() {
-            ConstexprString<utilities::buffer_size::SQL_LARGE> result;
-            result.append("INSERT INTO ");
-            result.append(Base::table_name_);
-            result.append(" (");
-            result.append(FieldNameGrammar<Base>::build_non_pk_field_names_list());
-            result.append(") VALUES (");
-            result.append(FieldNameGrammar<Base>::build_placeholders());
-            result.append(")");
-            return result;
-        }
-
         // Full "INSERT ... ON CONFLICT (...) DO NOTHING [RETURNING <pk>]" statement.
         // RETURNING is emitted only for a key the DATABASE generates: a composite
         // key (#502/#503) and a storm::UUID key (#572) are both caller data, so
@@ -127,9 +110,14 @@ export namespace storm::orm::statements {
         // entirely. Single-integer-PK text is unchanged. The gate is
         // Base::pk_is_db_generated_(), shared with the runner in insert.cppm that
         // decides whether to READ a returned row — the two must agree.
+        //
+        // The "INSERT INTO <table> (<cols>) VALUES (<placeholders>)" head is
+        // InsertGrammar's constexpr insert_sql_array (#671) — the exact text a plain
+        // INSERT emits, read from a constant expression rather than re-derived here
+        // or taken from a dynamically-initialised std::string static.
         template <std::meta::info... Target> static auto nothing_sql() -> const std::string& {
             static const std::string sql = [] {
-                std::string out(build_insert_prefix());
+                std::string out(InsertGrammar<T>::insert_sql_array);
                 out += " ON CONFLICT ";
                 out += std::string(build_conflict_target<Target...>());
                 out += " DO NOTHING";
@@ -149,7 +137,7 @@ export namespace storm::orm::statements {
         // the key is caller data — same reasoning as nothing_sql() above.
         template <std::meta::info... Target, std::size_t N>
         static auto update_sql(const ConstexprString<N>& set_clause) -> std::string {
-            std::string out(build_insert_prefix());
+            std::string out(InsertGrammar<T>::insert_sql_array);
             out += " ON CONFLICT ";
             out += std::string(build_conflict_target<Target...>());
             out += " DO UPDATE SET ";

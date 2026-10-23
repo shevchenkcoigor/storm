@@ -26,7 +26,9 @@ struct ConstexprString {
 Generate SQL during compilation:
 
 ```cpp
-class InsertStatement : private BaseStatement<T> {
+// Simplified sketch of InsertGrammar (src/orm/statements/insert_grammar.cppm, #671):
+// the real builder is build_insert_sql_array_impl<bool> -> insert_sql_array/insert_sql_string.
+template <typename T> struct InsertGrammar {
     static consteval auto build_insert_sql_array() {
         ConstexprString<sql_size> result;
         result.append("INSERT INTO ");

@@ -162,9 +162,9 @@ export namespace storm::orm::statements {
         // "?, ?, ..." placeholders for the SQL VALUES clause, one per bound COLUMN
         // (a DB-generated single-column PK is skipped; a composite key is not,
         // #502; a composite-FK member contributes one "?" per target PK part,
-        // #504, matching bind_fk_parts's per-part bind loop). Shared by
-        // InsertStatement's VALUES clause and UpsertGrammar's re-derived INSERT
-        // prefix (#205).
+        // #504, matching bind_fk_parts's per-part bind loop). Used by
+        // InsertGrammar's VALUES clause, whose INSERT head UpsertGrammar also
+        // reuses (#205, #671).
         static consteval auto build_placeholders() {
             ConstexprString<utilities::buffer_size::SQL_SMALL> result;
             for_each_field_name<true>([&]<std::size_t Index>(bool needs_comma) {
