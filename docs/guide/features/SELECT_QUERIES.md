@@ -24,6 +24,7 @@ names with their SQLite default (the statement module itself exports only the ba
 import storm_db_default_connection;
 import storm_db_sqlite;
 import storm_defaults;                  // SelectStatement<T> / DefaultConnection<> aliases
+import storm_model;                     // model annotations + fields:: selector machinery
 import storm_orm_statements_select;
 
 using storm::db::DefaultConnection;

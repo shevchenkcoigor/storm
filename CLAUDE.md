@@ -366,6 +366,7 @@ only the hook, `settings.json` or the test itself skips every other step.
 src/
 ├── storm.cppm                  # Main module (re-exports storm_defaults)
 ├── storm_defaults.cppm         # The ONLY default-backend binding: QuerySet<T>/…Statement<T>/DefaultConnection<> aliases
+├── storm_model.cppm            # Model-declaration vocabulary: annotations (primary, fk<>, …) + selector machinery (#671)
 ├── db/
 │   ├── concept.cppm            # Database concepts
 │   ├── default_connection.cppm # BasicDefaultConnection<ConnType> (backend-free)

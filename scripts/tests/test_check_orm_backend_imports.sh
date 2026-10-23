@@ -45,7 +45,7 @@ make_repo() {
     printf 'export module storm_orm_statements_select;\n' > "$dir/src/orm/statements/select.cppm"
     printf 'export module storm_db_default_connection;\nimport storm_db_pool;\n' > "$dir/src/db/default_connection.cppm"
     printf 'export module storm_db_pool;\n' > "$dir/src/db/pool.cppm"
-    printf 'export module storm_meta;\n' > "$dir/src/storm_meta.cppm"
+    printf 'export module storm_model;\n' > "$dir/src/storm_model.cppm"
     # A backend module may of course name itself — it is not checked.
     printf 'export module storm_db_sqlite;\nnamespace storm::db::sqlite {}\n' > "$dir/src/db/sqlite.cppm"
     echo "$dir"
@@ -76,6 +76,10 @@ check default-connection 1 "src/db/default_connection.cppm" "$r"
 r="$(make_repo)"; TMPS+=("$r")
 echo 'import storm_db_postgresql;' >> "$r/src/db/pool.cppm"
 check pool-postgres 1 "src/db/pool.cppm" "$r"
+
+r="$(make_repo)"; TMPS+=("$r")
+echo 'import storm_defaults;' >> "$r/src/storm_model.cppm"
+check model-imports-defaults 1 "src/storm_model.cppm:2" "$r"
 
 r="$(make_repo)"; TMPS+=("$r")
 echo "$SQLITE_IMPORT" >> "$r/src/orm/queryset.cppm"

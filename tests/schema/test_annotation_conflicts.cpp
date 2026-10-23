@@ -5,7 +5,7 @@
 
 import storm_db_postgresql;
 import storm_db_sqlite;
-import storm_meta;
+import storm_model;
 import std;
 import storm_orm_statements_base;
 using storm::full_unsigned;

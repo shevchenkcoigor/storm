@@ -2,7 +2,7 @@ module;
 
 // Model-validation concepts and the reflection helpers they rest on, split out of
 // storm_orm_statements_base so code that only needs to ask "is this a valid model?"
-// (storm_meta, concept tests) does not import the whole statement hub. Depends only on
+// (storm_model, concept tests) does not import the whole statement hub. Depends only on
 // the dependency-free leaves (field_attr, relation_meta, utilities); base.cppm
 // re-exports this module, so every statement module keeps seeing these names unchanged.
 

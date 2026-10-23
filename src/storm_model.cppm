@@ -1,8 +1,15 @@
 module;
 
+// Model-declaration vocabulary (#671): the annotations a model struct is declared with
+// (primary, fk<>, many_to_many<>, max_length<N>, ...) under their short storm:: spellings,
+// plus the selector machinery (FieldRef/RelationRef, field_specs_for) that each model's
+// fields:: objects are built from. Named storm_model rather than storm_meta: the
+// storm::meta namespace it also populates is the long back-compat spelling (#442), not a
+// low-level layer.
+
 #include <meta>
 
-export module storm_meta;
+export module storm_model;
 
 // storm::meta flag objects, RefAction, is_primary_member: re-exported to users
 export import storm_orm_field_attr;

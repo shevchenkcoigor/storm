@@ -1,7 +1,7 @@
 #include <gtest/gtest.h>
 #include <meta>
 
-import storm_meta;
+import storm_model;
 import std;
 
 // Compile-time-only verification of the ValidFieldInfo concept (#478). It gates a
