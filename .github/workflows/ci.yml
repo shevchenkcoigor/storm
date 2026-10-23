@@ -168,10 +168,10 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Validate .claude/agents/*.md frontmatter
-        run: ./scripts/check-agent-frontmatter.sh
+        run: ./scripts/check_agent_frontmatter.py
 
       - name: Self-test the validator
-        run: ./scripts/tests/test_check_agent_frontmatter.sh
+        run: ./scripts/tests/test_check_agent_frontmatter.py
 
   # scripts/lib/clang_tidy_skiplist.sh is the single source of truth both
   # scripts/run_clang_tidy.sh --diff (this pre-commit hook) and the weekly

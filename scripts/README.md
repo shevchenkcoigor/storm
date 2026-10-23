@@ -201,16 +201,16 @@ newlines as literal `\n` escapes — the form used by every agent file that load
 ### Usage
 
 ```bash
-./scripts/check-agent-frontmatter.sh              # defaults to .claude/agents
-./scripts/check-agent-frontmatter.sh some/dir     # validate another directory
-./scripts/tests/test_check_agent_frontmatter.sh   # self-test
+./scripts/check_agent_frontmatter.py              # defaults to .claude/agents
+./scripts/check_agent_frontmatter.py some/dir     # validate another directory
+./scripts/tests/test_check_agent_frontmatter.py   # self-test (stdlib unittest)
 ```
 
 Exit code `0` = all agent files valid, `1` = at least one invalid.
 
 ### Where it runs
 
-- **`commit.sh`** — whenever a `.claude/agents/*.md` file is staged. Runs before the
+- **`commit.sh`** — whenever a `.claude/agents/*.md` file is staged (and runs the self-test too when the checker or its test is staged). Runs before the
   step-count early exit, since an agent-only commit skips every C++/cmake step and is
   exactly the commit that can introduce this bug.
 - **CI** — the `agent-frontmatter` job in `.github/workflows/ci.yml`, which also self-tests
@@ -280,6 +280,10 @@ They are plain bash and run individually or as a suite:
 ```bash
 for t in scripts/tests/test_*.sh; do "$t" || echo "FAILED: $t"; done
 ```
+
+The agent-frontmatter checker is Python, so its self-test is too:
+`scripts/tests/test_check_agent_frontmatter.py` (stdlib `unittest`, needs only `python3`) is
+not matched by the `*.sh` loop above — run it on its own.
 
 ### Prerequisites
 
