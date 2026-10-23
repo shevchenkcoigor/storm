@@ -110,6 +110,7 @@ src/
         ├── erase.cppm              # EraseStatement
         ├── erase_grammar.cppm      # EraseGrammar — DELETE SQL builders (#501)
         ├── join.cppm               # JoinStatement (SQL builder)
+        ├── join_grammar.cppm       # Shared consteval Q2 column/IN-subquery/junction SQL helpers (#671)
         ├── aggregate.cppm          # COUNT/SUM/AVG/MIN/MAX (#475)
         ├── distinct.cppm           # DISTINCT
         ├── orderby.cppm            # ORDER BY
@@ -135,7 +136,7 @@ storm (main module)
 ├── storm_orm_utilities               (re-exports storm_orm_value_bind + storm_orm_stitch_key, #671)
 ├── storm_orm_model_concepts          (re-exported by storm_orm_statements_base)
 ├── storm_orm_statements_base
-├── storm_orm_statements_{insert,insert_grammar,update,update_grammar,upsert_grammar,erase,erase_grammar,select,select_grammar,join}
+├── storm_orm_statements_{insert,insert_grammar,update,update_grammar,upsert_grammar,erase,erase_grammar,select,select_grammar,join,join_grammar}
 ├── storm_orm_statements_{aggregate,distinct,orderby,setop,extract,field_names}
 └── storm_orm_queryset
 ```

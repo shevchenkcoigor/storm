@@ -159,7 +159,7 @@ rules, one code path**. The auto-junction is Storm's SYNTHETIC table, so Storm n
 composite-FK columns emitted by the regular model DDL (`append_composite_fk_part_column`), which
 spells the target part's **bare** identifier: `<member>_<part>`, no `_id`. The rules agree for a
 single-column PK and for a composite key of plain columns; they diverge exactly when a PK part is
-itself an FK — the canonical association-table shape, which nothing in-tree exercised. `join.cppm`'s
+itself an FK — the canonical association-table shape, which nothing in-tree exercised. `join_grammar.cppm`'s
 `append_junction_side_col`/`_list` now take a `JunctionNaming` enum (`Auto`/`Through`) derived from
 the same `Through` alias that picks the table and column base names, so the three cannot disagree
 about which junction is addressed; the single-PK branch stays SHARED (both rules emit exactly
