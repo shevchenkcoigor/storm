@@ -126,6 +126,8 @@ fi
 # reports. BASH_SOURCE[0] is swapped for commit.sh's absolute path on purpose:
 # the hook runs ./commit.sh from the work-tree top, and this resolves the
 # helper's `source` to the same file wherever the test is run from.
+# configure_if_missing is stubbed as a configured tree; its failure path is
+# test_commit_self_heal_configure.sh's subject (#674).
 run_commit_check() { # <line-percent>
     local percent="$1" block
     block="$(sed -n '/^    run_coverage_check() {/,/^    }$/p' "$COMMIT")"
@@ -134,6 +136,7 @@ run_commit_check() { # <line-percent>
 $(declare -f summary)
 cmake() { [[ \"\$*\" == *'--target coverage' ]] && summary '$percent'; return 0; }
 show_uncovered_lines() { echo '<uncovered>'; }
+configure_if_missing() { return 0; }
 $block
 run_coverage_check; echo \"rc=\$?\"" 2>&1
     return 0

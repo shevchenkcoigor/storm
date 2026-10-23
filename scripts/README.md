@@ -262,7 +262,7 @@ eval "$(git diff --cached --name-only | ./scripts/detect-changes.sh)"
 
 ## Script Self-Tests (scripts/tests/)
 
-Eleven scripts have a `test_<name>.sh` self-test under `scripts/tests/` — including four whose
+Thirteen scripts have a `test_<name>.sh` self-test under `scripts/tests/` — including four whose
 subjects are not documented above (`coverage-run-batched.sh`, `ninjalog_stats.py`,
 `time_trace.py`, `tu_ablation.py`), `test_pg_default_connstr.sh`, which covers the sourced helper
 `pg-default-connstr.sh` (the per-OS default `STORM_PG_CONNSTR` socket: Linux
@@ -274,7 +274,10 @@ gate and CI's `coverage` job, #680) plus `commit.sh`'s `run_coverage_check()`,
 than a script, and `test_session_start_hook.sh`, which covers
 `.claude/hooks/session-start-docker.sh` — the SessionStart hook that wires `core.hooksPath` (and
 so decides whether `commit.sh` runs at all, #651) before taking any of its Docker-provisioning
-early exits.
+early exits. `test_commit_self_heal_configure.sh` covers `commit.sh` itself: it runs the real
+script in a throwaway repo against a stub `cmake`, and checks that each self-heal configure fails
+its step with the CMake error in that step's log, and that a configured tree never reconfigures
+(#674).
 They are plain bash and run individually or as a suite:
 
 ```bash
@@ -283,7 +286,7 @@ for t in scripts/tests/test_*.sh; do "$t" || echo "FAILED: $t"; done
 
 ### Prerequisites
 
-All but five need nothing beyond bash and coreutils:
+All but six need nothing beyond bash and coreutils:
 
 | Test | Needs |
 |---|---|
@@ -291,6 +294,7 @@ All but five need nothing beyond bash and coreutils:
 | `test_ninjalog_stats.sh` | `python3` (the script under test is Python) |
 | `test_session_start_hook.sh` | **`git`** — its subject is git behavior, so it `git init`s a throwaway repo and makes a real commit through the wired hook (`python3` optional: without it the `settings.json` JSON-validity assertion is reported as unchecked, the grep assertions still run) |
 | `test_time_trace.sh` | `python3`; no compiler — it pins the replay argv (a `.cppm` traced via `--precompile`, the modmap's `-fmodule-output` dropped) and the trace parsing, the two places a wrong answer is a plausible number rather than a crash |
+| `test_commit_self_heal_configure.sh` | **`git`** — it runs `commit.sh` in a throwaway repo, which reads the staged files from git; `cmake`, `ninja` and `pg_isready` are stubbed, so no toolchain |
 | `test_tu_ablation.sh` | `python3` (same as `test_ninjalog_stats.sh`); no compiler — it exercises the source transforms only, which is the point: a mis-parse there does not crash, it publishes a wrong number |
 | everything else | pure bash |
 

@@ -17,6 +17,27 @@ before running those binaries. Both guards are file-check-and-build: a no-op
 (fast) on an already-warm build directory, so this doesn't add cost on the
 common path — it only matters the first time you commit from a new worktree.
 
+### A failed self-heal configure blocks the commit with the CMake error (#674)
+
+Every self-heal `cmake --preset` — `build/release` for the clang-tidy
+prerequisites and the bench release build, `build/debug` for clang-format,
+cmake-format, tests and coverage — runs through `configure_if_missing` *inside*
+the step that needs the tree. It configures only when the sentinel file is
+absent (`compile_commands.json` for clang-tidy, `build.ninja` elsewhere), so the
+warm path never runs cmake. When the configure fails, that step fails: the
+CMake error is in the step's own log (`/tmp/storm_*.log`, path printed under the
+failed step), and the commit is blocked.
+
+Before #674 these configures discarded their output and ignored their exit
+status, so a failed configure surfaced one step later as
+`ninja: error: loading 'build.ninja': No such file or directory`, with the CMake
+error logged nowhere. `build_tidy_prereqs()` also checks for
+`build/release/build.ninja` before building, so a tree that has
+`compile_commands.json` but no `build.ninja` reports "not configured" instead of
+a ninja error. `scripts/tests/test_commit_self_heal_configure.sh` covers each
+site with a stub `cmake` and runs locally with no toolchain; `commit.sh` runs it
+when `commit.sh`, the test, or a script the test copies is staged. It is not wired into CI.
+
 ### What "prerequisites" means, and why not the full target set (#557)
 
 clang-tidy replays `build/release/compile_commands.json` and only PARSES — it

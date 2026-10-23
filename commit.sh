@@ -29,14 +29,18 @@ declare -a STEP_LOGFILES=()
 FAILED=false
 TOTAL_START=$SECONDS
 
-# Fixed log files — one per step, stable paths for easy inspection after failure
-LOG_FORMAT=/tmp/storm_format.log
-LOG_CMAKE_FORMAT=/tmp/storm_cmake_format.log
-LOG_TIDY=/tmp/storm_tidy.log
-LOG_TIDY_BMI=/tmp/storm_tidy_bmi.log
-LOG_RELEASE=/tmp/storm_release.log
-LOG_TESTS=/tmp/storm_tests.log
-LOG_COVERAGE=/tmp/storm_coverage.log
+# Fixed log files — one per step, stable paths for easy inspection after failure.
+# STORM_COMMIT_LOG_DIR relocates them; only scripts/tests/ sets it, so a self-test
+# never overwrites the logs of a real run.
+LOG_DIR="${STORM_COMMIT_LOG_DIR:-/tmp}"
+mkdir -p "$LOG_DIR"
+LOG_FORMAT=$LOG_DIR/storm_format.log
+LOG_CMAKE_FORMAT=$LOG_DIR/storm_cmake_format.log
+LOG_TIDY=$LOG_DIR/storm_tidy.log
+LOG_TIDY_BMI=$LOG_DIR/storm_tidy_bmi.log
+LOG_RELEASE=$LOG_DIR/storm_release.log
+LOG_TESTS=$LOG_DIR/storm_tests.log
+LOG_COVERAGE=$LOG_DIR/storm_coverage.log
 
 print_header() {
     local step_num=$1 total=$2 name=$3
@@ -90,6 +94,33 @@ run_step_live() {
     "$@" 2>&1 | tee "$logfile"
     local exit_code=${PIPESTATUS[0]}
     _step_finish "$name" "$exit_code" "$(( SECONDS - start ))" "$logfile"
+}
+
+# ─── Self-heal configure (issues #489, #674) ────────────────────────────────
+# Configures <preset> only when <sentinel> is absent, so the warm path (an
+# already-configured tree) never runs cmake. Call it from INSIDE a step's
+# command: CMake's output then lands in that step's log, and a failed configure
+# fails that step with its log path printed. Run outside a step with its output
+# discarded and its status ignored (the pre-#674 shape), a failed configure
+# resurfaced one step later as `ninja: error: loading 'build.ninja'`, with the
+# CMake error logged nowhere.
+configure_if_missing() {
+    local preset="$1" sentinel="$2"
+    [[ -f "$sentinel" ]] && return 0
+    echo "Configuring $preset ($sentinel is absent)..."
+    if ! cmake --preset "$preset"; then
+        echo "cmake --preset $preset FAILED — the CMake error is above; nothing was built." >&2
+        return 1
+    fi
+    return 0
+}
+
+# configure_if_missing, then `cmake --build --preset <preset> [args...]`.
+configure_and_build() {
+    local preset="$1" sentinel="$2"
+    shift 2
+    configure_if_missing "$preset" "$sentinel" || return 1
+    cmake --build --preset "$preset" "$@"
 }
 
 # ─── clang-tidy release prerequisites (issue #557) ──────────────────────────
@@ -169,6 +200,17 @@ PYPREREQ
 
 build_tidy_prereqs() {
     local build_dir="build/release"
+
+    # compile_commands.json is the self-heal sentinel because it is what
+    # clang-tidy replays (#489). It does not prove build.ninja exists, so check
+    # that too: a tree without it is reported as unconfigured here instead of as
+    # a ninja error from the build below (#674).
+    configure_if_missing ninja-release "$build_dir/compile_commands.json" || return 1
+    if [[ ! -f "$build_dir/build.ninja" ]]; then
+        echo "$build_dir is not configured: $build_dir/build.ninja is missing."
+        echo "Re-run \`cmake --preset ninja-release\` (or delete $build_dir) and commit again."
+        return 1
+    fi
 
     # mapfile is bash >= 4.0 and ninja is the preset's generator. Without
     # either, every enumeration below would come back empty and we would skip
@@ -404,6 +446,28 @@ if [[ -n "$STAGED_FILES" ]] \
     echo -e "${DIM}✓ SessionStart hook wiring self-test passed${RESET}"
 fi
 
+# --- Self-heal configure self-test (issue #674) ---
+# The configure_if_missing calls above must fail their step with the CMake
+# error in its log; swallowed, a failed configure resurfaced as a misleading
+# ninja error. The self-test runs this script against stub cmake/ninja in a
+# throwaway repo — no toolchain needed.
+#
+# Deliberately placed BEFORE the TOTAL_STEPS==0 early exit below, same
+# reasoning as the guards above: a commit touching only commit.sh or this
+# self-test has no C++ or cmake, so TOTAL_STEPS would otherwise be 0 — exactly
+# the commit that can reintroduce the bug. The scripts the self-test copies into
+# its throwaway repo are listed too: changing one can break its scenarios.
+if [[ -n "$STAGED_FILES" ]] \
+   && grep -qE '^(commit\.sh|scripts/(detect-changes|pg-default-connstr)\.sh|scripts/lib/(clang_tidy_skiplist|line_coverage)\.sh|scripts/tests/test_commit_self_heal_configure\.sh)$' <<< "$STAGED_FILES"; then
+    if ! "$(dirname "${BASH_SOURCE[0]}")/scripts/tests/test_commit_self_heal_configure.sh" > "$LOG_DIR/storm_self_heal_test.log" 2>&1; then
+        echo ""
+        echo -e "${RED}${BOLD} COMMIT BLOCKED — self-heal configure self-test failed${RESET}"
+        echo -e "${DIM}  → full output: $LOG_DIR/storm_self_heal_test.log${RESET}"
+        exit 1
+    fi
+    echo -e "${DIM}✓ self-heal configure self-test passed${RESET}"
+fi
+
 # --- Per-OS PostgreSQL socket default self-test ---
 # scripts/pg-default-connstr.sh picks the default STORM_PG_CONNSTR socket directory
 # (Linux /var/run/postgresql, macOS /tmp). A commit touching only it, its two callers
@@ -500,25 +564,23 @@ fi
 
 echo -e "${BOLD}Running $TOTAL_STEPS pre-commit checks...${RESET}"
 
-# --- Ensure debug build is configured ---
-if [[ ("$RUN_FORMAT" == true || "$RUN_CMAKE_FORMAT" == true) && ! -f "build/debug/build.ninja" ]]; then
-    echo -e "${DIM}Configuring debug build for format targets...${RESET}"
-    # stdout only. stderr carries cmake's message(WARNING)s — among them
-    # cmake/format.cmake's "cmake-format not found", which names the cause of
-    # the `unknown target 'cmake-format'` this very block is about to hit
-    # (#643). This fresh-configure branch is the container/fresh-worktree path,
-    # so swallowing stderr here hid that warning from precisely its audience.
-    cmake --preset ninja-debug > /dev/null
-fi
-
-# --- Step 1: clang-format ---
+# --- Steps 1-2: clang-format, cmake-format ---
+# Both build a target of build/debug, so the first of them to run configures it
+# if absent (configure_and_build, #674). Its full output — stderr included —
+# lands in that step's log. stderr matters here: it carries cmake's
+# message(WARNING)s, among them cmake/format.cmake's "cmake-format not found",
+# which names the cause of the `unknown target 'cmake-format'` that step then
+# hits (#643). On a cmake-only commit (the container path #643 was about)
+# cmake-format is the only one that runs, so the warning is in its own log; when
+# both run, it is in clang-format's.
 if [[ "$RUN_FORMAT" == true ]]; then
-    run_step "clang-format" "$LOG_FORMAT" cmake --build --preset ninja-debug --target format || true
+    run_step "clang-format" "$LOG_FORMAT" \
+        configure_and_build ninja-debug build/debug/build.ninja --target format || true
 fi
 
-# --- Step 2: cmake-format ---
 if [[ "$RUN_CMAKE_FORMAT" == true ]]; then
-    run_step "cmake-format" "$LOG_CMAKE_FORMAT" cmake --build --preset ninja-debug --target cmake-format || true
+    run_step "cmake-format" "$LOG_CMAKE_FORMAT" \
+        configure_and_build ninja-debug build/debug/build.ninja --target cmake-format || true
 fi
 
 # --- Step 3: clang-tidy ---
@@ -527,17 +589,15 @@ fi
 # Set STORM_TIDY_FULL=1 to force whole-file staged scan (the pre-#262 behavior).
 if [[ "$RUN_TIDY" == true ]]; then
     # Self-heal a fresh/stale build/release before clang-tidy (#489): configure
-    # if compile_commands.json is absent, then build what clang-tidy needs — the
-    # module BMIs (for `import std;`/`import storm;`) and the mock test binaries.
-    # build_tidy_prereqs builds those targets specifically rather than the full
+    # if compile_commands.json is absent — inside the step, so a failed configure
+    # fails it with the CMake error in its log (#674) — then build what clang-tidy
+    # needs: the module BMIs (for `import std;`/`import storm;`) and the mock test
+    # binaries. build_tidy_prereqs builds those targets specifically rather than the full
     # default set (#557), and falls back to the full build whenever it cannot
     # prove that is enough. This is a no-op when release is already up to date
     # (the ninja build short-circuits), so the warm path stays fast. See the
     # RUN_TIDY_BMI comment above for the two failures this prevents.
     if [[ "$RUN_TIDY_BMI" == true ]]; then
-        if [[ ! -f "build/release/compile_commands.json" ]]; then
-            cmake --preset ninja-release > /dev/null 2>&1
-        fi
         run_step "release prereqs (BMIs + mock binaries, for clang-tidy)" "$LOG_TIDY_BMI" \
             build_tidy_prereqs
     fi
@@ -562,11 +622,8 @@ fi
 
 # --- Step 3b: bench release build ---
 if [[ "$RUN_BENCH_RELEASE" == true ]]; then
-    if [[ ! -f "$RELEASE_BUILD_NINJA" ]]; then
-        cmake --preset ninja-release > /dev/null 2>&1
-    fi
     run_step "release build" "$LOG_RELEASE" \
-        cmake --build --preset ninja-release
+        configure_and_build ninja-release "$RELEASE_BUILD_NINJA"
 fi
 
 # --- Step 4: tests ---
@@ -582,10 +639,7 @@ fi
 # by a file check; the ninja build short-circuits when up to date).
 if [[ "$RUN_TESTS" == true ]]; then
     build_debug_then_test() {
-        if [[ ! -f "build/debug/build.ninja" ]]; then
-            cmake --preset ninja-debug || return 1
-        fi
-        cmake --build --preset ninja-debug || return 1
+        configure_and_build ninja-debug build/debug/build.ninja || return 1
 
         # Soft default (not an override): an already-exported STORM_PG_CONNSTR
         # wins, as in scripts/coverage-run-batched.sh — a hard override here would
@@ -648,10 +702,6 @@ fi
 
 # --- Step 5: coverage ---
 if [[ "$RUN_COVERAGE" == true ]]; then
-    if [[ ! -f "build/debug/build.ninja" ]]; then
-        cmake --preset ninja-debug > /dev/null 2>&1
-    fi
-
     # Format line numbers as compact ranges (e.g., "5, 10-15, 20")
     format_line_ranges() {
         local -n _lines=$1
@@ -736,6 +786,10 @@ if [[ "$RUN_COVERAGE" == true ]]; then
 
     # Run coverage as a compound check: clean + build + parse + threshold
     run_coverage_check() {
+        # Self-heal an absent build/debug inside the step (#674), so a failed
+        # configure is reported here rather than as a coverage build error.
+        configure_if_missing ninja-debug build/debug/build.ninja || return 1
+
         # Clean stale profraw/profdata to prevent false uncovered lines
         cmake --build --preset ninja-debug-coverage --target coverage-clean > /dev/null 2>&1
         local output
