@@ -16,6 +16,13 @@
 # Like test_pg_default_connstr.sh, the commit.sh check is behavioural: it runs
 # the real run_coverage_check() text with `cmake` stubbed out, so a deleted
 # `source` line or a reintroduced GNU-only flag changes the result.
+#
+# The same class of bug, for the shell (#689): commit.sh runs under
+# `#!/bin/bash`, which on macOS is bash 3.2. A bash-4 construct (`local -n`,
+# `mapfile`) breaks there while CI's bash 5 accepts it. So the uncovered-lines
+# report is run under /bin/bash as well as the current bash, and commit.sh plus
+# the libraries it sources are scanned for bash-4-only constructs — the scan is
+# what catches a regression on a Linux runner, whose /bin/bash is bash 5.
 
 set -u
 
@@ -120,6 +127,83 @@ if [[ -f "$HELPER" ]]; then
 else
     check "$HELPER exists" "yes" "no"
 fi
+
+# --- Under which shells: the current one, plus macOS's bash 3.2 (#689) ---
+
+SHELLS=("$BASH")
+if [[ -x /bin/bash && "$(/bin/bash -c 'echo $BASH_VERSION')" != "$BASH_VERSION" ]]; then
+    SHELLS+=(/bin/bash)
+fi
+
+ranges() { # <shell> <line>...
+    local sh="$1"
+    shift
+    "$sh" -c 'source "$1"; shift; storm_format_line_ranges "$@"' _ "$HELPER" "$@" 2>&1
+    return 0
+}
+
+for sh in "${SHELLS[@]}"; do
+    v="$("$sh" -c 'echo $BASH_VERSION')"
+    check "[bash $v] no lines yields nothing" "" "$(ranges "$sh")"
+    check "[bash $v] a single line" "5" "$(ranges "$sh" 5)"
+    check "[bash $v] a run collapses to a range" "5-7" "$(ranges "$sh" 5 6 7)"
+    check "[bash $v] singles and runs mixed" "1, 3-5, 9, 11-12" \
+        "$(ranges "$sh" 1 3 4 5 9 11 12)"
+done
+
+# --- commit.sh's show_uncovered_lines() ---
+# The real function text, run from a scratch dir holding the lcov file at the
+# relative path it reads. BASH_SOURCE[0] is swapped for commit.sh's path as in
+# run_commit_check() below, so a deleted `source` of the helper fails here.
+LCOV_DIR="$(mktemp -d)"
+trap 'rm -rf "$SHIM_DIR" "$LCOV_DIR"' EXIT
+mkdir -p "$LCOV_DIR/build/debug/coverage"
+printf '%s\n' "SF:$LCOV_DIR/src/a.cpp" DA:1,4 DA:3,0 DA:5,0 DA:6,0 DA:7,0 DA:8,2 \
+    end_of_record "SF:$LCOV_DIR/src/b.cpp" DA:1,1 end_of_record \
+    > "$LCOV_DIR/build/debug/coverage/coverage-filtered.lcov"
+
+show_uncovered() { # <shell>
+    local block
+    block="$(sed -n '/^    show_uncovered_lines() {/,/^    }$/p' "$COMMIT")"
+    block="${block//'${BASH_SOURCE[0]}'/$COMMIT}"
+    (cd "$LCOV_DIR" && "$1" -c "RED= BOLD= RESET= DIM= YELLOW=
+$block
+show_uncovered_lines" 2>&1)
+    return 0
+}
+
+for sh in "${SHELLS[@]}"; do
+    v="$("$sh" -c 'echo $BASH_VERSION')"
+    out="$(show_uncovered "$sh")"
+    check "[bash $v] commit.sh reports uncovered ranges per file" \
+        "src/a.cpp|Lines: 3, 5-7" \
+        "$(grep -E 'src/|Lines:' <<< "$out" | sed 's/^ *//' | paste -sd '|' -)"
+    if [[ "$out" != *"Lines: 3, 5-7"* ]]; then
+        sed 's/^/          /' <<< "$out"
+    fi
+done
+
+# --- No bash-4-only constructs in what commit.sh runs under /bin/bash (#689) ---
+# commit.sh, the libraries it sources, and the scripts it (or the coverage
+# target) executes. Comment lines are skipped: explaining a construct is not
+# using it. The pattern covers the common constructs, not every bash-4 feature
+# (it misses e.g. `|&`, `;;&`, `${v@Q}`, negative subscripts).
+BASH4_RE='\b(mapfile|readarray|coproc)\b|\b(local|declare|typeset)[[:space:]]+-[a-zA-Z]*[nAglu]|\$\{[a-zA-Z_][a-zA-Z_0-9]*(\[@\])?(,,?|\^\^?)'
+BASH4_TARGETS=(commit.sh scripts/lib/*.sh scripts/detect-changes.sh scripts/pg-default-connstr.sh
+    scripts/run_clang_tidy.sh scripts/check-orm-backend-imports.sh scripts/coverage-run-batched.sh)
+missing_targets=""
+for f in "${BASH4_TARGETS[@]}"; do
+    [[ -f "$REPO_ROOT/$f" ]] || missing_targets+="$f "
+done
+check "every bash-4 scan target exists" "" "$missing_targets"
+bash4_hits="$(cd "$REPO_ROOT" && grep -nE "$BASH4_RE" "${BASH4_TARGETS[@]}" \
+    | grep -vE '^[^:]+:[0-9]+:[[:space:]]*#')"
+check "commit.sh and the scripts it runs use no bash-4-only constructs" "" "$bash4_hits"
+# Self-check the pattern, so a broken regex cannot make the scan vacuous.
+check "bash-4 scan pattern matches its targets" "6" \
+    "$(printf '%s\n' 'mapfile -t a < f' '  local -n r=$1' 'declare -A m' 'x=${v,,}' \
+        'declare -l low' 'y=${arr[@]^^}' 'local -a ok' 'x=${v:-,}' \
+        | grep -cE "$BASH4_RE")"
 
 # --- commit.sh's run_coverage_check() ---
 # Extract the real function, stub `cmake` to print a summary, and read what it

@@ -71,10 +71,16 @@ against ~600 s to compile those TUs — so staging a `tests/**` file no longer
 forces the fallback.
 
 Because a missing BMI fails silently, every uncertain path falls back to the
-full build: no ninja or no `mapfile`, an empty BMI enumeration, a staged file
+full build: no ninja, an empty BMI enumeration, a staged file
 whose modmaps reference a BMI that is not on disk, or any unexpected failure of
 the check itself (the probe must print `complete`; anything else, a crash and a
 missing `python3` included, counts as incomplete).
+
+`commit.sh` runs under `#!/bin/bash`, which on macOS is **bash 3.2**, so it uses
+no bash-4 constructs (`mapfile`, `local -n`, associative arrays, `${v,,}`). Until
+#689 it probed for `mapfile` and, on every Mac, fell back to the full build here.
+`test_line_coverage.sh` scans `commit.sh` and the scripts it sources or runs for
+the common bash-4 constructs, so CI's bash 5 cannot hide a regression.
 
 **Staging a header still triggers the full build.** `compile_commands.json` holds
 no header entries — clang-tidy lints a header through a neighbouring TU's

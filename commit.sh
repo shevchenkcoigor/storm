@@ -212,11 +212,13 @@ build_tidy_prereqs() {
         return 1
     fi
 
-    # mapfile is bash >= 4.0 and ninja is the preset's generator. Without
-    # either, every enumeration below would come back empty and we would skip
-    # the BMIs silently — the one direction this function must never fail in.
-    if ! command -v ninja > /dev/null 2>&1 || ! type -t mapfile > /dev/null 2>&1; then
-        echo "ninja or mapfile unavailable — building the full release target set."
+    # ninja is the preset's generator. Without it, every enumeration below
+    # would come back empty and we would skip the BMIs silently — the one
+    # direction this function must never fail in. The enumerations use `while
+    # read`, not `mapfile`: this script runs under macOS /bin/bash 3.2 (#689).
+    local line
+    if ! command -v ninja > /dev/null 2>&1; then
+        echo "ninja unavailable — building the full release target set."
         cmake --build --preset ninja-release
         return
     fi
@@ -236,8 +238,8 @@ build_tidy_prereqs() {
     # mode 1). ninja knows these edges at configure time (build.ninja binds
     # `dyndep = …/CXX.dd` statically and builds the .dd as an order-only input),
     # so they are enumerable on a cold tree.
-    local -a synth_bmis
-    mapfile -t synth_bmis < <(ninja -C "$build_dir" -t targets all 2>/dev/null \
+    local -a synth_bmis=()
+    while IFS= read -r line; do synth_bmis+=("$line"); done < <(ninja -C "$build_dir" -t targets all 2>/dev/null \
         | sed 's/:.*//' \
         | grep -xE 'CMakeFiles/[^ ]*@synth_[0-9]+\.dir/[0-9a-f]+\.bmi' | sort -u)
     if [[ ${#synth_bmis[@]} -eq 0 ]]; then
@@ -256,8 +258,8 @@ build_tidy_prereqs() {
     # tests/** file leaves its modmap absent, the check below cannot prove the
     # tree is sufficient, and the fallback rebuilds everything — which is most
     # commits, since CLAUDE.md rule 9 pairs tests with every change.
-    local -a dd_targets
-    mapfile -t dd_targets < <(ninja -C "$build_dir" -t targets all 2>/dev/null \
+    local -a dd_targets=()
+    while IFS= read -r line; do dd_targets+=("$line"); done < <(ninja -C "$build_dir" -t targets all 2>/dev/null \
         | sed 's/:.*//' | grep -E '\.dd$' | sort -u)
     if [[ ${#dd_targets[@]} -gt 0 ]]; then
         ninja -C "$build_dir" "${dd_targets[@]}" || return 1
@@ -273,8 +275,8 @@ build_tidy_prereqs() {
     # The extension list matches run_clang_tidy.sh's own selector (cpp|cppm|h|
     # hpp) in both modes this hook uses; headers are linted through a
     # neighbouring TU's command, so they must be checked too.
-    local -a tidy_inputs
-    mapfile -t tidy_inputs < <(grep -E '\.(cpp|cppm|h|hpp)$' <<< "$STAGED_FILES" || true)
+    local -a tidy_inputs=()
+    while IFS= read -r line; do tidy_inputs+=("$line"); done < <(grep -E '\.(cpp|cppm|h|hpp)$' <<< "$STAGED_FILES" || true)
 
     # Files run_clang_tidy.sh refuses to parse are not evidence of anything —
     # dropping them keeps a staged benchmarks/schema.cppm from forcing a full
@@ -514,8 +516,10 @@ fi
 # `grep -oP`) breaks the gate on macOS BSD grep while CI's GNU grep stays green.
 # Same placement reasoning as the guards above: a commit touching only these
 # files skips every step, so it sits BEFORE the TOTAL_STEPS==0 early exit.
+# The self-test also scans the scripts commit.sh runs or sources under
+# /bin/bash for bash-4-only constructs (#689), so staging any of them runs it.
 if [[ -n "$STAGED_FILES" ]] \
-   && grep -qE '^(commit\.sh|scripts/lib/line_coverage\.sh|scripts/tests/test_line_coverage\.sh)$' <<< "$STAGED_FILES"; then
+   && grep -qE '^(commit\.sh|scripts/lib/[^/]+\.sh|scripts/(detect-changes|pg-default-connstr|run_clang_tidy|check-orm-backend-imports|coverage-run-batched)\.sh|scripts/tests/test_line_coverage\.sh)$' <<< "$STAGED_FILES"; then
     if ! "$(dirname "${BASH_SOURCE[0]}")/scripts/tests/test_line_coverage.sh"; then
         echo ""
         echo -e "${RED}${BOLD} COMMIT BLOCKED — line-coverage parser self-test failed${RESET}"
@@ -724,40 +728,15 @@ fi
 
 # --- Step 5: coverage ---
 if [[ "$RUN_COVERAGE" == true ]]; then
-    # Format line numbers as compact ranges (e.g., "5, 10-15, 20")
-    format_line_ranges() {
-        local -n _lines=$1
-        local result="" range_start="" range_end=""
-        for ln in "${_lines[@]}"; do
-            if [[ -z "$range_start" ]]; then
-                range_start=$ln; range_end=$ln
-            elif [[ $ln -eq $((range_end + 1)) ]]; then
-                range_end=$ln
-            else
-                if [[ "$range_start" == "$range_end" ]]; then
-                    result+="${result:+, }$range_start"
-                else
-                    result+="${result:+, }${range_start}-${range_end}"
-                fi
-                range_start=$ln; range_end=$ln
-            fi
-        done
-        if [[ -n "$range_start" ]]; then
-            if [[ "$range_start" == "$range_end" ]]; then
-                result+="${result:+, }$range_start"
-            else
-                result+="${result:+, }${range_start}-${range_end}"
-            fi
-        fi
-        echo "$result"
-    }
-
     # Parse lcov file and display uncovered files + line ranges
     show_uncovered_lines() {
         local lcov_file="build/debug/coverage/coverage-filtered.lcov"
         if [[ ! -f "$lcov_file" ]]; then
             return
         fi
+        # storm_format_line_ranges (#689); sourced here, not left to the caller.
+        # shellcheck source=scripts/lib/line_coverage.sh
+        source "$(dirname "${BASH_SOURCE[0]}")/scripts/lib/line_coverage.sh"
 
         echo ""
         echo -e "${BOLD}Uncovered lines:${RESET}"
@@ -772,7 +751,7 @@ if [[ "$RUN_COVERAGE" == true ]]; then
             if [[ ${#uncovered_lines[@]} -gt 0 ]]; then
                 local rel_path="${current_file#$PWD/}"
                 echo -e "  ${YELLOW}${rel_path}${RESET}"
-                echo -e "    Lines: ${RED}$(format_line_ranges uncovered_lines)${RESET}"
+                echo -e "    Lines: ${RED}$(storm_format_line_ranges "${uncovered_lines[@]}")${RESET}"
                 has_uncovered=true
             fi
         }
