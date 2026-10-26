@@ -15,11 +15,21 @@ The tools are wired into CMake via [StableCoder/cmake-scripts](https://github.co
 
 `formatting.cmake` locates each tool with `find_program` at configure time and
 creates **no target at all** when one is missing. A missing `cmake-format`
-therefore surfaces only later, as `ninja: error: unknown target 'cmake-format'`
-when the pre-commit hook reaches step 2 — a message that names the ninja
-symptom, not the cause. `cmake/format.cmake` adds a configure-time
-`message(WARNING ...)` for that case so the real problem is stated once, at the
-point it can be fixed (#643).
+used to surface only later, as `ninja: error: unknown target 'cmake-format'`
+when the pre-commit hook reached step 2 — a message that names the ninja
+symptom, not the cause (#643). `cmake/format.cmake` therefore does two things
+when `cmake-format` is absent:
+
+- emits a configure-time `message(WARNING "cmake-format not found …")`, for a
+  manual `cmake --preset`;
+- defines a stub `cmake-format` target that prints the same message and fails.
+
+The stub is what the hook relies on (#690): the configure output lands in the
+log of whichever step configured `build/debug` — clang-format's, when both
+formatters run on a fresh tree — but the build output of the stub always lands
+in the cmake-format step's own log. `scripts/tests/test_cmake_format_target.sh`
+covers absent (fresh and configured tree) and present; `commit.sh` runs it
+when `cmake/format.cmake` or the test is staged. It is not wired into CI.
 
 | Tool | Where it comes from |
 |---|---|
