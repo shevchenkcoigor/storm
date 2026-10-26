@@ -920,10 +920,10 @@ export namespace storm::orm::statements {
         static constexpr std::size_t owner_key_column_count_ = Base::primary_key_column_count_;
 
       private:
-        // Re-derive the member from ^^T by identifier — annotation reads on a
+        // Re-derive the member from data_members_of_v<T> by identifier — annotation reads on a
         // reflection that crossed a BMI boundary segfault clang-p2996 (#262).
         static constexpr auto m2m_member_ = []() consteval {
-            for (auto m : std::meta::nonstatic_data_members_of(^^T, std::meta::access_context::unchecked())) {
+            for (auto m : storm::meta::data_members_of_v<T>) {
                 if (std::meta::identifier_of(m) == std::meta::identifier_of(M2MField)) {
                     return m;
                 }
@@ -951,7 +951,7 @@ export namespace storm::orm::statements {
 
         // ---- Junction descriptor ---------------------------------------------
         template <typename Side> static consteval auto find_through_fk() -> std::meta::info {
-            for (auto m : std::meta::nonstatic_data_members_of(^^Through, std::meta::access_context::unchecked())) {
+            for (auto m : storm::meta::data_members_of_v<Through>) {
                 if (meta::is_fk_field(m) && std::meta::dealias(std::meta::type_of(m)) == std::meta::dealias(^^Side)) {
                     return m;
                 }
@@ -1438,11 +1438,11 @@ export namespace storm::orm::statements {
         static constexpr auto fk_target_pk_ = Base::primary_key_members_;
 
         // The base member receiving the related rows on select() — the container
-        // annotated reverse_fk<FkField>. Re-derived from ^^T by matching the carried
+        // annotated reverse_fk<FkField>. Re-derived from data_members_of_v<T> by matching the carried
         // FK target (annotation reads on a BMI-crossing reflection segfault, #262).
         // Only the select path uses it; aggregate/filter chains never reach append_*.
         static consteval auto find_dest_member() -> std::optional<std::meta::info> {
-            for (auto m : std::meta::nonstatic_data_members_of(^^T, std::meta::access_context::unchecked())) {
+            for (auto m : storm::meta::data_members_of_v<T>) {
                 // Resolve each reverse_fk member's target (owner type or FK field) to its
                 // concrete FK field and match against the one this statement keys on.
                 if (meta::is_reverse_fk_field(m) &&
@@ -1726,7 +1726,7 @@ export namespace storm::orm::statements {
         if constexpr (ReverseFKFieldOf<T, Field>) {
             // Re-derive the member from ^^T, read its reverse_fk target (owner type or
             // FK field), and resolve it to the concrete FK field pointing back at T.
-            for (auto m : std::meta::nonstatic_data_members_of(^^T, std::meta::access_context::unchecked())) {
+            for (auto m : storm::meta::data_members_of_v<T>) {
                 if (std::meta::identifier_of(m) == std::meta::identifier_of(Field)) {
                     return meta::resolve_reverse_fk_target(meta::reverse_fk_target_of(m), ^^T);
                 }

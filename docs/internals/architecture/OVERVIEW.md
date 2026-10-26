@@ -86,6 +86,7 @@ src/
     ├── queryset.cppm               # QuerySet interface
     ├── ref_action.cppm             # RefAction, ref_action_sql (leaf module, #562)
     ├── field_attr.cppm             # Free-standing flag annotation objects (leaf module, #387/#492)
+    ├── reflection_cache.cppm       # memoised<R> — reads a value-holding variable template from a non-constant info (leaf module, #694)
     ├── relation_meta.cppm          # m2m/reverse-fk annotation types + is_relation_field (leaf module, #408)
     ├── model_concepts.cppm         # Model-validation concepts (ModelWithPrimaryKey, PrimaryKeyType, …) + relation/FK helpers (leaf below statements_base)
     ├── indexes.cppm                # Index, UniqueIndex, Indexes<T> trait
@@ -126,6 +127,7 @@ storm (main module)
 ├── storm_db_sqlite
 ├── storm_db_postgresql{,_connection,_error,_statement}
 ├── storm_orm_ref_action
+├── storm_orm_reflection_cache        (imported, not re-exported, by storm_orm_field_attr + storm_orm_relation_meta, #694)
 ├── storm_orm_field_attr
 ├── storm_orm_relation_meta
 ├── storm_orm_indexes

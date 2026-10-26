@@ -31,7 +31,7 @@ When implementing features:
 **Module Hierarchy** (derive current state from `src/**/*.cppm`):
 - `storm_db_concept` at the base (no storm imports)
 - `storm_db_sqlite` / `storm_db_postgresql` implement concepts
-- `storm_orm_value_bind` (UUID, `chrono_conv`, `BindableType`, `bind_*`), `storm_orm_stitch_key` (`StitchKey`), `storm_orm_transaction` — no storm imports
+- `storm_orm_value_bind` (UUID, `chrono_conv`, `BindableType`, `bind_*`), `storm_orm_stitch_key` (`StitchKey`), `storm_orm_transaction`, `storm_orm_reflection_cache` (`memoised<R>` — #694; imported, not re-exported, by `storm_orm_field_attr` and `storm_orm_relation_meta`. Scan `^^T` members through `storm::meta::data_members_of_v<T>` (field_attr), not raw `nonstatic_data_members_of`; new annotation predicates memoise their ANSWER per member via `memoised<R>`, never a `define_static_array` span — it breaks importers of a BMI) — no storm imports
 - `storm_orm_utilities` (`ConstexprString`, `SQLCache`, `sql_len`/`buffer_size`) — `export import`s `storm_orm_value_bind` + `storm_orm_stitch_key` (#671), so importers see all three unchanged
 - `storm_orm_model_concepts` — model-validation concepts (`ModelWithPrimaryKey`, `PrimaryKeyType`, `Model*Valid`, `FKFieldOf`/`M2MFieldOf`/`ReverseFK*`, `ValidForeignKey`, `ThroughWithFKTo`) + the `storm::orm::statements::meta` re-exports and relation/FK reflection helpers; imports only field_attr + relation_meta + utilities. `storm_model` and concept-only tests import it directly
 - `storm_orm_statements_base` uses db_concept + utilities, and `export import`s `storm_orm_model_concepts` (so statement modules see the concepts unchanged)

@@ -62,8 +62,7 @@ export namespace storm::orm::statements {
         // the elements are computed).
         static consteval auto primary_key_count() -> std::size_t {
             std::size_t count = 0;
-            for (const std::meta::info member :
-                 std::meta::nonstatic_data_members_of(^^T, std::meta::access_context::unchecked())) {
+            for (const std::meta::info member : storm::meta::data_members_of_v<T>) {
                 if (is_primary_key_column(member)) {
                     ++count;
                 }
@@ -79,8 +78,7 @@ export namespace storm::orm::statements {
         static consteval auto find_primary_key_members_impl() -> std::array<std::meta::info, primary_key_count()> {
             std::array<std::meta::info, primary_key_count()> members{};
             std::size_t                                      index = 0;
-            for (const std::meta::info member :
-                 std::meta::nonstatic_data_members_of(^^T, std::meta::access_context::unchecked())) {
+            for (const std::meta::info member : storm::meta::data_members_of_v<T>) {
                 if (is_primary_key_column(member)) {
                     members[index++] = member;
                 }
@@ -169,8 +167,7 @@ export namespace storm::orm::statements {
             requires ValidForeignKey<FKType>
         static consteval auto find_fk_primary_key() -> std::meta::info {
             using InnerType = utilities::optional_inner_type_t<FKType>;
-            for (const std::meta::info member :
-                 std::meta::nonstatic_data_members_of(^^InnerType, std::meta::access_context::unchecked())) {
+            for (const std::meta::info member : storm::meta::data_members_of_v<InnerType>) {
                 if (meta::is_primary_member(member)) {
                     return member;
                 }
@@ -204,8 +201,7 @@ export namespace storm::orm::statements {
         // invisible to INSERT/SELECT/UPDATE/SCHEMA.
         static consteval auto get_field_count() -> std::size_t {
             std::size_t count = 0;
-            for (const auto member :
-                 std::meta::nonstatic_data_members_of(^^T, std::meta::access_context::unchecked())) {
+            for (const auto member : storm::meta::data_members_of_v<T>) {
                 if (!meta::is_relation_field(member)) {
                     ++count;
                 }
@@ -218,8 +214,7 @@ export namespace storm::orm::statements {
         template <std::size_t N> static consteval auto get_all_field_members() -> std::array<std::meta::info, N> {
             std::array<std::meta::info, N> result{};
             std::size_t                    idx = 0;
-            for (const auto member :
-                 std::meta::nonstatic_data_members_of(^^T, std::meta::access_context::unchecked())) {
+            for (const auto member : storm::meta::data_members_of_v<T>) {
                 if (!meta::is_relation_field(member) && idx < N) {
                     result[idx++] = member;
                 }
@@ -260,20 +255,18 @@ export namespace storm::orm::statements {
         // two-query eager-load path so models WITHOUT an m2m field never instantiate
         // it (scans raw members — m2m fields are filtered out of all_members_).
         static constexpr bool has_m2m_field_ = []() consteval {
-            return std::ranges::any_of(
-                    std::meta::nonstatic_data_members_of(^^T, std::meta::access_context::unchecked()),
-                    [](std::meta::info m) { return meta::is_m2m_field(m); }
-            );
+            return std::ranges::any_of(storm::meta::data_members_of_v<T>, [](std::meta::info m) {
+                return meta::is_m2m_field(m);
+            });
         }();
 
         // True if T has any reverse_fk container field (#398). Gates the two-query
         // eager-load path the same way has_m2m_field_ does — a model without one
         // never instantiates the reverse-FK select machinery.
         static constexpr bool has_reverse_fk_field_ = []() consteval {
-            return std::ranges::any_of(
-                    std::meta::nonstatic_data_members_of(^^T, std::meta::access_context::unchecked()),
-                    [](std::meta::info m) { return meta::is_reverse_fk_field(m); }
-            );
+            return std::ranges::any_of(storm::meta::data_members_of_v<T>, [](std::meta::info m) {
+                return meta::is_reverse_fk_field(m);
+            });
         }();
 
         // ── PostgreSQL binary result format (#600 Phase 1) ────────────────────

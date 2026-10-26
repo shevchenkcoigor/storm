@@ -6,6 +6,8 @@ export module storm_orm_field_attr;
 
 import std;
 
+import storm_orm_reflection_cache; // memoised (#694) — imported, not re-exported
+
 export import storm_orm_ref_action; // RefAction, ref_action_sql (#562) — re-exported so
                                     // storm::meta::RefAction / storm::RefAction are unchanged
 
@@ -71,6 +73,22 @@ export namespace storm::meta {
     inline constexpr FullUnsigned         full_unsigned{};
     // NOLINTEND(readability-identifier-length)
 
+    // T's non-static data members, computed once per T and held BY VALUE (a std::array,
+    // not a span into define_static_array storage, which is not a constant expression
+    // once read back from a module BMI). Every `^^T` member scan reads this instead.
+    namespace detail {
+        template <typename T> consteval auto data_members_array() {
+            constexpr auto count =
+                    std::meta::nonstatic_data_members_of(^^T, std::meta::access_context::unchecked()).size();
+            std::array<std::meta::info, count> members{};
+            std::ranges::copy(
+                    std::meta::nonstatic_data_members_of(^^T, std::meta::access_context::unchecked()), members.begin()
+            );
+            return members;
+        }
+    } // namespace detail
+    template <typename T> inline constexpr auto data_members_of_v = detail::data_members_array<T>();
+
     // True when `member` carries an annotation of the tag type `Tag` (#492). The single
     // primitive behind every flag predicate below — the same annotations_of scan
     // is_fk_field uses, generalised over the tag type. Matches on exact type identity,
@@ -79,13 +97,24 @@ export namespace storm::meta {
     // predicate body attributed as an uncovered consteval-only function under the
     // coverage gate, whereas the loop is fully covered. NOLINT silences the
     // readability-use-anyofallof suggestion, which would reintroduce that gap.
-    template <typename Tag> consteval auto has_annotation_type(std::meta::info member) -> bool {
-        for (const auto annotation : std::meta::annotations_of(member)) { // NOLINT(readability-use-anyofallof)
-            if (std::meta::type_of(annotation) == ^^Tag) {
-                return true;
+    // Memoised per (Tag, member) (#694): the scan runs once, every later call reads the
+    // stored answer — is_primary_member alone asks up to four tags per member, and every
+    // model concept asks again.
+    namespace detail {
+        template <typename Tag> consteval auto scan_annotation_type(std::meta::info member) -> bool {
+            for (const auto annotation : std::meta::annotations_of(member)) { // NOLINT(readability-use-anyofallof)
+                if (std::meta::type_of(annotation) == ^^Tag) {
+                    return true;
+                }
             }
+            return false;
         }
-        return false;
+        template <typename Tag, std::meta::info Member>
+        inline constexpr bool has_annotation_type_v = scan_annotation_type<Tag>(Member);
+    } // namespace detail
+
+    template <typename Tag> consteval auto has_annotation_type(std::meta::info member) -> bool {
+        return memoised<bool>(^^detail::has_annotation_type_v, {^^Tag, std::meta::reflect_constant(member)});
     }
 
     // RefAction / ref_action_sql live in the storm_orm_ref_action leaf module (#562),
@@ -132,8 +161,7 @@ export namespace storm::meta {
     template <typename T>
         requires(has_primary_key(^^T))
     consteval auto find_primary_key() -> std::meta::info {
-        for (const std::meta::info member :
-             std::meta::nonstatic_data_members_of(^^T, std::meta::access_context::unchecked())) {
+        for (const std::meta::info member : storm::meta::data_members_of_v<T>) {
             if (is_primary_member(member)) {
                 return member;
             }
@@ -264,14 +292,25 @@ export namespace storm::meta {
     template <RefAction Action = RefAction::Restrict> inline constexpr Fk<Action> fk{};
 
     // Reflection of the Fk<...> annotation TYPE carried by `member`, if any.
-    consteval auto fk_annotation_type_of(std::meta::info member) -> std::optional<std::meta::info> {
-        for (const auto annotation : std::meta::annotations_of(member)) {
-            const auto type = std::meta::type_of(annotation);
-            if (std::meta::has_template_arguments(type) && std::meta::template_of(type) == ^^Fk) {
-                return type;
+    // Memoised per member (#694), like has_annotation_type.
+    namespace detail {
+        consteval auto scan_fk_annotation_type(std::meta::info member) -> std::optional<std::meta::info> {
+            for (const auto annotation : std::meta::annotations_of(member)) {
+                const auto type = std::meta::type_of(annotation);
+                if (std::meta::has_template_arguments(type) && std::meta::template_of(type) == ^^Fk) {
+                    return type;
+                }
             }
+            return std::nullopt;
         }
-        return std::nullopt;
+        template <std::meta::info Member>
+        inline constexpr std::optional<std::meta::info> fk_annotation_type_v = scan_fk_annotation_type(Member);
+    } // namespace detail
+
+    consteval auto fk_annotation_type_of(std::meta::info member) -> std::optional<std::meta::info> {
+        return memoised<std::optional<std::meta::info>>(
+                ^^detail::fk_annotation_type_v, {std::meta::reflect_constant(member)}
+        );
     }
 
     // True when `member` carries an fk<...> annotation (#431) — the FK-field predicate.
@@ -294,14 +333,23 @@ export namespace storm::meta {
 
     // The bound N of a max_length<N> annotation on `member`, or std::nullopt when the
     // member carries none. Mirrors fk_annotation_type_of / fk_on_delete_action_of.
-    consteval auto max_length_of(std::meta::info member) -> std::optional<std::size_t> {
-        for (const auto annotation : std::meta::annotations_of(member)) {
-            const auto type = std::meta::type_of(annotation);
-            if (std::meta::has_template_arguments(type) && std::meta::template_of(type) == ^^MaxLength) {
-                return std::meta::extract<std::size_t>(std::meta::template_arguments_of(type)[0]);
+    // Memoised per member (#694), like has_annotation_type.
+    namespace detail {
+        consteval auto scan_max_length(std::meta::info member) -> std::optional<std::size_t> {
+            for (const auto annotation : std::meta::annotations_of(member)) {
+                const auto type = std::meta::type_of(annotation);
+                if (std::meta::has_template_arguments(type) && std::meta::template_of(type) == ^^MaxLength) {
+                    return std::meta::extract<std::size_t>(std::meta::template_arguments_of(type)[0]);
+                }
             }
+            return std::nullopt;
         }
-        return std::nullopt;
+        template <std::meta::info Member>
+        inline constexpr std::optional<std::size_t> max_length_v = scan_max_length(Member);
+    } // namespace detail
+
+    consteval auto max_length_of(std::meta::info member) -> std::optional<std::size_t> {
+        return memoised<std::optional<std::size_t>>(^^detail::max_length_v, {std::meta::reflect_constant(member)});
     }
 
     // True when the data member `member` has a text type (std::string / std::string_view),

@@ -6,7 +6,8 @@ export module storm_orm_relation_meta;
 
 import std;
 
-import storm_orm_ref_action; // RefAction (junction ON DELETE policy) — #562
+import storm_orm_reflection_cache; // memoised (#694)
+import storm_orm_ref_action;       // RefAction (junction ON DELETE policy) — #562
 
 // Dependency-free leaf module (#408): the relation-annotation TYPES (ManyToMany,
 // ReverseFk) and the "is this member a relation, not a persisted column?" detection
@@ -41,15 +42,30 @@ export namespace storm::meta {
     // The TYPE of `member`'s annotation that is a specialization of `template_info`,
     // if any. Shared by m2m_annotation_type_of / reverse_fk_annotation_type_of — the
     // two class-template annotations differ only by which template to match.
+    // Memoised per (member, template) (#694): is_relation_field asks it for both relation
+    // templates on every member, from every concept and member scan.
+    namespace detail {
+        consteval auto scan_annotation_type_specializing(std::meta::info member, std::meta::info template_info)
+                -> std::optional<std::meta::info> {
+            for (const auto annotation : std::meta::annotations_of(member)) {
+                const auto type = std::meta::type_of(annotation);
+                if (std::meta::has_template_arguments(type) && std::meta::template_of(type) == template_info) {
+                    return type;
+                }
+            }
+            return std::nullopt;
+        }
+        template <std::meta::info Member, std::meta::info Template>
+        inline constexpr std::optional<std::meta::info> annotation_type_specializing_v =
+                scan_annotation_type_specializing(Member, Template);
+    } // namespace detail
+
     consteval auto annotation_type_specializing(std::meta::info member, std::meta::info template_info)
             -> std::optional<std::meta::info> {
-        for (const auto annotation : std::meta::annotations_of(member)) {
-            const auto type = std::meta::type_of(annotation);
-            if (std::meta::has_template_arguments(type) && std::meta::template_of(type) == template_info) {
-                return type;
-            }
-        }
-        return std::nullopt;
+        return memoised<std::optional<std::meta::info>>(
+                ^^detail::annotation_type_specializing_v,
+                {std::meta::reflect_constant(member), std::meta::reflect_constant(template_info)}
+        );
     }
 
     // Reflection of the ManyToMany<...> annotation TYPE carried by `member`, if any.

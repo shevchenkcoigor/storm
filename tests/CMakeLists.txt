@@ -105,11 +105,15 @@ target_sources(
           CXX_MODULES
           BASE_DIRS
           ${CMAKE_SOURCE_DIR}/benchmarks
+          ${CMAKE_CURRENT_SOURCE_DIR}/schema
           FILES
           ${CMAKE_SOURCE_DIR}/benchmarks/schema.cppm
           ${CMAKE_SOURCE_DIR}/benchmarks/parser.cppm
           ${CMAKE_SOURCE_DIR}/benchmarks/dashboard/wire.cppm
-          ${CMAKE_SOURCE_DIR}/benchmarks/dashboard/tui.cppm)
+          ${CMAKE_SOURCE_DIR}/benchmarks/dashboard/tui.cppm
+          # #694 regression fixture: statements instantiated inside a BMI, used
+          # from schema/test_reflection_cache_bmi.cpp (the storm_bench shape).
+          ${CMAKE_CURRENT_SOURCE_DIR}/schema/test_bmi_fk_module.cppm)
 
 # ── Precompiled header ────────────────────────────────────────────────────────
 # Measured floor per test TU (-ftime-trace on a TU whose only body is
@@ -145,7 +149,24 @@ set_property(
          ${CMAKE_SOURCE_DIR}/benchmarks/parser.cppm
          ${CMAKE_SOURCE_DIR}/benchmarks/dashboard/wire.cppm
          ${CMAKE_SOURCE_DIR}/benchmarks/dashboard/tui.cppm
+         ${CMAKE_CURRENT_SOURCE_DIR}/schema/test_bmi_fk_module.cppm
   PROPERTY SKIP_PRECOMPILE_HEADERS ON)
+
+# The #694 cross-BMI fixture and its importer are compiled without coverage
+# instrumentation. Instantiating SchemaStatement inside a module BMI (and
+# reusing it from an importer) makes clang emit zero-count coverage records for
+# the lambdas inside consteval folds (schema.cppm append_create_table_sql,
+# field_names.cppm for_each_field_name_impl). Those lambdas never run at
+# runtime, so the records only inflate the denominator: 9166/9203 -> 9166/9166
+# lines with the same covered count. Every src/ line these two TUs execute is
+# covered by the other tests.
+if(ENABLE_COVERAGE)
+  set_property(
+    SOURCE ${CMAKE_CURRENT_SOURCE_DIR}/schema/test_bmi_fk_module.cppm
+           ${CMAKE_CURRENT_SOURCE_DIR}/schema/test_reflection_cache_bmi.cpp
+    APPEND
+    PROPERTY COMPILE_OPTIONS -fno-profile-instr-generate -fno-coverage-mapping)
+endif()
 
 # Two TUs opt out. Reaching libc++ through the PCH, completing an entity that
 # lazily pulls in <__fwd/string.h> (std::filesystem::path, storm::UUID, ...)

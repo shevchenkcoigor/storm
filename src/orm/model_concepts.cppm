@@ -340,9 +340,9 @@ export namespace storm::orm::statements {
     // ANDed alongside ModelWithPrimaryKey on BaseStatement's constraint list — a model
     // with NO primary key already fails that sibling concept, so the loop here always
     // finds a match when both concepts are evaluated together on a single-PK model.
-    // Checked directly on the member from nonstatic_data_members_of(^^T) (BMI-safe,
-    // #262), matching the sibling model-policy concepts (ModelStorageAnnotated,
-    // ModelFkPoliciesValid, ...).
+    // Checked directly on T's own members, from data_members_of_v<T> (held by value, so
+    // BMI-safe — #262, #694), matching the sibling model-policy concepts
+    // (ModelStorageAnnotated, ModelFkPoliciesValid, ...).
     //
     // A failing BaseStatement<T> instantiation names both T and PrimaryKeyType in the
     // "constraints not satisfied" / "because 'T' does not satisfy 'PrimaryKeyType'"
@@ -354,7 +354,7 @@ export namespace storm::orm::statements {
     // the tests) instead of merely gating BaseStatement.
     template <typename T>
     concept PrimaryKeyType = []() consteval {
-        for (auto m : std::meta::nonstatic_data_members_of(^^T, std::meta::access_context::unchecked())) {
+        for (auto m : storm::meta::data_members_of_v<T>) {
             if (meta::is_primary_part_member(m)) {
                 // Composite (#517): every part is checked; keep scanning after a pass.
                 if (!meta::is_primary_key_part_typed_member(m)) {
@@ -382,26 +382,24 @@ export namespace storm::orm::statements {
     // (equality round-trips, but ORDER BY and external readers see the signed value),
     // so we refuse it at the call site instead. Signed-64 and all smaller types are
     // exempt. optional<uint64_t> is checked on its inner type. The annotation is read
-    // directly on members from nonstatic_data_members_of(^^T) (the ModelWithPrimaryKey
-    // pattern), which is BMI-safe (#262).
+    // directly on T's own members from data_members_of_v<T> (the ModelWithPrimaryKey
+    // pattern), which is BMI-safe (#262, #694).
     template <typename T>
-    concept ModelStorageAnnotated = std::ranges::all_of(
-            std::meta::nonstatic_data_members_of(^^T, std::meta::access_context::unchecked()),
-            [](std::meta::info m) consteval {
+    concept ModelStorageAnnotated =
+            std::ranges::all_of(storm::meta::data_members_of_v<T>, [](std::meta::info m) consteval {
                 return !storm::meta::is_unsigned64_member(m) || meta::has_signed_storage_attr(m) ||
                        meta::has_full_unsigned_attr(m);
-            }
-    );
+            });
 
     // Concept: every FK field carrying fk<RefAction::SetNull> must be a nullable FK —
     // std::optional<Related> (#431). ON DELETE SET NULL writes NULL into the child column,
     // which a NOT NULL FK column cannot hold, so we refuse it at the call site with a clear
     // constraint violation instead of letting the database reject the DELETE at runtime.
-    // The annotation is read directly on members from nonstatic_data_members_of (BMI-safe,
-    // #262); optional-ness goes through the shared storm::meta::is_optional_member predicate (#509).
+    // The annotation is read directly on T's own members from data_members_of_v<T> (#262,
+    // #694); optional-ness goes through the shared storm::meta::is_optional_member predicate (#509).
     template <typename T>
     concept ModelFkPoliciesValid = []() consteval {
-        for (auto m : std::meta::nonstatic_data_members_of(^^T, std::meta::access_context::unchecked())) {
+        for (auto m : storm::meta::data_members_of_v<T>) {
             auto action = meta::fk_on_delete_action_of(m);
             if (action.has_value() && action.value() == meta::RefAction::SetNull) {
                 if (!storm::meta::is_optional_member(m)) {
@@ -423,11 +421,10 @@ export namespace storm::orm::statements {
     // are validated by the sibling concepts (storage-type presence by ModelStorageAnnotated,
     // FK-policy nullability by ModelFkPoliciesValid, timestamp field type by the
     // ValidTimestampField static_assert). Members are read directly from
-    // nonstatic_data_members_of(^^T) (BMI-safe, #262), matching those siblings.
+    // data_members_of_v<T> (BMI-safe, #262, #694), matching those siblings.
     template <typename T>
-    concept ModelAnnotationsValid = std::ranges::all_of(
-            std::meta::nonstatic_data_members_of(^^T, std::meta::access_context::unchecked()),
-            [](std::meta::info m) consteval {
+    concept ModelAnnotationsValid =
+            std::ranges::all_of(storm::meta::data_members_of_v<T>, [](std::meta::info m) consteval {
                 const std::size_t pk_mode_count =
                         static_cast<std::size_t>(storm::meta::has_annotation_type<storm::meta::Primary>(m)) +
                         static_cast<std::size_t>(
@@ -436,8 +433,7 @@ export namespace storm::orm::statements {
                         static_cast<std::size_t>(storm::meta::has_annotation_type<storm::meta::PrimaryAssigned>(m));
                 const bool storage_conflict = meta::has_signed_storage_attr(m) && meta::has_full_unsigned_attr(m);
                 return pk_mode_count <= 1 && !storage_conflict;
-            }
-    );
+            });
 
     // Counts of each primary-key annotation flavour on T (#500), computed in one pass
     // so ModelPrimaryKeyValid can express its rules as plain arithmetic on the result.
@@ -461,7 +457,7 @@ export namespace storm::orm::statements {
 
     template <typename T> consteval auto count_primary_key_flavours() -> PrimaryKeyCounts {
         PrimaryKeyCounts counts;
-        for (auto m : std::meta::nonstatic_data_members_of(^^T, std::meta::access_context::unchecked())) {
+        for (auto m : storm::meta::data_members_of_v<T>) {
             counts.primary += static_cast<std::size_t>(storm::meta::has_annotation_type<storm::meta::Primary>(m));
             counts.autoincrement +=
                     static_cast<std::size_t>(storm::meta::has_annotation_type<storm::meta::PrimaryAutoincrement>(m));
@@ -594,13 +590,13 @@ export namespace storm::orm::statements {
     // on a non-text field it is meaningless, so we refuse it at the call site with a clear
     // constraint violation instead of silently ignoring it (unlike Django/SQLAlchemy). Only
     // std::string / std::string_view (optional-unwrapped) accept it. Members are read
-    // directly from nonstatic_data_members_of(^^T) (BMI-safe, #262), matching the sibling
+    // directly from data_members_of_v<T> (BMI-safe, #262, #694), matching the sibling
     // concepts above.
     template <typename T>
-    concept ModelMaxLengthValid = std::ranges::all_of(
-            std::meta::nonstatic_data_members_of(^^T, std::meta::access_context::unchecked()),
-            [](std::meta::info m) consteval { return !meta::max_length_of(m).has_value() || meta::is_text_member(m); }
-    );
+    concept ModelMaxLengthValid =
+            std::ranges::all_of(storm::meta::data_members_of_v<T>, [](std::meta::info m) consteval {
+                return !meta::max_length_of(m).has_value() || meta::is_text_member(m);
+            });
 
     // Concept: no primary-key member of T carries auto_create or auto_update (#511).
     //
@@ -632,14 +628,12 @@ export namespace storm::orm::statements {
     // has since removed that exemption, so a time_point part is now rejected by both
     // concepts independently; this one keeps naming the timestamp case explicitly, which is
     // the clearer diagnostic. Members are read directly from
-    // nonstatic_data_members_of(^^T) (BMI-safe, #262), matching the sibling concepts above.
+    // data_members_of_v<T> (BMI-safe, #262, #694), matching the sibling concepts above.
     template <typename T>
-    concept ModelTimestampPkValid = std::ranges::all_of(
-            std::meta::nonstatic_data_members_of(^^T, std::meta::access_context::unchecked()),
-            [](std::meta::info m) consteval {
+    concept ModelTimestampPkValid =
+            std::ranges::all_of(storm::meta::data_members_of_v<T>, [](std::meta::info m) consteval {
                 return !meta::is_primary_member(m) || (!meta::is_auto_create(m) && !meta::is_auto_update(m));
-            }
-    );
+            });
 
     // A field carrying auto_create/auto_update must be a system_clock::time_point (#209).
     // Referenced by a static_assert in bind_field_at_index so a wrong-typed timestamp field
@@ -653,8 +647,8 @@ export namespace storm::orm::statements {
     // JoinStatement so a non-member or non-FK argument fails at the call site with a
     // clear constraint violation.
     //
-    // The annotation is read from the member re-derived out of ^^T (matched by
-    // identifier), NOT from Member itself: annotation_of_type on a reflection that
+    // The annotation is read from the member matched by identifier against
+    // data_members_of_v<T>, NOT from Member itself: annotation_of_type on a reflection that
     // crossed a BMI boundary segfaults clang-p2996 (#262), while structural queries
     // (is_nonstatic_data_member / parent_of / identifier_of) are safe on it.
     template <typename T, std::meta::info Member>
@@ -665,7 +659,7 @@ export namespace storm::orm::statements {
         if (std::meta::parent_of(Member) != ^^T) {
             return false;
         }
-        for (auto m : std::meta::nonstatic_data_members_of(^^T, std::meta::access_context::unchecked())) {
+        for (auto m : storm::meta::data_members_of_v<T>) {
             if (std::meta::identifier_of(m) == std::meta::identifier_of(Member)) {
                 return meta::is_fk_field(m) && meta::valid_fk_target(std::meta::type_of(m));
             }
@@ -684,7 +678,7 @@ export namespace storm::orm::statements {
         if (std::meta::parent_of(Member) != ^^T) {
             return false;
         }
-        for (auto m : std::meta::nonstatic_data_members_of(^^T, std::meta::access_context::unchecked())) {
+        for (auto m : storm::meta::data_members_of_v<T>) {
             if (std::meta::identifier_of(m) == std::meta::identifier_of(Member)) {
                 return meta::is_m2m_field(m);
             }
@@ -733,7 +727,7 @@ export namespace storm::orm::statements {
         if (std::meta::parent_of(Member) != ^^T) {
             return false;
         }
-        for (auto m : std::meta::nonstatic_data_members_of(^^T, std::meta::access_context::unchecked())) {
+        for (auto m : storm::meta::data_members_of_v<T>) {
             if (std::meta::identifier_of(m) == std::meta::identifier_of(Member)) {
                 return meta::is_reverse_fk_field(m) && meta::reverse_fk_member_valid(m, ^^T);
             }
@@ -746,7 +740,7 @@ export namespace storm::orm::statements {
     template <typename Through, typename Side>
     concept ThroughWithFKTo = []() consteval {
         std::size_t count = 0;
-        for (auto m : std::meta::nonstatic_data_members_of(^^Through, std::meta::access_context::unchecked())) {
+        for (auto m : storm::meta::data_members_of_v<Through>) {
             if (meta::is_fk_field(m) && std::meta::dealias(std::meta::type_of(m)) == std::meta::dealias(^^Side)) {
                 ++count;
             }
