@@ -81,53 +81,68 @@ class TriggerTest(unittest.TestCase):
 
 
 class RunTest(unittest.TestCase):
-    def guard(self, *commands, log=None):
+    def guard(self, *commands, log=False):
         steps = tuple(pcg.Step(None, c, "step %d failed" % i) for i, c in enumerate(commands))
         return pcg.Guard("demo", r"^f$", steps, "demo ok", log)
 
-    def run_guard(self, guard, tmp):
+    def run_guard(self, guard, log_stream=None):
         out = io.StringIO()
-        code = pcg.run_guards([guard], ["f"], pathlib.Path(tmp), out)
+        code = pcg.run_guards([guard], ["f"], out, log_stream, "demo.log")
         return code, out.getvalue()
 
     def test_passing_guard_prints_ok_and_returns_zero(self):
-        with tempfile.TemporaryDirectory() as tmp:
-            code, out = self.run_guard(self.guard(["true"]), tmp)
+        code, out = self.run_guard(self.guard(["true"]))
         self.assertEqual(code, 0)
         self.assertIn("✓ demo ok", out)
 
     def test_failing_step_blocks_with_its_message_and_stops(self):
-        with tempfile.TemporaryDirectory() as tmp:
-            code, out = self.run_guard(self.guard(["false"], ["true"]), tmp)
+        code, out = self.run_guard(self.guard(["false"], ["true"]))
         self.assertEqual(code, 1)
         self.assertIn("COMMIT BLOCKED — step 0 failed", out)
         self.assertNotIn("demo ok", out)
 
-    def test_log_redirects_output_and_names_the_file(self):
-        with tempfile.TemporaryDirectory() as tmp:
+    def test_log_stream_receives_output_and_block_names_the_log(self):
+        with tempfile.TemporaryFile("w+") as log:
             code, out = self.run_guard(
-                self.guard(["sh", "-c", "echo boom; exit 3"], log="demo.log"), tmp)
-            logged = (pathlib.Path(tmp) / "demo.log").read_text()
+                self.guard(["sh", "-c", "echo boom; exit 3"], log=True), log)
+            log.seek(0)
+            logged = log.read()
         self.assertEqual(code, 1)
         self.assertIn("boom", logged)
-        self.assertIn("full output: %s" % (pathlib.Path(tmp) / "demo.log"), out)
+        self.assertIn("full output: demo.log", out)
+
+    def test_every_step_of_a_logged_guard_appends_to_the_same_stream(self):
+        with tempfile.TemporaryFile("w+") as log:
+            self.run_guard(self.guard(["sh", "-c", "echo one"], ["sh", "-c", "echo two"], log=True), log)
+            log.seek(0)
+            logged = log.read()
+        self.assertEqual(logged.split(), ["one", "two"])
 
     def test_untriggered_guard_runs_nothing(self):
         out = io.StringIO()
-        self.assertEqual(pcg.run_guards([self.guard(["false"])], ["other"], pathlib.Path("/tmp"), out), 0)
+        self.assertEqual(pcg.run_guards([self.guard(["false"])], ["other"], out), 0)
         self.assertEqual(out.getvalue(), "")
 
     def test_missing_executable_blocks_rather_than_passing(self):
-        with tempfile.TemporaryDirectory() as tmp:
-            code, _ = self.run_guard(self.guard(["/nonexistent/guard"]), tmp)
+        code, _ = self.run_guard(self.guard(["/nonexistent/guard"]))
         self.assertEqual(code, 1)
 
 
 class CliTest(unittest.TestCase):
+    def run_cli(self, *args):
+        return subprocess.run([sys.executable, str(HELPER)] + list(args), input="",
+                              stdout=subprocess.PIPE, stderr=subprocess.PIPE, universal_newlines=True)
+
     def test_empty_stdin_succeeds_silently(self):
-        result = subprocess.run([sys.executable, str(HELPER), "--log-dir", "/tmp"], input="",
-                                stdout=subprocess.PIPE, universal_newlines=True)
+        result = self.run_cli()
         self.assertEqual((result.returncode, result.stdout), (0, ""))
+
+    def test_log_fd_must_be_an_integer(self):
+        self.assertEqual(self.run_cli("--log-fd", "x").returncode, 2)
+
+    def test_closed_log_fd_does_not_crash_the_runner(self):
+        # fd 99 is not open: the runner falls back to the terminal, it does not die.
+        self.assertEqual(self.run_cli("--log-fd", "99", "--log-file", "x.log").returncode, 0)
 
 
 if __name__ == "__main__":

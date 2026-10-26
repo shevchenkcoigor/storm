@@ -19,7 +19,7 @@ REPO_ROOT = pathlib.Path(__file__).resolve().parents[2]
 HELPER = REPO_ROOT / "scripts" / "uncovered_lines.py"
 
 sys.path.insert(0, str(HELPER.parent))
-from uncovered_lines import format_ranges, uncovered_by_file  # noqa: E402
+from uncovered_lines import LCOV_RELATIVE_PATH, format_ranges, uncovered_by_file  # noqa: E402
 
 
 class FormatRangesTest(unittest.TestCase):
@@ -71,13 +71,17 @@ class UncoveredByFileTest(unittest.TestCase):
 
 
 class CliTest(unittest.TestCase):
-    def run_cli(self, lcov_text, cwd="/r"):
+    """The helper reads one fixed path under its cwd and takes no arguments."""
+
+    def run_cli(self, lcov_text, *args):
         with tempfile.TemporaryDirectory() as tmp:
-            path = pathlib.Path(tmp) / "x.lcov"
+            root = pathlib.Path(tmp).resolve()
             if lcov_text is not None:
-                path.write_text(lcov_text)
+                lcov = root / LCOV_RELATIVE_PATH
+                lcov.parent.mkdir(parents=True)
+                lcov.write_text(lcov_text.replace("/r", str(root)))
             return subprocess.run(
-                [sys.executable, str(HELPER), str(path), cwd],
+                [sys.executable, str(HELPER)] + list(args), cwd=str(root),
                 stdout=subprocess.PIPE, stderr=subprocess.PIPE,
                 universal_newlines=True, check=False)
 
@@ -95,6 +99,11 @@ class CliTest(unittest.TestCase):
     def test_unparseable_lcov_prints_fallback_note(self):
         result = self.run_cli("SF:/r/a.cpp\nDA:1,1\n")
         self.assertIn("could not parse uncovered lines from lcov", result.stdout)
+
+    def test_arguments_are_rejected(self):
+        # No path comes from the command line: a stray argument is a usage error.
+        result = self.run_cli("SF:/r/a.cpp\nDA:1,0\n", "/etc/passwd")
+        self.assertEqual((result.returncode, result.stdout), (2, ""))
 
 
 if __name__ == "__main__":

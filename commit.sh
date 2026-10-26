@@ -41,6 +41,7 @@ LOG_TIDY_BMI=$LOG_DIR/storm_tidy_bmi.log
 LOG_RELEASE=$LOG_DIR/storm_release.log
 LOG_TESTS=$LOG_DIR/storm_tests.log
 LOG_COVERAGE=$LOG_DIR/storm_coverage.log
+LOG_SELF_HEAL=$LOG_DIR/storm_self_heal_test.log
 
 print_header() {
     local step_num=$1 total=$2 name=$3
@@ -345,7 +346,8 @@ done
 # step, so gating them on the step count would miss their own failure case.
 if [[ -n "$STAGED_FILES" ]]; then
     printf '%s\n' "$STAGED_FILES" \
-        | "$(dirname "${BASH_SOURCE[0]}")/scripts/pre_commit_guards.py" --log-dir "$LOG_DIR" || exit 1
+        | "$(dirname "${BASH_SOURCE[0]}")/scripts/pre_commit_guards.py" \
+            --log-fd 3 --log-file "$LOG_SELF_HEAL" 3> "$LOG_SELF_HEAL" || exit 1
 fi
 
 # --- Count total steps ---
@@ -528,8 +530,7 @@ fi
 if [[ "$RUN_COVERAGE" == true ]]; then
     # Parse the filtered lcov file and display uncovered files + line ranges (#688)
     show_uncovered_lines() {
-        "$(dirname "${BASH_SOURCE[0]}")/scripts/uncovered_lines.py" \
-            build/debug/coverage/coverage-filtered.lcov "$PWD"
+        "$(dirname "${BASH_SOURCE[0]}")/scripts/uncovered_lines.py"
     }
 
     # Run coverage as a compound check: clean + build + parse + threshold

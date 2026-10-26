@@ -7,11 +7,14 @@ author sees which lines to cover without opening the HTML report. It used to be
 parsing is unit-tested (scripts/tests/test_uncovered_lines.py) instead of being
 exercised only by a failing coverage run.
 
-    scripts/uncovered_lines.py <lcov-file> [base-dir]   (base-dir default: cwd)
+    scripts/uncovered_lines.py      (run from the repo root; takes no arguments)
+
+Reads build/debug/coverage/coverage-filtered.lcov under the current directory and
+prints nothing when it does not exist. Source paths under the current directory are
+shown relative to it. Exit: 0, or 2 on a stray argument — this is a diagnostic, the
+gate is the caller's. No path comes from the command line.
 
 Needs only Python 3.7+ (f-strings); no newer str/subprocess APIs.
-Prints nothing when <lcov-file> does not exist. Paths under base-dir are shown
-relative to it. Exit: always 0 — this is a diagnostic, the gate is the caller's.
 """
 import os
 import sys
@@ -22,6 +25,9 @@ BOLD = "\033[1m"
 DIM = "\033[2m"
 RESET = "\033[0m"
 
+# The one file commit.sh's coverage target writes, relative to the repo root. It is
+# a constant, not an argument: nothing from the command line names a path.
+LCOV_RELATIVE_PATH = os.path.join("build", "debug", "coverage", "coverage-filtered.lcov")
 RULE_WIDTH = 60
 HTML_REPORT_HINT = (
     "cmake --build --preset ninja-debug-coverage --target coverage-html",
@@ -84,11 +90,11 @@ def render(lcov_text, base_dir):
 
 
 def main(argv):
-    if not 2 <= len(argv) <= 3:
-        print(f"usage: {argv[0]} <lcov-file> [base-dir]", file=sys.stderr)
+    if len(argv) != 1:
+        print(f"usage: {argv[0]}  (run from the repo root; takes no arguments)", file=sys.stderr)
         return 2
-    lcov_path = argv[1]
-    base_dir = argv[2] if len(argv) == 3 else os.getcwd()
+    base_dir = os.getcwd()
+    lcov_path = os.path.join(base_dir, LCOV_RELATIVE_PATH)
     if not os.path.isfile(lcov_path):
         return 0
     with open(lcov_path, encoding="utf-8", errors="replace") as lcov:

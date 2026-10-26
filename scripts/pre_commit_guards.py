@@ -6,7 +6,8 @@ commit when one fails". There used to be one copy-pasted bash block per guard;
 they are now rows of GUARDS below and share one runner. Stdlib only, no syntax
 newer than Python 3.7, so macOS system python3 runs it.
 
-    printf '%s\\n' "$staged" | scripts/pre_commit_guards.py [--log-dir DIR]
+    printf '%s\\n' "$staged" | scripts/pre_commit_guards.py [--log-fd N --log-file NAME]
+    (commit.sh opens fd N on the log file: `N> logfile`)
 
 Exit: 0 = every triggered guard passed (or none triggered), 1 = a guard blocked.
 
@@ -46,7 +47,9 @@ class Guard(NamedTuple):
     trigger: str            # regex matched against each staged path
     steps: Tuple[Step, ...]
     ok: str                 # text after "✓ " when every step passed
-    log: Optional[str] = None  # when set, step output goes to <log-dir>/<log>
+    # Step output goes to the --log-fd stream, not the terminal. All logged guards share
+    # that one stream (commit.sh opens a single fd), so a second one needs its own fd.
+    log: bool = False
 
 
 def script(relative):
@@ -107,7 +110,7 @@ SELF_HEAL = Guard(
     (Step(None, script("scripts/tests/test_commit_self_heal_configure.sh"),
           "self-heal configure self-test failed"),),
     "self-heal configure self-test passed",
-    log="storm_self_heal_test.log",
+    log=True,
 )
 
 # --- per-OS PostgreSQL socket default ---
@@ -211,48 +214,61 @@ def triggered_steps(guard, staged):
     return [step for step in guard.steps if step.trigger is None or any_match(step.trigger, staged)]
 
 
-def run_step(step, log_path):
+def run_step(step, log_stream):
     """True when the step's command exits 0. An unrunnable command is a failure."""
     try:
-        if log_path is None:
+        if log_stream is None:
             return subprocess.call(list(step.command)) == 0
-        with open(str(log_path), "a") as log:
-            return subprocess.call(list(step.command), stdout=log, stderr=subprocess.STDOUT) == 0
+        log_stream.flush()
+        return subprocess.call(list(step.command), stdout=log_stream, stderr=subprocess.STDOUT) == 0
     except OSError:
         return False
 
 
-def block(out, message, log_path):
+def block(out, message, log_label):
     out.write("\n%s%s COMMIT BLOCKED — %s%s\n" % (RED, BOLD, message, RESET))
-    if log_path is not None:
-        out.write("%s  → full output: %s%s\n" % (DIM, log_path, RESET))
+    if log_label:
+        out.write("%s  → full output: %s%s\n" % (DIM, log_label, RESET))
     out.flush()
 
 
-def run_guards(guards, staged, log_dir, out):
-    """Run every triggered guard in order; stop at the first failure. 0 or 1."""
+def run_guards(guards, staged, out, log_stream=None, log_label=""):
+    """Run every triggered guard in order; stop at the first failure. 0 or 1.
+
+    log_stream receives the output of guards flagged `log` (all their steps append
+    to it); log_label is only the text shown to the user, never opened.
+    """
     for guard in guards:
         if not any_match(guard.trigger, staged):
             continue
-        log_path = log_dir / guard.log if guard.log else None
-        if log_path is not None:
-            log_path.write_text("")  # steps append, so start the log empty
+        stream = log_stream if guard.log else None
         for step in triggered_steps(guard, staged):
             out.flush()
-            if not run_step(step, log_path):
-                block(out, step.blocked, log_path)
+            if not run_step(step, stream):
+                block(out, step.blocked, log_label if stream is not None else "")
                 return 1
         out.write("%s✓ %s%s\n" % (DIM, guard.ok, RESET))
         out.flush()
     return 0
 
 
+def open_log_fd(fd):
+    """A writable stream on the already-open descriptor `fd`, or None if it is not open."""
+    if fd is None:
+        return None
+    try:
+        return os.fdopen(fd, "w", closefd=False)
+    except (OSError, ValueError):
+        return None
+
+
 def main(argv):
     parser = argparse.ArgumentParser(description="Run commit.sh's staged-file guards.")
-    parser.add_argument("--log-dir", default=os.environ.get("STORM_COMMIT_LOG_DIR", "/tmp"))
+    parser.add_argument("--log-fd", type=int, help="descriptor commit.sh opened for guard logs")
+    parser.add_argument("--log-file", default="", help="log name shown in the BLOCK message (never opened)")
     args = parser.parse_args(argv[1:])
     staged = [line for line in sys.stdin.read().split("\n") if line]
-    return run_guards(GUARDS, staged, pathlib.Path(args.log_dir), sys.stdout)
+    return run_guards(GUARDS, staged, sys.stdout, open_log_fd(args.log_fd), args.log_file)
 
 
 if __name__ == "__main__":
