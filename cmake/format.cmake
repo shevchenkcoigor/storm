@@ -30,17 +30,24 @@ clang_format(storm-clang-format ${FORMAT_CPP_SOURCES})
 cmake_format(storm-cmake-format ${FORMAT_CMAKE_FILES})
 
 # cmake_format() above is a no-op when cmake-format is absent: it creates no
-# target, so commit.sh's cmake-format step fails with `ninja: error: unknown
+# target, so commit.sh's cmake-format step failed with `ninja: error: unknown
 # target 'cmake-format'`, naming the ninja symptom rather than the missing tool
-# (#643). Upstream already reports this, but only as a STATUS line lost in
-# configure output. Say it once, loudly, at the place that can be acted on.
-# CMAKE_FORMAT_EXE is set by find_program() inside cmake-scripts'
-# formatting.cmake.
+# (#643). A configure-time WARNING alone is not enough: it lands in whichever
+# commit.sh step configured the tree — clang-format's when both formatters run
+# on a fresh tree — not in cmake-format's (#690). So define a stub target that
+# fails at BUILD time with the reason, in the output of whoever builds it, and
+# keep the WARNING for a manual configure. CMAKE_FORMAT_EXE is set by
+# find_program() inside cmake-scripts' formatting.cmake.
 if(NOT CMAKE_FORMAT_EXE)
-  message(
-    WARNING
-      "cmake-format not found — the 'cmake-format' build target will not exist, "
-      "so commit.sh's cmake-format step cannot run. Install cmakelang at the "
-      "version docker/ci/Dockerfile pins, then re-run cmake. The docker/ci "
-      "image ships it — see CLAUDE.md Prerequisites.")
+  string(
+    CONCAT _cmake_format_missing
+           "cmake-format not found — install cmakelang at the version "
+           "docker/ci/Dockerfile pins, then re-run cmake. See "
+           "docs/internals/building/FORMATTING.md (Tool availability).")
+  message(WARNING "${_cmake_format_missing}")
+  add_custom_target(
+    cmake-format
+    COMMAND ${CMAKE_COMMAND} -E echo "${_cmake_format_missing}"
+    COMMAND ${CMAKE_COMMAND} -E false
+    VERBATIM)
 endif()
