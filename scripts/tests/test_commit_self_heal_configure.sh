@@ -131,6 +131,8 @@ make_repo() {
     mkdir -p "$REPO/scripts/lib"
     cp "$REPO_ROOT/commit.sh" "$REPO/"
     cp "$REPO_ROOT/scripts/detect-changes.sh" "$REPO_ROOT/scripts/pg-default-connstr.sh" \
+        "$REPO_ROOT/scripts/pre_commit_guards.py" "$REPO_ROOT/scripts/uncovered_lines.py" \
+        "$REPO_ROOT/scripts/smart_skip.py" "$REPO_ROOT/scripts/tidy_prereqs.py" \
         "$REPO/scripts/"
     cp "$REPO_ROOT/scripts/lib/clang_tidy_skiplist.sh" "$REPO/scripts/lib/"
     cp "$REPO_ROOT/scripts/lib/line_coverage.sh" "$REPO/scripts/lib/"
@@ -292,6 +294,27 @@ scenario_warm_tree_never_configures() {
     return 0
 }
 
+# A smart-skip helper that fails (lost exec bit, broken python3, import error)
+# must BLOCK the commit. Left to its own devices every RUN_* stays unset,
+# TOTAL_STEPS is 0 and the hook would print "No checks needed" and pass (#688).
+scenario_failing_smart_skip_blocks_commit() {
+    printf '#!/bin/sh\nexit 1\n' > "$REPO/scripts/smart_skip.py"
+    stage src/a.cpp
+    run_commit ""
+    expect_blocked
+    if grep -qF "No checks needed" <<< "$OUT"; then
+        fail "a failing smart-skip helper let the commit through with no checks"
+    else
+        pass "a failing smart-skip helper does not report 'No checks needed'"
+    fi
+    if grep -qF "smart-skip failed" <<< "$OUT"; then
+        pass "the block names the smart-skip failure"
+    else
+        fail "the block does not name the smart-skip failure"
+    fi
+    return 0
+}
+
 # --- Dispatcher ---
 
 run_scenario() {
@@ -312,6 +335,7 @@ run_scenario debug_configure_fails
 run_scenario cmake_format_debug_configure_fails
 run_scenario tidy_tree_without_build_ninja
 run_scenario warm_tree_never_configures
+run_scenario failing_smart_skip_blocks_commit
 
 echo ""
 echo "$PASS passed, $FAIL failed"

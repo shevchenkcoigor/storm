@@ -359,7 +359,11 @@ all, and it is missing in exactly the sessions those exits return from (#651; se
 declaration the hook is inert without — so a reordering or a deleted entry cannot silently unwire
 it again. It runs in CI (job `session-start hook wires core.hooksPath (#651)`) and, like the #543
 and #550 guards, in `commit.sh` ABOVE its `TOTAL_STEPS==0` early exit, since a commit touching
-only the hook, `settings.json` or the test itself skips every other step.
+only the hook, `settings.json` or the test itself skips every other step. Those guards are rows
+of one table in `scripts/pre_commit_guards.py` (#688), not bash blocks — add a guard there. `commit.sh`
+itself stays a thin orchestrator: its skip rules, clang-tidy prerequisite verdict and coverage-gap
+report are tested stdlib-Python helpers (`scripts/smart_skip.py`, `tidy_prereqs.py`,
+`uncovered_lines.py`; see `scripts/README.md`), written for Python 3.7+ so macOS system `python3` runs them.
 
 ## Architecture
 

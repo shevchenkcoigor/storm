@@ -284,9 +284,20 @@ They are plain bash and run individually or as a suite:
 for t in scripts/tests/test_*.sh; do "$t" || echo "FAILED: $t"; done
 ```
 
-The agent-frontmatter checker is Python, so its self-test is too:
-`scripts/tests/test_check_agent_frontmatter.py` (stdlib `unittest`, needs only `python3`) is
-not matched by the `*.sh` loop above — run it on its own.
+The agent-frontmatter checker and the helpers `commit.sh` delegates to (#688) are Python, so their
+self-tests are too: `test_check_agent_frontmatter.py`, `test_uncovered_lines.py`,
+`test_pre_commit_guards.py`, `test_smart_skip.py` and `test_tidy_prereqs.py` (stdlib `unittest`, need
+only `python3`, no syntax newer than 3.7) are not matched by the `*.sh` loop above — run them on their
+own. Each also runs in CI and in `commit.sh` when it is staged.
+
+`commit.sh` is a thin bash orchestrator (sequencing `cmake`/`ninja`/`git`, exit codes); its logic lives in:
+
+| Helper | What it does |
+|---|---|
+| `pre_commit_guards.py` | The staged-file guards as one table (trigger regex → checker/self-test → BLOCK message). Run **before** `commit.sh`'s `TOTAL_STEPS==0` early exit. Add a guard by adding a `Guard(...)` row to `GUARDS`. |
+| `smart_skip.py` | The smart-skip decision table: reads `detect-changes.sh`'s `HAS_*` output, prints the `RUN_*` switches and `SKIP_NOTE` for `commit.sh` to `eval`. |
+| `tidy_prereqs.py` | Whether clang-tidy's module BMIs exist for the staged files (#557). Prints `complete`; anything else — including a crash — is `incomplete`, so the caller rebuilds. |
+| `uncovered_lines.py <lcov-file> [base-dir]` | The uncovered files and line ranges `commit.sh`'s coverage step prints on a sub-100% result. |
 
 ### Prerequisites
 

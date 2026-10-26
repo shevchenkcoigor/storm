@@ -144,58 +144,19 @@ configure_and_build() {
 # instead of 1 on src/orm/utilities.cppm, verified), and the hook runs
 # clang-tidy with --fix.
 # Answers "does clang-tidy have everything it needs to parse the staged files?"
-# Prints exactly `complete` when it does. EVERY other outcome — `incomplete`, a
-# crash, a missing python3, a staged file with no compile_commands entry — is
-# read as incomplete by the caller, so an unanticipated failure rebuilds rather
-# than silently skips. That direction is the whole point (#557 DoD): a missing
-# BMI does not make clang-tidy fail, it degrades it to a partial parse that
-# emits FALSE warnings, and the hook runs clang-tidy with --fix.
+# via scripts/tidy_prereqs.py (#688), which prints exactly `complete` when it
+# does. EVERY other outcome — `incomplete`, a crash, a missing python3, a staged
+# file with no compile_commands entry — is read as incomplete by the caller, so
+# an unanticipated failure rebuilds rather than silently skips. That direction is
+# the whole point (#557 DoD): a missing BMI does not make clang-tidy fail, it
+# degrades it to a partial parse that emits FALSE warnings, and the hook runs
+# clang-tidy with --fix.
 tidy_prereqs_verdict() {
     local build_dir="$1"
     shift
     [[ $# -eq 0 ]] && { echo "incomplete"; return; }
-    python3 - "$build_dir" "$@" 2>/dev/null <<'PYPREREQ' || echo "incomplete"
-import json, pathlib, re, shlex, sys
-
-def main():
-    build_dir = pathlib.Path(sys.argv[1])
-    staged = {pathlib.Path(f).resolve() for f in sys.argv[2:]}
-    entries = json.loads((build_dir / "compile_commands.json").read_text())
-
-    def argv_of(entry):
-        if "arguments" in entry:
-            return entry["arguments"]
-        return shlex.split(entry.get("command", ""))
-
-    # Only the TUs clang-tidy will actually replay matter. Every other target's
-    # modmap legitimately references BMIs this targeted build does not produce,
-    # so checking the whole tree would always answer "incomplete".
-    seen = set()
-    for entry in entries:
-        path = pathlib.Path(entry["file"]).resolve()
-        if path not in staged:
-            continue
-        seen.add(path)
-        root = pathlib.Path(entry.get("directory", build_dir))
-        for arg in argv_of(entry):
-            if not arg.startswith("@") or not arg.endswith(".modmap"):
-                continue
-            modmap = root / arg[1:]
-            if not modmap.exists():
-                return False
-            for ref in re.findall(r'-fmodule-file="?(?:[^=\s"]+=)?([^"\s]+)',
-                                  modmap.read_text()):
-                if not (root / ref).exists() and not pathlib.Path(ref).exists():
-                    return False
-
-    # A staged input with no entry at all was never verified. clang-tidy infers
-    # a command for it from a neighbouring entry (this is how headers are
-    # linted — the database holds no header entries), so "no entry" means
-    # "unknown", not "fine".
-    return staged == seen
-
-print("complete" if main() else "incomplete")
-PYPREREQ
+    "$(dirname "${BASH_SOURCE[0]}")/scripts/tidy_prereqs.py" "$build_dir" "$@" 2>/dev/null \
+        || echo "incomplete"
 }
 
 build_tidy_prereqs() {
@@ -348,188 +309,43 @@ print_summary() {
 }
 
 # --- Smart skip: detect staged file changes ---
-RUN_FORMAT=true
-RUN_CMAKE_FORMAT=true
-RUN_TIDY=true
-RUN_TESTS=true
-RUN_COVERAGE=true
-
+# Classification (HAS_SRC_CHANGES etc.) lives in scripts/detect-changes.sh, shared
+# with .github/workflows/ci.yml so both places skip on the same rules; the
+# decision table (which RUN_* steps a classification needs) is
+# scripts/smart_skip.py (#688). With nothing staged there is nothing to classify,
+# and detect-changes.sh would report "no changes" — so smart_skip.py gets empty
+# input instead and keeps every gate on.
+SCRIPTS_DIR="$(dirname "${BASH_SOURCE[0]}")/scripts"
 STAGED_FILES=$(git diff --cached --name-only 2>/dev/null || true)
+# FAIL CLOSED: a helper that prints nothing would leave every RUN_* unset, so
+# TOTAL_STEPS==0 and the commit would pass with no checks. Take the plan with its
+# exit status, and require each switch to be exactly true/false before using it.
+RUN_SWITCHES=(RUN_FORMAT RUN_CMAKE_FORMAT RUN_TIDY RUN_TESTS RUN_COVERAGE RUN_BENCH_RELEASE)
+unset "${RUN_SWITCHES[@]}" SKIP_NOTE
 if [[ -n "$STAGED_FILES" ]]; then
-    # Classification (HAS_SRC_CHANGES etc.) lives in scripts/detect-changes.sh,
-    # shared with .github/workflows/ci.yml so both places skip on the same rules.
-    eval "$(printf '%s\n' "$STAGED_FILES" | "$(dirname "${BASH_SOURCE[0]}")/scripts/detect-changes.sh")"
-
-    if [[ "$HAS_CPP_CHANGES" == false && "$HAS_CMAKE_CHANGES" == false ]]; then
-        echo -e "${DIM}ℹ  No C++ or cmake files in commit — skipping format, tidy, tests, coverage${RESET}"
-        RUN_FORMAT=false RUN_CMAKE_FORMAT=false RUN_TIDY=false
-        RUN_TESTS=false RUN_COVERAGE=false
-    elif [[ "$HAS_CPP_CHANGES" == false ]]; then
-        echo -e "${DIM}ℹ  cmake-only changes — skipping clang-format, clang-tidy${RESET}"
-        RUN_FORMAT=false RUN_TIDY=false
-    elif [[ "$HAS_SRC_CHANGES" == false && "$HAS_TEST_CHANGES" == false && "$HAS_CMAKE_CHANGES" == false ]]; then
-        echo -e "${DIM}ℹ  No src/, tests/, or cmake changes — skipping tests, coverage${RESET}"
-        RUN_TESTS=false RUN_COVERAGE=false
-    fi
-
-    if [[ "$HAS_CMAKE_CHANGES" == false ]]; then
-        RUN_CMAKE_FORMAT=false
-    fi
+    PLAN=$(set -o pipefail
+           printf '%s\n' "$STAGED_FILES" | "$SCRIPTS_DIR/detect-changes.sh" | "$SCRIPTS_DIR/smart_skip.py") || PLAN=""
+else
+    PLAN=$("$SCRIPTS_DIR/smart_skip.py" < /dev/null) || PLAN=""
 fi
+eval "$PLAN"
+for switch in "${RUN_SWITCHES[@]}"; do
+    if [[ "${!switch}" != true && "${!switch}" != false ]]; then
+        echo ""
+        echo -e "${RED}${BOLD} COMMIT BLOCKED — could not decide which checks to run (smart-skip failed)${RESET}"
+        exit 1
+    fi
+done
+[[ -n "$SKIP_NOTE" ]] && echo -e "${DIM}ℹ  ${SKIP_NOTE}${RESET}"
 
-RUN_BENCH_RELEASE=false
-if [[ "$HAS_BENCH_CHANGES" == true && "$HAS_CPP_CHANGES" == true ]]; then
-    RUN_BENCH_RELEASE=true
-fi
-
-# --- Agent frontmatter guard (issue #543) ---
-# A multi-line `description:` makes Claude Code drop the agent SILENTLY — the
-# bug that left storm-sql-reviewer and storm-buildsystem-reviewer
-# undispatchable from the day they merged, and CLAUDE.md rule #13 partly
-# unenforceable. Cheap stdlib-python check, so it runs whenever an agent file is
-# staged.
-#
-# Deliberately placed BEFORE the TOTAL_STEPS==0 early exit below: a commit
-# touching only .claude/agents/*.md has no C++ or cmake, so it skips every
-# other step — exactly the commit that can introduce this bug. Gating it on
-# the step count would make the guard miss its own failure case. Staging the
-# checker or its self-test also runs the self-test, like the guards below.
-if [[ -n "$STAGED_FILES" ]] \
-   && grep -qE '^(\.claude/agents/.*\.md|scripts/(tests/test_)?check_agent_frontmatter\.py)$' <<< "$STAGED_FILES"; then
-    # Self-test first, so a broken checker is not reported as broken agents.
-    if grep -qE '^scripts/(tests/test_)?check_agent_frontmatter\.py$' <<< "$STAGED_FILES" \
-       && ! "$(dirname "${BASH_SOURCE[0]}")/scripts/tests/test_check_agent_frontmatter.py"; then
-        echo ""
-        echo -e "${RED}${BOLD} COMMIT BLOCKED — agent frontmatter self-test failed${RESET}"
-        exit 1
-    fi
-    if ! "$(dirname "${BASH_SOURCE[0]}")/scripts/check_agent_frontmatter.py"; then
-        echo ""
-        echo -e "${RED}${BOLD} COMMIT BLOCKED — invalid agent frontmatter${RESET}"
-        exit 1
-    fi
-    echo -e "${DIM}✓ agent frontmatter valid${RESET}"
-fi
-
-# --- clang-tidy skip-list self-test (issue #550) ---
-# scripts/lib/clang_tidy_skiplist.sh is the single source of truth both
-# run_clang_tidy.sh --diff and the weekly --all sweep consult for which files
-# clang-tidy cannot parse standalone. Cheap pure-bash check.
-#
-# Deliberately placed BEFORE the TOTAL_STEPS==0 early exit below, same
-# reasoning as the agent-frontmatter guard above: a commit touching only
-# scripts/lib/clang_tidy_skiplist.sh or scripts/run_clang_tidy.sh has no
-# src/tests/cmake changes, so RUN_TIDY (and every other step) is false and
-# TOTAL_STEPS would otherwise be 0 — exactly the commit that most needs this
-# self-test.
-if [[ -n "$STAGED_FILES" ]] \
-   && grep -qE '^scripts/(lib/clang_tidy_skiplist\.sh|run_clang_tidy\.sh)$' <<< "$STAGED_FILES"; then
-    if ! "$(dirname "${BASH_SOURCE[0]}")/scripts/tests/test_run_clang_tidy_skiplist.sh"; then
-        echo ""
-        echo -e "${RED}${BOLD} COMMIT BLOCKED — clang-tidy skip-list self-test failed${RESET}"
-        exit 1
-    fi
-    echo -e "${DIM}✓ clang-tidy skip-list self-test passed${RESET}"
-fi
-
-# --- SessionStart hook wiring self-test (issue #651) ---
-# .claude/hooks/session-start-docker.sh sets core.hooksPath, which is the only
-# reason THIS script runs at all in a clone that never configures a build (the
-# other writer, CMakeLists.txt, needs a working ../clang-p2996). Its wiring must
-# stay above the hook's three Docker bail-outs, or it goes missing in exactly
-# the sessions those bail-outs return from. Cheap pure-bash check.
-#
-# Deliberately placed BEFORE the TOTAL_STEPS==0 early exit below, same
-# reasoning as the two guards above: a commit touching only the hook,
-# .claude/settings.json (which declares it) or this self-test has no
-# src/tests/cmake changes, so TOTAL_STEPS would otherwise be 0 — exactly the
-# commit that can unwire the gate.
-if [[ -n "$STAGED_FILES" ]] \
-   && grep -qE '^(\.claude/(hooks/session-start-docker\.sh|settings\.json)|scripts/tests/test_session_start_hook\.sh)$' <<< "$STAGED_FILES"; then
-    if ! "$(dirname "${BASH_SOURCE[0]}")/scripts/tests/test_session_start_hook.sh"; then
-        echo ""
-        echo -e "${RED}${BOLD} COMMIT BLOCKED — SessionStart hook wiring self-test failed${RESET}"
-        exit 1
-    fi
-    echo -e "${DIM}✓ SessionStart hook wiring self-test passed${RESET}"
-fi
-
-# --- Self-heal configure self-test (issue #674) ---
-# The configure_if_missing calls above must fail their step with the CMake
-# error in its log; swallowed, a failed configure resurfaced as a misleading
-# ninja error. The self-test runs this script against stub cmake/ninja in a
-# throwaway repo — no toolchain needed.
-#
-# Deliberately placed BEFORE the TOTAL_STEPS==0 early exit below, same
-# reasoning as the guards above: a commit touching only commit.sh or this
-# self-test has no C++ or cmake, so TOTAL_STEPS would otherwise be 0 — exactly
-# the commit that can reintroduce the bug. The scripts the self-test copies into
-# its throwaway repo are listed too: changing one can break its scenarios.
-if [[ -n "$STAGED_FILES" ]] \
-   && grep -qE '^(commit\.sh|scripts/(detect-changes|pg-default-connstr)\.sh|scripts/lib/(clang_tidy_skiplist|line_coverage)\.sh|scripts/tests/test_commit_self_heal_configure\.sh)$' <<< "$STAGED_FILES"; then
-    if ! "$(dirname "${BASH_SOURCE[0]}")/scripts/tests/test_commit_self_heal_configure.sh" > "$LOG_DIR/storm_self_heal_test.log" 2>&1; then
-        echo ""
-        echo -e "${RED}${BOLD} COMMIT BLOCKED — self-heal configure self-test failed${RESET}"
-        echo -e "${DIM}  → full output: $LOG_DIR/storm_self_heal_test.log${RESET}"
-        exit 1
-    fi
-    echo -e "${DIM}✓ self-heal configure self-test passed${RESET}"
-fi
-
-# --- Per-OS PostgreSQL socket default self-test ---
-# scripts/pg-default-connstr.sh picks the default STORM_PG_CONNSTR socket directory
-# (Linux /var/run/postgresql, macOS /tmp). A commit touching only it, its two callers
-# or dev-container.sh has no src/tests/cmake changes, so TOTAL_STEPS would be 0 and
-# nothing would run — yet a wrong branch there silently skips every PG test and
-# leaves the coverage gate stuck at ~99.8%. Same reasoning as the guards above, so
-# it sits BEFORE the TOTAL_STEPS==0 early exit. Cheap pure-bash check.
-if [[ -n "$STAGED_FILES" ]] \
-   && grep -qE '^(commit\.sh|scripts/(pg-default-connstr|coverage-run-batched|dev-container)\.sh|scripts/tests/test_pg_default_connstr\.sh)$' <<< "$STAGED_FILES"; then
-    if ! "$(dirname "${BASH_SOURCE[0]}")/scripts/tests/test_pg_default_connstr.sh"; then
-        echo ""
-        echo -e "${RED}${BOLD} COMMIT BLOCKED — per-OS PostgreSQL socket default self-test failed${RESET}"
-        exit 1
-    fi
-    echo -e "${DIM}✓ per-OS PostgreSQL socket default self-test passed${RESET}"
-fi
-
-# --- Line-coverage parser self-test (issue #680) ---
-# scripts/lib/line_coverage.sh reads the percentage the coverage gate below and
-# CI's coverage job compare against 100.0. A GNU-only grep flag there (it was
-# `grep -oP`) breaks the gate on macOS BSD grep while CI's GNU grep stays green.
-# Same placement reasoning as the guards above: a commit touching only these
-# files skips every step, so it sits BEFORE the TOTAL_STEPS==0 early exit.
-if [[ -n "$STAGED_FILES" ]] \
-   && grep -qE '^(commit\.sh|scripts/lib/line_coverage\.sh|scripts/tests/test_line_coverage\.sh)$' <<< "$STAGED_FILES"; then
-    if ! "$(dirname "${BASH_SOURCE[0]}")/scripts/tests/test_line_coverage.sh"; then
-        echo ""
-        echo -e "${RED}${BOLD} COMMIT BLOCKED — line-coverage parser self-test failed${RESET}"
-        exit 1
-    fi
-    echo -e "${DIM}✓ line-coverage parser self-test passed${RESET}"
-fi
-
-# --- ORM backend-neutrality guard ---
-# src/orm/** and the generic db facades must name no concrete backend; the
-# SQLite default lives only in src/storm_defaults.cppm. A stray
-# `import storm_db_sqlite;` compiles cleanly, so nothing else catches it. Cheap
-# pure-bash grep, run whenever a module unit or the checker itself is staged.
-# Placed BEFORE the TOTAL_STEPS==0 early exit, same reasoning as the guards
-# above: a commit touching only the checker or its self-test skips every step.
-if [[ -n "$STAGED_FILES" ]] \
-   && grep -qE '^(src/.*\.cppm|scripts/check-orm-backend-imports\.sh|scripts/tests/test_check_orm_backend_imports\.sh)$' <<< "$STAGED_FILES"; then
-    if ! "$(dirname "${BASH_SOURCE[0]}")/scripts/check-orm-backend-imports.sh"; then
-        echo ""
-        echo -e "${RED}${BOLD} COMMIT BLOCKED — backend-neutral ORM module names a concrete backend${RESET}"
-        exit 1
-    fi
-    if grep -qE '^scripts/(check-orm-backend-imports|tests/test_check_orm_backend_imports)\.sh$' <<< "$STAGED_FILES" \
-       && ! "$(dirname "${BASH_SOURCE[0]}")/scripts/tests/test_check_orm_backend_imports.sh"; then
-        echo ""
-        echo -e "${RED}${BOLD} COMMIT BLOCKED — ORM backend-neutrality checker self-test failed${RESET}"
-        exit 1
-    fi
-    echo -e "${DIM}✓ ORM backend-neutrality guard passed${RESET}"
+# --- Staged-file guards (issues #543, #550, #651, #674, #680, #688) ---
+# The table of guards (trigger regex -> self-test/checker -> BLOCK message) lives
+# in scripts/pre_commit_guards.py. They run BEFORE the TOTAL_STEPS==0 early exit
+# below on purpose: a commit touching only a guard's files skips every other
+# step, so gating them on the step count would miss their own failure case.
+if [[ -n "$STAGED_FILES" ]]; then
+    printf '%s\n' "$STAGED_FILES" \
+        | "$(dirname "${BASH_SOURCE[0]}")/scripts/pre_commit_guards.py" --log-dir "$LOG_DIR" || exit 1
 fi
 
 # --- Count total steps ---
@@ -710,86 +526,10 @@ fi
 
 # --- Step 5: coverage ---
 if [[ "$RUN_COVERAGE" == true ]]; then
-    # Format line numbers as compact ranges (e.g., "5, 10-15, 20")
-    format_line_ranges() {
-        local -n _lines=$1
-        local result="" range_start="" range_end=""
-        for ln in "${_lines[@]}"; do
-            if [[ -z "$range_start" ]]; then
-                range_start=$ln; range_end=$ln
-            elif [[ $ln -eq $((range_end + 1)) ]]; then
-                range_end=$ln
-            else
-                if [[ "$range_start" == "$range_end" ]]; then
-                    result+="${result:+, }$range_start"
-                else
-                    result+="${result:+, }${range_start}-${range_end}"
-                fi
-                range_start=$ln; range_end=$ln
-            fi
-        done
-        if [[ -n "$range_start" ]]; then
-            if [[ "$range_start" == "$range_end" ]]; then
-                result+="${result:+, }$range_start"
-            else
-                result+="${result:+, }${range_start}-${range_end}"
-            fi
-        fi
-        echo "$result"
-    }
-
-    # Parse lcov file and display uncovered files + line ranges
+    # Parse the filtered lcov file and display uncovered files + line ranges (#688)
     show_uncovered_lines() {
-        local lcov_file="build/debug/coverage/coverage-filtered.lcov"
-        if [[ ! -f "$lcov_file" ]]; then
-            return
-        fi
-
-        echo ""
-        echo -e "${BOLD}Uncovered lines:${RESET}"
-        echo -e "${DIM}$(printf '%.0s─' {1..60})${RESET}"
-
-        local current_file=""
-        local uncovered_lines=()
-        local has_uncovered=false
-
-        # Flush accumulated uncovered lines for current file
-        flush_file() {
-            if [[ ${#uncovered_lines[@]} -gt 0 ]]; then
-                local rel_path="${current_file#$PWD/}"
-                echo -e "  ${YELLOW}${rel_path}${RESET}"
-                echo -e "    Lines: ${RED}$(format_line_ranges uncovered_lines)${RESET}"
-                has_uncovered=true
-            fi
-        }
-
-        while IFS= read -r line; do
-            case "$line" in
-                SF:*)
-                    flush_file
-                    current_file="${line#SF:}"
-                    uncovered_lines=()
-                    ;;
-                DA:*)
-                    local da_data="${line#DA:}"
-                    local ln_num="${da_data%%,*}"
-                    local exec_count="${da_data#*,}"
-                    if [[ "$exec_count" == "0" ]]; then
-                        uncovered_lines+=("$ln_num")
-                    fi
-                    ;;
-            esac
-        done < "$lcov_file"
-        flush_file
-
-        if [[ "$has_uncovered" == false ]]; then
-            echo -e "  ${DIM}(could not parse uncovered lines from lcov)${RESET}"
-        fi
-
-        echo ""
-        echo -e "${DIM}For detailed HTML report:${RESET}"
-        echo -e "${DIM}  cmake --build --preset ninja-debug-coverage --target coverage-html${RESET}"
-        echo -e "${DIM}  open build/debug/coverage/html-filtered/index.html${RESET}"
+        "$(dirname "${BASH_SOURCE[0]}")/scripts/uncovered_lines.py" \
+            build/debug/coverage/coverage-filtered.lcov "$PWD"
     }
 
     # Run coverage as a compound check: clean + build + parse + threshold
