@@ -92,8 +92,9 @@ EOF
     return 0
 }
 
-configure() { # <CMAKE_FORMAT_EXE value>
-    cmake -G Ninja -S "$TMP/src" -B "$TMP/build" "-DCMAKE_FORMAT_EXE=$1" 2>&1
+configure() {
+    local format_exe="$1"
+    cmake -G Ninja -S "$TMP/src" -B "$TMP/build" "-DCMAKE_FORMAT_EXE=$format_exe" 2>&1
 }
 
 build_target() {
