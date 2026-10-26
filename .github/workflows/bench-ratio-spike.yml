@@ -63,7 +63,7 @@ jobs:
         uses: actions/cache@v4
         with:
           path: .cache/CPM
-          key: cpm-ninja-release-${{ hashFiles('cmake/cpm.cmake', 'cmake/tests.cmake', 'cmake/bench.cmake') }}
+          key: cpm-ninja-release-${{ hashFiles('cmake/cpm.cmake', 'cmake/cmake-scripts.cmake', 'cmake/uuid.cmake', 'cmake/tests.cmake', 'cmake/bench.cmake') }}
           restore-keys: |
             cpm-ninja-release-
             cpm-
