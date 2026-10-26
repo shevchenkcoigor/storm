@@ -347,7 +347,7 @@ done
 if [[ -n "$STAGED_FILES" ]]; then
     printf '%s\n' "$STAGED_FILES" \
         | "$(dirname "${BASH_SOURCE[0]}")/scripts/pre_commit_guards.py" \
-            --log-fd 3 --log-file "$LOG_SELF_HEAL" 3> "$LOG_SELF_HEAL" || exit 1
+            --log-file "$LOG_SELF_HEAL" 3> "$LOG_SELF_HEAL" || exit 1
 fi
 
 # --- Count total steps ---

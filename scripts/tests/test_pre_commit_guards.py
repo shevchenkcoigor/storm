@@ -14,6 +14,7 @@ import subprocess
 import sys
 import tempfile
 import unittest
+from unittest import mock
 
 REPO_ROOT = pathlib.Path(__file__).resolve().parents[2]
 HELPER = REPO_ROOT / "scripts" / "pre_commit_guards.py"
@@ -137,12 +138,33 @@ class CliTest(unittest.TestCase):
         result = self.run_cli()
         self.assertEqual((result.returncode, result.stdout), (0, ""))
 
-    def test_log_fd_must_be_an_integer(self):
-        self.assertEqual(self.run_cli("--log-fd", "x").returncode, 2)
+    def test_log_fd_is_not_a_command_line_option(self):
+        # The descriptor is the constant LOG_FD: nothing from argv picks an fd.
+        self.assertEqual(self.run_cli("--log-fd", "3").returncode, 2)
 
     def test_closed_log_fd_does_not_crash_the_runner(self):
-        # fd 99 is not open: the runner falls back to the terminal, it does not die.
-        self.assertEqual(self.run_cli("--log-fd", "99", "--log-file", "x.log").returncode, 0)
+        # fd 3 is not open in the child: the runner falls back to the terminal.
+        self.assertEqual(self.run_cli("--log-file", "x.log").returncode, 0)
+
+
+class OpenLogFdTest(unittest.TestCase):
+    """In-process on purpose: feeding the real guard table `commit.sh` would run this very test."""
+
+    def test_returns_a_stream_on_an_open_descriptor(self):
+        with tempfile.TemporaryFile("w+") as log, mock.patch.object(pcg, "LOG_FD", log.fileno()):
+            stream = pcg.open_log_fd()
+            stream.write("hello")
+            stream.flush()
+            log.seek(0)
+            self.assertEqual(log.read(), "hello")
+
+    def test_returns_none_when_the_descriptor_is_not_open(self):
+        with mock.patch.object(pcg, "LOG_FD", 987):
+            self.assertIsNone(pcg.open_log_fd())
+
+    def test_negative_descriptor_is_none_not_a_crash(self):
+        with mock.patch.object(pcg, "LOG_FD", -1):
+            self.assertIsNone(pcg.open_log_fd())
 
 
 if __name__ == "__main__":

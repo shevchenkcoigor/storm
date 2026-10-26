@@ -6,8 +6,8 @@ commit when one fails". There used to be one copy-pasted bash block per guard;
 they are now rows of GUARDS below and share one runner. Stdlib only, no syntax
 newer than Python 3.7, so macOS system python3 runs it.
 
-    printf '%s\\n' "$staged" | scripts/pre_commit_guards.py [--log-fd N --log-file NAME]
-    (commit.sh opens fd N on the log file: `N> logfile`)
+    printf '%s\\n' "$staged" | scripts/pre_commit_guards.py [--log-file NAME]  3> logfile
+    (commit.sh opens fd 3 on the log file; NAME is only shown to the user)
 
 Exit: 0 = every triggered guard passed (or none triggered), 1 = a guard blocked.
 
@@ -29,6 +29,9 @@ import sys
 from typing import NamedTuple, Optional, Sequence, Tuple
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent
+# The descriptor commit.sh opens on the self-heal log (`3> logfile`). A constant, not
+# an option: no value from the command line ever selects a file or descriptor.
+LOG_FD = 3
 
 RED = "\033[0;31m"
 BOLD = "\033[1m"
@@ -47,7 +50,7 @@ class Guard(NamedTuple):
     trigger: str            # regex matched against each staged path
     steps: Tuple[Step, ...]
     ok: str                 # text after "✓ " when every step passed
-    # Step output goes to the --log-fd stream, not the terminal. All logged guards share
+    # Step output goes to the LOG_FD stream, not the terminal. All logged guards share
     # that one stream (commit.sh opens a single fd), so a second one needs its own fd.
     log: bool = False
 
@@ -252,23 +255,21 @@ def run_guards(guards, staged, out, log_stream=None, log_label=""):
     return 0
 
 
-def open_log_fd(fd):
-    """A writable stream on the already-open descriptor `fd`, or None if it is not open."""
-    if fd is None:
-        return None
+def open_log_fd():
+    """A writable stream on LOG_FD, or None if commit.sh did not open it."""
     try:
-        return os.fdopen(fd, "w", closefd=False)
+        return os.fdopen(LOG_FD, "w", closefd=False)
     except (OSError, ValueError):
         return None
 
 
 def main(argv):
     parser = argparse.ArgumentParser(description="Run commit.sh's staged-file guards.")
-    parser.add_argument("--log-fd", type=int, help="descriptor commit.sh opened for guard logs")
-    parser.add_argument("--log-file", default="", help="log name shown in the BLOCK message (never opened)")
+    parser.add_argument("--log-file", default="",
+                        help="enable guard logging to fd %d; the name is shown in the BLOCK message, never opened" % LOG_FD)
     args = parser.parse_args(argv[1:])
     staged = [line for line in sys.stdin.read().split("\n") if line]
-    return run_guards(GUARDS, staged, sys.stdout, open_log_fd(args.log_fd), args.log_file)
+    return run_guards(GUARDS, staged, sys.stdout, open_log_fd() if args.log_file else None, args.log_file)
 
 
 if __name__ == "__main__":
