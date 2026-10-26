@@ -30,6 +30,8 @@
 #   tests/test_write_runner.h, tests/test_yaml_register.h,
 #   tests/query/test_aggregate_fixture.h, tests/query/test_m2m_models.h,
 #   tests/query/test_fields_models.h, tests/crud/test_composite_pk_models.h,
+#   tests/schema/test_bmi_fk_models.h (#694 cross-BMI fixture; linted through
+#   test_bmi_fk_module.cppm and test_reflection_cache_bmi.cpp),
 #   tests/test_parser.hpp, tests/test_unified_yaml_body.h,
 #   tests/tools/storm_schema/models.h, shared/models.h
 #
@@ -151,6 +153,7 @@ is_known_unparseable() {
         tests/query/test_m2m_models.h) return 0 ;;
         tests/query/test_fields_models.h) return 0 ;;
         tests/crud/test_composite_pk_models.h) return 0 ;;
+        tests/schema/test_bmi_fk_models.h) return 0 ;;
         tests/test_parser.hpp) return 0 ;;
         tests/test_unified_yaml_body.h) return 0 ;;
         tests/crud/test_composite_fk_join_body.h) return 0 ;;

@@ -1452,7 +1452,7 @@ export namespace storm::orm::schema {
         // producing its own junction table.
         static constexpr std::size_t m2m_auto_count_ = []() consteval {
             std::size_t count = 0;
-            for (auto member : std::meta::nonstatic_data_members_of(^^T, std::meta::access_context::unchecked())) {
+            for (auto member : storm::meta::data_members_of_v<T>) {
                 count += statements::meta::is_m2m_auto(member) ? 1U : 0U;
             }
             return count;
@@ -1461,7 +1461,7 @@ export namespace storm::orm::schema {
         static constexpr auto m2m_auto_members_ = []() consteval {
             std::array<std::meta::info, m2m_auto_count_> members{};
             std::size_t                                  idx = 0;
-            for (auto member : std::meta::nonstatic_data_members_of(^^T, std::meta::access_context::unchecked())) {
+            for (auto member : storm::meta::data_members_of_v<T>) {
                 if (statements::meta::is_m2m_auto(member)) {
                     members[idx++] = member;
                 }

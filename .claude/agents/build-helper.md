@@ -1,6 +1,6 @@
 ---
 name: storm-build-helper
-description: Use this agent for CMake build system tasks in the Storm project — modifying cmake/*.cmake files, managing CPM dependencies, updating CMakePresets.json, configuring coverage/sanitizer/benchmark targets, adding new test sub-targets (mock binaries), or diagnosing link errors. NOT for compiler crashes or module discovery issues (use clang-cpp26-compiler-specialist). NOT for ORM feature implementation (use storm-orm-developer). NOTE: adding .cppm or .cpp files requires NO CMake changes — both src/ and tests/ use GLOB auto-discovery.
+description: Use this agent for CMake build system tasks in the Storm project — modifying cmake/*.cmake files, managing CPM dependencies, updating CMakePresets.json, configuring coverage/sanitizer/benchmark targets, adding new test sub-targets (mock binaries), or diagnosing link errors. NOT for compiler crashes or module discovery issues (use clang-cpp26-compiler-specialist). NOT for ORM feature implementation (use storm-orm-developer). NOTE: adding a src/ .cppm or any tests/ .cpp requires NO CMake changes (GLOB auto-discovery); a tests/ .cppm module must be added by hand to storm_tests\' cxx_modules FILE_SET and its SKIP_PRECOMPILE_HEADERS list in tests/CMakeLists.txt.
 model: haiku
 tools: [Read, Write, Edit, Glob, Grep, Bash]
 ---

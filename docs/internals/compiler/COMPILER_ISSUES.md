@@ -275,7 +275,7 @@ match by identifier, then call `annotation_of_type` on the freshly derived info:
 bool primary = meta::is_primary_member(Member); // scans annotations_of(Member)
 
 // ✅ Safe — annotations read from a locally derived reflection
-for (auto m : std::meta::nonstatic_data_members_of(^^T, std::meta::access_context::unchecked())) {
+for (auto m : storm::meta::data_members_of_v<T>) {   // #694: the memoised member list
     if (std::meta::identifier_of(m) == std::meta::identifier_of(Member)) {
         bool primary = meta::is_primary_member(m);
         // ...
@@ -286,6 +286,14 @@ for (auto m : std::meta::nonstatic_data_members_of(^^T, std::meta::access_contex
 Found in #388: the `FKFieldOf<T, Member>` concept (model_concepts.cppm) constrains
 `join<fields::T.field>()` and must work with FK reflections produced by the benchmark
 registry module (`storm_benchmark_registry::resolve_fk_field`).
+
+**Since #694 the "locally derived" list can itself come from a BMI.** `data_members_of_v<T>`
+is a variable template: when a module instantiates it (the `storm_benchmark_*` shape), its
+importers reuse that BMI copy, so the members re-derived from it are BMI-deserialised too.
+That path does not crash on the current toolchain:
+`tests/schema/test_reflection_cache_bmi.cpp` reads annotations through it (`FKFieldOf`,
+`fk_on_delete_action_of`, `max_length_of`, `is_relation_field`) on members the module
+already listed. If this section's crash comes back, that test is the canary.
 
 ### 11. Explicit Specialization in a Multi-GMF Header — Ambiguous Member Lookup
 

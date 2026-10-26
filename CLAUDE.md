@@ -375,6 +375,7 @@ src/
 └── orm/
     ├── queryset.cppm           # QuerySet ORM interface
     ├── field_attr.cppm         # Free-standing flag annotation objects + is_primary_member (leaf module)
+    ├── reflection_cache.cppm   # memoised<R>: reads a value-holding variable template from a non-constant info (leaf module, #694); imported by field_attr + relation_meta
     ├── model_concepts.cppm     # Model-validation concepts (ModelWithPrimaryKey, Model*Valid, …); re-exported by statements/base.cppm
     ├── utilities.cppm          # ConstexprString, SQLCache, sql_len/buffer_size; re-exports value_bind + stitch_key (#671)
     ├── value_bind.cppm         # UUID, chrono_conv, BindableType, bind_parameter_value/bind_* helpers (leaf module)

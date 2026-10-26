@@ -73,8 +73,7 @@ export namespace storm::orm::where {
         if constexpr (storm::meta::is_fk_field(MemberInfo)) {
             using RelatedType =
                     utilities::optional_inner_type_t<std::remove_cvref_t<typename[:std::meta::type_of(MemberInfo):]>>;
-            for (const std::meta::info member :
-                 std::meta::nonstatic_data_members_of(^^RelatedType, std::meta::access_context::unchecked())) {
+            for (const std::meta::info member : storm::meta::data_members_of_v<RelatedType>) {
                 if (storm::meta::is_primary_member(member)) {
                     return std::meta::type_of(member);
                 }

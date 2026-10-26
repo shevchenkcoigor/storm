@@ -896,6 +896,89 @@ instantiates a `BaseStatement<T>` pays it, so it is a library-wide lever outside
 #682's DDL scope; a variable template (instantiated, hence memoised, once) would
 halve it. Measure before adopting.
 
+### Memoised reflection lookups (#694)
+
+After #682 the DDL text was no longer the cost. A bottom-up micro-lab (one generated
+TU per primitive, swept over N, slope fitted; Apple M1, clang-p2996 Release, no
+assertions) priced what the remaining per-model work is made of:
+
+| primitive | cost |
+|---|---:|
+| trivial template instantiation | ~10 µs |
+| `-O0` codegen, one function | ~70 µs |
+| consteval: one loop step / one `constexpr` call | ~2 µs / ~11 µs |
+| `std::meta::nonstatic_data_members_of(^^T, …)` | ~1.3 ms + ~75 µs per field, **every call** |
+| `std::meta::annotations_of(member)` | ~0.4 ms, every call |
+| the same member list read back from a variable template | ~1.7 µs |
+
+Stock Apple clang 17 runs the consteval calibration at the same speed, so this is
+clang's tree-walking evaluator, not the toolchain build. The two `<meta>` queries are
+not compiler builtins: they are libc++ code run by that evaluator (`members_of` builds a
+`std::vector`, then copies and filters it twice). The rule that matters: **a consteval
+call is never memoised; a template instantiation is.**
+
+Measured against the real BMIs with generated models, instantiating `SchemaStatement<M>`
+(concepts + `BaseStatement` statics) cost **~56 ms + ~4.5 ms per field**, and both
+dialects' `CREATE TABLE` text only ~30 ms more. That per-model work re-derives the same
+answers over and over: 26 call sites run `nonstatic_data_members_of(^^T)` for the same
+`T`, and every flag predicate re-runs `annotations_of` — `is_primary_member` alone is up
+to four calls per field, looped by every model concept.
+
+The fix memoises both, in variable templates that hold **plain values**:
+
+- **The member list:** `data_members_of_v<T>` (in `storm_orm_field_attr`) is a
+  `std::array<std::meta::info, N>` built once per `T`. The 26 `^^T` scans read it. The
+  `Entity` concept's structural `requires` probe stays a raw call.
+- **The annotation answers:** `has_annotation_type<Tag>`, `fk_annotation_type_of`,
+  `max_length_of` and `annotation_type_specializing` (in `relation_meta`) each store their
+  *answer* (`bool` / `std::optional<info>` / `std::optional<std::size_t>`) per member, in a
+  variable template. A predicate's `member` is not a constant expression, so it reaches
+  that template through `memoised<R>` in the leaf module `storm_orm_reflection_cache`,
+  which is `extract<R>(substitute(var_template, args))`.
+
+Wall time, best-of-3 per round, three rounds alternated develop/branch, same host:
+
+| TU | develop rounds | #694 rounds | median Δ |
+|---|---|---|---:|
+| `test_ddl_execution_audit.cpp` | 16.37 / 15.30 / 15.36 s | 11.31 / 11.48 / 11.34 s | **−26.2%** |
+| `test_orm_schema.cpp` | 6.02 / 5.99 / 6.00 s | 5.74 / 5.74 / 5.74 s | −4.3% |
+| `query/test_distinct.cpp` | 10.10 / 10.12 / 10.09 s | 9.87 / 9.88 / 9.97 s | −2.2% |
+
+The absolute seconds are higher than #682's 10.3 s because the host was loaded; the
+rounds do not overlap. Of the −26.2%, the annotation answers alone are −16.5% and the
+member list adds the rest.
+
+Two variants were measured and dropped:
+
+| variant | DDL TU | why dropped |
+|---|---:|---|
+| one per-member list of annotation types, shared by every predicate | −25.3% | worse: the answers are already memoised per (tag, member), so a shared list saves only each tag's first scan, and it costs a second `annotations_of` (one to size the array, one to fill it) |
+| `ConstexprString::append` as one `std::char_traits<char>::copy` instead of a per-char loop | −26.6% | noise: 4.3x faster per append in isolation (322 → 75 µs for 23 chars), but the DDL writes too few characters for it to show |
+
+**Memoise values, never `define_static_array` storage.** The first version stored both
+lists as `std::span`s into `define_static_array` storage. It passed every test and broke
+`storm_bench` (Release): `storm_benchmark_*` instantiate the statements for
+`storm::benchmark::User` inside their BMI, and an importer reading that span back gets
+"initializer of `data_members_of_v<User>` is not a constant expression". No `tests/` TU
+had that shape, a model instantiated inside a module and then used from an importer, so
+`tests/schema/test_bmi_fk_module.cppm` + `test_reflection_cache_bmi.cpp` now are that
+shape. Against the span version that pair does not compile (clang-p2996 crashes); a
+`std::array` or a scalar crosses the BMI like any `static constexpr` value.
+
+Three things worth knowing before reading a trace of this change:
+
+- **Event counts go the wrong way.** `EvaluateAsConstantExpr` rises on the DDL TU, because
+  every `substitute` lookup is an evaluation of its own. Each is far cheaper than the
+  `annotations_of` it replaces, so here the count is not a cost proxy, unlike #670/#682,
+  where it was.
+- **What no cache removes:** the first reflection query on a fresh class costs ~4.5 ms
+  once per class (measured in Storm's module context), and the `SchemaStatement<M>`
+  class-body instantiation itself is ~13 ms per model.
+- **#262 and the BMI.** A member list or memoised answer built inside a module BMI is now
+  reused by its importers, so member reflections do cross a BMI on this path. The BMI
+  regression test above queries annotations (FK, `max_length`) through that path and
+  passes; it is the test to extend if #262 resurfaces.
+
 ### Two correctness bugs found along the way
 
 **`#embed` is invisible to the dependency scanner.** Clang does not list an
@@ -935,6 +1018,7 @@ incremental behaviour (verified: the next build was `no work to do`, 0 s).
 | the fixture + registration layer | ~0 reachable | **Closed by measurement.** Split into its axes [above](#inside-the-fixture-layer--and-why-its-biggest-item-cannot-be-moved): gtest's typed-test machinery is only ~10% of it, and the largest single item — 0.85 s per TU of `std::format` instantiation in `tests/test_db_helpers.h` — cannot be removed, moved, or reduced without the textual/modular `std` reconciliation collapsing in unrelated TUs. What remains is storm's `QuerySet` statics (~0.7 s) and its DDL generator (~0.9 s), both of which a test genuinely uses. |
 | the reflection intercept itself | unmeasured | What the row above leaves on the table: ~1.6 s per TU to enter the machinery (first annotated struct +0.65 s, first `define_aggregate`/`FieldRef` proxy +0.99 s). Library-side, so it would benefit users and not only tests — but it is the cost of the reflection a querying TU needs anyway, so whether *any* of it is removable is unknown. Measure before opening it as work. |
 | `storm_orm_schema`'s BMI serialization | ~2-7 s per library build, unmeasured as a saving | `WriteAST` is ~70% of building `schema.cppm`'s BMI; its frontend is ~1 s ([above](#the-schema-module-under--ftime-trace-670)). Paid once per library rebuild, not per test TU, so it bounds incremental rebuilds after a schema edit rather than the full build. Whether it is this module's own declarations or the imported ones it references (it imports `storm_orm_statements_base` and five more, re-exporting none) that dominate is not yet split. In the consumers, the largest remaining `SchemaStatement` instantiation is `create_index_sql`/`build_all_index_sql` (~1 s for `Person`) — single-dialect already, so laziness does not reach it. |
+| clang's bytecode constant interpreter | unmeasured; blocked | `-fexperimental-new-constant-interpreter` runs plain consteval ~3.7x faster (calibration 6.77 → 1.84 s), and constant evaluation is ~44% of the heaviest TU. **Blocked (#693):** it cannot evaluate `<meta>` yet, so 33 of 44 modules fail to build with it (`value_bind` also on `std::format`); the 11 that pass save ~0.3 s once per library build. Per-module flags would not reach the cost anyway, which lands in the TUs that instantiate templates over models. Re-test on each toolchain bump. Independent of [#694](#memoised-reflection-lookups-694), which cuts the number of evaluations rather than their speed, so they would stack. |
 
 ---
 
