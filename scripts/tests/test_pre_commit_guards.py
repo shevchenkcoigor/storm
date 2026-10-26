@@ -67,6 +67,10 @@ class TriggerTest(unittest.TestCase):
              "uncovered-lines helper", "pre-commit guards", "smart-skip table",
              "clang-tidy prerequisites"})
 
+    def test_cmake_format_files_trigger_their_self_test(self):
+        for staged in (["cmake/format.cmake"], ["scripts/tests/test_cmake_format_target.sh"]):
+            self.assertEqual(names(pcg.triggered_guards(staged)), ["cmake-format target"])
+
     def test_every_guard_target_exists(self):
         for guard in pcg.GUARDS:
             for step in guard.steps:

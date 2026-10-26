@@ -38,6 +38,16 @@ a ninja error. `scripts/tests/test_commit_self_heal_configure.sh` covers each
 site with a stub `cmake` and runs locally with no toolchain; `commit.sh` runs it
 when `commit.sh`, the test, or a script the test copies is staged. It is not wired into CI.
 
+Configure output — WARNINGs included — lands in the log of the step that ran
+the configure. On a fresh tree where both formatters run, that is clang-format's,
+so a configure-time "cmake-format not found" would miss the cmake-format step
+that then fails. `cmake/format.cmake` closes that gap with a stub `cmake-format`
+target that fails naming the missing tool, so the reason is in the cmake-format
+step's own log whichever step configured the tree (#690; see
+[FORMATTING.md](FORMATTING.md#tool-availability)). Its self-test,
+`scripts/tests/test_cmake_format_target.sh`, runs in `commit.sh` only — it is
+not wired into CI either.
+
 ### What "prerequisites" means, and why not the full target set (#557)
 
 clang-tidy replays `build/release/compile_commands.json` and only PARSES — it

@@ -393,12 +393,11 @@ echo -e "${BOLD}Running $TOTAL_STEPS pre-commit checks...${RESET}"
 # --- Steps 1-2: clang-format, cmake-format ---
 # Both build a target of build/debug, so the first of them to run configures it
 # if absent (configure_and_build, #674). Its full output — stderr included —
-# lands in that step's log. stderr matters here: it carries cmake's
-# message(WARNING)s, among them cmake/format.cmake's "cmake-format not found",
-# which names the cause of the `unknown target 'cmake-format'` that step then
-# hits (#643). On a cmake-only commit (the container path #643 was about)
-# cmake-format is the only one that runs, so the warning is in its own log; when
-# both run, it is in clang-format's.
+# lands in that step's log, so on a fresh tree with both formatters the
+# configure WARNINGs land in clang-format's log. A missing cmake-format does not
+# depend on that: cmake/format.cmake then defines a stub `cmake-format` target
+# that fails naming the tool, so the reason is in cmake-format's own log however
+# the tree was configured (#643, #690).
 if [[ "$RUN_FORMAT" == true ]]; then
     run_step "clang-format" "$LOG_FORMAT" \
         configure_and_build ninja-debug build/debug/build.ninja --target format || true

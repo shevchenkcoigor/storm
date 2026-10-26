@@ -116,6 +116,17 @@ SELF_HEAL = Guard(
     log=True,
 )
 
+# --- cmake-format stub target (#690) ---
+# cmake/format.cmake's stub `cmake-format` target is what makes the cmake-format step
+# name a missing tool in its own log. Needs plain cmake only.
+CMAKE_FORMAT_TARGET = Guard(
+    "cmake-format target",
+    r"^(cmake/format\.cmake|scripts/tests/test_cmake_format_target\.sh)$",
+    (Step(None, script("scripts/tests/test_cmake_format_target.sh"),
+          "cmake-format target self-test failed"),),
+    "cmake-format target self-test passed",
+)
+
 # --- per-OS PostgreSQL socket default ---
 # A wrong branch in scripts/pg-default-connstr.sh silently skips every PG test and
 # leaves the coverage gate stuck at ~99.8%.
@@ -200,7 +211,7 @@ PRE_COMMIT_GUARDS = Guard(
 )
 
 GUARDS = (
-    AGENT_FRONTMATTER, TIDY_SKIPLIST, SESSION_START_HOOK, SELF_HEAL, PG_SOCKET_DEFAULT,
+    AGENT_FRONTMATTER, TIDY_SKIPLIST, SESSION_START_HOOK, SELF_HEAL, CMAKE_FORMAT_TARGET, PG_SOCKET_DEFAULT,
     LINE_COVERAGE, UNCOVERED_LINES, SMART_SKIP, TIDY_PREREQS, ORM_BACKEND_IMPORTS, PRE_COMMIT_GUARDS,
 )
 
