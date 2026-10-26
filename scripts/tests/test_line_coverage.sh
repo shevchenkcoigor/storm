@@ -163,10 +163,10 @@ printf '%s\n' "SF:$LCOV_DIR/src/a.cpp" DA:1,4 DA:3,0 DA:5,0 DA:6,0 DA:7,0 DA:8,2
     > "$LCOV_DIR/build/debug/coverage/coverage-filtered.lcov"
 
 show_uncovered() { # <shell>
-    local block
+    local sh="$1" block
     block="$(sed -n '/^    show_uncovered_lines() {/,/^    }$/p' "$COMMIT")"
     block="${block//'${BASH_SOURCE[0]}'/$COMMIT}"
-    (cd "$LCOV_DIR" && "$1" -c "RED= BOLD= RESET= DIM= YELLOW=
+    (cd "$LCOV_DIR" && "$sh" -c "RED= BOLD= RESET= DIM= YELLOW=
 $block
 show_uncovered_lines" 2>&1)
     return 0

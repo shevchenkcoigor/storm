@@ -48,6 +48,8 @@ RC=0
 
 CMAKE_ERROR="CMake Error at CMakeLists.txt:1 (message): FAKE_CONFIGURE_ERROR"
 NINJA_ERROR="ninja: error: loading 'build.ninja': No such file or directory"
+# commit.sh's name for the clang-tidy prerequisites step.
+PREREQS_STEP="release prereqs"
 
 fail() {
     echo "  FAIL: $1"
@@ -227,7 +229,7 @@ scenario_tidy_release_configure_fails() {
     stage src/a.cpp
     run_commit "ninja-release"
     expect_blocked
-    expect_configure_error_in "release prereqs" storm_tidy_bmi.log
+    expect_configure_error_in "$PREREQS_STEP" storm_tidy_bmi.log
     return 0
 }
 
@@ -270,7 +272,7 @@ scenario_tidy_tree_without_build_ninja() {
     stage src/a.cpp
     run_commit ""
     expect_blocked
-    expect_step FAILED "release prereqs"
+    expect_step FAILED "$PREREQS_STEP"
     local log="$TMP/logs/storm_tidy_bmi.log"
     if [[ -f "$log" ]] && grep -qF "not configured" "$log" && ! grep -qF "$NINJA_ERROR" "$log"; then
         pass "release prereqs log reports 'not configured', not the ninja error"
@@ -296,7 +298,7 @@ scenario_tidy_targeted_prereqs_under_system_bash() {
         "CMakeFiles/storm.dir/CXX.dd: CXX_DYNDEP" > "$TMP/ninja_targets"
     stage src/a.cpp
     run_commit ""
-    expect_step passed "release prereqs"
+    expect_step passed "$PREREQS_STEP"
     # Every fallback, whatever its message, is this one call.
     if grep -qxF "cmake --build --preset ninja-release" "$TMP/calls"; then
         fail "release prereqs took a full-build fallback: $(cat "$TMP/logs/storm_tidy_bmi.log" 2>/dev/null)"
@@ -330,7 +332,7 @@ scenario_warm_tree_never_configures() {
         pass "a configured tree runs no configure"
     fi
     expect_step passed "clang-format"
-    expect_step passed "release prereqs"
+    expect_step passed "$PREREQS_STEP"
     expect_step passed "release build"
     expect_step passed "tests (SQLite"
     expect_step passed "coverage"
