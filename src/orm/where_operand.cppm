@@ -60,9 +60,8 @@ export namespace storm::orm::where {
     }
 
     // Operand type for in() (#610): a plain member's declared type with std::optional unwrapped
-    // (#625), or — for a single-column FK member — the FK TARGET's primary-key type
-    // (FieldType is the RELATED MODEL struct,
-    // which normalize_operand can never bind). Reimplements find_fk_primary_key's lookup
+    // (#625), or — for a single-column FK member — the FK TARGET's primary-key type (FieldType
+    // is the RELATED MODEL struct, which normalize_operand can never bind). Reimplements find_fk_primary_key's lookup
     // (base.cppm) locally — importing storm_orm_statements_base back would be a module cycle
     // — but does NOT recurse when the target's PK is itself an FK (base's bind_one_pk_part
     // does; no in-tree model has that shape). Returns nullopt for an FK target with no PK at
@@ -86,8 +85,8 @@ export namespace storm::orm::where {
             // InExpression<std::optional<T>> arm for any T, so returning the declared type
             // verbatim named an arm that does not exist and hard-errored inside
             // make_shared<ExpressionVariant> instead of failing at in()'s requires-clause.
-            // `^^` of a local alias, mirroring ^^RelatedType above — this must yield an info,
-            // not a value.
+            // `^^` of a local alias — this branch must yield a type reflection (an info), not
+            // a value.
             using FieldT =
                     utilities::optional_inner_type_t<std::remove_cvref_t<typename[:std::meta::type_of(MemberInfo):]>>;
             return ^^FieldT;

@@ -23,7 +23,7 @@ import std;
 //
 // This is the third instance of ONE invariant being violated (#578, #610, #625): the normalized
 // target type must name an InExpression arm that exists. InStorableTarget now states it, so the
-// failure mode is structurally impossible rather than patched a third time.
+// failure mode is impossible for in() rather than patched a third time.
 //
 // WHERE_CLAUSES.md already promised this worked — its std::optional<T> row reads "Plus any
 // operator T itself supports". The fix makes the code match its own documented contract.
@@ -40,6 +40,7 @@ namespace {
         std::optional<int>         score;
         std::optional<storm::UUID> opt_uuid;
         bool                       is_active{};
+        std::optional<bool>        opt_flag;
     };
 
     constexpr std::string_view kUuidA = "11111111-1111-4111-8111-111111111111";
@@ -62,8 +63,8 @@ namespace fields {
 
 // ── Compile-time surface ───────────────────────────────────────────────────────────────────────
 // The reason #625 wants a `requires` constraint rather than a body static_assert: a constraint
-// can be TESTED. A static_assert inside in() would only break the build, and would be invisible
-// to query_builder.hpp's requires-based probing.
+// can be TESTED. A static_assert inside in() would only break the build, so none of the
+// rejections below could be asserted.
 
 template <typename V>
 concept CanInNickname = requires(V v) { fields::InNullableRow.nickname.in(v); };
@@ -107,6 +108,15 @@ static_assert(!CanInIsActive<double>, ".in(3.7) on a bool column must be rejecte
 // make_in_expr's documented truncate-on-overflow tradeoff (#610).
 static_assert(CanInScore<bool>, "an int column still accepts a bool operand — InOperandFor gates bool TARGETS only");
 
+// The optional unwrap (#625) meets the new bool arm: a nullable bool column takes plain bool
+// operands, and std::optional<bool> stays rejected — constructible_from<bool, optional<bool>> is
+// TRUE via optional's explicit operator bool, which would bind has_value() instead of the value.
+template <typename V>
+concept CanInOptFlag = requires(V v) { fields::InNullableRow.opt_flag.in(v); };
+static_assert(CanInOptFlag<bool>, ".in() on a nullable bool column must compile (#625)");
+static_assert(!CanInOptFlag<std::optional<bool>>, ".in(optional<bool>) must be rejected, not bind has_value()");
+static_assert(!CanInOptFlag<std::nullopt_t>, ".in(std::nullopt) on a nullable bool column must be rejected");
+
 // Both in() requires-clauses changed, and #578 was exactly a Field/CollatedField body drift, so
 // pin the collated twin on a nullable column rather than trusting the two to stay in step.
 template <typename V>
@@ -148,7 +158,8 @@ namespace {
                                           .nickname  = "alice",
                                           .score     = 10,
                                           .opt_uuid  = storm::UUID{kUuidA},
-                                          .is_active = true
+                                          .is_active = true,
+                                          .opt_flag  = true
                                   })
                                 .execute()
                                 .has_value());
@@ -157,7 +168,8 @@ namespace {
                                           .nickname  = "bob",
                                           .score     = 20,
                                           .opt_uuid  = storm::UUID{kUuidB},
-                                          .is_active = false
+                                          .is_active = false,
+                                          .opt_flag  = false
                                   })
                                 .execute()
                                 .has_value());
@@ -240,6 +252,37 @@ TYPED_TEST(InNullableTest, InOnBoolColumn) {
     EXPECT_EQ(result.value().size(), 2U);
 }
 
+// A bound FALSE must really be 0 — on PG the untyped text parameter '0' is parsed as boolean.
+TYPED_TEST(InNullableTest, InOnBoolColumnWithFalse) {
+    storm::QuerySet<InNullableRow, TypeParam> qs;
+    auto result = qs.where(fields::InNullableRow.is_active.in(false)).select().execute();
+    ASSERT_TRUE(result.has_value()) << result.error().message();
+    ASSERT_EQ(result.value().size(), 1U);
+    EXPECT_EQ(result.value().begin()->id, 2);
+}
+
+// Several bool operands: values_ is the std::vector<bool> bitset, so this exercises the proxy
+// conversion in InExpression::bind_impl and param_index advancing once per element.
+TYPED_TEST(InNullableTest, InOnBoolColumnWithBothValues) {
+    storm::QuerySet<InNullableRow, TypeParam> qs;
+    const auto                                where_expr = fields::InNullableRow.is_active.in(true, false);
+    const auto                                sql        = qs.where(where_expr).select().sql();
+    EXPECT_TRUE(sql.contains("is_active IN (?, ?)")) << sql;
+    auto result = qs.where(where_expr).select().execute();
+    ASSERT_TRUE(result.has_value()) << result.error().message();
+    EXPECT_EQ(result.value().size(), 3U);
+}
+
+TYPED_TEST(InNullableTest, InOnNullableBoolOmitsNullRow) {
+    storm::QuerySet<InNullableRow, TypeParam> qs;
+    auto result = qs.where(fields::InNullableRow.opt_flag.in(true, false)).select().execute();
+    ASSERT_TRUE(result.has_value()) << result.error().message();
+    EXPECT_EQ(result.value().size(), 2U);
+    for (const auto& row : result.value()) {
+        EXPECT_NE(row.id, 3) << "the NULL opt_flag row must not match IN";
+    }
+}
+
 // The documented way to include NULL rows: IN alone never can.
 TYPED_TEST(InNullableTest, IsNullOrInIncludesTheNullRow) {
     storm::QuerySet<InNullableRow, TypeParam> qs;
@@ -263,7 +306,7 @@ TYPED_TEST(InNullableTest, EmptyInMatchesNothing) {
 TYPED_TEST(InNullableTest, NullableColumnEmitsPlainInText) {
     storm::QuerySet<InNullableRow, TypeParam> qs;
     const auto sql = qs.where(fields::InNullableRow.nickname.in("alice", "bob")).select().sql();
-    EXPECT_NE(sql.find("nickname IN (?, ?)"), std::string::npos) << sql;
+    EXPECT_TRUE(sql.contains("nickname IN (?, ?)")) << sql;
 }
 
 // NOLINTEND(readability-implicit-bool-conversion)

@@ -416,8 +416,9 @@ export namespace storm::orm::where {
     // The normalized IN target must name an InExpression arm that EXISTS in ExpressionVariant —
     // the invariant #578, #610 and #625 each violated differently (a Field/CollatedField body
     // drift, an FK member whose FieldType is the related struct, a nullable column typed
-    // std::optional<T>). Naming it makes that failure mode structurally impossible: in() fails
-    // at its requires-clause, not inside make_shared<ExpressionVariant>. Declared here rather
+    // std::optional<T>). Naming it makes that failure mode impossible FOR in(): it fails at its
+    // requires-clause, not inside make_shared<ExpressionVariant>. (ComparableOperand and
+    // between() do not yet have an equivalent arm-existence gate.) Declared here rather
     // than in the where_operand leaf, which cannot see ExpressionVariant; a requires-expression
     // rather than a bare decltype so a non-BindableType target substitutes to false instead of
     // hard-erroring on normalize_operand's constraint. Widening the arm set needs no edit here
