@@ -777,7 +777,10 @@ it back. A **narrower** set is **filterable in a WHERE clause** (`fields::T.fiel
 type must have a variant arm to be filtered on (#407). Temporal types
 (`year_month_day`, `system_clock::time_point`) and `storm::UUID` are both persistable **and**
 filterable; `std::chrono::duration`, `std::filesystem::path`, and BLOB are persistable but
-**not** filterable. See the full filterability table in
+**not** filterable. A `std::optional<T>` column is filterable exactly when `T` is — the operand
+type is the UNWRAPPED `T`, since the variant has no optional arm (#625) — and a NULL row never
+matches `==` or `.in(…)`; use `is_null()` to reach it. A type without an arm is rejected at the
+call site, not hard-errored. See the full filterability table in
 [WHERE_CLAUSES.md → Filterable field types](../features/WHERE_CLAUSES.md#filterable-field-types).
 
 ## Type Dispatch Implementation
