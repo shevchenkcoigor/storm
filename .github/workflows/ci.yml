@@ -5,15 +5,43 @@ name: CI
 # leaving the PR unmergeable, which is strictly worse than the container pulls
 # such a filter would be trying to save. Cheapness for docs-only PRs is the
 # `changes` job's business, below.
+#
+# The heavy jobs (`test`, `coverage`, `clang-p2996-host-layout`) do NOT run on
+# `push` to develop (#700). develop's branch protection is `strict` (branch must
+# be up to date), so a PR merges only after its run on `refs/pull/N/merge` —
+# develop + the PR, the exact tree the merge produces — passed every REQUIRED
+# context; rebuilding that tree after the merge proves nothing new. The nightly
+# `schedule` run is the net for what that gate does not cover: a non-required
+# leg (`ninja-release`, host-layout) merged red, or a protection rule relaxed
+# for a while. Keep `strict` on: without it the post-merge run is the only
+# check on two PRs combined, and the heavy jobs must come back on `push`.
+# Nothing alerts on a red nightly beyond GitHub's email to whoever last edited
+# the cron line — check `gh run list --workflow ci.yml --event schedule`.
+# A develop commit shows one skipped check literally named
+# `${{ matrix.preset }} / PG ${{ matrix.postgres }}`: that is the job-level
+# matrix skip, harmless on a push (see the heavy jobs' `if:`), not #638.
 on:
   push:
     branches: [develop]
   pull_request:
     branches: [develop]
+  schedule:
+    - cron: "0 3 * * *"
+  workflow_dispatch: {}
+
+# One group per PR, so a new push cancels that PR's now-outdated run (#700).
+# Every other event gets a group of its own (run_id), so a develop push or a
+# nightly run is never cancelled — or left pending and replaced, which a shared
+# group does to queued runs even with cancel-in-progress off.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.run_id }}
+  cancel-in-progress: true
 
 jobs:
   # Classifies the diff (PR: against the exact base commit recorded on the PR
-  # event; push: against the pre-push SHA) via scripts/detect-changes.sh —
+  # event; push: against the pre-push SHA, computed but unread since #700 skips
+  # the heavy jobs on push; schedule/workflow_dispatch carry no `before`, so
+  # they run everything) via scripts/detect-changes.sh —
   # the same script commit.sh uses for its staged-file smart skips, so both
   # places agree on what counts as "src/tests/cmake changed". `run_heavy`
   # gates the expensive STEPS of the `test` / `coverage` /
@@ -281,10 +309,12 @@ jobs:
   clang-p2996-host-layout:
     name: clang-p2996 host-layout resolution
     needs: changes
-    # Always RUNS (fail-closed on a broken `changes` job, whose empty output
-    # reads as "not false"); the steps below are what `run_heavy` gates. See
-    # the note on the `changes` job for why this is not a job-level `if:`.
-    if: ${{ !cancelled() }}
+    # Always RUNS on a PR (fail-closed on a broken `changes` job, whose empty
+    # output reads as "not false"); the steps below are what `run_heavy` gates.
+    # See the note on the `changes` job for why that is not a job-level `if:`.
+    # The `push` skip IS job-level: no branch protection reads the contexts of
+    # a develop push run, so #638 cannot bite there (see the note under `on:`).
+    if: ${{ !cancelled() && github.event_name != 'push' }}
     env:
       RUN_HEAVY: ${{ needs.changes.outputs.run_heavy }}
     runs-on: ubuntu-24.04
@@ -315,10 +345,12 @@ jobs:
     # preset produces no signal. Re-add the matrix entry once a fixed
     # clang-p2996 build lands (track at #326).
     needs: changes
-    # Always RUNS (fail-closed on a broken `changes` job, whose empty output
-    # reads as "not false"); the steps below are what `run_heavy` gates. See
-    # the note on the `changes` job for why this is not a job-level `if:`.
-    if: ${{ !cancelled() }}
+    # Always RUNS on a PR (fail-closed on a broken `changes` job, whose empty
+    # output reads as "not false"); the steps below are what `run_heavy` gates.
+    # See the note on the `changes` job for why that is not a job-level `if:`.
+    # The `push` skip IS job-level: no branch protection reads the contexts of
+    # a develop push run, so #638 cannot bite there (see the note under `on:`).
+    if: ${{ !cancelled() && github.event_name != 'push' }}
     env:
       RUN_HEAVY: ${{ needs.changes.outputs.run_heavy }}
     runs-on: ubuntu-24.04
@@ -490,7 +522,7 @@ jobs:
   # comparability the issue was built on. It also means a contributor without a
   # local PG can no longer be blocked by a gate they cannot reproduce.
   #
-  # Runs per-PR rather than nightly. Measured cold (rm -rf build, empty ccache,
+  # Runs per-PR (and in the #700 nightly), not nightly-only. Measured cold (rm -rf build, empty ccache,
   # CPM sources cached as CI caches them): configure 1s + build 73s + coverage
   # 19s = 93s on 32 cores. The build phase is the parallel part and dominates, so
   # on a 4-core runner expect roughly 6-9 min wall clock — comparable to the
@@ -499,10 +531,12 @@ jobs:
   coverage:
     name: coverage (100% lines, filtered)
     needs: changes
-    # Always RUNS (fail-closed on a broken `changes` job, whose empty output
-    # reads as "not false"); the steps below are what `run_heavy` gates. See
-    # the note on the `changes` job for why this is not a job-level `if:`.
-    if: ${{ !cancelled() }}
+    # Always RUNS on a PR (fail-closed on a broken `changes` job, whose empty
+    # output reads as "not false"); the steps below are what `run_heavy` gates.
+    # See the note on the `changes` job for why that is not a job-level `if:`.
+    # The `push` skip IS job-level: no branch protection reads the contexts of
+    # a develop push run, so #638 cannot bite there (see the note under `on:`).
+    if: ${{ !cancelled() && github.event_name != 'push' }}
     env:
       RUN_HEAVY: ${{ needs.changes.outputs.run_heavy }}
     runs-on: ubuntu-24.04
@@ -724,8 +758,9 @@ jobs:
   # THE FLIP (step 4), which returns docs-only PRs to zero cost — no container
   # pull, no postgres service, nothing started at all:
   #
-  #   a. Add `&& needs.changes.outputs.run_heavy != 'false'` back to the
-  #      job-level `if:` of `test`, `coverage` and `clang-p2996-host-layout`.
+  #   a. Append `&& needs.changes.outputs.run_heavy != 'false'` to the
+  #      job-level `if:` of `test`, `coverage` and `clang-p2996-host-layout`,
+  #      keeping the `github.event_name != 'push'` term (#700).
   #      Fail-closed survives: a broken `changes` job leaves the output empty
   #      and '' != 'false' still runs everything.
   #   b. Delete the now-unreachable `No src/tests/cmake changes — heavy steps
