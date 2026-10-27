@@ -83,6 +83,13 @@ cmake --preset ninja-release
 cmake --build --preset ninja-release
 ```
 
+## Interrupted CPM clone
+
+If a configure is killed while CPM is cloning a dependency, `.cache/CPM/<name>/<hash>/` keeps a
+`.git` but an empty working tree, and CPM reuses it as a cache hit forever. Configure detects this
+and stops, naming the directory; delete that directory and configure again. In CI, delete
+the `cpm-*` Actions cache instead.
+
 ## Python and PyYAML
 
 The tests and benchmarks convert their YAML corpora to JSON at build time, so the Python 3

@@ -145,6 +145,17 @@ PYYAML_CHECK = Guard(
     "PyYAML configure check self-test passed",
 )
 
+# --- CPM broken-checkout configure check (#705) ---
+# cmake/cpm-cache.cmake turns a CPM cache entry left empty by an interrupted clone into a
+# configure-time error naming the directory to delete. Needs plain cmake only.
+CPM_CACHE_CHECK = Guard(
+    "CPM cache configure check",
+    r"^(cmake/cpm-cache\.cmake|scripts/tests/test_cpm_cache_check\.py)$",
+    (Step(None, script("scripts/tests/test_cpm_cache_check.py"),
+          "CPM cache configure check self-test failed"),),
+    "CPM cache configure check self-test passed",
+)
+
 # --- CPM cold-cache fetch (#709) ---
 # A CPM/FetchContent pin without a final GIT_SHALLOW FALSE gets CPM's depth-1 clone,
 # which cannot reach a non-branch-tip tag: a fresh worktree fails to configure while
@@ -304,7 +315,7 @@ SONAR_GATE = Guard(
 
 GUARDS = (
     AGENT_FRONTMATTER, TIDY_SKIPLIST, SESSION_START_HOOK, SELF_HEAL, CMAKE_FORMAT_TARGET, PYYAML_CHECK,
-    CPM_COLD_CACHE, PG_SOCKET_DEFAULT,
+    CPM_CACHE_CHECK, CPM_COLD_CACHE, PG_SOCKET_DEFAULT,
     LINE_COVERAGE, UNCOVERED_LINES, SMART_SKIP, TIDY_PREREQS, ORM_BACKEND_IMPORTS, PRE_COMMIT_GUARDS,
     CI_DIGESTS, COVERAGE_PARALLEL, NINJALOG_STATS, TIME_TRACE, TU_ABLATION, SONAR_GATE,
 )

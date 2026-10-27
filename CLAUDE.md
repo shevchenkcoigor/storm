@@ -138,6 +138,7 @@ cmake/
 ├── pyyaml.cmake          # storm_require_pyyaml(): configure-time check that the found Python can import yaml (#703)
 ├── libcxx.cmake          # LIBCXX_ROOT validation, global -nostdinc++ flags, apply_clang_flags()
 ├── db.cmake              # find_package SQLite3 + PostgreSQL, link_sqlite/link_postgresql helpers
+├── cpm-cache.cmake       # storm_verify_cpm_cache(): configure-time check for a CPM checkout left empty by an interrupted clone (#705)
 ├── cpm.cmake             # CPM.cmake bootstrap (auto-downloaded on first configure)
 ├── cmake-scripts.cmake   # Global CPM fetch of StableCoder/cmake-scripts (used by format + sanitizers)
 ├── coverage.cmake        # Coverage compile/link flags (must include before tests)
