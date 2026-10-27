@@ -7,14 +7,16 @@ name: CI
 # `changes` job's business, below.
 #
 # The heavy jobs (`test`, `coverage`, `clang-p2996-host-layout`) do NOT run on
-# `push` to develop (#700). develop's branch protection is `strict` (branch must
-# be up to date), so a PR merges only after its run on `refs/pull/N/merge` —
-# develop + the PR, the exact tree the merge produces — passed every REQUIRED
-# context; rebuilding that tree after the merge proves nothing new. The nightly
-# `schedule` run is the net for what that gate does not cover: a non-required
-# leg (`ninja-release`, host-layout) merged red, or a protection rule relaxed
-# for a while. Keep `strict` on: without it the post-merge run is the only
-# check on two PRs combined, and the heavy jobs must come back on `push`.
+# `push` to develop (#700). develop merges through a merge queue (#711): each
+# PR lands only after a `merge_group` run on develop + the queued PRs — the
+# exact tree the merge produces — passed `CI gate`; rebuilding that tree after
+# the merge proves nothing new. (Before the queue, `strict` branch protection
+# gave the same guarantee via the PR's `refs/pull/N/merge` run, at the price of
+# an "Update branch" + full re-run whenever develop moved.) The nightly
+# `schedule` run is the net for what that gate does not cover: a leg merged red
+# while a protection rule was relaxed. Keep the queue (or `strict`) on: without
+# either, the post-merge run is the only check on two PRs combined, and the
+# heavy jobs must come back on `push`.
 # Nothing alerts on a red nightly beyond GitHub's email to whoever last edited
 # the cron line — check `gh run list --workflow ci.yml --event schedule`.
 # A develop commit shows one skipped check literally named
@@ -25,13 +27,17 @@ on:
     branches: [develop]
   pull_request:
     branches: [develop]
+  # The merge queue's run on develop + the queued PRs (#711). Without this
+  # trigger nothing reports on a merge-group commit and every queued PR waits
+  # out the queue's status-check timeout.
+  merge_group:
   schedule:
     - cron: "0 3 * * *"
   workflow_dispatch: {}
 
 # One group per PR, so a new push cancels that PR's now-outdated run (#700).
-# Every other event gets a group of its own (run_id), so a develop push or a
-# nightly run is never cancelled — or left pending and replaced, which a shared
+# Every other event gets a group of its own (run_id), so a develop push, a
+# nightly run or a merge-queue (`merge_group`) run is never cancelled — or left pending and replaced, which a shared
 # group does to queued runs even with cancel-in-progress off.
 concurrency:
   group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.run_id }}
@@ -39,7 +45,8 @@ concurrency:
 
 jobs:
   # Classifies the diff (PR: against the exact base commit recorded on the PR
-  # event; push: against the pre-push SHA, computed but unread since #700 skips
+  # event; merge_group: against the queue's base, develop's tip the group was
+  # built on (#711); push: against the pre-push SHA, computed but unread since #700 skips
   # the heavy jobs on push; schedule/workflow_dispatch carry no `before`, so
   # they run everything) via scripts/detect-changes.sh —
   # the same script commit.sh uses for its staged-file smart skips, so both
@@ -104,6 +111,7 @@ jobs:
         env:
           EVENT_NAME: ${{ github.event_name }}
           BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          QUEUE_BASE_SHA: ${{ github.event.merge_group.base_sha }}
           BEFORE_SHA: ${{ github.event.before }}
         run: |
           set -euo pipefail
@@ -114,6 +122,11 @@ jobs:
             # have moved since (and would then diff in develop's own newer
             # commits alongside the PR's).
             files=$(git diff --name-only "$BASE_SHA" HEAD)
+          elif [ "$EVENT_NAME" = "merge_group" ]; then
+            # HEAD is the group's merge commit; base_sha is the develop commit
+            # the group was built on, so this is every queued PR's change and
+            # nothing of develop's own.
+            files=$(git diff --name-only "$QUEUE_BASE_SHA" HEAD)
           elif [ -n "$BEFORE_SHA" ] && [ "$BEFORE_SHA" != "0000000000000000000000000000000000000000" ]; then
             files=$(git diff --name-only "$BEFORE_SHA" HEAD)
           else
@@ -179,6 +192,33 @@ jobs:
 
       - name: Run every guard in scripts/pre_commit_guards.py
         run: ./scripts/pre_commit_guards.py --all
+
+  # The SonarCloud quality gate as a job of this workflow (#711), so `CI gate`
+  # can require it. The SonarCloud app posts `SonarCloud Code Analysis` on PRs
+  # only, never on the merge queue's merge-group commits; required directly, it
+  # would leave every queued PR waiting out the timeout. scripts/sonar_gate.py
+  # polls that check run on the PR head and fails unless it concluded
+  # `success`; on any other event (merge_group, push, schedule) it passes at
+  # once — a queued PR was already gated on its own PR run. GITHUB_TOKEN with
+  # `checks: read` is all it needs; no Sonar token. The script's own 30-min
+  # poll timeout fails before this job's 40-min one would.
+  sonar-gate:
+    name: SonarCloud gate
+    runs-on: ubuntu-24.04
+    timeout-minutes: 40
+    permissions:
+      checks: read
+      contents: read
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Wait for the SonarCloud check on the PR head
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          GITHUB_TOKEN: ${{ github.token }}
+        run: ./scripts/sonar_gate.py
 
   # cmake/clang_p2996_host.cmake resolves clang-p2996's on-disk layout
   # (Linux/amd64 Docker vs. native macOS/arm64) for CMAKE_CXX_STDLIB_MODULES_JSON
@@ -620,12 +660,26 @@ jobs:
   #      mergeable under today's required list.
   #   2. Confirm `CI gate` has reported at least once on develop (the post-merge
   #      push run), so GitHub offers the context in the settings UI at all.
-  #   3. Edit branch protection: ADD `CI gate`, and REMOVE every per-job and
-  #      per-matrix CI context (the seven matrix legs, `coverage (100% lines,
-  #      filtered)`, `clang-p2996 host-layout resolution`, `pre-commit
-  #      guards (all, #708)`, `detect changed files`).
-  #      Keep `SonarCloud Code Analysis`. Removing is not optional: adding
-  #      `CI gate` alongside the old names leaves docs-only PRs stuck on them.
+  #   3. Make `CI gate` the ONLY required context — in the merge-queue
+  #      ruleset on develop (#711), with the classic branch protection deleted.
+  #      That drops every per-job and per-matrix context (the seven matrix
+  #      legs, `coverage (100% lines, filtered)`, `clang-p2996 host-layout
+  #      resolution`, `pre-commit guards (all, #708)`, `detect changed files`)
+  #      AND `SonarCloud Code Analysis`: the `sonar-gate` job enforces that
+  #      gate inside `CI gate`, and the app's own check never reports on a
+  #      merge-group commit. Removing is not optional: adding `CI gate`
+  #      alongside the old names leaves docs-only PRs stuck on them.
+  #      ORDER (#711) — the queue must never coexist with the classic rules:
+  #        i.   merge #711 under the classic protection (it adds `merge_group:`;
+  #             a queue enabled before that reports nothing on its commits);
+  #        ii.  create the ruleset requiring `CI gate`, merge queue still OFF;
+  #        iii. delete the classic protection — its required `SonarCloud Code
+  #             Analysis` never reports on a merge-group commit, and its
+  #             `strict` fights the queue, so a PR queued while it exists
+  #             waits out the queue timeout;
+  #        iv.  only then turn the merge queue on, and verify with a small
+  #             docs-only PR (it also shows which conclusion Sonar posts on a
+  #             PR with no C++ — sonar_gate.py fails anything but `success`).
   #   4. Only then, the flip below.
   #   5. Verify on a docs-only PR: heavy jobs `skipped`, `CI gate` green,
   #      merge unblocked.
@@ -661,6 +715,7 @@ jobs:
     needs:
       - changes
       - script-guards
+      - sonar-gate
       - clang-p2996-host-layout
       - test
       - coverage

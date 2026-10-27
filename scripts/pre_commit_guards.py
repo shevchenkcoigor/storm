@@ -269,10 +269,20 @@ TU_ABLATION = Guard(
     "TU ablation transforms self-test passed",
 )
 
+# --- SonarCloud gate (#711) ---
+# ci.yml's sonar-gate job; `CI gate` requires it, so a bug that reads a pending
+# or stale Sonar run as green lets a red quality gate merge.
+SONAR_GATE = Guard(
+    "SonarCloud gate",
+    r"^scripts/(tests/test_)?sonar_gate\.py$",
+    (Step(None, script("scripts/tests/test_sonar_gate.py"), "SonarCloud gate self-test failed"),),
+    "SonarCloud gate self-test passed",
+)
+
 GUARDS = (
     AGENT_FRONTMATTER, TIDY_SKIPLIST, SESSION_START_HOOK, SELF_HEAL, CMAKE_FORMAT_TARGET, PG_SOCKET_DEFAULT,
     LINE_COVERAGE, UNCOVERED_LINES, SMART_SKIP, TIDY_PREREQS, ORM_BACKEND_IMPORTS, PRE_COMMIT_GUARDS,
-    CI_DIGESTS, COVERAGE_PARALLEL, NINJALOG_STATS, TIME_TRACE, TU_ABLATION,
+    CI_DIGESTS, COVERAGE_PARALLEL, NINJALOG_STATS, TIME_TRACE, TU_ABLATION, SONAR_GATE,
 )
 
 # scripts/tests/ self-tests deliberately run by no guard, with where they DO run.

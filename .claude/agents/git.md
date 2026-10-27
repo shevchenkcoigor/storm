@@ -89,9 +89,11 @@ After creating a PR, ALWAYS wait for SonarCloud before merging:
 4. **Only merge after a clean SonarCloud gate** — no exceptions
 
 ```bash
-# Merge after clean gate
-gh pr merge <PR-number> --squash --delete-branch
-gh issue close <N>
+# Merge after clean gate. With the merge queue on (#711) this only QUEUES the
+# PR — wait for MERGED before closing the issue or pulling develop.
+gh pr merge <PR-number> --squash
+until [ "$(gh pr view <PR-number> --json state -q .state)" = MERGED ]; do sleep 60; done
+gh issue view <N> --json state -q .state   # `Closes #<N>` normally closed it; else: gh issue close <N>
 ```
 
 ## Security Checks
