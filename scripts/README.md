@@ -37,7 +37,8 @@ scripts/dev-container.sh down                   # stop and remove the containers
 
 ## Clang-Tidy Script
 
-Run clang-tidy with modernize checks on the Storm codebase, excluding third_party code.
+`run_clang_tidy.py` (stdlib Python, #692; it was a bash script) runs clang-tidy over the
+Storm codebase with the root `.clang-tidy` configuration. Run it from the repo root.
 
 ### Prerequisites
 
@@ -46,39 +47,45 @@ Run clang-tidy with modernize checks on the Storm codebase, excluding third_part
 ### Usage
 
 ```bash
-# Check only (default)
-./scripts/run_clang_tidy.sh
+# Staged lines only (default, = --diff): what the pre-commit hook runs
+./scripts/run_clang_tidy.py
 
-# Auto-apply fixes
-./scripts/run_clang_tidy.sh --fix
+# Whole-file scan of the staged files / of the whole tree
+./scripts/run_clang_tidy.py --full
+./scripts/run_clang_tidy.py --all
+
+# Auto-apply fixes, then re-check
+./scripts/run_clang_tidy.py --fix
 
 # Limit parallel jobs
-./scripts/run_clang_tidy.sh -j 4
-
-# Include tests directory
-./scripts/run_clang_tidy.sh --include-tests
+./scripts/run_clang_tidy.py -j 4
 ```
 
 ### Options
 
 | Option | Description |
 |--------|-------------|
+| `--diff` / `--full` / `--all` | Scope: staged lines (default), staged files, or every C++ file under `src/`, `tests/`, `benchmarks/`. The last one given wins. |
 | `--fix` | Apply suggested fixes automatically (use with caution) |
-| `-j N` | Number of parallel jobs (default: all cores) |
-| `--include-tests` | Include tests/ directory (disabled by default due to gtest setup) |
+| `-j N` | Number of parallel jobs (default: min(cores, MemAvailable GB / 2), at least 1). Not a positive integer: exit 2. |
 
-### What it checks
-
-- **Checks**: `modernize-*` (excluding `use-trailing-return-type`, `avoid-c-arrays`)
-- **Files**: `src/*.cppm`, `benchmarks/*.cpp`
-- **Excludes**: `third_party/`, test files (unless `--include-tests`)
+Unrecognised arguments are ignored, as they were in the shell version.
 
 ### Notes
 
-- Runs in parallel using all available CPU cores by default
-- Filters out noisy clang-tidy meta-messages
-- Handles clang-tidy crashes gracefully (skips crashed files)
-- C++26 module support is limited - some warnings may be suppressed
+- Files clang-tidy cannot parse (textual headers that need `import storm;`, a toolchain crash)
+  and the vendored `src/orm/generator.cppm` are listed by exact path — the lists, and why each
+  entry is there, live in `clang_tidy_skiplist.py`. `--diff` drops their sections before clang-tidy
+  runs; `--full`/`--all` run it and forgive a parse failure or crash on a listed file (the vendored
+  file is never run). `commit.sh` asks the same module (`--keep`)
+  which staged files clang-tidy will open.
+- `PCH` flags are stripped from a temp copy of `compile_commands.json` before clang-tidy replays it.
+- A crash or an unexpected parse failure fails the run rather than reading as clean.
+- A TU that exceeds the 240 s timeout still reads as passed (#556), and the default job count
+  still follows `MemAvailable` (#555); both were carried over unchanged by the port.
+- Tested by `tests/test_clang_tidy_skiplist.py`, `tests/test_run_clang_tidy.py` and
+  `tests/test_run_clang_tidy_full.py`, which run the real script against a fake clang-tidy and
+  clang-tidy-diff.py built by `tests/tidy_toolchain.py` (a fixture, not a test).
 
 ---
 
@@ -293,7 +300,8 @@ for t in scripts/tests/test_*.sh; do "$t" || echo "FAILED: $t"; done
 
 The agent-frontmatter checker and the helpers `commit.sh` delegates to (#688) are Python, so their
 self-tests are too: `test_check_agent_frontmatter.py`, `test_check_ci_digests.py`,
-`test_check_orm_backend_imports.py`, `test_uncovered_lines.py`,
+`test_check_orm_backend_imports.py`, `test_clang_tidy_skiplist.py`, `test_run_clang_tidy.py`,
+`test_run_clang_tidy_full.py` (the last two need `git` and `/bin/sh` as well), `test_uncovered_lines.py`,
 `test_pre_commit_guards.py`, `test_smart_skip.py`, `test_sonar_gate.py` and `test_tidy_prereqs.py` (stdlib `unittest`, need
 only `python3`, no syntax newer than 3.9) are not matched by the `*.sh` loop above — run them on their
 own. Each also runs in `commit.sh` when it is staged.
@@ -311,6 +319,8 @@ failure so one run reports them all (#708). So a new self-test reaches CI by bec
 | `sonar_gate.py` | Not a `commit.sh` helper: ci.yml's `sonar-gate` job (#711). Waits for the SonarCloud app's check run on the PR head and fails unless it is `success`; passes at once on `merge_group`/`push`/`schedule`, so the merge queue never waits on a check the app does not post. |
 | `smart_skip.py` | The smart-skip decision table: reads `detect-changes.sh`'s `HAS_*` output, prints the `RUN_*` switches and `SKIP_NOTE` for `commit.sh` to `eval`. |
 | `tidy_prereqs.py` | Whether clang-tidy's module BMIs exist for the staged files (#557). Prints `complete`; anything else — including a crash — is `incomplete`, so the caller rebuilds. |
+| `run_clang_tidy.py` | The clang-tidy runner `commit.sh` calls in `--diff --fix` (or `--full --fix`) mode and the weekly sweep calls with `--all` (#692). |
+| `clang_tidy_skiplist.py` | The files clang-tidy must not open: `KNOWN_UNPARSEABLE`, the vendored file, and the diff filter. Imported by `run_clang_tidy.py`; `commit.sh` pipes staged paths through `--keep` to drop them from its BMI probe (#550). |
 | `uncovered_lines.py` | The uncovered files and line ranges `commit.sh`'s coverage step prints on a sub-100% result. Takes no arguments: it reads `build/debug/coverage/coverage-filtered.lcov` under the cwd. |
 
 ### Prerequisites

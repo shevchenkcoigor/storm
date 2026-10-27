@@ -425,11 +425,11 @@ jobs:
       # src/orm/statements/*.cppm + src/db/postgresql.cppm, which are addressed
       # in this PR — but other source files almost certainly carry similar
       # accumulated violations that were masked by the same `.cppm` parse-failure
-      # auto-skip in scripts/run_clang_tidy.sh. Enabling --all in CI now would
+      # auto-skip in scripts/run_clang_tidy.py. Enabling --all in CI now would
       # fail every PR. Uncomment after issue #262's cleanup pass lands.
       # - name: clang-tidy full sweep
       #   if: matrix.preset == 'ninja-release' && matrix.postgres == 17
-      #   run: ./scripts/run_clang_tidy.sh --all
+      #   run: ./scripts/run_clang_tidy.py --all
 
   # Reproduces commit.sh step 5 (the 100%-line-coverage gate) in CI, so the gate
   # stops being self-reported from one developer's machine. Deliberately NOT a

@@ -132,7 +132,7 @@ target_sources(
 # CXX_SCAN_FOR_MODULES OFF fails with "module 'std' not found"). PCH is the one
 # mechanism of the two that works alongside module scanning.
 #
-# NOTE: scripts/run_clang_tidy.sh strips the resulting `-Xclang -include-pch`
+# NOTE: scripts/run_clang_tidy.py strips the resulting `-Xclang -include-pch`
 # flags from the compile database before replaying commands. clang-tidy SIGSEGVs
 # on them once any check is enabled, silently and with no diagnostic. That is
 # unreachable today (tests/.clang-tidy sets `Checks: '-*'`, #590, and no src/

@@ -83,15 +83,23 @@ AGENT_FRONTMATTER = Guard(
     "agent frontmatter valid",
 )
 
-# --- clang-tidy skip-list (#550) ---
-# scripts/lib/clang_tidy_skiplist.sh is the one list both run_clang_tidy.sh --diff
-# and the weekly --all sweep consult for files clang-tidy cannot parse standalone.
+# --- clang-tidy runner and skip-list (#550, #692) ---
+# scripts/clang_tidy_skiplist.py is the one list both run_clang_tidy.py --diff and the
+# weekly --all sweep consult for files clang-tidy cannot parse standalone, and the one
+# commit.sh's BMI probe asks via --keep. The runner tests drive the real script against
+# a fake clang-tidy / clang-tidy-diff.py (tests/tidy_toolchain.py), so that helper is a
+# trigger too.
 TIDY_SKIPLIST = Guard(
-    "clang-tidy skip-list",
-    r"^scripts/(lib/clang_tidy_skiplist\.sh|run_clang_tidy\.sh|tests/test_run_clang_tidy_skiplist\.sh)$",
-    (Step(None, script("scripts/tests/test_run_clang_tidy_skiplist.sh"),
-          "clang-tidy skip-list self-test failed"),),
-    "clang-tidy skip-list self-test passed",
+    "clang-tidy runner",
+    r"^scripts/(clang_tidy_skiplist|run_clang_tidy)\.py$"
+    r"|^scripts/tests/(test_clang_tidy_skiplist|test_run_clang_tidy|test_run_clang_tidy_full|tidy_toolchain)\.py$",
+    (Step(None, script("scripts/tests/test_clang_tidy_skiplist.py"),
+          "clang-tidy skip-list self-test failed"),
+     Step(None, script("scripts/tests/test_run_clang_tidy.py"),
+          "clang-tidy runner (--diff) self-test failed"),
+     Step(None, script("scripts/tests/test_run_clang_tidy_full.py"),
+          "clang-tidy runner (--full/--all) self-test failed")),
+    "clang-tidy runner self-tests passed",
 )
 
 # --- SessionStart hook wiring (#651) ---
@@ -115,7 +123,7 @@ SESSION_START_HOOK = Guard(
 SELF_HEAL = Guard(
     "self-heal configure",
     r"^(commit\.sh|scripts/(detect-changes|pg-default-connstr)\.sh|scripts/pre_commit_guards\.py"
-    r"|scripts/(uncovered_lines|smart_skip|tidy_prereqs)\.py|scripts/lib/(clang_tidy_skiplist|line_coverage)\.sh"
+    r"|scripts/(uncovered_lines|smart_skip|tidy_prereqs|clang_tidy_skiplist)\.py|scripts/lib/line_coverage\.sh"
     r"|scripts/tests/test_commit_self_heal_configure\.sh)$",
     (Step(None, script("scripts/tests/test_commit_self_heal_configure.sh"),
           "self-heal configure self-test failed"),),
@@ -188,7 +196,7 @@ PG_SOCKET_DEFAULT = Guard(
 LINE_COVERAGE = Guard(
     "line-coverage parser",
     r"^(commit\.sh|scripts/lib/[^/]+\.sh"
-    r"|scripts/(detect-changes|pg-default-connstr|run_clang_tidy|coverage-run-batched)\.sh"
+    r"|scripts/(detect-changes|pg-default-connstr|coverage-run-batched)\.sh"
     r"|scripts/tests/test_line_coverage\.sh)$",
     (Step(None, script("scripts/tests/test_line_coverage.sh"),
           "line-coverage parser self-test failed"),),
