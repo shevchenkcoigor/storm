@@ -65,6 +65,7 @@ For CPM issues:
 1. Read current `cmake/cpm.cmake` to see existing package pattern
 2. Check CPM documentation for the package — use exact GitHub tag or SHA
 3. Verify the imported target name matches what the package exports
+4. Make sure the new pin is fetched by `ninja-release` or `ninja-python` — those are the two presets `ci.yml`'s `cold-cpm-configure` job (#702) configures with no CPM cache, the only CI check that a pinned ref still exists upstream. A pin reached by neither needs its own configure step in that job
 
 For preset issues:
 1. Read `CMakePresets.json` to understand the existing preset hierarchy (configurePresets → buildPresets → testPresets)

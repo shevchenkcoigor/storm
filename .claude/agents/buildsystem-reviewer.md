@@ -85,6 +85,8 @@ No silent fallback: any hook step that cannot run its check must `exit 1`, not p
 ### 7. Cache-key correctness
 CI cache keys must hash every input that changes the cached artifact. `ci.yml`'s CPM cache key hashes `cmake/cpm.cmake`, `cmake/tests.cmake`, `cmake/bench.cmake` (`hashFiles(...)` — check current line, it moves). A new CPM-fetching module (or a new file that changes what gets fetched/built into that cache) must join that hash list, or the cache goes stale-but-valid: CI reports green using an artifact built from an old dependency set.
 
+A correct key still cannot see an upstream ref that was deleted or force-pushed while nothing in-repo changed (#697) — the exact-key hit restores the old clone. Only `ci.yml`'s `cold-cpm-configure` job (#702) fetches every pin from the network: it configures `ninja-release` and `ninja-python` with no cache step and asserts `.cache/CPM` is empty. Flag (**High**) a new `cpmaddpackage` reached by neither of those presets without adding a configure step for it there, and (**Critical**) any `actions/cache` / CPM-cache restore added to that job.
+
 ## Issue severity
 
 - **Critical**: a preset silently dropped from CI, a pin drift with no guard, a fresh-worktree configure/build break, a hook that can silently pass on failure.
