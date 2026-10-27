@@ -150,161 +150,35 @@ jobs:
 
           echo "run_heavy=$run_heavy" | tee -a "$GITHUB_OUTPUT"
 
-  # The storm-ci image digest is pinned in more than one workflow (ci.yml and
-  # clang-tidy-sweep.yml). A job's `container.image` is resolved before any step
-  # runs, so it cannot read `env:` or a shared file — the pins have to be literal
-  # in each file. Deduplicating them would mean either a setup job on every run
-  # or moving the pin into repo variables, which takes it out of git and defeats
-  # the point of pinning (see ci.yml's container comment below). Instead, assert
-  # they agree, so drift fails loudly here rather than silently running two
-  # workflows on two different clang-p2996 builds (as in #498).
-  digest-guard:
-    name: storm-ci digest consistency
+  # Every pre-commit guard, run over the whole tree (#708). The cheap shell/Python
+  # checks — agent frontmatter (#543), ORM backend neutrality, the clang-tidy
+  # skip-list (#550), SessionStart hook wiring (#651), the per-OS PG socket
+  # default, the line-coverage parser (#680), the commit.sh helpers (#688), the
+  # storm-ci digest pins (#530) and the rest — are rows of ONE table,
+  # scripts/pre_commit_guards.py's GUARDS, which commit.sh also runs. This job
+  # used to be seven hand-written jobs that had drifted from that table: some
+  # guards ran only pre-commit, four self-tests ran nowhere. `--all` runs every
+  # row regardless of what changed, because the hook is bypassable (an unwired
+  # clone, a web edit, a merge) and only runs the guards a commit's files
+  # trigger. A new guard is covered here by adding its row, with no edit to this
+  # file; scripts/tests/test_pre_commit_guards.py fails if a self-test is in
+  # neither the table nor its NOT_GUARDED list. Pure bash/python plus cmake >=
+  # 3.16 and ninja for test_cmake_format_target.sh (scripts/README.md lists each
+  # self-test's prerequisites); no compiler, so it runs on every PR.
+  script-guards:
+    name: pre-commit guards (all, #708)
     runs-on: ubuntu-24.04
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Assert storm-ci digests agree
-        run: |
-          mapfile -t pins < <(grep -rhoE 'storm-ci@sha256:[0-9a-f]{64}' .github/workflows | sort)
-          if (( ${#pins[@]} < 2 )); then
-            echo "::error::Expected at least 2 storm-ci digest pins, found ${#pins[@]}."
-            echo "The image reference may have been renamed or restructured — update this guard."
-            exit 1
-          fi
-          if (( $(printf '%s\n' "${pins[@]}" | sort -u | wc -l) != 1 )); then
-            echo "::error::storm-ci digest drift between workflows:"
-            grep -rnE 'storm-ci@sha256:[0-9a-f]{64}' .github/workflows
-            exit 1
-          fi
-          echo "OK: ${#pins[@]} storm-ci pins agree — ${pins[0]}"
+      # The hosted image ships cmake; ninja is installed only if it is absent, so
+      # an image change cannot turn a guard red for a reason unrelated to it.
+      - name: Ensure ninja
+        run: command -v ninja || { sudo apt-get update -qq && sudo apt-get install -y -qq ninja-build; }
 
-  # A Claude Code agent whose `description:` spans several physical lines fails
-  # the frontmatter parse and is dropped SILENTLY — it never appears in the
-  # available-agents list, with no warning anywhere. storm-sql-reviewer and
-  # storm-buildsystem-reviewer shipped broken this way and were undispatchable
-  # from the day they merged, making CLAUDE.md rule #13 partly unenforceable
-  # (#543). Nothing at review time catches it: the file looks fine in a diff.
-  # commit.sh runs the same script pre-commit; this job covers the paths that
-  # bypass the hook.
-  agent-frontmatter:
-    name: agent frontmatter (single-line descriptions)
-    runs-on: ubuntu-24.04
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Validate .claude/agents/*.md frontmatter
-        run: ./scripts/check_agent_frontmatter.py
-
-      - name: Self-test the validator
-        run: ./scripts/tests/test_check_agent_frontmatter.py
-
-  # scripts/lib/clang_tidy_skiplist.sh is the single source of truth both
-  # scripts/run_clang_tidy.sh --diff (this pre-commit hook) and the weekly
-  # --all sweep (clang-tidy-sweep.yml) consult for which files clang-tidy
-  # cannot parse. #550: a post-hoc message-text regex used to also filter
-  # --diff's error count, was unanchored, and had once matched a genuine
-  # error on a real Storm file (src/orm/fields.cppm) alongside the toolchain
-  # noise it targeted. Retired in favour of this file-identity-only skip list
-  # — this job is pure bash (no clang-tidy binary / compile_commands.json
-  # needed) so it runs on every PR, not just ones that touch src/tests/cmake.
-  clang-tidy-skiplist:
-    name: clang-tidy skip-list classification (#550)
-    runs-on: ubuntu-24.04
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Self-test the skip-list classification
-        run: ./scripts/tests/test_run_clang_tidy_skiplist.sh
-
-  # .claude/hooks/session-start-docker.sh is what makes commit.sh run at all in
-  # a clone that never configures a build: it sets core.hooksPath, which used to
-  # be a side effect of CMakeLists.txt's cmake configure and so was absent in
-  # exactly the sessions that cannot configure (no ../clang-p2996, #628). Those
-  # sessions committed with format, clang-tidy, tests and the coverage gate
-  # silently skipped (#651). CI cannot observe core.hooksPath — it is local
-  # config that never leaves the machine, and CI does not commit — so what is
-  # checkable here is the hook's own logic: that the wiring happens before every
-  # early exit its Docker half takes. Pure bash (no docker, no toolchain), so it
-  # runs on every PR.
-  githooks-wiring:
-    name: session-start hook wires core.hooksPath (#651)
-    runs-on: ubuntu-24.04
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Self-test the SessionStart hook
-        run: ./scripts/tests/test_session_start_hook.sh
-
-  # The generic ORM layer (src/orm/**, src/db/default_connection.cppm,
-  # src/db/pool.cppm) must name no concrete backend: the SQLite default lives
-  # only in the storm_defaults alias module, so a PostgreSQL-only program never
-  # depends on the SQLite backend. A stray `import storm_db_sqlite;` compiles
-  # cleanly and looks harmless in a diff — the coupling it reintroduces is
-  # invisible until someone tries to build without SQLite. commit.sh runs the
-  # same script pre-commit; this job covers the paths that bypass the hook.
-  # Pure bash (grep), no toolchain, so it runs on every PR.
-  orm-backend-imports:
-    name: ORM layer names no concrete backend
-    runs-on: ubuntu-24.04
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Check backend-neutral modules
-        run: ./scripts/check-orm-backend-imports.sh
-
-      - name: Self-test the checker
-        run: ./scripts/tests/test_check_orm_backend_imports.sh
-
-  # The default STORM_PG_CONNSTR is chosen per host OS by scripts/pg-default-connstr.sh
-  # (Linux /var/run/postgresql, macOS /tmp). CI itself never calls it: both jobs that
-  # use PostgreSQL export their own connection string for the service container. So
-  # without this job a broken Linux or Darwin branch ships green and only a developer's
-  # machine notices, as a coverage gate stuck at ~99.8% with every PG test skipped.
-  # The helper takes the OS name as an argument, so this Linux runner exercises the
-  # Darwin branch too. Pure bash, no docker or toolchain, runs on every PR.
-  pg-default-connstr:
-    name: default STORM_PG_CONNSTR per host OS
-    runs-on: ubuntu-24.04
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Self-test the per-OS PostgreSQL socket default
-        run: ./scripts/tests/test_pg_default_connstr.sh
-
-  # scripts/lib/line_coverage.sh reads the line-coverage percentage for both
-  # commit.sh's gate and the `coverage` job below. It used `grep -oP`, which
-  # macOS BSD grep lacks, so the pre-commit gate failed on every Mac while this
-  # Linux CI (GNU grep) stayed green (#680). The self-test runs the helper and
-  # commit.sh's real run_coverage_check() against a stubbed lcov summary, behind
-  # a `grep` shim that rejects GNU-only usage (-P, PCRE-only syntax) — so a
-  # reintroduced `grep -oP` fails here even though this runner's GNU grep would
-  # accept it. It also scans commit.sh and the scripts it runs for bash-4-only
-  # constructs (#689): they run under macOS /bin/bash 3.2, which this runner's
-  # bash 5 cannot reproduce. Pure bash. The job also runs the stdlib-unittest
-  # self-tests of the commit.sh Python helpers (#688): uncovered_lines,
-  # pre_commit_guards, smart_skip, tidy_prereqs.
-  line-coverage-parser:
-    name: line-coverage parser (#680)
-    runs-on: ubuntu-24.04
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Self-test the line-coverage parser
-        run: ./scripts/tests/test_line_coverage.sh
-
-      - name: Self-test the commit.sh Python helpers (#688)
-        run: |
-          for t in uncovered_lines pre_commit_guards smart_skip tidy_prereqs; do
-            ./scripts/tests/test_$t.py
-          done
+      - name: Run every guard in scripts/pre_commit_guards.py
+        run: ./scripts/pre_commit_guards.py --all
 
   # cmake/clang_p2996_host.cmake resolves clang-p2996's on-disk layout
   # (Linux/amd64 Docker vs. native macOS/arm64) for CMAKE_CXX_STDLIB_MODULES_JSON
@@ -549,7 +423,7 @@ jobs:
       RUN_HEAVY: ${{ needs.changes.outputs.run_heavy }}
     runs-on: ubuntu-24.04
     container:
-      # Keep in sync with the `test` job's pin — digest-guard asserts they agree.
+      # Keep in sync with the `test` job's pin — scripts/check_ci_digests.py asserts they agree.
       # lcov/genhtml ship in the image already (docker/ci/Dockerfile), so this
       # job needs no image change.
       image: ghcr.io/spiritecosse/storm-ci@sha256:ae4f62771d7611c663ccb8e0061af9acc8a8a3fe604eabde4285d11a77d37a61
@@ -748,10 +622,8 @@ jobs:
   #      push run), so GitHub offers the context in the settings UI at all.
   #   3. Edit branch protection: ADD `CI gate`, and REMOVE every per-job and
   #      per-matrix CI context (the seven matrix legs, `coverage (100% lines,
-  #      filtered)`, `clang-p2996 host-layout resolution`, `storm-ci digest
-  #      consistency`, `agent frontmatter (single-line descriptions)`,
-  #      `clang-tidy skip-list classification (#550)`, `session-start hook wires
-  #      core.hooksPath (#651)`, `detect changed files`).
+  #      filtered)`, `clang-p2996 host-layout resolution`, `pre-commit
+  #      guards (all, #708)`, `detect changed files`).
   #      Keep `SonarCloud Code Analysis`. Removing is not optional: adding
   #      `CI gate` alongside the old names leaves docs-only PRs stuck on them.
   #   4. Only then, the flip below.
@@ -788,13 +660,7 @@ jobs:
     if: always()
     needs:
       - changes
-      - digest-guard
-      - agent-frontmatter
-      - clang-tidy-skiplist
-      - githooks-wiring
-      - orm-backend-imports
-      - pg-default-connstr
-      - line-coverage-parser
+      - script-guards
       - clang-p2996-host-layout
       - test
       - coverage
@@ -813,7 +679,7 @@ jobs:
       # `needs:`. Once this is the ONLY required CI context, such a job could
       # go red on a PR without blocking the merge: CI green while blind to
       # something it never looked at. So assert the two lists agree first,
-      # the same way `digest-guard` asserts the image pins agree rather than
+      # the same way check_ci_digests.py asserts the image pins agree rather than
       # trusting that they do.
       - name: Assert this job gates every job in the workflow
         run: |

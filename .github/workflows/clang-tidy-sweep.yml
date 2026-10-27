@@ -21,7 +21,7 @@ jobs:
     runs-on: ubuntu-24.04
     container:
       # Same pinned storm-ci image as ci.yml — keep digests in sync when bumping.
-      # Enforced by the `digest-guard` job in ci.yml, which fails on drift.
+      # Enforced by scripts/check_ci_digests.py (pre-commit + ci.yml's script-guards job).
       image: ghcr.io/spiritecosse/storm-ci@sha256:ae4f62771d7611c663ccb8e0061af9acc8a8a3fe604eabde4285d11a77d37a61
 
     steps:

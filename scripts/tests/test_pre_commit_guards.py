@@ -54,12 +54,12 @@ class TriggerTest(unittest.TestCase):
         steps = pcg.triggered_steps(guard, ["src/orm/queryset.cppm"])
         self.assertEqual([pathlib.Path(s.command[-1]).name for s in steps], ["check-orm-backend-imports.sh"])
 
-    def test_backend_checker_staged_also_runs_its_self_test(self):
+    def test_backend_checker_staged_runs_its_self_test_first(self):
         staged = ["scripts/check-orm-backend-imports.sh"]
         guard = next(g for g in pcg.triggered_guards(staged) if g.name == "ORM backend neutrality")
         steps = pcg.triggered_steps(guard, staged)
         self.assertEqual([pathlib.Path(s.command[-1]).name for s in steps],
-                         ["check-orm-backend-imports.sh", "test_check_orm_backend_imports.sh"])
+                         ["test_check_orm_backend_imports.sh", "check-orm-backend-imports.sh"])
 
     def test_commit_sh_triggers_the_script_self_tests(self):
         self.assertEqual(
@@ -82,6 +82,30 @@ class TriggerTest(unittest.TestCase):
         for guard in pcg.GUARDS:
             for step in guard.steps:
                 self.assertTrue(pathlib.Path(step.command[-1]).exists(), step.command)
+
+    def test_every_script_self_test_is_run_by_a_guard(self):
+        # CI runs the table with --all, so a self-test no guard names runs nowhere —
+        # four of them did before #708. New ones must join the table.
+        run = {pathlib.Path(step.command[-1]).name for guard in pcg.GUARDS for step in guard.steps}
+        tests = {p.name for p in (pcg.ROOT / "scripts" / "tests").glob("test_*") if p.is_file()}
+        self.assertEqual(sorted(tests - run - set(pcg.NOT_GUARDED)), [])
+
+    def test_not_guarded_entries_exist_and_are_really_unguarded(self):
+        run = {pathlib.Path(step.command[-1]).name for guard in pcg.GUARDS for step in guard.steps}
+        for name in pcg.NOT_GUARDED:
+            self.assertTrue((pcg.ROOT / "scripts" / "tests" / name).is_file(), name)
+            self.assertNotIn(name, run)
+
+    def test_workflow_edit_triggers_the_digest_check(self):
+        for staged in (".github/workflows/ci.yml", ".github/workflows/bench-ratio-spike.yml"):
+            self.assertEqual(names(pcg.triggered_guards([staged])), ["storm-ci digest pins"], staged)
+
+    def test_orphaned_self_tests_trigger_on_their_scripts(self):
+        for staged, guard in (("scripts/ninjalog_stats.py", "ninjalog stats"),
+                              ("scripts/time_trace.py", "time-trace capture"),
+                              ("scripts/tu_ablation.py", "TU ablation transforms"),
+                              ("scripts/coverage-run-batched.sh", "coverage batch parallelism")):
+            self.assertIn(guard, names(pcg.triggered_guards([staged])), staged)
 
     def test_every_guard_is_reachable_by_its_own_files(self):
         # A trigger regex that matches none of the files it guards would be dead.
@@ -140,6 +164,51 @@ class RunTest(unittest.TestCase):
         self.assertEqual(code, 1)
 
 
+class RunAllTest(unittest.TestCase):
+    """--all (#708): what CI runs, so every guard regardless of staged files."""
+
+    def guard(self, name, *steps):
+        return pcg.Guard(name, r"^never-staged$", tuple(steps), name + " ok")
+
+    def step(self, command, trigger=r"^never-staged$"):
+        return pcg.Step(trigger, command, "%s failed" % command[-1])
+
+    def run_all(self, *guards):
+        out = io.StringIO()
+        return pcg.run_all_guards(guards, out), out.getvalue()
+
+    def test_untriggered_guards_and_step_triggers_are_ignored(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            marker = pathlib.Path(tmp) / "ran"
+            code, out = self.run_all(self.guard("g", self.step(["true"]),
+                                                self.step(["sh", "-c", "touch '%s'" % marker])))
+            self.assertTrue(marker.exists())
+        self.assertEqual(code, 0)
+        self.assertIn("✓ g ok", out)
+
+    def test_continues_past_a_failing_guard_and_returns_one(self):
+        code, out = self.run_all(self.guard("bad", self.step(["false"])),
+                                 self.guard("good", self.step(["true"])))
+        self.assertEqual(code, 1)
+        self.assertIn("✓ good ok", out)
+
+    def test_a_failing_step_stops_the_rest_of_its_own_guard(self):
+        # Self-tests run before their checker: a broken checker must not be
+        # reported as a broken tree.
+        code, out = self.run_all(self.guard("g", self.step(["false"]), self.step(["/nonexistent/second"])))
+        self.assertEqual(code, 1)
+        self.assertNotIn("second failed", out)
+
+    def test_failure_is_not_worded_as_a_blocked_commit(self):
+        _, out = self.run_all(self.guard("bad", self.step(["false"])))
+        self.assertIn("GUARD FAILED — false failed", out)
+        self.assertNotIn("COMMIT BLOCKED", out)
+
+    def test_summary_names_every_failed_guard(self):
+        _, out = self.run_all(self.guard("one", self.step(["false"])), self.guard("two", self.step(["false"])))
+        self.assertIn("2 guard(s) failed: one, two", out)
+
+
 class CliTest(unittest.TestCase):
     def run_cli(self, *args):
         return subprocess.run([sys.executable, str(HELPER)] + list(args), input="",
@@ -156,6 +225,19 @@ class CliTest(unittest.TestCase):
     def test_closed_log_fd_does_not_crash_the_runner(self):
         # fd 3 is not open in the child: the runner falls back to the terminal.
         self.assertEqual(self.run_cli("--log-file", "x.log").returncode, 0)
+
+    def test_all_flag_runs_the_whole_table_without_reading_stdin(self):
+        # In-process: the real table includes this very test, so a subprocess
+        # `--all` here would recurse.
+        with mock.patch.object(pcg, "run_all_guards", return_value=0) as run_all, \
+                mock.patch.object(pcg.sys, "stdin") as stdin:
+            self.assertEqual(pcg.main(["pre_commit_guards.py", "--all"]), 0)
+        run_all.assert_called_once_with(pcg.GUARDS, pcg.sys.stdout)
+        stdin.read.assert_not_called()
+
+    def test_all_flag_propagates_failure(self):
+        with mock.patch.object(pcg, "run_all_guards", return_value=1):
+            self.assertEqual(pcg.main(["pre_commit_guards.py", "--all"]), 1)
 
 
 class OpenLogFdTest(unittest.TestCase):
