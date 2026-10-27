@@ -8,8 +8,15 @@ newer than Python 3.7, so macOS system python3 runs it.
 
     printf '%s\\n' "$staged" | scripts/pre_commit_guards.py [--log-file NAME]  3> logfile
     (commit.sh opens fd 3 on the log file; NAME is only shown to the user)
+    scripts/pre_commit_guards.py --all     (CI: every guard, every step, stdin ignored)
 
 Exit: 0 = every triggered guard passed (or none triggered), 1 = a guard blocked.
+
+WHY CI RUNS --all (#708). The hook is local and bypassable — an unwired clone
+(#651), a web edit, a merge — and it only runs the guards a commit's files
+trigger, so a broken shared helper can pass the commit that broke it. CI is what
+checks the merged tree, so it runs the whole table from one job. A new guard is
+therefore covered in CI by adding its row here, with no workflow edit.
 
 WHY THIS RUNS BEFORE commit.sh's TOTAL_STEPS==0 EARLY EXIT. A commit that
 touches only a guard's own files has no C++ or cmake, so every other step is
@@ -206,11 +213,11 @@ ORM_BACKEND_IMPORTS = Guard(
     "ORM backend neutrality",
     r"^(src/.*\.cppm|scripts/check-orm-backend-imports\.sh|scripts/tests/test_check_orm_backend_imports\.sh)$",
     (
-        Step(None, script("scripts/check-orm-backend-imports.sh"),
-             "backend-neutral ORM module names a concrete backend"),
         Step(r"^scripts/(check-orm-backend-imports|tests/test_check_orm_backend_imports)\.sh$",
              script("scripts/tests/test_check_orm_backend_imports.sh"),
              "ORM backend-neutrality checker self-test failed"),
+        Step(None, script("scripts/check-orm-backend-imports.sh"),
+             "backend-neutral ORM module names a concrete backend"),
     ),
     "ORM backend-neutrality guard passed",
 )
@@ -224,10 +231,72 @@ PRE_COMMIT_GUARDS = Guard(
     "pre-commit guards self-test passed",
 )
 
+# --- storm-ci digest pins (#530, #708) ---
+# Every workflow running in the storm-ci image pins it by digest; drift silently
+# runs two workflows on two clang-p2996 builds (#498). Was ci.yml's inline
+# `digest-guard` job, so a pin edit was only caught after the push.
+CI_DIGESTS = Guard(
+    "storm-ci digest pins",
+    r"^(\.github/workflows/[^/]+\.ya?ml|scripts/(tests/test_)?check_ci_digests\.py)$",
+    (
+        Step(r"^scripts/(tests/test_)?check_ci_digests\.py$",
+             script("scripts/tests/test_check_ci_digests.py"), "storm-ci digest checker self-test failed"),
+        Step(None, script("scripts/check_ci_digests.py"), "storm-ci digest pins disagree"),
+    ),
+    "storm-ci digest pins agree",
+)
+
+# --- script self-tests that ran nowhere before #708 ---
+# Each pins a tool whose bugs are invisible in its output: a serialised coverage
+# batch (#268), or a plausible-but-wrong compile-time number in COMPILE_TIME.md.
+COVERAGE_PARALLEL = Guard(
+    "coverage batch parallelism",
+    r"^scripts/(coverage-run-batched\.sh|pg-default-connstr\.sh|tests/test_coverage_parallel\.sh)$",
+    (Step(None, script("scripts/tests/test_coverage_parallel.sh"),
+          "coverage batch parallelism self-test failed"),),
+    "coverage batch parallelism self-test passed",
+)
+
+NINJALOG_STATS = Guard(
+    "ninjalog stats",
+    r"^scripts/(ninjalog_stats\.py|tests/test_ninjalog_stats\.sh)$",
+    (Step(None, script("scripts/tests/test_ninjalog_stats.sh"), "ninjalog stats self-test failed"),),
+    "ninjalog stats self-test passed",
+)
+
+TIME_TRACE = Guard(
+    "time-trace capture",
+    r"^scripts/(time_trace\.py|tests/test_time_trace\.sh)$",
+    (Step(None, script("scripts/tests/test_time_trace.sh"), "time-trace capture self-test failed"),),
+    "time-trace capture self-test passed",
+)
+
+# Its self-test also parses every tests/**/*.cpp, but staging one does not trigger
+# it: that would run it on nearly every test commit. CI's --all is the backstop.
+TU_ABLATION = Guard(
+    "TU ablation transforms",
+    r"^scripts/(tu_ablation\.py|tests/test_tu_ablation\.sh)$",
+    (Step(None, script("scripts/tests/test_tu_ablation.sh"), "TU ablation transforms self-test failed"),),
+    "TU ablation transforms self-test passed",
+)
+
 GUARDS = (
     AGENT_FRONTMATTER, TIDY_SKIPLIST, SESSION_START_HOOK, SELF_HEAL, CMAKE_FORMAT_TARGET, PYYAML_CHECK, PG_SOCKET_DEFAULT,
     LINE_COVERAGE, UNCOVERED_LINES, SMART_SKIP, TIDY_PREREQS, ORM_BACKEND_IMPORTS, PRE_COMMIT_GUARDS,
+    CI_DIGESTS, COVERAGE_PARALLEL, NINJALOG_STATS, TIME_TRACE, TU_ABLATION,
 )
+
+# scripts/tests/ self-tests deliberately run by no guard, with where they DO run.
+# Every other self-test must be a step above (the table test enforces it), since a
+# self-test outside the table is one CI never runs.
+NOT_GUARDED = {
+    "test_libcxx_modules_symlink.sh":
+        "needs the storm-ci image's clang-p2996 layout and CMake 3.30+; "
+        "ci.yml's clang-p2996-host-layout job runs it",
+}
+
+COMMIT_BLOCKED = "COMMIT BLOCKED"
+GUARD_FAILED = "GUARD FAILED"
 
 
 def any_match(pattern, paths):
@@ -253,11 +322,24 @@ def run_step(step, log_stream):
         return False
 
 
-def block(out, message, log_label):
-    out.write("\n%s%s COMMIT BLOCKED — %s%s\n" % (RED, BOLD, message, RESET))
+def block(out, verdict, message, log_label):
+    out.write("\n%s%s %s — %s%s\n" % (RED, BOLD, verdict, message, RESET))
     if log_label:
         out.write("%s  → full output: %s%s\n" % (DIM, log_label, RESET))
     out.flush()
+
+
+def run_guard(guard, steps, out, verdict, stream=None, log_label=""):
+    """True when every step passed. A failed step ends the guard: its self-test
+    runs before its checker, and a broken checker says nothing about the tree."""
+    for step in steps:
+        out.flush()
+        if not run_step(step, stream):
+            block(out, verdict, step.blocked, log_label if stream is not None else "")
+            return False
+    out.write("%s✓ %s%s\n" % (DIM, guard.ok, RESET))
+    out.flush()
+    return True
 
 
 def run_guards(guards, staged, out, log_stream=None, log_label=""):
@@ -270,14 +352,22 @@ def run_guards(guards, staged, out, log_stream=None, log_label=""):
         if not any_match(guard.trigger, staged):
             continue
         stream = log_stream if guard.log else None
-        for step in triggered_steps(guard, staged):
-            out.flush()
-            if not run_step(step, stream):
-                block(out, step.blocked, log_label if stream is not None else "")
-                return 1
-        out.write("%s✓ %s%s\n" % (DIM, guard.ok, RESET))
-        out.flush()
+        if not run_guard(guard, triggered_steps(guard, staged), out, COMMIT_BLOCKED, stream, log_label):
+            return 1
     return 0
+
+
+def run_all_guards(guards, out):
+    """--all: every guard and every step, whatever is staged. 0 or 1.
+
+    Unlike run_guards it does not stop at the first failed guard, so one CI run
+    reports every failure. Output goes to the terminal: there is no log fd in CI.
+    """
+    failed = [guard.name for guard in guards if not run_guard(guard, guard.steps, out, GUARD_FAILED)]
+    if not failed:
+        return 0
+    out.write("\n%s%s%d guard(s) failed: %s%s\n" % (RED, BOLD, len(failed), ", ".join(failed), RESET))
+    return 1
 
 
 def open_log_fd():
@@ -292,7 +382,11 @@ def main(argv):
     parser = argparse.ArgumentParser(description="Run commit.sh's staged-file guards.")
     parser.add_argument("--log-file", default="",
                         help="enable guard logging to fd %d; the name is shown in the BLOCK message, never opened" % LOG_FD)
+    parser.add_argument("--all", action="store_true",
+                        help="run every guard and step regardless of staged files; stdin is not read (CI)")
     args = parser.parse_args(argv[1:])
+    if args.all:
+        return run_all_guards(GUARDS, sys.stdout)
     staged = [line for line in sys.stdin.read().split("\n") if line]
     return run_guards(GUARDS, staged, sys.stdout, open_log_fd() if args.log_file else None, args.log_file)
 

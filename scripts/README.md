@@ -213,8 +213,8 @@ Exit code `0` = all agent files valid, `1` = at least one invalid.
 - **`commit.sh`** — whenever a `.claude/agents/*.md` file is staged (and runs the self-test too when the checker or its test is staged). Runs before the
   step-count early exit, since an agent-only commit skips every C++/cmake step and is
   exactly the commit that can introduce this bug.
-- **CI** — the `agent-frontmatter` job in `.github/workflows/ci.yml`, which also self-tests
-  the validator. Emits `::error file=…` annotations so failures land on the file in the PR diff.
+- **CI** — the `script-guards` job in `.github/workflows/ci.yml` (`pre_commit_guards.py --all`),
+  which also self-tests the validator. Emits `::error file=…` annotations so failures land on the file in the PR diff.
 
 ### Notes
 
@@ -291,16 +291,21 @@ for t in scripts/tests/test_*.sh; do "$t" || echo "FAILED: $t"; done
 ```
 
 The agent-frontmatter checker and the helpers `commit.sh` delegates to (#688) are Python, so their
-self-tests are too: `test_check_agent_frontmatter.py`, `test_uncovered_lines.py`,
+self-tests are too: `test_check_agent_frontmatter.py`, `test_check_ci_digests.py`, `test_uncovered_lines.py`,
 `test_pre_commit_guards.py`, `test_smart_skip.py` and `test_tidy_prereqs.py` (stdlib `unittest`, need
 only `python3`, no syntax newer than 3.7) are not matched by the `*.sh` loop above — run them on their
-own. Each also runs in CI and in `commit.sh` when it is staged.
+own. Each also runs in `commit.sh` when it is staged.
+
+Every self-test here is a row (step) of `pre_commit_guards.py`'s `GUARDS` table, except those in its
+`NOT_GUARDED` map; `test_pre_commit_guards.py` fails on one in neither. CI's `script-guards` job runs
+the whole table with `pre_commit_guards.py --all` — every guard, whatever changed, continuing past a
+failure so one run reports them all (#708). So a new self-test reaches CI by becoming a guard row.
 
 `commit.sh` is a thin bash orchestrator (sequencing `cmake`/`ninja`/`git`, exit codes); its logic lives in:
 
 | Helper | What it does |
 |---|---|
-| `pre_commit_guards.py` | The staged-file guards as one table (trigger regex → checker/self-test → BLOCK message). Run **before** `commit.sh`'s `TOTAL_STEPS==0` early exit. Add a guard by adding a `Guard(...)` row to `GUARDS`. |
+| `pre_commit_guards.py` | The staged-file guards as one table (trigger regex → checker/self-test → BLOCK message). Run **before** `commit.sh`'s `TOTAL_STEPS==0` early exit. Add a guard by adding a `Guard(...)` row to `GUARDS`. `--all` runs every row regardless of staged files and continues past a failure — CI's `script-guards` job (#708). |
 | `smart_skip.py` | The smart-skip decision table: reads `detect-changes.sh`'s `HAS_*` output, prints the `RUN_*` switches and `SKIP_NOTE` for `commit.sh` to `eval`. |
 | `tidy_prereqs.py` | Whether clang-tidy's module BMIs exist for the staged files (#557). Prints `complete`; anything else — including a crash — is `incomplete`, so the caller rebuilds. |
 | `uncovered_lines.py` | The uncovered files and line ranges `commit.sh`'s coverage step prints on a sub-100% result. Takes no arguments: it reads `build/debug/coverage/coverage-filtered.lcov` under the cwd. |

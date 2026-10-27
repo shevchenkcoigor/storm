@@ -60,8 +60,8 @@ open build/debug/coverage/html-filtered/index.html      # macOS
 
 ### CI Pipeline
 
-The `coverage` job in `.github/workflows/ci.yml` runs on every PR and push to
-`develop`. It builds `ninja-debug`, runs the `coverage` target, and **fails the
+The `coverage` job in `.github/workflows/ci.yml` runs on every PR and nightly on
+`develop` (not on the post-merge push — #700). It builds `ninja-debug`, runs the `coverage` target, and **fails the
 job below 100% line coverage** — the same gate `commit.sh` applies locally, so
 the threshold is no longer self-reported from one developer's machine (#528).
 
