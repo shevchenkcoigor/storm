@@ -3,15 +3,14 @@ project(storm_fuzz LANGUAGES CXX)
 message(STATUS "Configuring fuzz harnesses")
 
 # Compilation: -fsanitize=address,fuzzer-no-link matches the flags set on the
-# storm library in cmake/fuzz.cmake. Identical compilation flags → identical
-# module cache hash → no "defined in both" conflict for built-in modules.
+# storm library in cmake/fuzz.cmake. Identical compilation flags keep the
+# harness TUs' module configuration consistent with the library's PCMs.
 #
 # Linking: -fsanitize=address,fuzzer (no "no-link") pulls in the full libFuzzer
 # runtime and replaces main() with LLVMFuzzerTestOneInput-based wrapper — this
 # is only applied to the harness executables, not to libstorm.a.
-set(FUZZ_COMPILE_FLAGS
-    -fsanitize=address,fuzzer-no-link -g -fno-omit-frame-pointer
-    "-fmodules-cache-path=${CMAKE_BINARY_DIR}/module-cache")
+set(FUZZ_COMPILE_FLAGS -fsanitize=address,fuzzer-no-link -g
+                       -fno-omit-frame-pointer)
 
 set(FUZZ_LINK_FLAGS -fsanitize=address,fuzzer -g -fno-omit-frame-pointer)
 
