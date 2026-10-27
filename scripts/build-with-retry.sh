@@ -14,14 +14,10 @@ for attempt in 1 2 3; do
         exit 0
     fi
     echo "Build failed on attempt $attempt, clearing caches..."
-    # Clear .ddi scan-deps outputs so ninja re-scans. Leave *.pcm files in
-    # build/*/module-cache/ intact — those are the authoritative per-preset
-    # module cache (pinned via -fmodules-cache-path in root CMakeLists.txt)
-    # and deleting them forces builtin modules to be rebuilt on every retry,
-    # which aggravates the very scan-deps flakiness this retry is working
-    # around. Only prune stray PCMs outside module-cache (there shouldn't be
-    # any in a healthy build, but clean them up defensively).
-    find build/ -name "*.pcm" -not -path "*/module-cache/*" -delete 2>/dev/null || true
+    # Clear .ddi scan-deps outputs so ninja re-scans, and the PCMs CMake built
+    # next to them (build/*/CMakeFiles/**), so a stale BMI cannot survive a
+    # failed attempt.
+    find build/ -name "*.pcm" -delete 2>/dev/null || true
     find build/ -name "*.ddi" -delete 2>/dev/null || true
 done
 echo "Build failed after 3 attempts"

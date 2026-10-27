@@ -31,11 +31,6 @@ SQL errors (e.g. malformed patterns) are **expected and caught** inside every ha
 ```bash
 cmake --preset ninja-fuzz
 
-# First build: run serially to warm the module cache (avoids a known
-# clang-scan-deps race when the module-cache/ directory is empty)
-cmake --build --preset ninja-fuzz -- -j 1
-
-# Subsequent builds: full parallelism is safe once the cache is warm
 cmake --build --preset ninja-fuzz
 ```
 
@@ -45,10 +40,9 @@ Binaries are placed in `build/fuzz/fuzz/`.
 
 The fuzz preset compiles **both the storm library and fuzz harnesses** with
 `-fsanitize=address,fuzzer-no-link`. Using the same compilation flags for all
-targets is required to keep module cache entries under a single hash — if the
-library and harnesses had different flags, clang would create two hash
-subdirectories for built-in modules (`_Builtin_stddef`, etc.) in the same cache
-directory and emit a fatal "defined in both" error.
+targets is required because the sanitizer configuration is recorded in each
+BMI/PCM — if the library and harnesses had different flags, clang would refuse
+to load the library's precompiled modules in the harness TUs.
 
 Only the **link step** for harnesses uses `-fsanitize=address,fuzzer` (which
 pulls in the libFuzzer runtime and replaces `main()`). The storm library

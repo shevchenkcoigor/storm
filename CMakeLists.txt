@@ -51,20 +51,11 @@ execute_process(
 add_compile_options(-ferror-limit=1
                     $<$<CONFIG:Debug>:-ftemplate-backtrace-limit=0>)
 
-# Pin Clang's module cache to the build dir. Clang hashes compile flags into the
-# module cache path, so two presets with different flags (coverage vs no
-# coverage, sanitizer vs none, etc.) write _Builtin_stddef etc. under different
-# hash subdirs of the shared global cache (~/.cache/clang/ModuleCache/). When a
-# later TU imports a module, Clang sees the same builtin module in both dirs and
-# emits a fatal "module defined in both" error. Keeping the cache local to
-# ${CMAKE_BINARY_DIR} guarantees preset isolation, since every preset already
-# has its own binaryDir.
-add_compile_options("-fmodules-cache-path=${CMAKE_BINARY_DIR}/module-cache")
-
-# import std; migration (issue #326): with -fmodules dropped (see
-# apply_clang_flags() in cmake/libcxx.cmake), the -fmodules-cache-path flag
-# above is no longer consumed; -Werror would otherwise promote the resulting
-# -Wunused-command-line-argument to a hard error.
+# No -fmodules-cache-path: that flag configures Clang's implicit-modules cache,
+# which only exists with -fmodules. The tree consumes named modules (`import
+# std;`, issue #326) built by CMake/ninja into each preset's own binaryDir, so
+# presets are isolated already and the flag was dead -- it only made
+# clang-scan-deps print "argument unused" once per TU (#714).
 add_compile_options(-Wno-unused-command-line-argument)
 
 # CMake 4.4.0 (#521/#522) leaks target-scoped -Werror onto the CMake-synthesized
