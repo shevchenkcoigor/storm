@@ -134,6 +134,17 @@ CMAKE_FORMAT_TARGET = Guard(
     "cmake-format target self-test passed",
 )
 
+# --- PyYAML configure check (#703) ---
+# cmake/pyyaml.cmake turns a Python without PyYAML into a configure-time error instead of a
+# mid-build `No module named 'yaml'`. Needs plain cmake only.
+PYYAML_CHECK = Guard(
+    "PyYAML configure check",
+    r"^(cmake/pyyaml\.cmake|scripts/tests/test_pyyaml_check\.py)$",
+    (Step(None, script("scripts/tests/test_pyyaml_check.py"),
+          "PyYAML configure check self-test failed"),),
+    "PyYAML configure check self-test passed",
+)
+
 # --- per-OS PostgreSQL socket default ---
 # A wrong branch in scripts/pg-default-connstr.sh silently skips every PG test and
 # leaves the coverage gate stuck at ~99.8%.
@@ -280,7 +291,7 @@ SONAR_GATE = Guard(
 )
 
 GUARDS = (
-    AGENT_FRONTMATTER, TIDY_SKIPLIST, SESSION_START_HOOK, SELF_HEAL, CMAKE_FORMAT_TARGET, PG_SOCKET_DEFAULT,
+    AGENT_FRONTMATTER, TIDY_SKIPLIST, SESSION_START_HOOK, SELF_HEAL, CMAKE_FORMAT_TARGET, PYYAML_CHECK, PG_SOCKET_DEFAULT,
     LINE_COVERAGE, UNCOVERED_LINES, SMART_SKIP, TIDY_PREREQS, ORM_BACKEND_IMPORTS, PRE_COMMIT_GUARDS,
     CI_DIGESTS, COVERAGE_PARALLEL, NINJALOG_STATS, TIME_TRACE, TU_ABLATION, SONAR_GATE,
 )

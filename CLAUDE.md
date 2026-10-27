@@ -135,6 +135,7 @@ cmake --preset ninja-prod && cmake --build --preset ninja-prod
 ### CMake Module Structure
 ```
 cmake/
+├── pyyaml.cmake          # storm_require_pyyaml(): configure-time check that the found Python can import yaml (#703)
 ├── libcxx.cmake          # LIBCXX_ROOT validation, global -nostdinc++ flags, apply_clang_flags()
 ├── db.cmake              # find_package SQLite3 + PostgreSQL, link_sqlite/link_postgresql helpers
 ├── cpm.cmake             # CPM.cmake bootstrap (auto-downloaded on first configure)
@@ -313,7 +314,7 @@ See [docs/internals/testing/CODE_COVERAGE.md](docs/internals/testing/CODE_COVERA
 
 ### Prerequisites
 - Custom Clang with C++26 reflection (`../clang-p2996/`)
-- SQLite3, CMake 3.30+, Ninja
+- SQLite3, CMake 3.30+, Ninja, Python 3 with PyYAML (tests/benchmarks convert YAML→JSON at build time; configure fails with a fix-it message if the found Python lacks it; it never installs anything — point CMake at another with `-DPython3_EXECUTABLE=<path>`)
 
 **No `../clang-p2996` locally? (issue #628)** — Claude Code remote/sandboxed sessions start
 with no compiler and can't configure, build, run tests, or run clang-format/clang-tidy without

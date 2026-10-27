@@ -15,6 +15,7 @@ find_package(
   Python3
   COMPONENTS Interpreter
   REQUIRED)
+storm_require_pyyaml()
 
 add_custom_command(
   OUTPUT "${JSON_OUTPUT}"
