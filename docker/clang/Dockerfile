@@ -13,7 +13,7 @@
 #   1. rebuild + `docker push` storm-clang:latest from the clang-p2996 checkout
 #   2. dispatch .github/workflows/docker-ci-image.yml (republishes storm-ci)
 #   3. bump the storm-ci@sha256 digest pins — ci.yml, clang-tidy-sweep.yml and
-#      bench-ratio-spike.yml; ci.yml's `digest-guard` job asserts they AGREE
+#      bench-ratio-spike.yml; scripts/check_ci_digests.py asserts they AGREE
 #      with each other, but cannot tell you they are stale
 #
 # Skipping step 1 is the silent failure: storm-ci rebuilds fine against the old

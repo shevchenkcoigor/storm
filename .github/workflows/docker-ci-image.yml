@@ -69,7 +69,7 @@ jobs:
       # this run surfaced it nowhere — you had to pull the image or dig through
       # the GHCR package page to find out what you had just published. Print it
       # into the job summary so the whole publish flow is doable from a browser.
-      # digest-guard asserts those three pins AGREE with each other; it cannot
+      # scripts/check_ci_digests.py asserts those three pins AGREE with each other; it cannot
       # tell you they are stale, so nothing catches a skipped update.
       - name: Report digest to pin
         env:
@@ -82,7 +82,7 @@ jobs:
             echo "ghcr.io/spiritecosse/storm-ci@${DIGEST}"
             echo '```'
             echo
-            echo "Pin this in **all three** workflows, then let \`digest-guard\` confirm they agree:"
+            echo "Pin this in **all three** workflows, then let \`scripts/check_ci_digests.py\` confirm they agree:"
             echo
             echo "- \`.github/workflows/ci.yml\` (3 occurrences)"
             echo "- \`.github/workflows/clang-tidy-sweep.yml\` (1)"
