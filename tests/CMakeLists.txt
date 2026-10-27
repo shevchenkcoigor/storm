@@ -8,6 +8,7 @@ project(storm_tests LANGUAGES CXX)
 # ============================================================================
 
 find_package(Python3 REQUIRED COMPONENTS Interpreter)
+storm_require_pyyaml()
 
 set(TEST_CASES_DIR "${CMAKE_CURRENT_SOURCE_DIR}/test_cases")
 

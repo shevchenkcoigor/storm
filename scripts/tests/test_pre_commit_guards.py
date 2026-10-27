@@ -72,6 +72,10 @@ class TriggerTest(unittest.TestCase):
         for staged in (["cmake/format.cmake"], ["scripts/tests/test_cmake_format_target.sh"]):
             self.assertEqual(names(pcg.triggered_guards(staged)), ["cmake-format target"])
 
+    def test_pyyaml_check_files_trigger_their_self_test(self):
+        for staged in (["cmake/pyyaml.cmake"], ["scripts/tests/test_pyyaml_check.py"]):
+            self.assertEqual(names(pcg.triggered_guards(staged)), ["PyYAML configure check"])
+
     def test_bash_scripts_commit_sh_runs_trigger_the_bash_3_2_scan(self):
         # test_line_coverage.sh scans these for bash-4-only constructs (#689).
         for staged in ("scripts/lib/clang_tidy_skiplist.sh", "scripts/run_clang_tidy.sh",

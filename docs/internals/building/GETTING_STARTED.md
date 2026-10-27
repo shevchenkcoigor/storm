@@ -83,6 +83,21 @@ cmake --preset ninja-release
 cmake --build --preset ninja-release
 ```
 
+## Python and PyYAML
+
+The tests and benchmarks convert their YAML corpora to JSON at build time, so the Python 3
+CMake finds must be able to `import yaml`. Configure checks this and stops with the
+interpreter's path if it can't; it never installs anything. Either install PyYAML into that Python
+(`<python> -m pip install pyyaml`; a Homebrew Python refuses a bare `pip install` as
+"externally managed", so use a venv — `python3 -m venv ~/.venvs/storm &&
+~/.venvs/storm/bin/pip install pyyaml` — or an OS package such as `pacman -S python-yaml` /
+`apt install python3-yaml`), or point CMake at a Python that
+has it — delete `CMakeCache.txt` first if a different one is already cached:
+
+```bash
+cmake --preset ninja-debug -DPython3_EXECUTABLE=/path/to/python3
+```
+
 ## Next steps
 
 - Common workflows: [COMMON_TASKS.md](COMMON_TASKS.md)

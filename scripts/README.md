@@ -275,6 +275,7 @@ bash 3.2 on macOS — and a scan of `commit.sh` and the scripts it sources or ru
 `test_libcxx_modules_symlink.sh`, which covers `cmake/libcxx.cmake` rather
 than a script, `test_cmake_format_target.sh`, which covers `cmake/format.cmake`'s stub
 `cmake-format` target — it fails naming the missing tool in the cmake-format step's own log (#690),
+`test_pyyaml_check.py` (Python, plain cmake), which covers `cmake/pyyaml.cmake`'s configure-time PyYAML check (#703),
 and `test_session_start_hook.sh`, which covers
 `.claude/hooks/session-start-docker.sh` — the SessionStart hook that wires `core.hooksPath` (and
 so decides whether `commit.sh` runs at all, #651) before taking any of its Docker-provisioning

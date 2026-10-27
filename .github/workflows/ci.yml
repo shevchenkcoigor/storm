@@ -261,7 +261,7 @@ jobs:
   # constructs (#689): they run under macOS /bin/bash 3.2, which this runner's
   # bash 5 cannot reproduce. Pure bash. The job also runs the stdlib-unittest
   # self-tests of the commit.sh Python helpers (#688): uncovered_lines,
-  # pre_commit_guards, smart_skip, tidy_prereqs.
+  # pre_commit_guards, smart_skip, tidy_prereqs; plus pyyaml_check (#703, covers cmake/pyyaml.cmake).
   line-coverage-parser:
     name: line-coverage parser (#680)
     runs-on: ubuntu-24.04
@@ -274,7 +274,7 @@ jobs:
 
       - name: Self-test the commit.sh Python helpers (#688)
         run: |
-          for t in uncovered_lines pre_commit_guards smart_skip tidy_prereqs; do
+          for t in uncovered_lines pre_commit_guards smart_skip tidy_prereqs pyyaml_check; do
             ./scripts/tests/test_$t.py
           done
 
