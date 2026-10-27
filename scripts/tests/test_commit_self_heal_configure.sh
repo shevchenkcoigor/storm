@@ -35,6 +35,10 @@ while IFS= read -r git_var; do
     unset "$git_var"
 done < <(git rev-parse --local-env-vars)
 
+# The pre-commit hook exports this when it runs commit.sh (and this test, via the
+# guards). Left set, "manual run" scenarios would run in hook mode.
+unset STORM_PRE_COMMIT_HOOK
+
 PASS=0
 FAIL=0
 FAILED_TESTS=()
@@ -166,9 +170,9 @@ stage() { # <path>...
     done
 }
 
-run_commit() { # <FAIL_PRESETS>
-    OUT="$(cd "$REPO" && PATH="$TMP/bin:$PATH" STUB_CALLS="$TMP/calls" \
-        NINJA_TARGETS="$TMP/ninja_targets" \
+run_commit() { # <FAIL_PRESETS> [env assignment]
+    OUT="$(cd "$REPO" && env PATH="$TMP/bin:$PATH" STUB_CALLS="$TMP/calls" \
+        NINJA_TARGETS="$TMP/ninja_targets" ${2:+"$2"} \
         FAIL_PRESETS="$1" STORM_COMMIT_LOG_DIR="$TMP/logs" ./commit.sh 2>&1)"
     RC=$?
     # Strip ANSI colours; a character-class regex has no ${var//} equivalent.
@@ -362,6 +366,32 @@ scenario_failing_smart_skip_blocks_commit() {
     return 0
 }
 
+# Nothing staged, run by the git hook (#706): a commit that changes nothing needs
+# no checks. The hook says so with STORM_PRE_COMMIT_HOOK=1 (.githooks/pre-commit).
+scenario_hook_empty_index_skips_checks() {
+    run_commit "ninja-debug ninja-release" STORM_PRE_COMMIT_HOOK=1
+    if [[ $RC -eq 0 ]] && grep -qF "No checks needed" <<< "$OUT"; then
+        pass "hook with an empty index runs no checks"
+    else
+        fail "hook with an empty index did not skip (rc=$RC)"
+    fi
+    return 0
+}
+
+# The empty-index route to "No checks needed" must still fail closed: a broken
+# smart-skip helper blocks the commit instead of waving it through.
+scenario_hook_empty_index_failing_helper_blocks() {
+    printf '#!/bin/sh\nexit 1\n' > "$REPO/scripts/smart_skip.py"
+    run_commit "" STORM_PRE_COMMIT_HOOK=1
+    expect_blocked
+    if grep -qF "No checks needed" <<< "$OUT"; then
+        fail "a failing helper let an empty-index hook commit through"
+    else
+        pass "a failing helper does not report 'No checks needed'"
+    fi
+    return 0
+}
+
 # --- Dispatcher ---
 
 run_scenario() {
@@ -384,6 +414,8 @@ run_scenario tidy_tree_without_build_ninja
 run_scenario tidy_targeted_prereqs_under_system_bash
 run_scenario warm_tree_never_configures
 run_scenario failing_smart_skip_blocks_commit
+run_scenario hook_empty_index_skips_checks
+run_scenario hook_empty_index_failing_helper_blocks
 
 echo ""
 echo "$PASS passed, $FAIL failed"
