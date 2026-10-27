@@ -287,7 +287,9 @@ jobs:
   # reintroduced `grep -oP` fails here even though this runner's GNU grep would
   # accept it. It also scans commit.sh and the scripts it runs for bash-4-only
   # constructs (#689): they run under macOS /bin/bash 3.2, which this runner's
-  # bash 5 cannot reproduce. Pure bash.
+  # bash 5 cannot reproduce. Pure bash. The job also runs the stdlib-unittest
+  # self-tests of the commit.sh Python helpers (#688): uncovered_lines,
+  # pre_commit_guards, smart_skip, tidy_prereqs.
   line-coverage-parser:
     name: line-coverage parser (#680)
     runs-on: ubuntu-24.04
@@ -297,6 +299,12 @@ jobs:
 
       - name: Self-test the line-coverage parser
         run: ./scripts/tests/test_line_coverage.sh
+
+      - name: Self-test the commit.sh Python helpers (#688)
+        run: |
+          for t in uncovered_lines pre_commit_guards smart_skip tidy_prereqs; do
+            ./scripts/tests/test_$t.py
+          done
 
   # cmake/clang_p2996_host.cmake resolves clang-p2996's on-disk layout
   # (Linux/amd64 Docker vs. native macOS/arm64) for CMAKE_CXX_STDLIB_MODULES_JSON

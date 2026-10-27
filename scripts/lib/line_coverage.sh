@@ -13,45 +13,8 @@
 # Use only flags BSD and GNU grep share.
 #
 # Usage: storm_parse_line_coverage < summary.txt
-#
-# Also holds storm_format_line_ranges (below), which commit.sh's uncovered-lines
-# report uses when that gate fails.
 
 storm_parse_line_coverage() {
     grep 'lines\.\.\.\.\.\.\.' | tail -1 | grep -oE '[0-9.]+%' | head -1 | tr -d '%'
-    return 0
-}
-
-# Compresses ascending line numbers into ranges for the uncovered-lines report:
-# `storm_format_line_ranges 1 3 4 5 9` prints `1, 3-5, 9`, and nothing for no
-# arguments. The numbers are arguments rather than an array name on purpose
-# (#689): commit.sh runs under macOS /bin/bash 3.2, which has no `local -n`.
-#
-# Usage: storm_format_line_ranges "${lines[@]}"
-
-storm_format_line_ranges() {
-    local result="" range_start="" range_end="" ln
-    for ln in "$@"; do
-        if [[ -z "$range_start" ]]; then
-            range_start=$ln; range_end=$ln
-        elif [[ $ln -eq $((range_end + 1)) ]]; then
-            range_end=$ln
-        else
-            if [[ "$range_start" == "$range_end" ]]; then
-                result+="${result:+, }$range_start"
-            else
-                result+="${result:+, }${range_start}-${range_end}"
-            fi
-            range_start=$ln; range_end=$ln
-        fi
-    done
-    if [[ -n "$range_start" ]]; then
-        if [[ "$range_start" == "$range_end" ]]; then
-            result+="${result:+, }$range_start"
-        else
-            result+="${result:+, }${range_start}-${range_end}"
-        fi
-    fi
-    echo "$result"
     return 0
 }

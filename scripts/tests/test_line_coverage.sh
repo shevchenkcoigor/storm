@@ -135,22 +135,6 @@ if [[ -x /bin/bash && "$(/bin/bash -c 'echo $BASH_VERSION')" != "$BASH_VERSION" 
     SHELLS+=(/bin/bash)
 fi
 
-ranges() { # <shell> <line>...
-    local sh="$1"
-    shift
-    "$sh" -c 'source "$1"; shift; storm_format_line_ranges "$@"' _ "$HELPER" "$@" 2>&1
-    return 0
-}
-
-for sh in "${SHELLS[@]}"; do
-    v="$("$sh" -c 'echo $BASH_VERSION')"
-    check "[bash $v] no lines yields nothing" "" "$(ranges "$sh")"
-    check "[bash $v] a single line" "5" "$(ranges "$sh" 5)"
-    check "[bash $v] a run collapses to a range" "5-7" "$(ranges "$sh" 5 6 7)"
-    check "[bash $v] singles and runs mixed" "1, 3-5, 9, 11-12" \
-        "$(ranges "$sh" 1 3 4 5 9 11 12)"
-done
-
 # --- commit.sh's show_uncovered_lines() ---
 # The real function text, run from a scratch dir holding the lcov file at the
 # relative path it reads. BASH_SOURCE[0] is swapped for commit.sh's path as in
