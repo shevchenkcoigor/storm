@@ -889,12 +889,9 @@ largest DDL events are `arr` (0.29 s / 122) and the exact sizing pass (~0.12 s /
 and gtest. The class-scope `index_sql_strings_` is still built eagerly per model
 (#670's lesson) but was not on this TU's top list.
 
-**Follow-up, not done here:** `count_primary_key_flavours<T>()` (`model_concepts.cppm`)
-is evaluated twice per model — once by `ModelPrimaryKeyValid`, once by
-`ModelPrimaryKeyPartLimit` — ~0.23 s each over 61 models in this TU. Every TU that
-instantiates a `BaseStatement<T>` pays it, so it is a library-wide lever outside
-#682's DDL scope; a variable template (instantiated, hence memoised, once) would
-halve it. Measure before adopting.
+**Follow-up, done in #686:** `count_primary_key_flavours<T>()` (`model_concepts.cppm`)
+was evaluated twice per model — once by `ModelPrimaryKeyValid`, once by
+`ModelPrimaryKeyPartLimit`. See [the #686 entry](#primary-key-counts-evaluated-once-per-model-686).
 
 ### Memoised reflection lookups (#694)
 
@@ -978,6 +975,45 @@ Three things worth knowing before reading a trace of this change:
   reused by its importers, so member reflections do cross a BMI on this path. The BMI
   regression test above queries annotations (FK, `max_length`) through that path and
   passes; it is the test to extend if #262 resurfaces.
+
+### Primary-key counts evaluated once per model (#686)
+
+`ModelPrimaryKeyValid` and `ModelPrimaryKeyPartLimit` both sit on `BaseStatement<T>`'s
+constraint list and each called `count_primary_key_flavours<T>()`. Clang does not
+memoise consteval calls, so the member scan ran twice per model in every TU that
+instantiates a statement. Both concepts now read
+`primary_key_counts_v<T>`, an `inline constexpr` variable template — instantiated once
+per `T`, on first use, so it stays lazy (it is a namespace-scope variable template, not
+the class-scope static of #670).
+
+Deterministic `-ftime-trace` event counts (`scripts/time_trace.py`, one run each):
+
+| TU | `EvaluateAsConstantExpr` | `EvaluateAsInitializer` |
+|---|---:|---:|
+| `test_ddl_execution_audit.cpp` (61 models) | 136202 → 126542 (−9660) | 21777 → 21838 (+61) |
+| `test_distinct.cpp` (2 models) | 56356 → 55860 (−496) | 5841 → 5843 (+2) |
+
+The removed evaluations are ~158 per model on the audit TU. The `EvaluateAsInitializer`
+increase is the one new variable-template initializer per model.
+
+**Wall time: within noise.** Three alternated before/after rounds, each the best of 3
+`-ftime-trace` replays (a rebuild of the library between sides):
+
+| TU | before | after | median Δ |
+|---|---|---|---:|
+| `test_ddl_execution_audit.cpp` | 7.706 / 7.878 / 7.827 s | 7.716 / 7.729 / 7.758 s | −0.10 s (−1.3%) |
+| `test_distinct.cpp` | 6.856 / 6.941 / 6.971 s | 6.964 / 6.947 / 6.881 s | +0.006 s |
+
+The audit TU's −0.10 s is about what 61 removed member scans predict (~1% of the
+compile), but it is the same size as the spread between the "before" rounds (0.17 s), so
+it is not a claimed win. `test_distinct.cpp` has too few models to show anything. An
+earlier attempt at these rounds was discarded: it ran under heavy outside load and the
+same unchanged build timed 13.3 s then 30.6 s.
+
+Concept names and logic are unchanged; the one visible difference is that a failing
+`ModelPrimaryKeyPartLimit` now prints `primary_key_counts_v<T>.columns <= …` as its
+constraint text (no test matches on it). The full suite passes (3129 passed, 1
+self-skipped).
 
 ### Two correctness bugs found along the way
 

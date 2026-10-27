@@ -481,6 +481,11 @@ export namespace storm::orm::statements {
         return counts;
     }
 
+    // The counts for T, evaluated once (#686). Clang does not memoise consteval calls, so
+    // ModelPrimaryKeyValid and ModelPrimaryKeyPartLimit each re-ran the member scan; a
+    // variable template is instantiated once per T, on first use (still lazy).
+    template <typename T> inline constexpr PrimaryKeyCounts primary_key_counts_v = count_primary_key_flavours<T>();
+
     // Concept: T's primary-key declaration is coherent (#500). Composite support widens
     // the PK from "exactly one member" to "one or more", which makes four new
     // combinations expressible that must not be:
@@ -517,7 +522,7 @@ export namespace storm::orm::statements {
     // (primary + primary_autoincrement on ONE member), this one whole-model PK coherence.
     template <typename T>
     concept ModelPrimaryKeyValid = []() consteval {
-        constexpr auto counts = count_primary_key_flavours<T>();
+        constexpr auto counts = primary_key_counts_v<T>;
         // A PK annotation on a member that is not a plain persisted column: an m2m /
         // reverse_fk container (never emitted as a column, so the key would reference a
         // name no column definition provides — the #485 class of leak) or a nullable
@@ -575,15 +580,14 @@ export namespace storm::orm::statements {
     //
     // Single-PK models are unaffected (count 1). Bound at 4, so every composite model in
     // the tree today (2 and 3 parts) keeps compiling unchanged. Reads the COLUMN count
-    // from count_primary_key_flavours (is_primary_key_column's rule — a PK annotation on
+    // from primary_key_counts_v (is_primary_key_column's rule — a PK annotation on
     // a relation container is not a column, and is rejected by ModelPrimaryKeyValid
     // anyway), so the number checked here is the same one primary_key_members_ holds and
     // the stitch actually walks. Cannot read BaseStatement<T>::primary_key_column_count_
     // for that: this concept is ON that class's constraint list, so touching it here
     // would be circular.
     template <typename T>
-    concept ModelPrimaryKeyPartLimit =
-            count_primary_key_flavours<T>().columns <= storm::orm::utilities::StitchKey::MAX_PARTS;
+    concept ModelPrimaryKeyPartLimit = primary_key_counts_v<T>.columns <= storm::orm::utilities::StitchKey::MAX_PARTS;
 
     // Concept: every max_length<N> annotation of T must sit on a text field (#493).
     // max_length bounds a text column's length (VARCHAR(N) on PG, CHECK(length) on SQLite);
