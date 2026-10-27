@@ -269,7 +269,7 @@ subjects are not documented above (`coverage-run-batched.sh`, `ninjalog_stats.py
 `/var/run/postgresql`, macOS `/tmp`) plus its callers `commit.sh`, `coverage-run-batched.sh`
 and `dev-container.sh`, `test_line_coverage.sh`, which covers the sourced helper
 `lib/line_coverage.sh` (the BSD/GNU-portable lcov line-coverage parser shared by `commit.sh`'s
-gate and CI's `coverage` job, #680, and the uncovered-line range formatter) plus `commit.sh`'s
+gate and CI's `coverage` job, #680) plus `commit.sh`'s
 `run_coverage_check()` and `show_uncovered_lines()` — the latter under `/bin/bash` too, which is
 bash 3.2 on macOS — and a scan of `commit.sh` and the scripts it sources or runs for bash-4-only constructs (#689),
 `test_libcxx_modules_symlink.sh`, which covers `cmake/libcxx.cmake` rather
