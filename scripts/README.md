@@ -291,7 +291,7 @@ for t in scripts/tests/test_*.sh; do "$t" || echo "FAILED: $t"; done
 
 The agent-frontmatter checker and the helpers `commit.sh` delegates to (#688) are Python, so their
 self-tests are too: `test_check_agent_frontmatter.py`, `test_check_ci_digests.py`, `test_uncovered_lines.py`,
-`test_pre_commit_guards.py`, `test_smart_skip.py` and `test_tidy_prereqs.py` (stdlib `unittest`, need
+`test_pre_commit_guards.py`, `test_smart_skip.py`, `test_sonar_gate.py` and `test_tidy_prereqs.py` (stdlib `unittest`, need
 only `python3`, no syntax newer than 3.7) are not matched by the `*.sh` loop above — run them on their
 own. Each also runs in `commit.sh` when it is staged.
 
@@ -305,6 +305,7 @@ failure so one run reports them all (#708). So a new self-test reaches CI by bec
 | Helper | What it does |
 |---|---|
 | `pre_commit_guards.py` | The staged-file guards as one table (trigger regex → checker/self-test → BLOCK message). Run **before** `commit.sh`'s `TOTAL_STEPS==0` early exit. Add a guard by adding a `Guard(...)` row to `GUARDS`. `--all` runs every row regardless of staged files and continues past a failure — CI's `script-guards` job (#708). |
+| `sonar_gate.py` | Not a `commit.sh` helper: ci.yml's `sonar-gate` job (#711). Waits for the SonarCloud app's check run on the PR head and fails unless it is `success`; passes at once on `merge_group`/`push`/`schedule`, so the merge queue never waits on a check the app does not post. |
 | `smart_skip.py` | The smart-skip decision table: reads `detect-changes.sh`'s `HAS_*` output, prints the `RUN_*` switches and `SKIP_NOTE` for `commit.sh` to `eval`. |
 | `tidy_prereqs.py` | Whether clang-tidy's module BMIs exist for the staged files (#557). Prints `complete`; anything else — including a crash — is `incomplete`, so the caller rebuilds. |
 | `uncovered_lines.py` | The uncovered files and line ranges `commit.sh`'s coverage step prints on a sub-100% result. Takes no arguments: it reads `build/debug/coverage/coverage-filtered.lcov` under the cwd. |
