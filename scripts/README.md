@@ -269,7 +269,7 @@ subjects are not documented above (`coverage-run-batched.sh`, `ninjalog_stats.py
 `/var/run/postgresql`, macOS `/tmp`) plus its callers `commit.sh`, `coverage-run-batched.sh`
 and `dev-container.sh`, `test_line_coverage.sh`, which covers the sourced helper
 `lib/line_coverage.sh` (the BSD/GNU-portable lcov line-coverage parser shared by `commit.sh`'s
-gate and CI's `coverage` job, #680, and the uncovered-line range formatter) plus `commit.sh`'s
+gate and CI's `coverage` job, #680) plus `commit.sh`'s
 `run_coverage_check()` and `show_uncovered_lines()` — the latter under `/bin/bash` too, which is
 bash 3.2 on macOS — and a scan of `commit.sh` and the scripts it sources or runs for bash-4-only constructs (#689),
 `test_libcxx_modules_symlink.sh`, which covers `cmake/libcxx.cmake` rather
@@ -289,9 +289,20 @@ They are plain bash and run individually or as a suite:
 for t in scripts/tests/test_*.sh; do "$t" || echo "FAILED: $t"; done
 ```
 
-The agent-frontmatter checker is Python, so its self-test is too:
-`scripts/tests/test_check_agent_frontmatter.py` (stdlib `unittest`, needs only `python3`) is
-not matched by the `*.sh` loop above — run it on its own.
+The agent-frontmatter checker and the helpers `commit.sh` delegates to (#688) are Python, so their
+self-tests are too: `test_check_agent_frontmatter.py`, `test_uncovered_lines.py`,
+`test_pre_commit_guards.py`, `test_smart_skip.py` and `test_tidy_prereqs.py` (stdlib `unittest`, need
+only `python3`, no syntax newer than 3.7) are not matched by the `*.sh` loop above — run them on their
+own. Each also runs in CI and in `commit.sh` when it is staged.
+
+`commit.sh` is a thin bash orchestrator (sequencing `cmake`/`ninja`/`git`, exit codes); its logic lives in:
+
+| Helper | What it does |
+|---|---|
+| `pre_commit_guards.py` | The staged-file guards as one table (trigger regex → checker/self-test → BLOCK message). Run **before** `commit.sh`'s `TOTAL_STEPS==0` early exit. Add a guard by adding a `Guard(...)` row to `GUARDS`. |
+| `smart_skip.py` | The smart-skip decision table: reads `detect-changes.sh`'s `HAS_*` output, prints the `RUN_*` switches and `SKIP_NOTE` for `commit.sh` to `eval`. |
+| `tidy_prereqs.py` | Whether clang-tidy's module BMIs exist for the staged files (#557). Prints `complete`; anything else — including a crash — is `incomplete`, so the caller rebuilds. |
+| `uncovered_lines.py` | The uncovered files and line ranges `commit.sh`'s coverage step prints on a sub-100% result. Takes no arguments: it reads `build/debug/coverage/coverage-filtered.lcov` under the cwd. |
 
 ### Prerequisites
 
