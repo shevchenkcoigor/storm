@@ -146,6 +146,13 @@ make_repo() {
         "$REPO/scripts/"
     cp "$REPO_ROOT/scripts/lib/clang_tidy_skiplist.sh" "$REPO/scripts/lib/"
     cp "$REPO_ROOT/scripts/lib/line_coverage.sh" "$REPO/scripts/lib/"
+    # A staged cmake file triggers the CPM cold-cache guard (#709); it needs its
+    # script and one compliant pin in the tree, or it fails before the step
+    # under test is reached.
+    mkdir -p "$REPO/scripts/tests" "$REPO/cmake"
+    cp "$REPO_ROOT/scripts/tests/test_cpm_cold_cache.sh" "$REPO/scripts/tests/"
+    printf 'cpmaddpackage(NAME pinned GITHUB_REPOSITORY a/b GIT_TAG v1 GIT_SHALLOW FALSE)\n' \
+        > "$REPO/cmake/pinned.cmake"
     printf '#!/bin/sh\nexit 0\n' > "$REPO/scripts/run_clang_tidy.sh"
     chmod +x "$REPO/scripts/run_clang_tidy.sh"
     # A failed fixture commit (e.g. a global signing setup) would leave every

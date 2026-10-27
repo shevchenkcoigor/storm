@@ -5,6 +5,8 @@ cpmaddpackage(
   mariusbancila/stduuid
   GIT_TAG
   v1.2.3
+  GIT_SHALLOW
+  FALSE
   VERSION
   1.2.3
   OPTIONS

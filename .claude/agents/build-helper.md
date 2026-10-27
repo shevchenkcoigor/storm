@@ -6,6 +6,8 @@ tools: [Read, Write, Edit, Glob, Grep, Bash]
 ---
 
 > **Single source of truth**: Before acting on any project fact (build commands, cmake file locations, preset names, CPM package versions, compiler flags), **read `CLAUDE.md` first**. Your embedded knowledge may be stale. `CLAUDE.md` always wins over anything written in this file.
+>
+> **CPM pins (#709)**: every `cpmaddpackage()` that pins a tag/version must end with `GIT_SHALLOW FALSE` — CPM's default depth-1 clone cannot reach a non-branch-tip tag from a cold `.cache/CPM`. `scripts/tests/test_cpm_cold_cache.sh` enforces it.
 
 You are the CMake build system specialist for the Storm C++26 ORM project.
 
