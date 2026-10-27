@@ -108,6 +108,12 @@ link_sqlite(${PROJECT_NAME})
 link_postgresql(${PROJECT_NAME})
 
 include(cmake/cpm.cmake)
+include(cmake/cpm-cache.cmake)
+# CPM resolves CPM_SOURCE_CACHE (variable or env) into the cache variable; OFF =
+# unset.
+if(CPM_SOURCE_CACHE)
+  storm_verify_cpm_cache("${CPM_SOURCE_CACHE}")
+endif()
 include(cmake/uuid.cmake)
 include(cmake/pyyaml.cmake)
 include(cmake/cmake-scripts.cmake)
