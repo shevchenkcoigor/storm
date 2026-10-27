@@ -97,6 +97,7 @@ jobs:
     runs-on: ubuntu-24.04
     outputs:
       run_heavy: ${{ steps.detect.outputs.run_heavy }}
+      run_cold_cpm: ${{ steps.detect.outputs.run_cold_cpm }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -135,6 +136,7 @@ jobs:
             # everything, rather than guessing at a diff base.
             echo "No prior SHA to diff against — defaulting to run_heavy=true"
             echo "run_heavy=true" | tee -a "$GITHUB_OUTPUT"
+            echo "run_cold_cpm=true" | tee -a "$GITHUB_OUTPUT"
             exit 0
           fi
 
@@ -157,11 +159,25 @@ jobs:
           # because the jobs below run INSIDE that image (#643); nothing builds
           # it on a PR, so a docker-only change would otherwise get no CI at all
           # until the next manual publish.
+          plumbing_changed=false
           if grep -qE '^(\.github/workflows/|scripts/|\.githooks/|docker/|CMakePresets\.json$|commit\.sh$)' <<< "$files"; then
+            plumbing_changed=true
             run_heavy=true
           fi
 
+          # The cold-CPM configure (#702) only needs the diffs that can change
+          # what CPM fetches — any CMakeLists.txt / *.cmake (the pins) — plus
+          # the same CI plumbing, so an edit to that job verifies itself. The
+          # nightly `schedule` run takes the no-prior-SHA branch above and always
+          # runs it: that is what catches an upstream ref deleted while nothing
+          # here changed (#697).
+          run_cold_cpm=false
+          if [[ "$HAS_CMAKE_CHANGES" == true || "$plumbing_changed" == true ]]; then
+            run_cold_cpm=true
+          fi
+
           echo "run_heavy=$run_heavy" | tee -a "$GITHUB_OUTPUT"
+          echo "run_cold_cpm=$run_cold_cpm" | tee -a "$GITHUB_OUTPUT"
 
   # Every pre-commit guard, run over the whole tree (#708). The cheap shell/Python
   # checks — agent frontmatter (#543), ORM backend neutrality, the clang-tidy
@@ -636,6 +652,87 @@ jobs:
           retention-days: 14
           if-no-files-found: warn
 
+  # Configure-only, with NO CPM cache (#702). Every other job restores
+  # `.cache/CPM` with a `cpm-` restore-key fallback, so none of them ever fetches
+  # a pinned dependency from the network — which is how #697 (upstream deleted
+  # the cmake-scripts tag) stayed green in CI while every fresh clone failed to
+  # configure. This job has no `actions/cache` step on purpose: every
+  # `cpmaddpackage` pin is cloned for real, and a dead ref fails `cmake --preset`.
+  #
+  # Two presets cover all five pins: `ninja-release` fetches stduuid,
+  # cmake-scripts, googletest and benchmark (a superset of `ninja-debug`), and
+  # `ninja-python` adds nanobind. Configure only — nothing is built, so this
+  # costs the container pull plus a few clones.
+  #
+  # Runs on the nightly `schedule` (an upstream deletion between PRs) and on PRs
+  # that touch CMakeLists.txt / *.cmake or the CI plumbing (`run_cold_cpm`, set
+  # by the `changes` job). Not on every PR: an upstream deletion or a GitHub
+  # network blip would then red unrelated PRs. Step-gated, not job-gated, for
+  # the same #638 reason as the heavy jobs above.
+  cold-cpm-configure:
+    name: cold CPM configure (#702)
+    needs: changes
+    # Always RUNS on a PR (fail-closed on a broken `changes` job, whose empty
+    # output reads as "not false"); the steps below are what `run_cold_cpm`
+    # gates. The `push` skip is job-level, as on the heavy jobs (#700).
+    if: ${{ !cancelled() && github.event_name != 'push' }}
+    env:
+      RUN_COLD_CPM: ${{ needs.changes.outputs.run_cold_cpm }}
+    runs-on: ubuntu-24.04
+    # A network clone that hangs must not hold the gate for the 6-hour default.
+    timeout-minutes: 20
+    container:
+      # Keep in sync with the `test` job's pin — scripts/check_ci_digests.py asserts they agree.
+      image: ghcr.io/spiritecosse/storm-ci@sha256:ae4f62771d7611c663ccb8e0061af9acc8a8a3fe604eabde4285d11a77d37a61
+    steps:
+      - name: No CMake changes — cold configure skipped
+        if: env.RUN_COLD_CPM == 'false'
+        run: echo "Diff touches no CMakeLists.txt / *.cmake / CI plumbing — cold CPM configure skipped."
+
+      - name: Checkout
+        if: env.RUN_COLD_CPM != 'false'
+        uses: actions/checkout@v4
+
+      - name: Link clang-p2996 next to source dir
+        if: env.RUN_COLD_CPM != 'false'
+        run: ln -sfn /opt/clang-p2996 "$(dirname "$GITHUB_WORKSPACE")/clang-p2996"
+
+      - name: Create libc++ modules symlink for import std;
+        if: env.RUN_COLD_CPM != 'false'
+        # Same rationale as in the `test` job above (issue #326).
+        run: |
+          clang_root="$(dirname "$GITHUB_WORKSPACE")/clang-p2996"
+          share_dir="$clang_root/build/share/libc++"
+          link="$share_dir/v1"
+          target="$clang_root/build/modules/c++/v1"
+          if [ -d "$target" ] && [ ! -e "$link" ]; then
+            mkdir -p "$share_dir"
+            ln -sfn "$target" "$link"
+            echo "Created symlink: $link -> $target"
+          else
+            echo "Symlink already exists or target missing — skipping"
+          fi
+
+      # The whole point of the job, asserted rather than assumed: a cache step
+      # added here later (copied from `test`) would silently turn it back into
+      # a warm configure that cannot see a dead ref.
+      - name: Assert the CPM cache is empty
+        if: env.RUN_COLD_CPM != 'false'
+        run: |
+          if [ -n "$(ls -A .cache/CPM 2>/dev/null)" ]; then
+            echo "::error::.cache/CPM is not empty — this job must fetch every CPM pin from the network."
+            ls -la .cache/CPM
+            exit 1
+          fi
+
+      - name: Configure ninja-release (stduuid, cmake-scripts, googletest, benchmark)
+        if: env.RUN_COLD_CPM != 'false'
+        run: cmake --preset ninja-release
+
+      - name: Configure ninja-python (nanobind)
+        if: env.RUN_COLD_CPM != 'false'
+        run: cmake --preset ninja-python
+
   # Single required status check for develop's branch protection.
   #
   # Exists so the per-job contexts do not have to be named in the required
@@ -719,6 +816,7 @@ jobs:
       - clang-p2996-host-layout
       - test
       - coverage
+      - cold-cpm-configure
     # Bare runner on purpose: no container, no services, so this costs seconds
     # even when everything it gates was skipped. `jq` below comes from the
     # HOSTED ubuntu-24.04 image — that guarantee does not survive adding a
