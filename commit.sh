@@ -174,11 +174,13 @@ build_tidy_prereqs() {
         return 1
     fi
 
-    # mapfile is bash >= 4.0 and ninja is the preset's generator. Without
-    # either, every enumeration below would come back empty and we would skip
-    # the BMIs silently — the one direction this function must never fail in.
-    if ! command -v ninja > /dev/null 2>&1 || ! type -t mapfile > /dev/null 2>&1; then
-        echo "ninja or mapfile unavailable — building the full release target set."
+    # ninja is the preset's generator. Without it, every enumeration below
+    # would come back empty and we would skip the BMIs silently — the one
+    # direction this function must never fail in. The enumerations use `while
+    # read`, not `mapfile`: this script runs under macOS /bin/bash 3.2 (#689).
+    local line
+    if ! command -v ninja > /dev/null 2>&1; then
+        echo "ninja unavailable — building the full release target set."
         cmake --build --preset ninja-release
         return
     fi
@@ -198,8 +200,8 @@ build_tidy_prereqs() {
     # mode 1). ninja knows these edges at configure time (build.ninja binds
     # `dyndep = …/CXX.dd` statically and builds the .dd as an order-only input),
     # so they are enumerable on a cold tree.
-    local -a synth_bmis
-    mapfile -t synth_bmis < <(ninja -C "$build_dir" -t targets all 2>/dev/null \
+    local -a synth_bmis=()
+    while IFS= read -r line; do synth_bmis+=("$line"); done < <(ninja -C "$build_dir" -t targets all 2>/dev/null \
         | sed 's/:.*//' \
         | grep -xE 'CMakeFiles/[^ ]*@synth_[0-9]+\.dir/[0-9a-f]+\.bmi' | sort -u)
     if [[ ${#synth_bmis[@]} -eq 0 ]]; then
@@ -218,8 +220,8 @@ build_tidy_prereqs() {
     # tests/** file leaves its modmap absent, the check below cannot prove the
     # tree is sufficient, and the fallback rebuilds everything — which is most
     # commits, since CLAUDE.md rule 9 pairs tests with every change.
-    local -a dd_targets
-    mapfile -t dd_targets < <(ninja -C "$build_dir" -t targets all 2>/dev/null \
+    local -a dd_targets=()
+    while IFS= read -r line; do dd_targets+=("$line"); done < <(ninja -C "$build_dir" -t targets all 2>/dev/null \
         | sed 's/:.*//' | grep -E '\.dd$' | sort -u)
     if [[ ${#dd_targets[@]} -gt 0 ]]; then
         ninja -C "$build_dir" "${dd_targets[@]}" || return 1
@@ -235,8 +237,8 @@ build_tidy_prereqs() {
     # The extension list matches run_clang_tidy.sh's own selector (cpp|cppm|h|
     # hpp) in both modes this hook uses; headers are linted through a
     # neighbouring TU's command, so they must be checked too.
-    local -a tidy_inputs
-    mapfile -t tidy_inputs < <(grep -E '\.(cpp|cppm|h|hpp)$' <<< "$STAGED_FILES" || true)
+    local -a tidy_inputs=()
+    while IFS= read -r line; do tidy_inputs+=("$line"); done < <(grep -E '\.(cpp|cppm|h|hpp)$' <<< "$STAGED_FILES" || true)
 
     # Files run_clang_tidy.sh refuses to parse are not evidence of anything —
     # dropping them keeps a staged benchmarks/schema.cppm from forcing a full
@@ -529,7 +531,10 @@ fi
 if [[ "$RUN_COVERAGE" == true ]]; then
     # Parse the filtered lcov file and display uncovered files + line ranges (#688)
     show_uncovered_lines() {
-        "$(dirname "${BASH_SOURCE[0]}")/scripts/uncovered_lines.py"
+        # Plain text when this script's own colours are blank (as in its self-test).
+        local no_color=""
+        [[ -z "$RED" ]] && no_color=1
+        NO_COLOR="$no_color" "$(dirname "${BASH_SOURCE[0]}")/scripts/uncovered_lines.py"
     }
 
     # Run coverage as a compound check: clean + build + parse + threshold

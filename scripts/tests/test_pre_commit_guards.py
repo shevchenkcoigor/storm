@@ -56,7 +56,8 @@ class TriggerTest(unittest.TestCase):
 
     def test_backend_checker_staged_also_runs_its_self_test(self):
         staged = ["scripts/check-orm-backend-imports.sh"]
-        steps = pcg.triggered_steps(pcg.triggered_guards(staged)[0], staged)
+        guard = next(g for g in pcg.triggered_guards(staged) if g.name == "ORM backend neutrality")
+        steps = pcg.triggered_steps(guard, staged)
         self.assertEqual([pathlib.Path(s.command[-1]).name for s in steps],
                          ["check-orm-backend-imports.sh", "test_check_orm_backend_imports.sh"])
 
@@ -70,6 +71,12 @@ class TriggerTest(unittest.TestCase):
     def test_cmake_format_files_trigger_their_self_test(self):
         for staged in (["cmake/format.cmake"], ["scripts/tests/test_cmake_format_target.sh"]):
             self.assertEqual(names(pcg.triggered_guards(staged)), ["cmake-format target"])
+
+    def test_bash_scripts_commit_sh_runs_trigger_the_bash_3_2_scan(self):
+        # test_line_coverage.sh scans these for bash-4-only constructs (#689).
+        for staged in ("scripts/lib/clang_tidy_skiplist.sh", "scripts/run_clang_tidy.sh",
+                       "scripts/detect-changes.sh", "scripts/coverage-run-batched.sh"):
+            self.assertIn("line-coverage parser", names(pcg.triggered_guards([staged])), staged)
 
     def test_every_guard_target_exists(self):
         for guard in pcg.GUARDS:

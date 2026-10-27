@@ -257,9 +257,11 @@ jobs:
   # commit.sh's real run_coverage_check() against a stubbed lcov summary, behind
   # a `grep` shim that rejects GNU-only usage (-P, PCRE-only syntax) — so a
   # reintroduced `grep -oP` fails here even though this runner's GNU grep would
-  # accept it. Pure bash. The job also runs the stdlib-unittest self-test of
-  # the commit.sh Python helpers (#688): uncovered_lines, pre_commit_guards,
-  # smart_skip, tidy_prereqs.
+  # accept it. It also scans commit.sh and the scripts it runs for bash-4-only
+  # constructs (#689): they run under macOS /bin/bash 3.2, which this runner's
+  # bash 5 cannot reproduce. Pure bash. The job also runs the stdlib-unittest
+  # self-tests of the commit.sh Python helpers (#688): uncovered_lines,
+  # pre_commit_guards, smart_skip, tidy_prereqs.
   line-coverage-parser:
     name: line-coverage parser (#680)
     runs-on: ubuntu-24.04

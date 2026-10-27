@@ -142,10 +142,13 @@ PG_SOCKET_DEFAULT = Guard(
 # --- line-coverage parser (#680) ---
 # scripts/lib/line_coverage.sh reads the percentage the coverage gate compares to
 # 100.0. A GNU-only grep flag there breaks the gate on macOS BSD grep while CI's
-# GNU grep stays green.
+# GNU grep stays green. The self-test also scans commit.sh and the scripts it runs
+# or sources for bash-4-only constructs (#689), so staging any of them triggers it.
 LINE_COVERAGE = Guard(
     "line-coverage parser",
-    r"^(commit\.sh|scripts/lib/line_coverage\.sh|scripts/tests/test_line_coverage\.sh)$",
+    r"^(commit\.sh|scripts/lib/[^/]+\.sh"
+    r"|scripts/(detect-changes|pg-default-connstr|run_clang_tidy|check-orm-backend-imports|coverage-run-batched)\.sh"
+    r"|scripts/tests/test_line_coverage\.sh)$",
     (Step(None, script("scripts/tests/test_line_coverage.sh"),
           "line-coverage parser self-test failed"),),
     "line-coverage parser self-test passed",

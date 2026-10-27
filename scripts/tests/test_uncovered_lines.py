@@ -9,6 +9,7 @@ real process shows: the missing-file and no-parse paths. Stdlib unittest only, a
 
     python3 scripts/tests/test_uncovered_lines.py
 """
+import os
 import pathlib
 import subprocess
 import sys
@@ -99,6 +100,54 @@ class CliTest(unittest.TestCase):
     def test_unparseable_lcov_prints_fallback_note(self):
         result = self.run_cli("SF:/r/a.cpp\nDA:1,1\n")
         self.assertIn("could not parse uncovered lines from lcov", result.stdout)
+
+    def test_logical_pwd_through_a_symlink_still_gives_relative_paths(self):
+        # bash printed paths relative to the LOGICAL $PWD (/tmp/x), while getcwd()
+        # is the physical one (/private/tmp/x on macOS). The SF: lines hold whichever
+        # the build recorded, so the helper must honour $PWD when it names the cwd.
+        with tempfile.TemporaryDirectory() as tmp:
+            real = pathlib.Path(tmp).resolve() / "real"
+            link = pathlib.Path(tmp).resolve() / "link"
+            (real / LCOV_RELATIVE_PATH).parent.mkdir(parents=True)
+            (real / LCOV_RELATIVE_PATH).write_text("SF:%s/src/a.cpp\nDA:1,0\n" % link)
+            link.symlink_to(real)
+            env = dict(os.environ, PWD=str(link))
+            result = subprocess.run([sys.executable, str(HELPER)], cwd=str(link), env=env,
+                                    stdout=subprocess.PIPE, universal_newlines=True, check=False)
+        self.assertIn("src/a.cpp", result.stdout)
+        self.assertNotIn(str(link), result.stdout)
+
+    def test_stale_pwd_falls_back_to_the_real_cwd(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = pathlib.Path(tmp).resolve()
+            (root / LCOV_RELATIVE_PATH).parent.mkdir(parents=True)
+            (root / LCOV_RELATIVE_PATH).write_text("SF:%s/src/a.cpp\nDA:1,0\n" % root)
+            env = dict(os.environ, PWD="/definitely/not/here")
+            result = subprocess.run([sys.executable, str(HELPER)], cwd=str(root), env=env,
+                                    stdout=subprocess.PIPE, universal_newlines=True, check=False)
+        self.assertIn("src/a.cpp", result.stdout)
+        self.assertNotIn(str(root) + "/", result.stdout)
+
+    def test_no_color_env_gives_plain_text(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = pathlib.Path(tmp).resolve()
+            (root / LCOV_RELATIVE_PATH).parent.mkdir(parents=True)
+            (root / LCOV_RELATIVE_PATH).write_text("SF:%s/src/a.cpp\nDA:1,0\n" % root)
+            env = dict(os.environ, PWD=str(root), NO_COLOR="1")
+            result = subprocess.run([sys.executable, str(HELPER)], cwd=str(root), env=env,
+                                    stdout=subprocess.PIPE, universal_newlines=True, check=False)
+        self.assertNotIn("\033", result.stdout)
+        self.assertIn("  src/a.cpp\n    Lines: 1\n", result.stdout)
+
+    def test_empty_no_color_keeps_the_colors(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = pathlib.Path(tmp).resolve()
+            (root / LCOV_RELATIVE_PATH).parent.mkdir(parents=True)
+            (root / LCOV_RELATIVE_PATH).write_text("SF:%s/src/a.cpp\nDA:1,0\n" % root)
+            env = dict(os.environ, PWD=str(root), NO_COLOR="")
+            result = subprocess.run([sys.executable, str(HELPER)], cwd=str(root), env=env,
+                                    stdout=subprocess.PIPE, universal_newlines=True, check=False)
+        self.assertIn("\033[", result.stdout)
 
     def test_arguments_are_rejected(self):
         # No path comes from the command line: a stray argument is a usage error.
