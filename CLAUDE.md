@@ -366,7 +366,7 @@ of one table in `scripts/pre_commit_guards.py` (#688), not bash blocks — add a
 `script-guards` job runs every row with `--all` (#708), so a new row needs no workflow edit. `commit.sh`
 itself stays a thin orchestrator: its skip rules, clang-tidy prerequisite verdict and coverage-gap
 report are tested stdlib-Python helpers (`scripts/smart_skip.py`, `tidy_prereqs.py`,
-`uncovered_lines.py`; see `scripts/README.md`), written for Python 3.7+ so macOS system `python3` runs them.
+`uncovered_lines.py`; see `scripts/README.md`), written for Python 3.9+ so macOS system `python3` runs them.
 
 ## Architecture
 
@@ -861,7 +861,7 @@ namespaces) that default `ConnType = sqlite::Connection`; `import storm;` re-exp
 importing individual modules must add `import storm_defaults;` to use the short names. Aliases cannot
 be specialised/forward-declared under the old name, and diagnostics/traits see `Basic*`. `SchemaStatement::create_table_if_not_exists()`
 / `create_indexes_if_not_exist()` no longer default `ConnType` — pass a connection or name it
-(`create_table_if_not_exists<sqlite::Connection>()`). Enforced by `scripts/check-orm-backend-imports.sh`
+(`create_table_if_not_exists<sqlite::Connection>()`). Enforced by `scripts/check_orm_backend_imports.py`
 (commit.sh + CI's `script-guards` job) and `tests/db/test_backend_layering.cpp`. See
 [MODULE_SYSTEM.md](docs/internals/architecture/MODULE_SYSTEM.md#step-4-the-default-backend-lives-in-one-module-storm_defaults). `SelectStatement::Query` carries the full QuerySet chain (`where`, `limit`,
 `offset`, `order_by`, `join`, `left_join`, `distinct`, `values`, `group_by`, aggregates, `first`, `get`,

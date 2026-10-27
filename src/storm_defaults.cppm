@@ -9,7 +9,7 @@ module;
 // compiles and links every backend.) Each alias keeps the original
 // public name and namespace, so `QuerySet<Person>` and
 // `QuerySet<Person, postgresql::Connection>` read exactly as before.
-// scripts/check-orm-backend-imports.sh keeps the generic modules backend-free.
+// scripts/check_orm_backend_imports.py keeps the generic modules backend-free.
 export module storm_defaults;
 
 import storm_db_concept;

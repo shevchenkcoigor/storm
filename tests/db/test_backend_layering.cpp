@@ -14,7 +14,7 @@
 // static_asserts pin both halves of that contract, so re-adding a
 // `= sqlite::Connection` default to a generic module (which would need it to
 // import storm_db_sqlite again) fails to compile here.
-// scripts/check-orm-backend-imports.sh is the textual twin of this guard.
+// scripts/check_orm_backend_imports.py is the textual twin of this guard.
 
 import std;
 import storm_db_concept;

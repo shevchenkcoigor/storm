@@ -177,7 +177,7 @@ PG_SOCKET_DEFAULT = Guard(
 LINE_COVERAGE = Guard(
     "line-coverage parser",
     r"^(commit\.sh|scripts/lib/[^/]+\.sh"
-    r"|scripts/(detect-changes|pg-default-connstr|run_clang_tidy|check-orm-backend-imports|coverage-run-batched)\.sh"
+    r"|scripts/(detect-changes|pg-default-connstr|run_clang_tidy|coverage-run-batched)\.sh"
     r"|scripts/tests/test_line_coverage\.sh)$",
     (Step(None, script("scripts/tests/test_line_coverage.sh"),
           "line-coverage parser self-test failed"),),
@@ -223,12 +223,12 @@ TIDY_PREREQS = Guard(
 # compiles cleanly, so nothing else catches it.
 ORM_BACKEND_IMPORTS = Guard(
     "ORM backend neutrality",
-    r"^(src/.*\.cppm|scripts/check-orm-backend-imports\.sh|scripts/tests/test_check_orm_backend_imports\.sh)$",
+    r"^(src/.*\.cppm|scripts/(tests/test_)?check_orm_backend_imports\.py)$",
     (
-        Step(r"^scripts/(check-orm-backend-imports|tests/test_check_orm_backend_imports)\.sh$",
-             script("scripts/tests/test_check_orm_backend_imports.sh"),
+        Step(r"^scripts/(tests/test_)?check_orm_backend_imports\.py$",
+             script("scripts/tests/test_check_orm_backend_imports.py"),
              "ORM backend-neutrality checker self-test failed"),
-        Step(None, script("scripts/check-orm-backend-imports.sh"),
+        Step(None, script("scripts/check_orm_backend_imports.py"),
              "backend-neutral ORM module names a concrete backend"),
     ),
     "ORM backend-neutrality guard passed",
