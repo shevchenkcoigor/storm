@@ -16,7 +16,8 @@
 # pins a version must end with `GIT_SHALLOW FALSE` (last value wins). It also
 # fails when it finds NO such call, so a moved file cannot make it a silent pass.
 # Known limitation: a `)` inside an argument before the pin ends the call early.
-# Needs git and perl; no network, no cmake.
+# Needs git and perl; no network, no cmake. The behavioural check against GitHub
+# is ci.yml's `cold-cpm-configure` job (#702): a real configure with no CPM cache.
 
 set -u -o pipefail
 
