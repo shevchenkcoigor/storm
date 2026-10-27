@@ -7,8 +7,7 @@ if(ENABLE_FUZZING)
   # (-fsanitize=address,fuzzer-no-link) so the BMI hashes match across the
   # library and harnesses. fuzzer-no-link keeps the fuzzer runtime out of
   # libstorm.a — it is linked only into each harness binary (via
-  # target_link_options in fuzz/CMakeLists.txt). (Module-cache isolation is
-  # handled globally in the root CMakeLists.txt.)
+  # target_link_options in fuzz/CMakeLists.txt).
   set(FUZZ_INSTRUMENT_FLAGS -fsanitize=address,fuzzer-no-link -g
                             -fno-omit-frame-pointer)
   target_compile_options(storm PRIVATE ${FUZZ_INSTRUMENT_FLAGS})

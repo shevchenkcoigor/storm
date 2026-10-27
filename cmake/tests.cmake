@@ -8,6 +8,8 @@ if(ENABLE_TESTS)
     google/googletest
     GIT_TAG
     v1.15.2
+    GIT_SHALLOW
+    FALSE
     VERSION
     1.15.2
     OPTIONS

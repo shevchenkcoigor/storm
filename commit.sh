@@ -9,6 +9,7 @@
 #   No C++ or cmake files         → skip format, tidy, tests, coverage
 #   cmake-only changes            → skip clang-format, clang-tidy; run tests + coverage + cmake-format
 #   C++ but no src/tests/cmake    → skip tests, coverage
+#   Nothing staged                → git hook: skip everything; manual run: run everything
 #
 # SonarCloud quality gate runs on `git push` via .githooks/pre-push.
 
@@ -315,9 +316,13 @@ print_summary() {
 # Classification (HAS_SRC_CHANGES etc.) lives in scripts/detect-changes.sh, shared
 # with .github/workflows/ci.yml so both places skip on the same rules; the
 # decision table (which RUN_* steps a classification needs) is
-# scripts/smart_skip.py (#688). With nothing staged there is nothing to classify,
-# and detect-changes.sh would report "no changes" — so smart_skip.py gets empty
-# input instead and keeps every gate on.
+# scripts/smart_skip.py (#688). With nothing staged there is nothing to classify.
+# Under the git hook (STORM_PRE_COMMIT_HOOK=1, set by .githooks/pre-commit) an
+# empty index is a commit that changes nothing, so it needs no checks (#706).
+# A manual `./commit.sh` with nothing staged keeps the full suite. smart_skip.py
+# decides: the hook passes --empty-index-skips, a manual run does not. "Empty" is relative to HEAD, so a
+# reword-only `git commit --amend` also skips everything — do not lean on an
+# amend to re-validate a commit.
 SCRIPTS_DIR="$(dirname "${BASH_SOURCE[0]}")/scripts"
 STAGED_FILES=$(git diff --cached --name-only 2>/dev/null || true)
 # FAIL CLOSED: a helper that prints nothing would leave every RUN_* unset, so
@@ -329,7 +334,9 @@ if [[ -n "$STAGED_FILES" ]]; then
     PLAN=$(set -o pipefail
            printf '%s\n' "$STAGED_FILES" | "$SCRIPTS_DIR/detect-changes.sh" | "$SCRIPTS_DIR/smart_skip.py") || PLAN=""
 else
-    PLAN=$("$SCRIPTS_DIR/smart_skip.py" < /dev/null) || PLAN=""
+    EMPTY_INDEX_ARGS=()
+    [[ "${STORM_PRE_COMMIT_HOOK:-}" == 1 ]] && EMPTY_INDEX_ARGS=(--empty-index-skips)
+    PLAN=$("$SCRIPTS_DIR/smart_skip.py" ${EMPTY_INDEX_ARGS[@]+"${EMPTY_INDEX_ARGS[@]}"} < /dev/null) || PLAN=""
 fi
 eval "$PLAN"
 for switch in "${RUN_SWITCHES[@]}"; do

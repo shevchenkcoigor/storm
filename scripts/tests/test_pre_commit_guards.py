@@ -69,12 +69,23 @@ class TriggerTest(unittest.TestCase):
              "clang-tidy prerequisites"})
 
     def test_cmake_format_files_trigger_their_self_test(self):
-        for staged in (["cmake/format.cmake"], ["scripts/tests/test_cmake_format_target.sh"]):
-            self.assertEqual(names(pcg.triggered_guards(staged)), ["cmake-format target"])
+        self.assertEqual(names(pcg.triggered_guards(["scripts/tests/test_cmake_format_target.sh"])),
+                         ["cmake-format target"])
+        # Any .cmake file also triggers the CPM cold-cache scan (#709).
+        self.assertEqual(set(names(pcg.triggered_guards(["cmake/format.cmake"]))),
+                         {"cmake-format target", "CPM cold-cache fetch"})
+
+    def test_cmake_files_trigger_the_cpm_cold_cache_scan(self):
+        for staged in ("cmake/uuid.cmake", "python/CMakeLists.txt", "tools/CMakeLists.txt",
+                       "scripts/tests/test_cpm_cold_cache.sh"):
+            self.assertIn("CPM cold-cache fetch", names(pcg.triggered_guards([staged])), staged)
 
     def test_pyyaml_check_files_trigger_their_self_test(self):
-        for staged in (["cmake/pyyaml.cmake"], ["scripts/tests/test_pyyaml_check.py"]):
-            self.assertEqual(names(pcg.triggered_guards(staged)), ["PyYAML configure check"])
+        self.assertEqual(names(pcg.triggered_guards(["scripts/tests/test_pyyaml_check.py"])),
+                         ["PyYAML configure check"])
+        # Any .cmake file also triggers the CPM cold-cache scan (#709).
+        self.assertEqual(set(names(pcg.triggered_guards(["cmake/pyyaml.cmake"]))),
+                         {"PyYAML configure check", "CPM cold-cache fetch"})
 
     def test_bash_scripts_commit_sh_runs_trigger_the_bash_3_2_scan(self):
         # test_line_coverage.sh scans these for bash-4-only constructs (#689).

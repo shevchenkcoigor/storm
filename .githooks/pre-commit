@@ -1,4 +1,6 @@
 #!/bin/bash
 # Pre-commit hook: runs all checks via commit.sh
 # Setup: git config core.hooksPath .githooks
+# Tells commit.sh it runs as the hook: an empty index then skips all checks (#706).
+export STORM_PRE_COMMIT_HOOK=1
 exec ./commit.sh

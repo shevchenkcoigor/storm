@@ -233,6 +233,7 @@ git status --short           # Show files
 git add -A && git commit -m "message"
 # Pre-commit hook (commit.sh): clang-format (C++) + cmake-format → clang-tidy → tests → coverage
 # Smart skips: no C++/cmake → skip all; cmake-only → tests+coverage+cmake-format; C++ only-bench → skip tests/coverage
+# Nothing staged (`--allow-empty`): the git hook skips everything (.githooks/pre-commit sets STORM_PRE_COMMIT_HOOK=1, #706); a manual ./commit.sh keeps the full suite; empty is relative to HEAD, so a reword-only `--amend` skips too
 # Self-heal (#489/#557): commit.sh configures build/release, then builds just what
 #   clang-tidy needs (storm BMIs + synthesized-module BMIs + the two mock binaries)
 #   (BMIs + mock binaries, so no missing compile_commands.json / std.pcm) and

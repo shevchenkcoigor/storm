@@ -20,7 +20,7 @@ HELPER = REPO_ROOT / "scripts" / "smart_skip.py"
 DETECT = REPO_ROOT / "scripts" / "detect-changes.sh"
 
 sys.path.insert(0, str(HELPER.parent))
-from smart_skip import decide  # noqa: E402
+from smart_skip import decide, decide_empty  # noqa: E402
 
 ALL = ("RUN_FORMAT", "RUN_CMAKE_FORMAT", "RUN_TIDY", "RUN_TESTS", "RUN_COVERAGE", "RUN_BENCH_RELEASE")
 
@@ -105,8 +105,8 @@ NO_CHANGES = ("HAS_SRC_CHANGES=false\nHAS_TEST_CHANGES=false\nHAS_CPP_CHANGES=fa
 
 
 class CliTest(unittest.TestCase):
-    def run_cli(self, text):
-        return subprocess.run([sys.executable, str(HELPER)], input=text, stdout=subprocess.PIPE,
+    def run_cli(self, text, *args):
+        return subprocess.run([sys.executable, str(HELPER)] + list(args), input=text, stdout=subprocess.PIPE,
                               universal_newlines=True, check=True).stdout
 
     def test_emits_shell_assignments_and_a_note_variable(self):
@@ -136,6 +136,32 @@ class CliTest(unittest.TestCase):
         out = self.run_cli("")
         self.assertIn("RUN_TESTS=true", out)
         self.assertIn("RUN_BENCH_RELEASE=false", out)
+
+    def test_empty_stdin_with_empty_index_skips_runs_nothing(self):
+        out = self.run_cli("", "--empty-index-skips")
+        for key in ALL:
+            self.assertIn("%s=false" % key, out)
+        self.assertIn("Nothing staged", out)
+
+    def test_flag_does_not_skip_a_partial_or_malformed_input(self):
+        out = self.run_cli("HAS_SRC_CHANGES=true\n", "--empty-index-skips")
+        self.assertIn("RUN_TESTS=true", out)
+
+    def test_flag_still_classifies_real_input(self):
+        out = self.run_cli(NO_CHANGES, "--empty-index-skips")
+        self.assertIn("No C++ or cmake files", out)
+
+
+class DecideEmptyTest(unittest.TestCase):
+    def test_hook_skips_everything(self):
+        plan, note = decide_empty(True)
+        self.assertEqual(ran(plan), set())
+        self.assertIn("Nothing staged", note)
+
+    def test_manual_run_keeps_every_gate(self):
+        plan, note = decide_empty(False)
+        self.assertEqual(ran(plan), {"RUN_FORMAT", "RUN_CMAKE_FORMAT", "RUN_TIDY", "RUN_TESTS", "RUN_COVERAGE"})
+        self.assertEqual(note, "")
 
 
 if __name__ == "__main__":

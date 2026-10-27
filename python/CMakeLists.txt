@@ -8,7 +8,17 @@ set(CMAKE_CXX_SCAN_FOR_MODULES OFF)
 # the target internally.
 include_directories(SYSTEM ${Python3_INCLUDE_DIRS})
 
-cpmaddpackage(NAME nanobind GITHUB_REPOSITORY wjakob/nanobind GIT_TAG v2.4.0)
+# GIT_SHALLOW FALSE: a depth-1 clone cannot reach a non-tip tag from a cold
+# cache (#709).
+cpmaddpackage(
+  NAME
+  nanobind
+  GITHUB_REPOSITORY
+  wjakob/nanobind
+  GIT_TAG
+  v2.4.0
+  GIT_SHALLOW
+  FALSE)
 
 # Build nanobind's static helper library (normally done inside
 # nanobind_add_module)
