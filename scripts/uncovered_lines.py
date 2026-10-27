@@ -73,7 +73,7 @@ def relative_to(path, prefix):
 
 def render(lcov_text, base_dir, color=True):
     """The full report text, ready to print."""
-    c = COLORS if color else {name: "" for name in COLORS}
+    c = COLORS if color else dict.fromkeys(COLORS, "")
     out = ["", f"{c['BOLD']}Uncovered lines:{c['RESET']}", f"{c['DIM']}{'─' * RULE_WIDTH}{c['RESET']}"]
     prefix = base_dir.rstrip("/") + "/"
     files = uncovered_by_file(lcov_text)
