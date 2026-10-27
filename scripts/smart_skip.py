@@ -9,7 +9,9 @@ nothing was skipped).
 
     printf '%s\\n' "$staged" | scripts/detect-changes.sh | scripts/smart_skip.py
 
-Empty stdin (no staged files), or input missing any of the five flags or holding
+Empty stdin (no staged files) keeps every gate on, unless `--empty-index-skips`
+(the git hook, #706) says a commit changing nothing needs no checks and turns them
+all off. Input missing any of the five flags or holding
 a value other than exactly true/false, keeps every gate on and the bench build
 off: an unclassifiable commit gets every check, never fewer.
 
@@ -73,8 +75,27 @@ def parse_flags(text):
     return parsed if all(key in parsed for key in FLAG_KEYS) else None
 
 
-def main():
-    plan, note = decide(parse_flags(sys.stdin.read()))
+EMPTY_INDEX_NOTE = "Nothing staged — skipping all checks (#706)"
+
+
+def decide_empty(skip):
+    """Plan for an empty staged set (stdin held nothing at all).
+
+    skip=True (the git hook, `--empty-index-skips`): a commit that changes nothing
+    needs no checks. skip=False (a manual ./commit.sh): keep every gate on.
+    """
+    if not skip:
+        return decide(None)
+    return {key: False for key in RUN_KEYS}, EMPTY_INDEX_NOTE
+
+
+def main(argv=None):
+    argv = sys.argv[1:] if argv is None else argv
+    text = sys.stdin.read()
+    if text.strip():
+        plan, note = decide(parse_flags(text))
+    else:
+        plan, note = decide_empty("--empty-index-skips" in argv)
     for key in RUN_KEYS:
         print("%s=%s" % (key, "true" if plan[key] else "false"))
     print("SKIP_NOTE=%s" % shlex.quote(note))

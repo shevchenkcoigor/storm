@@ -78,11 +78,11 @@ These scripts have project-specific conventions — understand them before modif
 
 **`commit.sh`** — Pre-commit checks orchestrator (runs via `.githooks/pre-commit`):
 - Pipeline: clang-format → cmake-format → clang-tidy → tests → coverage
-- Smart skips based on staged file types (no C++/cmake → skip all; cmake-only → skip format/tidy; bench-only → skip tests/coverage)
+- Smart skips based on staged file types (no C++/cmake → skip all; cmake-only → skip format/tidy; bench-only → skip tests/coverage; nothing staged → skip all under the git hook, which exports `STORM_PRE_COMMIT_HOOK=1`, full suite on a manual run, #706)
 - No manual skip flags — skipping is automatic based on what's staged
 - Thin orchestrator (#688): logic lives in tested stdlib-Python helpers — `scripts/pre_commit_guards.py` (staged-file guards table, run before the `TOTAL_STEPS==0` exit), `scripts/smart_skip.py` (skip rules), `scripts/tidy_prereqs.py` (clang-tidy BMI verdict, fails closed), `scripts/uncovered_lines.py` (coverage gap report). Keep them free of syntax newer than Python 3.7 (macOS system python3)
 
-**`.githooks/pre-commit`** — Thin wrapper: just `exec ./commit.sh`
+**`.githooks/pre-commit`** — Thin wrapper: exports `STORM_PRE_COMMIT_HOOK=1` (empty index then skips all checks, #706), then `exec ./commit.sh`
 
 **`.githooks/pre-push`** — SonarCloud gate (currently disabled, all logic commented out):
 - Disabled because C++26 not yet supported by CFamily analyzer (issue #113)
