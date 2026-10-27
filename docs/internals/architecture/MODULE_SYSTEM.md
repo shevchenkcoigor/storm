@@ -254,7 +254,7 @@ deduces it) or name it (`create_table_if_not_exists<sqlite::Connection>()`).
 **BREAKING (pre-release)**: the class templates were renamed to `Basic*`; the old names survive
 as alias templates, so they cannot be forward-declared or specialised under the old name, and
 diagnostics, `display_string_of` and trait/partial-specialisation matching see `Basic*` (none of
-these occur in-tree). Two guards keep the layering: `scripts/check-orm-backend-imports.sh` (run
+these occur in-tree). Two guards keep the layering: `scripts/check_orm_backend_imports.py` (run
 by `commit.sh` and CI's `script-guards` job) fails if `src/orm/**`,
 `src/db/default_connection.cppm`, `src/db/pool.cppm` or `src/storm_model.cppm` names
 `storm_db_sqlite`/`sqlite::` (or the PostgreSQL equivalents) or imports `storm_defaults`/`storm`, and `tests/db/test_backend_layering.cpp` static-asserts that the
@@ -323,14 +323,14 @@ The ~1% difference from direct calls is acceptable for full database abstraction
 2. **Don't use database-specific types** in ORM module interfaces
 3. **Don't rely on LTO** for inlining - it may not be available
 4. **Don't make non-hot-path methods templates** - unnecessary complexity
-5. **Don't default a template to a concrete backend** in an ORM module — add the alias to `storm_defaults` instead (enforced by `scripts/check-orm-backend-imports.sh`)
+5. **Don't default a template to a concrete backend** in an ORM module — add the alias to `storm_defaults` instead (enforced by `scripts/check_orm_backend_imports.py`)
 
 ## Verification Checklist
 
 Before committing database-agnostic changes:
 
 - [ ] No `#include <sqlite3.h>` (or other DB headers) in ORM modules
-- [ ] `scripts/check-orm-backend-imports.sh` passes (no `import storm_db_sqlite;` / `sqlite::` in ORM modules)
+- [ ] `scripts/check_orm_backend_imports.py` passes (no `import storm_db_sqlite;` / `sqlite::` in ORM modules)
 - [ ] All hot-path Statement methods are templates
 - [ ] Run benchmarks: efficiency should be ≥95% vs raw database calls
 - [ ] All tests pass (290 tests)

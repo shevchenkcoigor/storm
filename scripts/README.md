@@ -292,9 +292,10 @@ for t in scripts/tests/test_*.sh; do "$t" || echo "FAILED: $t"; done
 ```
 
 The agent-frontmatter checker and the helpers `commit.sh` delegates to (#688) are Python, so their
-self-tests are too: `test_check_agent_frontmatter.py`, `test_check_ci_digests.py`, `test_uncovered_lines.py`,
+self-tests are too: `test_check_agent_frontmatter.py`, `test_check_ci_digests.py`,
+`test_check_orm_backend_imports.py`, `test_uncovered_lines.py`,
 `test_pre_commit_guards.py`, `test_smart_skip.py`, `test_sonar_gate.py` and `test_tidy_prereqs.py` (stdlib `unittest`, need
-only `python3`, no syntax newer than 3.7) are not matched by the `*.sh` loop above — run them on their
+only `python3`, no syntax newer than 3.9) are not matched by the `*.sh` loop above — run them on their
 own. Each also runs in `commit.sh` when it is staged.
 
 Every self-test here is a row (step) of `pre_commit_guards.py`'s `GUARDS` table, except those in its

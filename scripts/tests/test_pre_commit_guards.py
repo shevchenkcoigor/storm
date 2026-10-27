@@ -52,14 +52,14 @@ class TriggerTest(unittest.TestCase):
     def test_cppm_triggers_backend_guard_checker_only(self):
         guard = pcg.triggered_guards(["src/orm/queryset.cppm"])[0]
         steps = pcg.triggered_steps(guard, ["src/orm/queryset.cppm"])
-        self.assertEqual([pathlib.Path(s.command[-1]).name for s in steps], ["check-orm-backend-imports.sh"])
+        self.assertEqual([pathlib.Path(s.command[-1]).name for s in steps], ["check_orm_backend_imports.py"])
 
     def test_backend_checker_staged_runs_its_self_test_first(self):
-        staged = ["scripts/check-orm-backend-imports.sh"]
+        staged = ["scripts/check_orm_backend_imports.py"]
         guard = next(g for g in pcg.triggered_guards(staged) if g.name == "ORM backend neutrality")
         steps = pcg.triggered_steps(guard, staged)
         self.assertEqual([pathlib.Path(s.command[-1]).name for s in steps],
-                         ["test_check_orm_backend_imports.sh", "check-orm-backend-imports.sh"])
+                         ["test_check_orm_backend_imports.py", "check_orm_backend_imports.py"])
 
     def test_commit_sh_triggers_the_script_self_tests(self):
         self.assertEqual(
