@@ -313,12 +313,13 @@ failure so one run reports them all (#708). So a new self-test reaches CI by bec
 
 ### Prerequisites
 
-All but seven need nothing beyond bash and coreutils:
+All but eight need nothing beyond bash and coreutils:
 
 | Test | Needs |
 |---|---|
 | `test_libcxx_modules_symlink.sh` | **cmake at the project's own `cmake_minimum_required`** (read from `CMakeLists.txt`, today 3.30) **and ninja** — its harness declares that same floor and configures with `-G Ninja`, so either one missing aborts every configure before `cmake/libcxx.cmake` is read |
 | `test_cmake_format_target.sh` | **cmake ≥ 3.16 and ninja** — its harness configures with `-G Ninja` (the docker/ci image has no `make`); no compiler (`LANGUAGES NONE`) |
+| `test_cpm_cold_cache.sh` | `git` and `perl` — a static policy check that every pinned CPM/FetchContent call ends with `GIT_SHALLOW FALSE` (#709); no network, no cmake |
 | `test_ninjalog_stats.sh` | `python3` (the script under test is Python) |
 | `test_session_start_hook.sh` | **`git`** — its subject is git behavior, so it `git init`s a throwaway repo and makes a real commit through the wired hook (`python3` optional: without it the `settings.json` JSON-validity assertion is reported as unchecked, the grep assertions still run) |
 | `test_time_trace.sh` | `python3`; no compiler — it pins the replay argv (a `.cppm` traced via `--precompile`, the modmap's `-fmodule-output` dropped) and the trace parsing, the two places a wrong answer is a plausible number rather than a crash |

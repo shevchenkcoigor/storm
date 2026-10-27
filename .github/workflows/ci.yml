@@ -175,7 +175,7 @@ jobs:
   # clone, a web edit, a merge) and only runs the guards a commit's files
   # trigger. A new guard is covered here by adding its row, with no edit to this
   # file; scripts/tests/test_pre_commit_guards.py fails if a self-test is in
-  # neither the table nor its NOT_GUARDED list. Pure bash/python plus cmake >=
+  # neither the table nor its NOT_GUARDED list. Pure bash/python/perl plus cmake >=
   # 3.16 and ninja for test_cmake_format_target.sh (scripts/README.md lists each
   # self-test's prerequisites); no compiler, so it runs on every PR.
   script-guards:

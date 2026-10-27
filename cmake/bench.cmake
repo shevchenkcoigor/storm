@@ -8,6 +8,8 @@ if(ENABLE_BENCH)
     google/benchmark
     GIT_TAG
     v1.9.5
+    GIT_SHALLOW
+    FALSE
     VERSION
     1.9.5
     OPTIONS
