@@ -76,9 +76,9 @@ export namespace storm::orm::statements {
         // auto_update field of T not already listed, appended as "col=?" (bound
         // now() at execution). The column ORDER of the auto_update tail is the
         // canonical bind order used by the execute path.
-        template <std::meta::info... SetCols> static consteval auto build_excluded_set_clause() {
-            ConstexprString<utilities::buffer_size::SQL_MEDIUM> result;
-            bool                                                first = true;
+        template <std::meta::info... SetCols, typename Buf>
+        static consteval void write_excluded_set_clause(Buf& result) {
+            bool first = true;
             (
                     [&] {
                         append_separator(result, first);
@@ -100,6 +100,19 @@ export namespace storm::orm::statements {
                     result.append("=?");
                 }
             }
+        }
+
+        template <std::meta::info... SetCols> static consteval auto excluded_set_clause_size() -> std::size_t {
+            utilities::LengthCounter counter;
+            write_excluded_set_clause<SetCols...>(counter);
+            return counter.len;
+        }
+
+        // Exact capacity (+1 for the terminator), not a fixed 1024: ConstexprString
+        // truncates silently, which cut the DO UPDATE list off on a wide model.
+        template <std::meta::info... SetCols> static consteval auto build_excluded_set_clause() {
+            ConstexprString<excluded_set_clause_size<SetCols...>() + 1> result;
+            write_excluded_set_clause<SetCols...>(result);
             return result;
         }
 

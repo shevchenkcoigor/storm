@@ -139,6 +139,7 @@ KNOWN_UNPARSEABLE = frozenset((
     "shared/models/set_null_child.h",
     "shared/models/restrict_child.h",
     "shared/models/people_25.h",
+    "shared/models/wide_record.h",
     "shared/models/messages_8.h",
     "tests/test_fixture.h",
     "tests/test_record_helpers.h",

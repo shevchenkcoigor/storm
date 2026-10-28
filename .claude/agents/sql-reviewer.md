@@ -65,6 +65,7 @@ Read the diff as SQL-with-a-C++-generator, not as C++. For every changed stateme
 ### 5. Sizer ↔ writer agreement
 - `ConstexprString` truncates **silently** on overflow — there is no compile error, no runtime assertion, just malformed SQL. Every writer change must be checked against its size budget.
 - Known sizer/writer pairs to check when touched: `pk_where_clause_size` / `append_pk_where_clause`. CREATE TABLE and junction DDL are NOT hand-sized: `build_create_table_sql` / `build_junction_sql` run their own writer against `detail::ClauseSizer` first (#682), so check instead that a DDL writer uses only the sink's `.append`/`.append_uint` interface and, for `build_create_table_sql`, that its `len == size - 1` backstop stays (`build_junction_sql` has never had one).
+- The UPDATE / upsert SET clauses are likewise self-measured: `write_field_assignments`, `write_conditional_set_clause` and `write_excluded_set_clause` are run against `utilities::LengthCounter` first, then into an exactly-sized `ConstexprString`. Check that these writers stay sink-agnostic (only `.append(const char*)` / `.append(std::string_view)`, which is all `LengthCounter` provides) and that no fixed-capacity buffer is reintroduced for them.
 - When a writer grows (a new clause, a longer keyword, an extra separator), confirm the paired sizer grew by the same amount — walk the arithmetic, don't just check "it still compiles."
 
 ### 6. Dialect matrix

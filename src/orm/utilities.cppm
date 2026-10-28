@@ -124,6 +124,25 @@ export namespace storm::orm::utilities {
     // SQL String Building Utilities
     // ============================================================================
 
+    // Length-counting sink for the .append(const char*) / .append(string_view) subset of
+    // ConstexprString's interface (the ClauseSizer
+    // technique, schema.cppm). Run a writer against it first to learn the exact byte count,
+    // then size a ConstexprString from that — ConstexprString truncates SILENTLY on
+    // overflow, so a hand-picked fixed capacity turns a wide model into broken SQL.
+    struct LengthCounter {
+        std::size_t len = 0;
+
+        consteval void append(const char* str) {
+            while (*str != '\0') {
+                ++len;
+                ++str;
+            }
+        }
+        consteval void append(std::string_view str) {
+            len += str.size();
+        }
+    };
+
     // Compile-time string utility for SQL generation and constexpr parsing
     template <std::size_t N> struct ConstexprString { // LCOV_EXCL_LINE — compile-time only
         std::array<char, N> data{};

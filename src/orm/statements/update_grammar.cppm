@@ -22,32 +22,45 @@ export namespace storm::orm::statements {
     template <typename T> struct UpdateGrammar {
         using Base = BaseStatement<T>;
 
-        // Helper to build field assignments string for UPDATE SQL
-        static consteval auto build_field_assignments() {
-            // Iterate the relation-filtered persisted members (#485): m2m/reverse_fk
-            // containers are not columns, so they must not appear in the SET clause.
-            // Base::all_members_ already excludes them and matches the bind order used
-            // by inline_bind_all_fields.
-            //
-            // EVERY primary-key member is skipped, not just primary_key_ (#501): on a
-            // composite model the old `member != primary_key_` test left the other parts
-            // in the SET list, so the statement would rewrite part of the key it matches
-            // on. Identical to the old test for a single-PK model.
-            ConstexprString<utilities::buffer_size::SQL_MEDIUM> result;
-            bool                                                first = true;
-
+        // Write the whole-row SET list ("a=?, b=?") into any buffer with the ConstexprString
+        // append interface. Used twice — against LengthCounter to size the clause exactly,
+        // then against the ConstexprString of that size — so the two can never disagree.
+        //
+        // Iterates the relation-filtered persisted members (#485): m2m/reverse_fk
+        // containers are not columns, so they must not appear in the SET clause.
+        // Base::all_members_ already excludes them and matches the bind order used
+        // by inline_bind_all_fields.
+        //
+        // EVERY primary-key member is skipped, not just primary_key_ (#501): on a
+        // composite model the old `member != primary_key_` test left the other parts
+        // in the SET list, so the statement would rewrite part of the key it matches
+        // on. Identical to the old test for a single-PK model.
+        template <typename Buf> static consteval void write_field_assignments(Buf& buf) {
+            bool first = true;
             for (const auto& member : Base::all_members_) {
                 if (!Base::is_pk_member(member)) {
                     if (!first) {
-                        result.append(", ");
+                        buf.append(", ");
                     }
                     // "<col>[_id]=?" — column-name writer (#422) emits the FK "_id" suffix.
-                    meta::append_column_name(result, member);
-                    result.append("=?");
+                    meta::append_column_name(buf, member);
+                    buf.append("=?");
                     first = false;
                 }
             }
+        }
 
+        static consteval auto field_assignments_size() -> std::size_t {
+            utilities::LengthCounter counter;
+            write_field_assignments(counter);
+            return counter.len;
+        }
+
+        // Exact capacity (+1 for the terminator): a wide model must not be cut off at a
+        // fixed 1024 bytes, which prepared truncated SQL with no diagnostic.
+        static consteval auto build_field_assignments() {
+            ConstexprString<field_assignments_size() + 1> result;
+            write_field_assignments(result);
             return result;
         }
 
@@ -109,9 +122,9 @@ export namespace storm::orm::statements {
         // Build the SET clause for the explicit Members... pack, then append any
         // auto_update field of T that the caller did not list. The column ORDER
         // here is the canonical bind order used by bind_conditional_set().
-        template <std::meta::info... Members> static consteval auto build_conditional_set_clause() {
-            ConstexprString<utilities::buffer_size::SQL_MEDIUM> result;
-            bool                                                first = true;
+        template <std::meta::info... Members, typename Buf>
+        static consteval void write_conditional_set_clause(Buf& result) {
+            bool first = true;
             // (1) explicit members, in the given order
             (
                     [&] {
@@ -137,6 +150,17 @@ export namespace storm::orm::statements {
                     first = false;
                 }
             }
+        }
+
+        template <std::meta::info... Members> static consteval auto conditional_set_clause_size() -> std::size_t {
+            utilities::LengthCounter counter;
+            write_conditional_set_clause<Members...>(counter);
+            return counter.len;
+        }
+
+        template <std::meta::info... Members> static consteval auto build_conditional_set_clause() {
+            ConstexprString<conditional_set_clause_size<Members...>() + 1> result;
+            write_conditional_set_clause<Members...>(result);
             return result;
         }
 
