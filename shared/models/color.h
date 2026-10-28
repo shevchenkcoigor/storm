@@ -7,7 +7,7 @@
  *
  * The one header here with no storm dependency, so unlike its siblings it parses
  * standalone — which is why it keeps an include guard and stays off
- * scripts/lib/clang_tidy_skiplist.sh. Still included after `import storm;` in
+ * scripts/clang_tidy_skiplist.py. Still included after `import storm;` in
  * practice, since its consumers pull extended_types.h alongside it.
  */
 

@@ -3,7 +3,7 @@ name: clang-tidy weekly sweep
 # Scheduled full-tree clang-tidy sweep — report-only.
 # See Issue #262 for rationale.
 #
-# Runs ./scripts/run_clang_tidy.sh --all and writes the result to the workflow
+# Runs ./scripts/run_clang_tidy.py --all and writes the result to the workflow
 # run's Summary tab. Does NOT gate develop merges (yet) — opt-in gating is
 # deferred. The point is to surface accumulated drift within a week instead
 # of within months, which is what triggered Issue #262 in the first place.
@@ -44,7 +44,7 @@ jobs:
         continue-on-error: true
         run: |
           set +e
-          ./scripts/run_clang_tidy.sh --all 2>&1 | tee /tmp/sweep.log
+          ./scripts/run_clang_tidy.py --all 2>&1 | tee /tmp/sweep.log
           echo "exit_code=$?" >> "$GITHUB_OUTPUT"
 
       - name: Post summary

@@ -27,7 +27,7 @@ COPY build/bin/clang-scan-deps /opt/clang-p2996/build/bin/clang-scan-deps
 COPY build/bin/clang-format    /opt/clang-p2996/build/bin/clang-format
 COPY build/bin/clang-tidy      /opt/clang-p2996/build/bin/clang-tidy
 
-# clang-tidy-diff.py drives scripts/run_clang_tidy.sh --diff, and therefore the
+# clang-tidy-diff.py drives scripts/run_clang_tidy.py --diff, and therefore the
 # whole local pre-commit clang-tidy gate (#643). It is not a
 # build artifact — it is checked into the clang-p2996 source tree, and THIS
 # image's build context is that tree's root, so copying it here ships it
@@ -35,7 +35,7 @@ COPY build/bin/clang-tidy      /opt/clang-p2996/build/bin/clang-tidy
 # from llvm/llvm-project at build time instead would silently skew (a release
 # branch script against a clang-21 binary).
 # docker/ci/entrypoint.sh symlinks /opt/clang-p2996 to ${sourceDir}/../clang-p2996,
-# so this lands on exactly the path run_clang_tidy.sh expects.
+# so this lands on exactly the path run_clang_tidy.py expects.
 COPY clang-tools-extra/clang-tidy/tool/clang-tidy-diff.py \
      /opt/clang-p2996/clang-tools-extra/clang-tidy/tool/clang-tidy-diff.py
 

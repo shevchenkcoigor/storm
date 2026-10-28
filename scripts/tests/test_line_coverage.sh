@@ -174,7 +174,7 @@ done
 # (it misses e.g. `|&`, `;;&`, `${v@Q}`, negative subscripts).
 BASH4_RE='\b(mapfile|readarray|coproc)\b|\b(local|declare|typeset)[[:space:]]+-[a-zA-Z]*[nAglu]|\$\{[a-zA-Z_][a-zA-Z_0-9]*(\[@\])?(,,?|\^\^?)'
 BASH4_TARGETS=(commit.sh scripts/lib/*.sh scripts/detect-changes.sh scripts/pg-default-connstr.sh
-    scripts/run_clang_tidy.sh scripts/coverage-run-batched.sh)
+    scripts/coverage-run-batched.sh)
 missing_targets=""
 for f in "${BASH4_TARGETS[@]}"; do
     [[ -f "$REPO_ROOT/$f" ]] || missing_targets+="$f "

@@ -235,31 +235,25 @@ build_tidy_prereqs() {
     # storm_tests and benchmark targets legitimately reference BMIs this
     # targeted build does not produce.
     #
-    # The extension list matches run_clang_tidy.sh's own selector (cpp|cppm|h|
+    # The extension list matches run_clang_tidy.py's own selector (cpp|cppm|h|
     # hpp) in both modes this hook uses; headers are linted through a
     # neighbouring TU's command, so they must be checked too.
     local -a tidy_inputs=()
     while IFS= read -r line; do tidy_inputs+=("$line"); done < <(grep -E '\.(cpp|cppm|h|hpp)$' <<< "$STAGED_FILES" || true)
 
-    # Files run_clang_tidy.sh refuses to parse are not evidence of anything —
+    # Files run_clang_tidy.py refuses to parse are not evidence of anything —
     # dropping them keeps a staged benchmarks/schema.cppm from forcing a full
-    # build for a file clang-tidy never opens. Same source of truth both scripts
-    # consult (#550); if it is unavailable, keep every input, which can only
-    # over-trigger the fallback.
+    # build for a file clang-tidy never opens. Same source of truth both consult
+    # (#550, scripts/clang_tidy_skiplist.py); if it is unavailable, keep every
+    # input, which can only over-trigger the fallback.
     local -a probe_inputs=()
     local skiplist f
-    skiplist="$(dirname "${BASH_SOURCE[0]}")/scripts/lib/clang_tidy_skiplist.sh"
-    if [[ -r "$skiplist" ]]; then
-        # shellcheck source=scripts/lib/clang_tidy_skiplist.sh
-        source "$skiplist"
+    skiplist="$(dirname "${BASH_SOURCE[0]}")/scripts/clang_tidy_skiplist.py"
+    if [[ ${#tidy_inputs[@]} -gt 0 ]]; then
+        while IFS= read -r f; do probe_inputs+=("$f"); done < <(
+            printf '%s\n' "${tidy_inputs[@]}" | python3 "$skiplist" --keep 2>/dev/null \
+                || printf '%s\n' "${tidy_inputs[@]}")
     fi
-    for f in "${tidy_inputs[@]}"; do
-        if declare -F is_known_unparseable > /dev/null \
-           && { is_known_unparseable "$f" || is_always_skip_file "$f"; }; then
-            continue
-        fi
-        probe_inputs+=("$f")
-    done
 
     if [[ $(tidy_prereqs_verdict "$build_dir" "${probe_inputs[@]}") != "complete" ]]; then
         echo "Staged files need module BMIs this targeted build does not produce —"
@@ -437,9 +431,9 @@ if [[ "$RUN_TIDY" == true ]]; then
     fi
 
     if [[ -n "$STORM_TIDY_FULL" ]]; then
-        run_step "clang-tidy --full --fix" "$LOG_TIDY" ./scripts/run_clang_tidy.sh --full --fix || true
+        run_step "clang-tidy --full --fix" "$LOG_TIDY" ./scripts/run_clang_tidy.py --full --fix || true
     else
-        run_step "clang-tidy --diff --fix" "$LOG_TIDY" ./scripts/run_clang_tidy.sh --diff --fix || true
+        run_step "clang-tidy --diff --fix" "$LOG_TIDY" ./scripts/run_clang_tidy.py --diff --fix || true
     fi
 fi
 

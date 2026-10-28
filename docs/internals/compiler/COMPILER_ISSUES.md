@@ -407,14 +407,14 @@ their `module;` declaration and bake that into the BMIs every consumer imports.
 
 **(b) clang-tidy SIGSEGVs on a TU compiled with the PCH flags**, once any check
 is enabled. Same crash signature as the `benchmarks/schema.cppm` entry in
-`scripts/lib/clang_tidy_skiplist.sh`. The crash prints no `: error:` or
+`scripts/clang_tidy_skiplist.py`. The crash prints no `: error:` or
 `: warning:` line, so a checker counting only those reads it as a clean pass.
 
 This is currently **unreachable**: the PCH is applied only to `storm_tests`, and
 `tests/.clang-tidy` disables every check (`Checks: '-*'`, issue #590), so
 clang-tidy exits before building an AST. Verified that no `src/` entry carries
 the flags (74 files, 0 with PCH). The guards below exist so that re-enabling
-checks for `tests/**` cannot silently un-lint the tree. `scripts/run_clang_tidy.sh` therefore strips
+checks for `tests/**` cannot silently un-lint the tree. `scripts/run_clang_tidy.py` therefore strips
 `-Xclang -include-pch` / `-include` / `-Winvalid-pch` from a temp copy of
 `compile_commands.json` before replaying commands (semantically identical: the
 PCH holds only `<gtest/gtest.h>`, which the TU includes textually anyway), and

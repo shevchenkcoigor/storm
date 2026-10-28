@@ -147,8 +147,7 @@ make_repo() {
     cp "$REPO_ROOT/scripts/detect-changes.sh" "$REPO_ROOT/scripts/pg-default-connstr.sh" \
         "$REPO_ROOT/scripts/pre_commit_guards.py" "$REPO_ROOT/scripts/uncovered_lines.py" \
         "$REPO_ROOT/scripts/smart_skip.py" "$REPO_ROOT/scripts/tidy_prereqs.py" \
-        "$REPO/scripts/"
-    cp "$REPO_ROOT/scripts/lib/clang_tidy_skiplist.sh" "$REPO/scripts/lib/"
+        "$REPO_ROOT/scripts/clang_tidy_skiplist.py" "$REPO/scripts/"
     cp "$REPO_ROOT/scripts/lib/line_coverage.sh" "$REPO/scripts/lib/"
     # A staged cmake file triggers the CPM cold-cache guard (#709); it needs its
     # script and one compliant pin in the tree, or it fails before the step
@@ -157,8 +156,8 @@ make_repo() {
     cp "$REPO_ROOT/scripts/tests/test_cpm_cold_cache.sh" "$REPO/scripts/tests/"
     printf 'cpmaddpackage(NAME pinned GITHUB_REPOSITORY a/b GIT_TAG v1 GIT_SHALLOW FALSE)\n' \
         > "$REPO/cmake/pinned.cmake"
-    printf '#!/bin/sh\nexit 0\n' > "$REPO/scripts/run_clang_tidy.sh"
-    chmod +x "$REPO/scripts/run_clang_tidy.sh"
+    printf '#!/bin/sh\nexit 0\n' > "$REPO/scripts/run_clang_tidy.py"
+    chmod +x "$REPO/scripts/run_clang_tidy.py"
     # A failed fixture commit (e.g. a global signing setup) would leave every
     # file staged, and the scenarios would pass or fail for the wrong reason.
     git -C "$REPO" init -q \

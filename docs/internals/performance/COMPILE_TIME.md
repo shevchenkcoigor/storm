@@ -640,7 +640,7 @@ memoised reflection. Dropped.
 | removed dead `create_table_sql` globals from `tests/test_models.h` (referenced by nothing, but forced full consteval schema generation in all 89 including TUs) | −0.7 s/TU ≈ **−62 s** |
 | `#embed` corpora declared as real build inputs (`OBJECT_DEPENDS`) | correctness |
 | precompiled `<gtest/gtest.h>` for `storm_tests` | −2.15 s/TU ≈ **−220 s** (understated — see below) |
-| `run_clang_tidy.sh --diff` no longer reports a crashed clang-tidy as a clean pass | correctness |
+| `run_clang_tidy.py --diff` no longer reports a crashed clang-tidy as a clean pass | correctness |
 | split `shared/models.h` + `tests/test_models.h` so a TU pulls only the models and helpers it uses (#634) | −0.67 s/TU ≈ **−64 s** |
 | `SchemaStatement::create_table_sql<D>()` builds only the dialect a TU asks for (#670) | −8% function instantiations in a mostly-single-dialect schema TU, 0 in one using both; wall time below the noise floor — see [below](#lazy-per-dialect-create-table-sql-670) |
 | CREATE TABLE written straight into one exact-size buffer, measured by the writer itself (#682) | slowest TU `test_ddl_execution_audit.cpp` 13.10 → 10.33 s (−21%, median of 3 alternated rounds), −16.8% function instantiations; ~−6% instantiations in a light schema TU — see [below](#exact-size-create-table-buffer-682) |

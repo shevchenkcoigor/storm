@@ -89,9 +89,16 @@ class TriggerTest(unittest.TestCase):
 
     def test_bash_scripts_commit_sh_runs_trigger_the_bash_3_2_scan(self):
         # test_line_coverage.sh scans these for bash-4-only constructs (#689).
-        for staged in ("scripts/lib/clang_tidy_skiplist.sh", "scripts/run_clang_tidy.sh",
-                       "scripts/detect-changes.sh", "scripts/coverage-run-batched.sh"):
+        for staged in ("scripts/lib/line_coverage.sh", "scripts/detect-changes.sh", "scripts/coverage-run-batched.sh"):
             self.assertIn("line-coverage parser", names(pcg.triggered_guards([staged])), staged)
+
+    def test_clang_tidy_runner_guard_triggers_on_every_file_it_runs(self):
+        # The runner tests drive the real script through a fake toolchain, so the
+        # helper that builds it is as much a trigger as the script itself (#692).
+        for staged in ("scripts/run_clang_tidy.py", "scripts/clang_tidy_skiplist.py",
+                       "scripts/tests/test_clang_tidy_skiplist.py", "scripts/tests/test_run_clang_tidy.py",
+                       "scripts/tests/test_run_clang_tidy_full.py", "scripts/tests/tidy_toolchain.py"):
+            self.assertIn("clang-tidy runner", names(pcg.triggered_guards([staged])), staged)
 
     def test_every_guard_target_exists(self):
         for guard in pcg.GUARDS:

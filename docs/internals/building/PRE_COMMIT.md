@@ -121,8 +121,8 @@ module shouldn't have to fix unrelated accumulated drift before they can commit
 their change. Drift cleanup happens on its own schedule (see `--all`).
 
 ```bash
-./scripts/run_clang_tidy.sh --diff          # check-only
-./scripts/run_clang_tidy.sh --diff --fix    # apply auto-fixes, then re-check
+./scripts/run_clang_tidy.py --diff          # check-only
+./scripts/run_clang_tidy.py --diff --fix    # apply auto-fixes, then re-check
 ```
 
 What can still block your commit in `--diff` mode:
@@ -141,7 +141,7 @@ deliberately cleaning up drift in a specific module and want clang-tidy to
 report everything in that file, not just your delta.
 
 ```bash
-./scripts/run_clang_tidy.sh --full --fix          # local one-off
+./scripts/run_clang_tidy.py --full --fix          # local one-off
 STORM_TIDY_FULL=1 git commit -m "..."             # force --full in pre-commit
 ```
 
@@ -156,7 +156,7 @@ at 04:00 UTC, and on demand via `workflow_dispatch`. Output goes to the
 workflow run's **Summary** tab.
 
 ```bash
-./scripts/run_clang_tidy.sh --all                 # run locally (slow)
+./scripts/run_clang_tidy.py --all                 # run locally (slow)
 ```
 
 **Report-only.** The sweep does **not** gate merges on `develop`. Its job is
@@ -169,7 +169,7 @@ Gating `--all` is an opt-in goal once the existing baseline is clean.
 
 Since the 2026-05-11 clang-p2996 rebuild, every `src/*.cppm` parses cleanly
 under clang-tidy. If clang-tidy reports `Found compiler error` on a `src/`
-module file, **`run_clang_tidy.sh` will now fail loudly** with:
+module file, **`run_clang_tidy.py` will now fail loudly** with:
 
 ```
 ❌ <file> (PARSE FAILURE — toolchain or build state is broken)
@@ -180,7 +180,7 @@ module file, **`run_clang_tidy.sh` will now fail loudly** with:
 The cause is almost always one of:
 
 1. Stale `build/release/` from before a clang-p2996 update — `rm -rf build/release && cmake --preset ninja-release && cmake --build --preset ninja-release`.
-2. A regression in the clang-p2996 binary — file an upstream issue and fall back to `--full` with the affected `.cppm` added back to `is_known_unparseable`'s skip list (in `scripts/lib/clang_tidy_skiplist.sh`).
+2. A regression in the clang-p2996 binary — file an upstream issue and fall back to `--full` with the affected `.cppm` added back to `KNOWN_UNPARSEABLE` (in `scripts/clang_tidy_skiplist.py`).
 
 **Silent skipping is gone.** The unconditional `*.cppm` skip in
 `is_known_unparseable` was the root cause of Issue #262 — clang-tidy could
@@ -188,8 +188,8 @@ parse those files for months before anyone noticed, and the accumulated drift
 all surfaced at once when the build state changed.
 
 `is_known_unparseable`, `is_always_skip_file`, and `filter_skiplist_from_diff`
-live in `scripts/lib/clang_tidy_skiplist.sh` (extracted from `run_clang_tidy.sh`
-in #550), sourced by all three modes — the single place both the pre-commit
+live in `scripts/clang_tidy_skiplist.py` (extracted from the shell runner in
+#550, ported to Python with it in #692), imported by all three modes — the single place both the pre-commit
 `--diff` path and the weekly `--all` sweep consult for which files clang-tidy
 cannot parse. `--diff` mode used to also run a post-hoc regex over the error
 text it collected, meant to strip toolchain/reflection parse noise the way the
@@ -197,7 +197,7 @@ skip list already does for known files; it was retired in #550 because it was
 unanchored (matched anywhere on a diagnostic line) and had, in review during
 #518, matched a genuine error on a real Storm file (`src/orm/fields.cppm`)
 alongside the toolchain noise it targeted. A file that starts producing this
-noise now needs an explicit, reviewed entry in `clang_tidy_skiplist.sh` —
+noise now needs an explicit, reviewed entry in `clang_tidy_skiplist.py` —
 the same requirement every file already on that list satisfies. `fuzz/*.cpp`
 and `fuzz/fuzz_models.h` were added to the list as part of #550 itself: they
 were never actually on it before, silently saved from blocking commits only
