@@ -301,7 +301,7 @@ for t in scripts/tests/test_*.sh; do "$t" || echo "FAILED: $t"; done
 The agent-frontmatter checker and the helpers `commit.sh` delegates to (#688) are Python, so their
 self-tests are too: `test_check_agent_frontmatter.py`, `test_check_ci_digests.py`,
 `test_check_orm_backend_imports.py`, `test_clang_tidy_skiplist.py`, `test_run_clang_tidy.py`,
-`test_run_clang_tidy_full.py` (the last two need `git` and `/bin/sh` as well), `test_uncovered_lines.py`,
+`test_run_clang_tidy_full.py` (the last two need `git` and `/bin/sh` as well), `test_sweep_workflow.py` (runs the sweep workflow step's script under `bash`), `test_uncovered_lines.py`,
 `test_pre_commit_guards.py`, `test_smart_skip.py`, `test_sonar_gate.py` and `test_tidy_prereqs.py` (stdlib `unittest`, need
 only `python3`, no syntax newer than 3.9) are not matched by the `*.sh` loop above — run them on their
 own. Each also runs in `commit.sh` when it is staged.
