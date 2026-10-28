@@ -45,7 +45,8 @@ jobs:
         run: |
           set +e
           ./scripts/run_clang_tidy.py --all 2>&1 | tee /tmp/sweep.log
-          echo "exit_code=$?" >> "$GITHUB_OUTPUT"
+          # PIPESTATUS[0] is the sweep's own status; a bare $? here is tee's (#725).
+          echo "exit_code=${PIPESTATUS[0]}" >> "$GITHUB_OUTPUT"
 
       - name: Post summary
         if: always()

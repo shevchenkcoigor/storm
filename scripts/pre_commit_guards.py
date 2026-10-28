@@ -102,6 +102,17 @@ TIDY_SKIPLIST = Guard(
     "clang-tidy runner self-tests passed",
 )
 
+# --- clang-tidy sweep exit code (#725) ---
+# The sweep pipes the runner through tee; the summary's "Exit code" must be the
+# runner's status, not tee's. The self-test runs the workflow step's real script.
+SWEEP_WORKFLOW = Guard(
+    "clang-tidy sweep exit code",
+    r"^(\.github/workflows/clang-tidy-sweep\.yml|scripts/tests/test_sweep_workflow\.py)$",
+    (Step(None, script("scripts/tests/test_sweep_workflow.py"),
+          "clang-tidy sweep exit-code self-test failed"),),
+    "clang-tidy sweep exit-code self-test passed",
+)
+
 # --- SessionStart hook wiring (#651) ---
 # .claude/hooks/session-start-docker.sh sets core.hooksPath, the only reason
 # commit.sh runs at all in a clone that never configures a build. Its wiring must
@@ -322,7 +333,7 @@ SONAR_GATE = Guard(
 )
 
 GUARDS = (
-    AGENT_FRONTMATTER, TIDY_SKIPLIST, SESSION_START_HOOK, SELF_HEAL, CMAKE_FORMAT_TARGET, PYYAML_CHECK,
+    AGENT_FRONTMATTER, TIDY_SKIPLIST, SWEEP_WORKFLOW, SESSION_START_HOOK, SELF_HEAL, CMAKE_FORMAT_TARGET, PYYAML_CHECK,
     CPM_CACHE_CHECK, CPM_COLD_CACHE, PG_SOCKET_DEFAULT,
     LINE_COVERAGE, UNCOVERED_LINES, SMART_SKIP, TIDY_PREREQS, ORM_BACKEND_IMPORTS, PRE_COMMIT_GUARDS,
     CI_DIGESTS, COVERAGE_PARALLEL, NINJALOG_STATS, TIME_TRACE, TU_ABLATION, SONAR_GATE,

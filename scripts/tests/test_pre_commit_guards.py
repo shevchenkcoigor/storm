@@ -100,6 +100,10 @@ class TriggerTest(unittest.TestCase):
                        "scripts/tests/test_run_clang_tidy_full.py", "scripts/tests/tidy_toolchain.py"):
             self.assertIn("clang-tidy runner", names(pcg.triggered_guards([staged])), staged)
 
+    def test_sweep_workflow_edit_triggers_its_exit_code_self_test(self):
+        for staged in (".github/workflows/clang-tidy-sweep.yml", "scripts/tests/test_sweep_workflow.py"):
+            self.assertIn("clang-tidy sweep exit code", names(pcg.triggered_guards([staged])), staged)
+
     def test_every_guard_target_exists(self):
         for guard in pcg.GUARDS:
             for step in guard.steps:
