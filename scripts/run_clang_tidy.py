@@ -172,7 +172,8 @@ def strip_pch_database(source: pathlib.Path, target: pathlib.Path) -> None:
             entry["command"] = " ".join(shlex.quote(a) for a in strip_pch(shlex.split(entry["command"])))
         elif "arguments" in entry:
             entry["arguments"] = strip_pch(entry["arguments"])
-    pathlib.Path(target).write_text(json.dumps(database))
+    with open(str(target), "w") as handle:
+        json.dump(database, handle)
 
 
 def database_dir(workdir: str) -> str:
