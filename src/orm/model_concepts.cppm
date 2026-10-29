@@ -213,7 +213,7 @@ export namespace storm::orm::statements {
     //
     // Because a primary key is itself a non-static data member, satisfying this concept
     // also guarantees `field_count_ >= 1`. That invariant is what makes the INSERT batch
-    // divides `MAX_DB_VARIABLES / field_count_` (insert.cppm) safe from division by zero —
+    // divides `MAX_DB_VARIABLES / max(field_count_, placeholders)` (insert.cppm) safe from division by zero —
     // the divisor can never be 0 for any T that reaches a statement class (issue #362, item A).
     template <typename T>
     concept ModelWithPrimaryKey = meta::has_primary_key(^^T);

@@ -251,3 +251,77 @@ TYPED_TEST(SingleColumnFkRegressionTest, InsertAndSelectRoundTripsSingleColumnFk
     EXPECT_EQ(rows.value().begin()->sender.id, 1);
     EXPECT_EQ(rows.value().begin()->content, "hi");
 }
+
+// ── #663: bulk INSERT chunking counts composite-FK placeholders ──────────────
+// LedgerEntryRef binds 4 placeholders per row (ledger = 3 key parts + note) but has 3
+// fields. Chunking by field_count_ alone gave 333 rows x 4 = 1332 parameters per
+// statement, above SQLite's 999 limit.
+
+namespace {
+template <typename ConnType>
+class CompositeFkBulkInsertTest : public StormTestFixture<LedgerEntryRef, ConnType, Ledger> {};
+
+constexpr std::size_t kCompositeFkBulkRows = 400; // > 999 / 4 = 249 rows per statement
+} // namespace
+
+TYPED_TEST_SUITE(CompositeFkBulkInsertTest, STORM_SPLIT_TYPES, STORM_SPLIT_TYPE_NAMES);
+
+// Smoke test: SQLite 3.32+ allows 32766 variables, so this passes even without the #663 fix;
+// ChunkSizeRespectsPlaceholderLimit below is the regression guard.
+TYPED_TEST(CompositeFkBulkInsertTest, BulkInsertPastParameterLimitSucceeds) {
+    const Ledger ledger{.region = 1, .account = "acct", .period = 202601, .balance = 0.0};
+    ASSERT_TRUE((InsertStatement<Ledger, TypeParam>{}).query(ledger).execute().has_value());
+
+    std::vector<LedgerEntryRef> entries;
+    entries.reserve(kCompositeFkBulkRows);
+    for (std::size_t i = 0; i < kCompositeFkBulkRows; ++i) {
+        entries.push_back(LedgerEntryRef{.ledger = ledger, .note = std::format("note{}", i)});
+    }
+
+    auto result =
+        (InsertStatement<LedgerEntryRef, TypeParam>{}).query(std::span<const LedgerEntryRef>(entries)).execute();
+    ASSERT_TRUE(result.has_value());
+
+    auto rows = (SelectStatement<LedgerEntryRef, TypeParam>{}).all().execute();
+    ASSERT_TRUE(rows.has_value());
+    EXPECT_EQ(rows.value().size(), kCompositeFkBulkRows);
+}
+
+// #663: the chunk size divides the 999 limit by the larger of field_count_ and the real
+// placeholder count, so a composite-FK model stays under it while plain models keep their plan.
+TYPED_TEST(CompositeFkBulkInsertTest, ChunkSizeRespectsPlaceholderLimit) {
+    using Stmt = InsertStatement<LedgerEntryRef, TypeParam>;
+    constexpr std::size_t placeholders_per_row = 4; // ledger (3 key parts) + note
+    EXPECT_EQ(Stmt::effective_batch_size(std::nullopt), 999U / placeholders_per_row);
+    EXPECT_EQ(Stmt::effective_batch_size(storm::orm::statements::InsertOptions{.batch_size = 10000}),
+              999U / placeholders_per_row);
+}
+
+TYPED_TEST(CompositeFkBulkInsertTest, PlainModelChunkSizeUnchanged) {
+    using Stmt = InsertStatement<Person, TypeParam>;
+    constexpr std::size_t fields =
+        std::meta::nonstatic_data_members_of(^^Person, std::meta::access_context::unchecked()).size();
+    EXPECT_EQ(Stmt::effective_batch_size(std::nullopt), 999U / fields);
+}
+
+TYPED_TEST(CompositeFkBulkInsertTest, ReturningIdIsRejectedForCompositeKeyProxies) {
+    using Stmt = InsertStatement<Ledger, TypeParam>;
+    using storm::orm::statements::ReturnId;
+    static_assert(!requires { typename Stmt::template SingleInsertQuery<ReturnId::Yes>; });
+    static_assert(!requires { typename Stmt::template BulkInsertQuery<ReturnId::Yes>; });
+    static_assert(requires { typename Stmt::template SingleInsertQuery<ReturnId::No>; });
+    SUCCEED();
+}
+
+// The Yes/No bulk SQL caches are keyed by R, so the same row count must not alias.
+TYPED_TEST(CompositeFkBulkInsertTest, ReturningAndPlainBulkSqlCachesStaySeparate) {
+    using storm::orm::statements::ReturnId;
+    using PersonStmt = InsertStatement<Person, TypeParam>;
+    const std::vector<Person> people(3, Person{.name = "a", .age = 1});
+    const std::span<const Person> span(people);
+    const auto plain = (PersonStmt{}).template query<ReturnId::No>(span).sql();
+    const auto returning = (PersonStmt{}).template query<ReturnId::Yes>(span).sql();
+    EXPECT_EQ(plain.find("RETURNING"), std::string::npos) << plain;
+    EXPECT_NE(returning.find("RETURNING"), std::string::npos) << returning;
+    EXPECT_EQ((PersonStmt{}).template query<ReturnId::No>(span).sql(), plain);
+}

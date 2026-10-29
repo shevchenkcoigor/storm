@@ -232,7 +232,7 @@ export namespace storm::orm::statements {
         // Pre-computed field information - made public for QuerySet and JOIN optimization
         static constexpr auto field_count_ = get_field_count();
         // Makes the ModelWithPrimaryKey invariant explicit: a model with a primary-key
-        // member always has >= 1 field, so the INSERT divides MAX_DB_VARIABLES / field_count_
+        // member always has >= 1 field, so the INSERT divides MAX_DB_VARIABLES / max(field_count_, placeholders)
         // can never divide by zero (issue #362, item A). Fires here if the concept is ever
         // loosened, instead of producing UB at the divide.
         static_assert(field_count_ >= 1, "A model must have at least one field (its primary key)");

@@ -47,7 +47,7 @@ You are a senior C++ code reviewer specializing in the Storm ORM project, with d
 
 ### 6. Batch Operations & Performance
 - Batch operations follow adaptive threshold rules:
-  - Adaptive limit = `MAX_DB_VARIABLES (999) / field_count` — bulk SQL up to this many objects
+  - Adaptive limit = `MAX_DB_VARIABLES (999) / max(field_count, placeholders per row)` (#663) — bulk SQL up to this many objects
   - Very small batches (≤10, `SMALL_THRESHOLD`): always bulk SQL
   - Larger batches: chunked bulk SQL or individual statements in transactions
   - `FALLBACK_BATCH_SIZE=50` is a safe minimum constant, not the primary cutoff
