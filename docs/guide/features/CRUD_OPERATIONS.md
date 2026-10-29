@@ -382,8 +382,8 @@ if (result) {
 Storm ORM supports all standard SQLite types through compile-time type dispatch:
 
 ### Integer Types
-- `int`, `short`, `unsigned int` → `bind_int()`
-- `int64_t`, `long`, `long long`, `uint64_t` → `bind_int64()`
+- `int`, `short` → `bind_int()`
+- `unsigned int`, `int64_t`, `long`, `long long`, `uint64_t` → `bind_int64()` (`unsigned int` widened in #729)
 
 ### Floating Point Types
 - `double` → `bind_double()`

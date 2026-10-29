@@ -139,13 +139,15 @@ export namespace storm::orm::utilities {
     template <typename T>
     constexpr bool is_int_source_v =
             std::is_same_v<T, int> || std::is_same_v<T, short> || std::is_same_v<T, unsigned short> ||
-            std::is_same_v<T, unsigned int> || std::is_same_v<T, signed char> || std::is_same_v<T, unsigned char> ||
-            std::is_same_v<T, char>;
+            std::is_same_v<T, signed char> || std::is_same_v<T, unsigned char> || std::is_same_v<T, char>;
 
+    // unsigned int is bound 64-bit: its range above INT_MAX does not fit bind_int, and a signed
+    // 32-bit bind wraps it negative so SQL-side comparison/ordering/aggregation go wrong (#729).
     template <typename T>
-    constexpr bool is_int64_source_v = std::is_same_v<T, std::int64_t> || std::is_same_v<T, long> ||
-                                       std::is_same_v<T, long long> || std::is_same_v<T, std::uint64_t> ||
-                                       std::is_same_v<T, unsigned long> || std::is_same_v<T, unsigned long long>;
+    constexpr bool is_int64_source_v =
+            std::is_same_v<T, std::int64_t> || std::is_same_v<T, long> || std::is_same_v<T, long long> ||
+            std::is_same_v<T, std::uint64_t> || std::is_same_v<T, unsigned long> ||
+            std::is_same_v<T, unsigned long long> || std::is_same_v<T, unsigned int>;
 
     template <typename T> constexpr bool is_integer_source_v = is_int_source_v<T> || is_int64_source_v<T>;
 

@@ -21,8 +21,9 @@ export namespace storm::orm::where {
     // Normalize a comparison operand to the type stored in ExpressionVariant. The node can
     // outlive the operand source buffer (#352), so string_view/const char*/char[] operands are
     // copied into an owning std::string. UUID is excluded from that fold (#609) so it keeps
-    // ComparisonExpr<UUID>'s own bind dispatch. Enum -> underlying int; narrow/unsigned int
-    // folds to int/int64_t (#407); bool keeps its own arm; everything else is decayed.
+    // ComparisonExpr<UUID>'s own bind dispatch. Enum -> underlying int; narrow ints fold
+    // to int, unsigned int and 64-bit types to int64_t (#407, #729); bool keeps its own arm;
+    // everything else is decayed.
     template <typename V>
         requires utilities::BindableType<std::decay_t<V>>
     [[nodiscard]] auto normalize_operand(V&& value) {
