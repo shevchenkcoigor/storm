@@ -178,9 +178,21 @@ enough, and the next operation re-prepares.
 The cache stores statements as `unordered_map<string, unique_ptr<Statement>>`
 (not `unordered_map<string, Statement>`). The `unique_ptr` keeps each Statement
 pinned in memory across map growth, so a `Statement*` returned by
-`prepare_cached()` stays valid for the duration of the operation that uses it,
-even if the map rehashes. This is now the central lifetime guarantee for the
-cache.
+`prepare_cached()` stays valid even if the map rehashes. This is now the central
+lifetime guarantee for the cache.
+
+Rehash stability is not the same as validity. The cache is bounded
+(`statement_cache_capacity`, default 512) and evicts with CLOCK, so **a
+`Statement*` is valid only until the next `prepare_cached()` on the same
+`Connection`**: at capacity that call may evict the entry the pointer refers to
+and destroy the `Statement`. `clear_statement_cache()` ends validity the same
+way. On SQLite, `Connection::execute("BEGIN TRANSACTION" | "COMMIT" | "ROLLBACK")`
+also goes through `prepare_cached()`, so `storm::begin()`, `txn->commit()` and a
+guard's rollback count as "the next `prepare_cached()`" too. The pointer is a non-owning observer (C++ Core Guidelines R.3); holding it
+raw is intentional on hot paths (see PERFORMANCE.md, "Raw Pointer Caching in Hot
+Loops"), but the caller must not keep it across another `prepare_cached()`.
+Code that needs two statements prepares the second one only after the last use
+of the first, as `execute_chunked` does for the remainder statement (#728).
 
 ## Thread Safety
 

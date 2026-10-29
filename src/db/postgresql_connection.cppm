@@ -95,6 +95,9 @@ export namespace storm::db::postgresql {
         // shared with the SQLite backend); only the backend-specific prepare step
         // (prepare_pg_statement + set_original_sql) differs. On a miss the lock is
         // dropped before PQprepare so the expensive syscall runs uncontended.
+        // LIFETIME: the returned Statement* is a non-owning view valid only until the
+        // next prepare_cached() on this Connection — at capacity that call may evict
+        // the entry it points to (#728). Finish with it before preparing another.
         [[nodiscard]] auto prepare_cached(std::string_view sql) -> std::expected<Statement*, Error> {
             if (!is_open()) {
                 return std::unexpected(Error{-1, "Connection not open"});
