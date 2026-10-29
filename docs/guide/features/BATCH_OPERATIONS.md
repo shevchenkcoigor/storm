@@ -63,7 +63,7 @@ INSERT INTO Person (name, age) VALUES (?, ?), (?, ?), (?, ?), ...
 **Limitations**:
 - SQLite has 999-parameter limit
 - Each object with N fields needs N parameters
-- Max objects = floor(999 / field_count)
+- Max objects = floor(999 / max(field_count, placeholders per row)) (a composite-FK member counts once per key part, #663)
 
 #### Strategy 2: Individual Statements with Transaction (>50 objects)
 
@@ -328,7 +328,7 @@ for (size_t i = 0; i < people.size(); i += BATCH_SIZE) {
 }
 ```
 
-> **`batch_size` is clamped to `[1, floor(999 / field_count)]`.** A `batch_size`
+> **`batch_size` is clamped to `[1, floor(999 / max(field_count, placeholders per row))]`.** A `batch_size`
 > of `0` is treated as `1` (it would otherwise never advance the chunk loop);
 > values above the SQLite parameter limit are capped. Leave it unset
 > (`std::nullopt`) to let Storm pick the maximum safe batch.

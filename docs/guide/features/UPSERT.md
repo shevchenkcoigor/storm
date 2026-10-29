@@ -4,8 +4,9 @@ Storm supports single-row `INSERT ... ON CONFLICT` through the insert proxy.
 Choose an explicit unique conflict target, then select either `DO UPDATE` or
 `DO NOTHING`. The target is checked at compile time: it must be a unique field,
 exactly match a declared `UniqueIndex`, or exactly match a composite primary key
-(#503, see below). A single-column primary key is omitted from inserts and
-therefore cannot be a conflict target.
+(#503, see below). A caller-supplied single-column key (`storm::UUID` or
+`primary_assigned`) is part of the INSERT and is a valid target (#585); a
+DB-generated integer key is omitted from inserts and cannot be one.
 
 The chain consumes the insert proxy: `on_conflict()`, `update()` and `nothing()`
 are callable on an rvalue only, so write it as one expression (as in every

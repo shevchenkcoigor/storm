@@ -30,7 +30,8 @@ export namespace storm::orm::statements {
 
     // Configuration options for batch INSERT operations
     struct InsertOptions {
-        std::optional<std::size_t> batch_size = std::nullopt; // nullopt = automatic (999/field_count)
+        std::optional<std::size_t> batch_size =
+                std::nullopt; // nullopt = automatic (999 / max(field_count, placeholders per row))
     };
 
     // Plain insert() defaults to the void/no-RETURNING path on any model whose
@@ -178,21 +179,26 @@ export namespace storm::orm::statements {
             return *cache.find(count); // Guaranteed to exist after insert
         }
 
-        // Rows per bulk statement: the bind-variable limit divided by field_count_.
-        // Dividing by InsertG::placeholders_count() instead would be tighter for a DB-generated PK
-        // (it is not bound) and exact for a composite-FK member (N placeholders, one
-        // field), but it grew the chunk from 249 to 333 rows on the INSERT benchmark model
-        // and measured ~2.6% slower at N=1000. Until that is resolved, a model with a
-        // composite-FK member can still overshoot the parameter limit.
+        // Rows per bulk statement for this model; public so the chunk size can be asserted without a database.
+        // Rows per bulk statement: the bind-variable limit divided by the per-row parameter count.
+        // That count is field_count_, raised to InsertG::placeholders_count() only when the
+        // latter is larger (#663): a composite-FK member binds N placeholders for one field, so
+        // field_count_ alone let such a model overshoot the 999 limit. Where placeholders_count()
+        // is SMALLER (a DB-generated PK is not bound) field_count_ is kept on purpose — dividing
+        // by the tighter figure grew the chunk from 249 to 333 rows on the INSERT benchmark model
+        // and measured ~2.6% slower at N=1000 (#662), so plain-model plans stay unchanged.
         // Clamped to [1, max_allowed]: a caller-supplied 0 would never advance the chunk
         // loop (offset += 0, see #359), and the upper bound caps at the parameter limit.
+      public:
         static auto effective_batch_size(const std::optional<InsertOptions>& opts) -> std::size_t {
-            constexpr std::size_t max_allowed =
-                    std::max<std::size_t>(1, Base::MAX_DB_VARIABLES / std::max<std::size_t>(1, Base::field_count_));
-            const std::size_t requested = opts.value_or(InsertOptions{}).batch_size.value_or(max_allowed);
+            constexpr std::size_t params_per_row =
+                    std::max<std::size_t>(1, std::max<std::size_t>(Base::field_count_, InsertG::placeholders_count()));
+            constexpr std::size_t max_allowed = std::max<std::size_t>(1, Base::MAX_DB_VARIABLES / params_per_row);
+            const std::size_t     requested   = opts.value_or(InsertOptions{}).batch_size.value_or(max_allowed);
             return std::clamp<std::size_t>(requested, 1, max_allowed);
         }
 
+      private:
         template <ReturnId R> static auto __attribute__((always_inline)) single_insert_sql() -> const std::string& {
             if constexpr (R == ReturnId::Yes) {
                 return InsertG::insert_returning_sql_string;
@@ -211,7 +217,9 @@ export namespace storm::orm::statements {
         // or the plain void path. on_conflict() starts the upsert chain (#205):
         // INSERT ... ON CONFLICT (Target...) DO {UPDATE|NOTHING}; it is rvalue-only
         // because it consumes the statement.
-        template <ReturnId R> struct SingleInsertQuery {
+        template <ReturnId R>
+            requires ReturnIdSupported<T, R>
+        struct SingleInsertQuery {
             BasicInsertStatement stmt;
             const T&             obj;
 
@@ -237,7 +245,9 @@ export namespace storm::orm::statements {
         };
 
         // Bulk insert proxy. R = Yes: execute() yields the generated ids; R = No: void.
-        template <ReturnId R> struct BulkInsertQuery {
+        template <ReturnId R>
+            requires ReturnIdSupported<T, R>
+        struct BulkInsertQuery {
             BasicInsertStatement         stmt;
             std::span<const T>           objects;
             std::optional<InsertOptions> opts;
@@ -278,13 +288,16 @@ export namespace storm::orm::statements {
         }
 
         // Returns SQL string with bound parameters inlined for a single INSERT (for debugging)
-        template <ReturnId R> [[nodiscard]] auto to_sql(const T& obj) -> std::expected<std::string, Error> {
+        template <ReturnId R>
+            requires ReturnIdSupported<T, R>
+        [[nodiscard]] auto to_sql(const T& obj) -> std::expected<std::string, Error> {
             return to_sql_impl(single_insert_sql<R>(), [&](Statement& s) { return bind_single(s, obj); });
         }
 
         // Returns SQL string with bound parameters inlined for a bulk INSERT, with or
         // without RETURNING (for debugging)
         template <ReturnId R>
+            requires ReturnIdSupported<T, R>
         [[nodiscard]] __attribute__((cold)) auto to_sql_bulk(std::span<const T> objects)
                 -> std::expected<std::string, Error> {
             if (objects.empty()) {
@@ -313,6 +326,7 @@ export namespace storm::orm::statements {
         // Batch insert (single statement, or chunked inside one transaction when the rows
         // exceed the batch size). R = Yes collects the generated ids in input order.
         template <ReturnId R>
+            requires ReturnIdSupported<T, R>
         [[nodiscard]] auto execute_batched(std::span<const T> objects, std::optional<InsertOptions> opts = std::nullopt)
                 -> BulkResult<R> {
             if (objects.empty()) {
@@ -328,6 +342,7 @@ export namespace storm::orm::statements {
 
         // Single INSERT; R = Yes appends RETURNING <pk> and yields the id.
         template <ReturnId R>
+            requires ReturnIdSupported<T, R>
         [[nodiscard]] __attribute__((hot)) auto execute_single(const T& obj) noexcept -> std::
                 conditional_t<R == ReturnId::Yes, std::expected<std::int64_t, Error>, std::expected<void, Error>> {
             auto prepared = prepare_and_bind(single_insert_sql<R>(), obj);
