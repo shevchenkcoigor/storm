@@ -354,6 +354,11 @@ export namespace storm::db::sqlite {
         // cache_* helpers (Issue #271, shared with the PostgreSQL backend); only the
         // backend-specific prepare_raw() call differs. On a miss the lock is dropped
         // before prepare_raw() so the expensive syscall runs uncontended.
+        // LIFETIME: the returned Statement* is a non-owning view valid only until the
+        // next prepare_cached() on this Connection — at capacity that call may evict
+        // the entry it points to (#728). Finish with it before preparing another.
+        // execute("BEGIN TRANSACTION" | "COMMIT" | "ROLLBACK") below also goes through
+        // here, so storm::begin(), commit() and a guard's rollback count as well.
         [[nodiscard]] auto prepare_cached(std::string_view sql) -> std::expected<Statement*, Error> {
             if (!is_open()) {
                 return std::unexpected(Error{SQLITE_MISUSE, "Connection not open"});

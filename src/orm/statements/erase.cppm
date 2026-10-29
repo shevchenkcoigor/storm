@@ -339,6 +339,9 @@ export namespace storm::orm::statements {
         // Execute large batches using chunked IN clauses
         // NOTE: Transaction is handled by the caller via TransactionGuard (#415).
         // Optimized: pre-cache max bulk statement, only lookup remainder once
+        // A Statement* is only valid until the next prepare_cached(): at capacity that call may
+        // evict the entry it points to (#728). So the remainder is prepared AFTER the last use of
+        // max_bulk_stmt, never while it is still live.
         [[nodiscard]] __attribute__((hot)) auto execute_chunked(std::span<const T> objects)
                 -> std::expected<void, Error> {
             // Prepare max bulk statement once per call (compile-time SQL, reused across full chunks)
@@ -347,20 +350,6 @@ export namespace storm::orm::statements {
                 return std::unexpected(max_bulk_result.error());
             }
             Statement* max_bulk_stmt = *max_bulk_result;
-
-            // Calculate remainder size upfront
-            const std::size_t remainder_size = objects.size() % MAX_CHUNK_ROWS;
-            Statement*        remainder_stmt = nullptr;
-
-            // Cache remainder statement if needed (only one hash lookup per batch)
-            if (remainder_size > 0) {
-                const auto& remainder_sql = get_bulk_delete_sql(remainder_size);
-                auto        stmt_result   = conn_->prepare_cached(remainder_sql);
-                if (!stmt_result) {
-                    return std::unexpected(stmt_result.error());
-                }
-                remainder_stmt = *stmt_result;
-            }
 
             // Process full chunks using local pointer (no hash lookups in loop)
             std::size_t offset = 0;
@@ -372,10 +361,14 @@ export namespace storm::orm::statements {
                 offset += MAX_CHUNK_ROWS;
             }
 
-            // Process remainder with pre-cached statement
-            if (remainder_size > 0) {
+            // Process remainder (one hash lookup per batch, after max_bulk_stmt is dead)
+            if (const std::size_t remainder_size = objects.size() - offset; remainder_size > 0) {
+                auto stmt_result = conn_->prepare_cached(get_bulk_delete_sql(remainder_size));
+                if (!stmt_result) {
+                    return std::unexpected(stmt_result.error());
+                }
                 auto chunk = objects.subspan(offset, remainder_size);
-                if (auto result = bind_pks_and_execute(*remainder_stmt, chunk); !result) {
+                if (auto result = bind_pks_and_execute(**stmt_result, chunk); !result) {
                     return std::unexpected(result.error());
                 }
             }
