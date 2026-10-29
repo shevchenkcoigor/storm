@@ -24,7 +24,7 @@ underlying/`rep` type. SQLite's mapping is unchanged — this is PG-only.
 | `int` | INTEGER | INTEGER | `bind_int()` | `extract_int()` |
 | `short` | INTEGER | SMALLINT | `bind_int()` (cast) | `extract_int()` (cast) |
 | `unsigned short` | INTEGER | INTEGER | `bind_int()` (cast) | `extract_int()` (cast) |
-| `unsigned int` | INTEGER | BIGINT | `bind_int()` (cast) | `extract_int()` (cast) |
+| `unsigned int` | INTEGER | BIGINT | `bind_int64()` (widened, #729 — **BREAKING**: rows stored with values above `INT_MAX` before #729 hold a wrapped negative value; PG fix: `UPDATE t SET col = col + 4294967296 WHERE col < 0`) | `extract_int()` (cast) |
 | `int64_t` | INTEGER | BIGINT | `bind_int64()` | `extract_int64()` |
 | `long` | INTEGER | BIGINT | `bind_int64()` | `extract_int64()` |
 | `long long` | INTEGER | BIGINT | `bind_int64()` | `extract_int64()` |
