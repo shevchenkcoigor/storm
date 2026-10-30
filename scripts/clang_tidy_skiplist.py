@@ -12,6 +12,7 @@ rather than a convention several call sites have to remember.
 
 Stdlib only, no syntax newer than Python 3.9.
 """
+import re
 import sys
 from typing import Iterable, Iterator
 
@@ -25,6 +26,14 @@ from typing import Iterable, Iterator
 # Files genuinely unparseable:
 #   shared/query_builder.hpp - pseudo-module header; must be included after
 #       `import storm;` so clang-tidy sees it without the BMI and fails.
+#
+#   src/orm/statements/{aggregate_grammar,select_query,select_stitch}.hpp (#671) -
+#       textual fragments of storm_orm_statements_aggregate / _select, #included
+#       inside the parent's module purview after its imports. Standalone they see
+#       none of those imports. Only --diff lints them: their staged lines, through
+#       the parent's compile command with an explicit -header-filter
+#       (FRAGMENT_PARENTS + fragment_line_filters). --full/--all do not - the
+#       config's HeaderFilterRegex passes no #included file at all.
 #
 #   Test headers that must come after `import storm;` - clang-tidy parses
 #   them standalone and hits missing storm symbols:
@@ -118,6 +127,16 @@ from typing import Iterable, Iterator
 #   fuzz/ edit never actually blocked a commit, but for the wrong reason (a
 #   message match, not a reviewed skip-list entry). Listing them explicitly
 #   is what #550 changed the mechanism to require.
+# src/ #include fragments (#671) -> the module unit whose purview #includes them.
+# Never linted standalone (they are KNOWN_UNPARSEABLE below), but --diff lints a
+# staged fragment's changed lines through the parent's compile command
+# (fragment_line_filters), and --keep reports the parent for commit.sh's BMI probe.
+FRAGMENT_PARENTS = {
+    "src/orm/statements/aggregate_grammar.hpp": "src/orm/statements/aggregate.cppm",
+    "src/orm/statements/select_query.hpp": "src/orm/statements/select.cppm",
+    "src/orm/statements/select_stitch.hpp": "src/orm/statements/select.cppm",
+}
+
 KNOWN_UNPARSEABLE = frozenset((
     "fuzz/fuzz_batch_insert.cpp",
     "fuzz/fuzz_connection_string.cpp",
@@ -182,7 +201,7 @@ KNOWN_UNPARSEABLE = frozenset((
     "benchmarks/dashboard/models.hpp",
     "benchmarks/schema.cppm",
     "python/bindings.cpp",
-))
+)) | frozenset(FRAGMENT_PARENTS)
 
 # Files clang-tidy must NEVER touch - even when it can parse them cleanly. Used to
 # short-circuit --full/--all and to filter --diff, so clang-tidy --fix never
@@ -242,12 +261,48 @@ def filter_skiplist_from_diff(lines: Iterable[str]) -> Iterator[str]:
             yield line
 
 
+HUNK = re.compile(r"^@@ -\S+ \+(\d+)(?:,(\d+))? @@")
+
+
+def fragment_line_filters(lines: Iterable[str]) -> dict:
+    """{parent: clang-tidy -line-filter entries} for the staged fragment hunks of a -U0 diff.
+
+    clang-tidy-diff.py runs each diffed file as its own main TU, which a fragment
+    cannot be; so its hunks are re-targeted here: run_clang_tidy.py lints the PARENT
+    with a -line-filter naming only the fragment's added/changed lines (pure
+    deletions add none). Naming only fragments also keeps the parent's own lines out
+    of this run - clang-tidy-diff.py already covers them when the parent is staged.
+    """
+    filters = {}
+    current = None
+    for line in lines:
+        if line.startswith("diff --git "):
+            current = diff_path(line.rstrip("\n"))
+            current = current if current in FRAGMENT_PARENTS else None
+            continue
+        match = HUNK.match(line) if current else None
+        if not match:
+            continue
+        start, count = int(match.group(1)), int(match.group(2) or "1")
+        if count == 0:
+            continue
+        entries = filters.setdefault(FRAGMENT_PARENTS[current], [])
+        entry = next((e for e in entries if e["name"] == current), None)
+        if entry is None:
+            entry = {"name": current, "lines": []}
+            entries.append(entry)
+        entry["lines"].append([start, start + count - 1])
+    return filters
+
+
 def main(argv: list) -> int:
     if argv[1:] != ["--keep"]:
         print("usage: clang_tidy_skiplist.py --keep   (paths on stdin)", file=sys.stderr)
         return 2
     for path in (line.strip() for line in sys.stdin):
-        if path and not is_skipped(path):
+        if path in FRAGMENT_PARENTS:
+            print(FRAGMENT_PARENTS[path])  # the TU clang-tidy opens for a fragment
+        elif path and not is_skipped(path):
             print(path)
     return 0
 

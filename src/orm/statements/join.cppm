@@ -1630,8 +1630,9 @@ export namespace storm::orm::statements {
 
     // Whether JS's owner key is a single column, and so takes the bare-word stitch
     // fast path (#504 perf) rather than a StitchKey. Named once here because both
-    // descriptor fields below branch on it and SelectStatement re-derives the same
-    // condition; they must never disagree about which extractor is populated.
+    // descriptor fields below branch on it and SelectStitch<T, C>::narrow_stitch_key_
+    // (select_stitch.hpp) re-derives the same condition; they must never disagree
+    // about which extractor is populated.
     template <typename JS> consteval auto narrow_owner_key() -> bool {
         return JS::owner_key_column_count_ == 1;
     }

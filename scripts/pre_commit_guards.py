@@ -253,7 +253,7 @@ TIDY_PREREQS = Guard(
 # compiles cleanly, so nothing else catches it.
 ORM_BACKEND_IMPORTS = Guard(
     "ORM backend neutrality",
-    r"^(src/.*\.cppm|scripts/(tests/test_)?check_orm_backend_imports\.py)$",
+    r"^(src/.*\.(cppm|hpp|h)|scripts/(tests/test_)?check_orm_backend_imports\.py)$",
     (
         Step(r"^scripts/(tests/test_)?check_orm_backend_imports\.py$",
              script("scripts/tests/test_check_orm_backend_imports.py"),

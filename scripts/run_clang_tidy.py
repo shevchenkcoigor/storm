@@ -252,32 +252,63 @@ def tee_clang_tidy_diff(opts: Options, db_path: str, staged_diff: pathlib.Path) 
     command = [sys.executable, CLANG_TIDY_DIFF, "-clang-tidy-binary", CLANG_TIDY, "-p1", "-path", db_path,
                "-iregex", r".*\.(cpp|cppm|h|hpp)", "-j", str(opts.jobs), "-timeout", str(TIDY_TIMEOUT_SECONDS),
                "-quiet"] + (["-fix"] if opts.fix else [])
-    captured = []
     with open(str(staged_diff), "rb") as stdin:
-        proc = subprocess.Popen(command, stdin=stdin, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
-        for raw in proc.stdout:
-            line = raw.decode("utf-8", errors="replace")
-            sys.stdout.write(line)
-            sys.stdout.flush()
-            captured.append(line.rstrip("\n"))
-        proc.wait()
+        return tee_command(command, stdin)[0]  # exit code unreliable across versions
+
+
+def tee_command(command: list, stdin=None) -> tuple:
+    """Run command, echoing its merged stdout/stderr live; return (lines, exit code)."""
+    captured = []
+    proc = subprocess.Popen(command, stdin=stdin, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
+    for raw in proc.stdout:
+        line = raw.decode("utf-8", errors="replace")
+        sys.stdout.write(line)
+        sys.stdout.flush()
+        captured.append(line.rstrip("\n"))
+    return captured, proc.wait()
+
+
+def tee_fragment_parents(opts: Options, db_path: str, fragment_filters: dict) -> list:
+    """Lint staged #include-fragment lines (#671) through each fragment's parent TU.
+
+    filter_skiplist_from_diff drops fragment sections (a fragment is not a TU), so
+    without this their changed lines would never be checked at commit time.
+
+    -header-filter is passed explicitly: the config's HeaderFilterRegex uses a
+    (?!...) lookahead, which clang-tidy's POSIX regex engine does not support, so
+    on its own it lets no diagnostic through from any #included file.
+    """
+    captured = []
+    for parent, filters in sorted(fragment_filters.items()):
+        header_filter = ".*/(%s)$" % "|".join(re.escape(entry["name"]) for entry in filters)
+        command = [CLANG_TIDY, "-p", db_path, "-quiet", "-header-filter=" + header_filter,
+                   "-line-filter=" + json.dumps(filters)]
+        lines, code = tee_command(command + (["-fix"] if opts.fix else []) + [parent])
+        if code and not any(": error:" in line or ": warning:" in line for line in lines):
+            # A direct clang-tidy exit code is reliable (unlike clang-tidy-diff.py's):
+            # a failure that printed no diagnostic must not pass as clean.
+            lines.append("%s: error: clang-tidy exited %d with no diagnostic" % (parent, code))
+            say(lines[-1])
+        captured += lines
     return captured
 
 
 def run_diff(opts: Options, db_path: str, workdir: str) -> int:
     # Diff sections for known-unparseable / always-skip files are dropped BEFORE
     # clang-tidy-diff.py sees them (source-level skip, keyed by file identity).
-    staged = git_output("diff", "-U0", "--cached")
+    staged = git_output("diff", "-U0", "--cached", "--src-prefix=a/", "--dst-prefix=b/", "--no-ext-diff")
     staged_diff = pathlib.Path(workdir) / "staged.diff"
     staged_diff.write_text("".join(skiplist.filter_skiplist_from_diff(staged.splitlines(keepends=True))))
     output = tee_clang_tidy_diff(opts, db_path, staged_diff)
+    fragment_filters = skiplist.fragment_line_filters(staged.splitlines(keepends=True))
+    fragment_output = tee_fragment_parents(opts, db_path, fragment_filters)
 
     if opts.fix:
         restage_fixes()  # so the re-check sees them
 
     # clang-tidy-diff.py prints "No relevant changes found." when nothing in the
     # diff matches the regex. That's a clean pass.
-    if any("No relevant changes found" in line for line in output):
+    if not fragment_filters and any("No relevant changes found" in line for line in output):
         say()
         say("✅ clang-tidy --diff: no staged C++ lines to check")
         return 0
@@ -295,6 +326,7 @@ def run_diff(opts: Options, db_path: str, workdir: str) -> int:
     # clang-tidy's -line-filter only suppresses warnings outside the diffed hunks -
     # a hard parse failure is reported regardless of which line triggered it, since
     # the rest of the TU couldn't be checked at all.
+    output = output + fragment_output
     warnings = count_lines(output, ": warning:")
     errors = count_lines(output, ": error:")
 

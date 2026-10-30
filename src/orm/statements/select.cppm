@@ -26,12 +26,19 @@ import storm_orm_where;
 import storm_db_concept;
 import storm_db_default_connection;
 
+// Textual fragments of this module (#671): the m2m stitch-key helpers (included here) and
+// the Query proxies (included inside the class body below). Both compile into this
+// module's BMI; each #errors unless this macro is defined, so a stray #include elsewhere
+// fails with one clear message.
+#define STORM_SELECT_FRAGMENTS
+#include "select_stitch.hpp"
+
 export namespace storm::orm::statements {
 
     // Import utilities for code convenience
     using storm::orm::utilities::ConstexprString;
 
-    // Selector gates shared by the projection / aggregate terminals below.
+    // Selector gates shared by the projection / aggregate terminals in select_query.hpp.
     template <auto... S>
     concept ProjectionSelectors =
             (storm::meta::ValidSelector<S> && ...) && (storm::meta::SingleColumnSelector<S> && ...);
@@ -44,11 +51,13 @@ export namespace storm::orm::statements {
     template <typename T, storm::db::DatabaseConnection ConnType>
     class BasicSelectStatement : private BaseStatement<T> {
         friend class BaseStatement<T>; // Allow BaseStatement to access protected/private members
-        using Base      = BaseStatement<T>;
-        using Grammar   = SelectGrammar<T>;
-        using Error     = typename ConnType::Error;
-        using Statement = typename ConnType::Statement;
-        using PkKeyType = detail::pk_key_type_t<T>; // Primary key type for m2m stitch maps (#507)
+        using Base         = BaseStatement<T>;
+        using Grammar      = SelectGrammar<T>;
+        using Error        = typename ConnType::Error;
+        using Statement    = typename ConnType::Statement;
+        using PkKeyType    = detail::pk_key_type_t<T>;  // Primary key type for m2m stitch maps (#507)
+        using Stitch       = SelectStitch<T, ConnType>; // m2m stitch-key helpers (#671, select_stitch.hpp)
+        using StitchMapKey = typename Stitch::StitchMapKey;
 
       public:
         // Generate SELECT SQL string (compile-time computed, runtime accessible)
@@ -149,254 +158,7 @@ export namespace storm::orm::statements {
             return to_sql(std::move(join_wrapper), where_expr, limit_two, offset, order_by_wrapper);
         }
 
-        // Proxy types returned by factory methods (used by QuerySet one-liner delegations).
-        // QueryBase::forward() funnels the five stored fields into any callable, so the
-        // derived Query/FirstQuery/GetQuery don't each spell the field list out — that
-        // five-line forwarding block used to repeat four times.
-        struct QueryBase {
-            BasicSelectStatement                           stmt;
-            std::optional<JoinStatementWrapper<PkKeyType>> join_wrapper;
-            orm::where::ExpressionVariantPtr               where_expr;
-            std::optional<int>                             limit_value;
-            std::optional<int>                             offset_value;
-            std::optional<OrderByWrapper>                  order_by_wrapper;
-
-            template <typename Fn> __attribute__((always_inline)) auto forward(Fn&& callback) -> decltype(auto) {
-                return std::forward<Fn>(callback)(
-                        this->join_wrapper,
-                        this->where_expr,
-                        this->limit_value,
-                        this->offset_value,
-                        this->order_by_wrapper
-                );
-            }
-
-            // No WHERE / JOIN / ORDER BY / OFFSET: the only shape first()/get() may serve from the
-            // cached fast statement. Re-checked at execute time, since chain methods inherited by
-            // FirstQuery/GetQuery can add any of these after first()/get() was called.
-            [[nodiscard]] auto is_plain() const -> bool {
-                return !where_expr && !join_wrapper && !order_by_wrapper && !offset_value.has_value();
-            }
-
-            // Chain methods mirror QuerySet. `this Self self` takes the proxy by value: an
-            // lvalue is copied (the original stays reusable, Django-style), an rvalue moved.
-            template <typename Self>
-            [[nodiscard]] auto where(this Self self, orm::where::ExpressionVariantPtr expr) -> Self {
-                self.where_expr = orm::where::and_combine(std::move(self.where_expr), std::move(expr));
-                return self;
-            }
-
-            template <typename Self> [[nodiscard]] auto limit(this Self self, int n) -> Self {
-                // Tracked by #225: becomes a P2900 `pre(n >= 0)` contract once clang-p2996 supports it.
-                assert(n >= 0 && "limit() requires a non-negative value");
-                self.limit_value = n;
-                return self;
-            }
-
-            template <typename Self> [[nodiscard]] auto offset(this Self self, int n) -> Self {
-                assert(n >= 0 && "offset() requires a non-negative value");
-                self.offset_value = n;
-                return self;
-            }
-
-            // #570: constrained here so a composite-PK FK selector is diagnosed at this call site.
-            template <auto... Args, typename Self>
-                requires OrderBySelectorsAreSingleColumn<Args...>
-            [[nodiscard]] auto order_by(this Self self) -> Self {
-                self.order_by_wrapper = make_order_by_wrapper<Args...>();
-                return self;
-            }
-
-            template <auto... S, typename Self>
-                requires JoinableFields<T, storm::meta::selector_info<S>()...>
-            [[nodiscard]] auto join(this Self self) -> Self {
-                self.join_wrapper = make_joined<JoinType::Inner, storm::meta::selector_info<S>()...>();
-                return self;
-            }
-
-            template <auto... S, typename Self>
-                requires JoinableFields<T, storm::meta::selector_info<S>()...>
-            [[nodiscard]] auto left_join(this Self self) -> Self {
-                self.join_wrapper = make_joined<JoinType::Left, storm::meta::selector_info<S>()...>();
-                return self;
-            }
-
-          private:
-            // Shared body of join() / left_join(): the m2m, reverse-FK or plain FK wrapper.
-            template <JoinType Type, std::meta::info... FKFields>
-            static auto make_joined() -> JoinStatementWrapper<PkKeyType> {
-                if constexpr ((M2MFieldOf<T, FKFields> && ...)) {
-                    return make_m2m_join_wrapper<T, ConnType, Type, FKFields...>();
-                } else if constexpr ((ReverseFKJoinable<T, FKFields> && ...)) {
-                    return make_reverse_fk_join_wrapper<T, ConnType, Type, FKFields...>();
-                } else {
-                    return make_join_wrapper<T, ConnType, Type, FKFields...>();
-                }
-            }
-        };
-
-        struct Query : QueryBase {
-            // Projection / aggregate terminals — each hands the accumulated state to its own
-            // statement, so `SelectStatement<T>{}.where(c).count<...>()` equals `QuerySet.where(c).count<...>()`.
-            template <auto... S>
-                requires ProjectionSelectors<S...>
-            [[nodiscard]] auto distinct() const {
-                if constexpr (sizeof...(S) == 0) {
-                    return projection<DistinctStatement, BaseStatement<T>::primary_key_>();
-                } else {
-                    return projection<DistinctStatement, storm::meta::selector_info<S>()...>();
-                }
-            }
-
-            template <auto... S>
-                requires(sizeof...(S) > 0 && ProjectionSelectors<S...>)
-            [[nodiscard]] auto values() const {
-                return projection<ValuesStatement, storm::meta::selector_info<S>()...>();
-            }
-
-            template <auto... S>
-                requires(sizeof...(S) > 0 && ProjectionSelectors<S...>)
-            [[nodiscard]] auto group_by() const {
-                return GroupByBuilder<T, ConnType, storm::meta::selector_info<S>()...>{aggregate_params(true)};
-            }
-
-            template <auto... S>
-                requires NumericAggregateSelectors<S...>
-            [[nodiscard]] auto sum() const {
-                return aggregate<AggregateType::SUM, storm::meta::selector_info<S>()...>();
-            }
-
-            template <auto... S>
-                requires ProjectionSelectors<S...>
-            [[nodiscard]] auto count() const {
-                return aggregate<AggregateType::COUNT, storm::meta::selector_info<S>()...>();
-            }
-
-            template <auto... S>
-                requires NumericAggregateSelectors<S...>
-            [[nodiscard]] auto avg() const {
-                return aggregate<AggregateType::AVG, storm::meta::selector_info<S>()...>();
-            }
-
-            template <auto... S>
-                requires NumericAggregateSelectors<S...>
-            [[nodiscard]] auto min() const {
-                return aggregate<AggregateType::MIN, storm::meta::selector_info<S>()...>();
-            }
-
-            template <auto... S>
-                requires NumericAggregateSelectors<S...>
-            [[nodiscard]] auto max() const {
-                return aggregate<AggregateType::MAX, storm::meta::selector_info<S>()...>();
-            }
-
-            template <auto S>
-                requires ProjectionSelectors<S>
-            [[nodiscard]] auto count_distinct() const {
-                return aggregate<AggregateType::COUNT_DISTINCT, storm::meta::selector_info<S>()>();
-            }
-
-            // first() / get() consume a copy of the proxy (lvalue) or the proxy itself (rvalue).
-            [[nodiscard]] auto first(this Query self) {
-                return FirstQuery{{std::move(self)}};
-            }
-
-            [[nodiscard]] auto get(this Query self) {
-                return GetQuery{{std::move(self)}};
-            }
-
-            // Lazy row-by-row iteration — no full materialization.
-            [[nodiscard]] auto rows() {
-                return this->stmt.rows_generator(
-                        this->stmt.conn_,
-                        this->join_wrapper,
-                        this->where_expr,
-                        this->limit_value,
-                        this->offset_value,
-                        this->order_by_wrapper
-                );
-            }
-
-          private:
-            template <
-                    template <typename, storm::db::DatabaseConnection, std::meta::info...> class Projection,
-                    std::meta::info... Fields>
-            [[nodiscard]] auto projection() const {
-                return Projection<T, ConnType, Fields...>{
-                        this->stmt.conn_,
-                        this->where_expr,
-                        this->join_wrapper,
-                        this->limit_value,
-                        this->offset_value,
-                        this->order_by_wrapper
-                };
-            }
-
-            [[nodiscard]] auto aggregate_params(bool with_clauses) const -> AggregateParams<T, ConnType> {
-                return {this->stmt.conn_,
-                        this->where_expr,
-                        this->join_wrapper,
-                        with_clauses ? this->limit_value : std::optional<int>{},
-                        with_clauses ? this->offset_value : std::optional<int>{},
-                        with_clauses ? this->order_by_wrapper : std::optional<OrderByWrapper>{},
-                        nullptr};
-            }
-
-            template <AggregateType Type, std::meta::info... Fields> [[nodiscard]] auto aggregate() const {
-                return AggregateStatement<T, ConnType, NoGroupBy, AggregateOp<Type, Fields...>>{
-                        aggregate_params(false)
-                };
-            }
-
-          public:
-            [[nodiscard]] auto execute() -> std::expected<plf::hive<T>, Error> {
-                return this->forward([this](auto&... args) { return this->stmt.execute(args...); });
-            }
-            [[nodiscard]] auto to_sql() -> std::expected<std::string, Error> {
-                return this->forward([this](auto&... args) { return this->stmt.to_sql(args...); });
-            }
-            [[nodiscard]] auto sql() -> std::string {
-                return this->forward([](auto&... args) { return build_sql(args...); });
-            }
-        };
-
-        struct FirstQuery : QueryBase {
-            [[nodiscard]] auto execute() -> std::expected<std::optional<T>, Error> {
-                if (this->is_plain()) {
-                    return this->stmt.execute_one_fast();
-                }
-                return this->forward([this](auto&... args) { return this->stmt.execute_one(args...); });
-            }
-            [[nodiscard]] auto to_sql() -> std::expected<std::string, Error> {
-                return this->stmt
-                        .to_sql_first(this->join_wrapper, this->where_expr, this->offset_value, this->order_by_wrapper);
-            }
-            [[nodiscard]] auto sql() -> std::string {
-                std::optional<int> const limit_one = 1;
-                return build_sql(
-                        this->join_wrapper, this->where_expr, limit_one, this->offset_value, this->order_by_wrapper
-                );
-            }
-        };
-
-        struct GetQuery : QueryBase {
-            [[nodiscard]] auto execute() -> std::expected<T, Error> {
-                if (this->is_plain()) {
-                    return this->stmt.execute_get_fast();
-                }
-                return this->forward([this](auto&... args) { return this->stmt.execute_get(args...); });
-            }
-            [[nodiscard]] auto to_sql() -> std::expected<std::string, Error> {
-                return this->stmt
-                        .to_sql_get(this->join_wrapper, this->where_expr, this->offset_value, this->order_by_wrapper);
-            }
-            [[nodiscard]] auto sql() -> std::string {
-                std::optional<int> const limit_two = 2;
-                return build_sql(
-                        this->join_wrapper, this->where_expr, limit_two, this->offset_value, this->order_by_wrapper
-                );
-            }
-        };
+#include "select_query.hpp"
 
         [[nodiscard]] auto where(orm::where::ExpressionVariantPtr expr) -> Query {
             return {*this, std::nullopt, std::move(expr), std::nullopt, std::nullopt, std::nullopt};
@@ -764,7 +526,7 @@ export namespace storm::orm::statements {
                     if (!rows) {
                         return std::unexpected(rows.error());
                     }
-                    return m2m_one_from_hive<ExactOne>(std::move(*rows));
+                    return Stitch::template m2m_one_from_hive<ExactOne>(std::move(*rows));
                 }
             }
             return prepare_and_dispatch(clauses, [this](Statement* stmt, const auto& extractor) {
@@ -774,28 +536,6 @@ export namespace storm::orm::statements {
                     return execute_single_row(stmt, extractor);
                 }
             });
-        }
-
-        // Reduce a 2-query m2m hive (already LIMIT-bounded to 1 or 2 base entities)
-        // to the first()/get() result. ExactOne=false → optional<T>; ExactOne=true →
-        // T with 0-row / >1-row errors.
-        template <bool ExactOne>
-        [[nodiscard]] auto m2m_one_from_hive(plf::hive<T>&& rows) noexcept
-                -> std::expected<std::conditional_t<ExactOne, T, std::optional<T>>, Error> {
-            if constexpr (ExactOne) {
-                if (rows.empty()) {
-                    return std::unexpected(Error{-1, "No row found matching query"});
-                }
-                if (rows.size() > 1) {
-                    return std::unexpected(Error{-1, "Multiple rows found matching query"});
-                }
-                return std::move(*rows.begin());
-            } else {
-                if (rows.empty()) {
-                    return std::optional<T>{std::nullopt};
-                }
-                return std::optional<T>{std::move(*rows.begin())};
-            }
         }
 
         // M2M two-query predicate-pushdown execution (#391, #392). Q1 loads the
@@ -820,13 +560,13 @@ export namespace storm::orm::statements {
             }
             plf::hive<T> results = std::move(*q1);
 
-            // Key type is picked at compile time (see StitchMapKey): a single-column
+            // Key type is picked at compile time (see SelectStitch::StitchMapKey): a single-column
             // PK — integer or storm::UUID (#507) — narrows back to one uint64_t word,
             // a composite PK (#504) keeps the full StitchKey buffer.
             std::unordered_map<StitchMapKey, T*> by_pk;
             by_pk.reserve(results.size());
             for (T& obj : results) {
-                by_pk.emplace(narrow_stitch_key(build_owner_stitch_key(obj)), &obj);
+                by_pk.emplace(Stitch::narrow_stitch_key(Stitch::build_owner_stitch_key(obj)), &obj);
             }
 
             // Q2 per relation (#392) — related rows, stitched into their owner's
@@ -838,103 +578,12 @@ export namespace storm::orm::statements {
             }
 
             // INNER semantics: drop entities empty in ANY inner relation.
-            drop_empty_relations(results, wrapper);
+            Stitch::drop_empty_relations(results, wrapper);
 
             if (auto committed = txn->commit(); !committed) {
                 return std::unexpected(committed.error());
             }
             return std::move(results);
-        }
-
-        // The stitch map's key type (#504 perf). Both the Q1 insert and the Q2 probe
-        // build a StitchKey, but a SINGLE-column PK — the overwhelmingly common shape
-        // — fills exactly one 8-byte word of it, so the map is keyed on that word
-        // instead of the 33-byte class. That is not a micro-optimization: it restores
-        // libc++'s identity std::hash<integral> (which compiles to nothing) in place
-        // of hash<StitchKey>'s FNV loop, and an inlined one-instruction operator== in
-        // place of an out-of-line word-compare call. Both run once per Q2 row, and
-        // together they were the entire +3.95% the StitchKey migration cost the
-        // single-PK path. Composite models keep the full key — correctness there is
-        // never traded for the narrowing (see narrow_stitch_key).
-        static constexpr bool narrow_stitch_key_ = Base::primary_key_column_count_ == 1;
-
-        using StitchMapKey = std::conditional_t<narrow_stitch_key_, std::uint64_t, storm::orm::utilities::StitchKey>;
-
-        // Narrow a built StitchKey to the map's key type. For a composite PK this is
-        // the identity — every part is retained, so distinct composite keys stay
-        // distinct and can never mis-stitch. Only the provably single-part case takes
-        // the word (StitchKey::first_word asserts that in debug).
-        [[nodiscard]] static auto narrow_stitch_key(const storm::orm::utilities::StitchKey& key) noexcept
-                -> StitchMapKey {
-            if constexpr (narrow_stitch_key_) {
-                return key.first_word();
-            } else {
-                return key;
-            }
-        }
-
-        // Read a Q2 row's owner key through whichever extractor the descriptor carries.
-        // make_relation_descriptor populates exactly one of the pair, keyed on the same
-        // PK width narrow_stitch_key_ tests, so the branch taken here always matches the
-        // one that was set — asserted rather than left implicit, since calling the null
-        // one would be a null-fn-pointer jump.
-        [[nodiscard]] static auto extract_owner_key(const M2MRelation& rel, Statement* stmt) noexcept -> StitchMapKey {
-            if constexpr (narrow_stitch_key_) {
-                assert(rel.extract_q2_owner_pk_word_fn != nullptr);
-                return rel.extract_q2_owner_pk_word_fn(stmt);
-            } else {
-                assert(rel.extract_q2_owner_pk_fn != nullptr);
-                return rel.extract_q2_owner_pk_fn(stmt);
-            }
-        }
-
-        // Build the Q1 hash-map key for `obj`'s own primary key (#504 Task 8) — the
-        // SAME logical key TwoQueryJoinBase::extract_q2_owner_pk builds from a Q2
-        // row's owner-key columns, so a matching row stitches correctly. Each PK
-        // part is dispatched to append_int64/append_string by ITS OWN stored type
-        // (mirrors bind_one_pk_part in base.cppm and the statement-side extractor in
-        // join.cppm); an FK part's stitch value is the referenced row's own key
-        // (matching the "<name>_id" column both sides key on), not the FK member's
-        // whole C++ object.
-        [[nodiscard]] static auto build_owner_stitch_key(const T& obj) noexcept -> storm::orm::utilities::StitchKey {
-            storm::orm::utilities::StitchKey key;
-            build_owner_stitch_key_impl(key, obj, std::make_index_sequence<Base::primary_key_members_.size()>{});
-            return key;
-        }
-
-        template <std::size_t... Is>
-        static void build_owner_stitch_key_impl(
-                storm::orm::utilities::StitchKey& key, const T& obj, std::index_sequence<Is...> /*unused*/
-        ) noexcept {
-            (append_obj_pk_part_to_key<Base::primary_key_members_[Is]>(key, obj), ...);
-        }
-
-        template <std::meta::info Member>
-        static void append_obj_pk_part_to_key(storm::orm::utilities::StitchKey& key, const T& obj) noexcept {
-            if constexpr (Base::is_fk_field(Member)) {
-                using FKType         = std::remove_cvref_t<typename[:std::meta::type_of(Member):]>;
-                using InnerFK        = utilities::optional_inner_type_t<FKType>;
-                constexpr auto fk_pk = Base::template find_fk_primary_key<FKType>();
-                using PartType       = std::remove_cvref_t<decltype(std::declval<InnerFK>().[:fk_pk:])>;
-                append_obj_dispatched_part<PartType>(key, obj.[:Member:].[:fk_pk:]);
-            } else {
-                using PartType = std::remove_cvref_t<typename[:std::meta::type_of(Member):]>;
-                append_obj_dispatched_part<PartType>(key, obj.[:Member:]);
-            }
-        }
-
-        // Mirrors TwoQueryJoinBase::append_dispatched_part's arms exactly — the two
-        // must agree byte-for-byte or a Q2 row never finds its Q1 owner. storm::UUID
-        // (#507) belongs with the text types: it is stored as TEXT/UUID, and its
-        // implicit operator std::string_view feeds append_string directly.
-        template <typename PartType>
-        static void append_obj_dispatched_part(storm::orm::utilities::StitchKey& key, const auto& value) noexcept {
-            if constexpr (std::same_as<PartType, std::string> || std::same_as<PartType, std::string_view> ||
-                          std::same_as<PartType, storm::orm::utilities::UUID>) {
-                key.append_string(value);
-            } else {
-                key.append_int64(static_cast<std::int64_t>(value));
-            }
         }
 
         // Prepare a clause-built SQL (cached), reset it, and bind the WHERE params
@@ -986,7 +635,7 @@ export namespace storm::orm::statements {
             Statement* stmt        = *prep;
             int        step_result = 0;
             while ((step_result = stmt->step_raw()) == Statement::ROW_AVAILABLE) {
-                const auto owner = extract_owner_key(rel, stmt);
+                const auto owner = Stitch::extract_owner_key(rel, stmt);
                 if (auto it = by_pk.find(owner); it != by_pk.end()) {
                     rel.append_related_q2_fn(stmt, it->second);
                 }
@@ -998,24 +647,6 @@ export namespace storm::orm::statements {
             }
             stmt->reset();
             return {};
-        }
-
-        // INNER-join semantics (#392): remove entities whose container stayed
-        // empty in ANY inner relation; LEFT relations never drop. When every
-        // relation is LEFT the predicate is constant-false and nothing drops.
-        static auto drop_empty_relations(plf::hive<T>& results, const JoinStatementWrapper<PkKeyType>& wrapper) noexcept
-                -> void {
-            for (auto it = results.begin(); it != results.end();) {
-                T&         obj  = *it;
-                const bool drop = std::ranges::any_of(wrapper.m2m_relations, [&obj](const M2MRelation& rel) {
-                    return !rel.is_left && rel.container_empty_fn(&obj);
-                });
-                if (drop) {
-                    it = results.erase(it);
-                } else {
-                    ++it;
-                }
-            }
         }
 
       public:

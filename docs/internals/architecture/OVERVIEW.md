@@ -105,6 +105,8 @@ src/
         ├── insert_grammar.cppm     # InsertGrammar — INSERT / bulk-VALUES SQL builders (#671)
         ├── select.cppm             # SelectStatement + JOIN
         ├── select_grammar.cppm     # SelectGrammar — base SELECT + LIMIT 1/2 SQL builders (#671)
+        ├── select_query.hpp        # #include fragment of select: nested Query/FirstQuery/GetQuery proxies, included inside the BasicSelectStatement body (#671)
+        ├── select_stitch.hpp       # #include fragment of select: SelectStitch — m2m stitch-map key + owner-key helpers (#504/#671)
         ├── update.cppm             # UpdateStatement
         ├── update_grammar.cppm     # UpdateGrammar — UPDATE SQL builders (#434)
         ├── upsert_grammar.cppm     # Upsert (ON CONFLICT) SQL builders (#205)
@@ -113,6 +115,7 @@ src/
         ├── join.cppm               # JoinStatement (SQL builder)
         ├── join_grammar.cppm       # Shared consteval Q2 column/IN-subquery/junction SQL helpers (#671)
         ├── aggregate.cppm          # COUNT/SUM/AVG/MIN/MAX (#475)
+        ├── aggregate_grammar.hpp   # #include fragment of aggregate: AggregateOp / OpResult + SQL-text builders (#671)
         ├── distinct.cppm           # DISTINCT
         ├── orderby.cppm            # ORDER BY
         └── setop.cppm              # Set-op helpers (e.g. GROUP BY/HAVING support)

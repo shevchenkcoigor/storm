@@ -316,6 +316,23 @@ The ~1% difference from direct calls is acceptable for full database abstraction
 4. **Define constants** like `ROW_AVAILABLE` in Statement class
 5. **Keep database headers** only in backend modules (sqlite.cppm, postgresql.cppm)
 6. **Use Statement methods** instead of direct database API calls in ORM modules
+7. **Split a file without adding a module** (#671): a cut that is not a real dependency seam becomes
+   an `#include` fragment — a `.hpp` beside its parent. Two kinds: a namespace fragment holds only the
+   `export namespace … {}` body and is included at namespace scope in the parent's purview right
+   after its imports (`aggregate_grammar.hpp`, `select_stitch.hpp`); a class-body fragment holds
+   only members (no namespace) and is included inside a class template's body, where those members
+   used to be written (`select_query.hpp`). All imports and `#include <meta>` stay in the parent, with no `#pragma once` and an entry in
+   `scripts/clang_tidy_skiplist.py` (it cannot parse standalone). Map it to its parent in
+   `FRAGMENT_PARENTS` there too: `run_clang_tidy.py --diff` then lints the fragment's staged lines
+   through the parent's compile command, and `check_orm_backend_imports.py` scans `.hpp` under
+   `src/orm/` like any `.cppm`. A fragment holds no `#include` and no `import` (in the purview, a
+   header would be attached to the named module) and opens with an `#error` guard on a macro the
+   parent `#define`s just before including it, so a stray `#include` elsewhere fails with one
+   clear message. Fragments of one parent may depend only on what is included before them.
+   Examples: `aggregate_grammar.hpp`, `select_query.hpp`, `select_stitch.hpp`. Every module (a
+   partition too — same BMI) costs ~0.09 s in each TU that does `import storm;`. If the library
+   is ever `install()`ed, the fragments must ship beside the `.cppm` files (`FILE_SET CXX_MODULES`
+   installs only those)
 
 ### DON'T:
 
