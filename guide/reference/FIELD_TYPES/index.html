@@ -1,0 +1,3958 @@
+
+<!doctype html>
+<html lang="en" class="no-js">
+  <head>
+    
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width,initial-scale=1">
+      
+        <meta name="description" content="C++26 ORM with compile-time reflection for SQLite">
+      
+      
+      
+        <link rel="canonical" href="https://spiritecosse.github.io/storm/guide/reference/FIELD_TYPES/">
+      
+      
+        <link rel="prev" href="../../features/CONNECTION_TUNING/">
+      
+      
+        <link rel="next" href="../MIGRATIONS/">
+      
+      
+        
+      
+      
+      <link rel="icon" href="../../../assets/images/favicon.png">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.8.0">
+    
+    
+      
+        <title>Field Types - Storm ORM</title>
+      
+    
+    
+      <link rel="stylesheet" href="../../../assets/stylesheets/main.57a0d79d.min.css">
+      
+        
+        <link rel="stylesheet" href="../../../assets/stylesheets/palette.fb2fffe2.min.css">
+      
+      
+
+
+    
+    
+      
+    
+    
+      
+        
+        
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+        <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Roboto:300,300i,400,400i,700,700i%7CRoboto+Mono:400,400i,700,700i&display=fallback">
+        <style>:root{--md-text-font:"Roboto";--md-code-font:"Roboto Mono"}</style>
+      
+    
+    
+    <script>__md_scope=new URL("../../..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
+    
+      
+
+    
+    
+  </head>
+  
+  
+    
+    
+      
+    
+    
+    
+    
+    <body dir="ltr" data-md-color-scheme="default" data-md-color-primary="indigo" data-md-color-accent="indigo">
+  
+    
+    <input class="md-toggle" data-md-toggle="drawer" type="checkbox" id="__drawer" autocomplete="off">
+    <input class="md-toggle" data-md-toggle="search" type="checkbox" id="__search" autocomplete="off">
+    <label class="md-overlay" for="__drawer"></label>
+    <div data-md-component="skip">
+      
+        
+        <a href="#supported-field-types" class="md-skip">
+          Skip to content
+        </a>
+      
+    </div>
+    <div data-md-component="announce">
+      
+    </div>
+    
+    
+      
+
+  
+
+<header class="md-header md-header--shadow" data-md-component="header">
+  <nav class="md-header__inner md-grid" aria-label="Header">
+    <a href="../../.." title="Storm ORM" class="md-header__button md-logo" aria-label="Storm ORM" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    <label class="md-header__button md-icon" for="__drawer">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M3 6h18v2H3zm0 5h18v2H3zm0 5h18v2H3z"/></svg>
+    </label>
+    <div class="md-header__title" data-md-component="header-title">
+      <div class="md-header__ellipsis">
+        <div class="md-header__topic">
+          <span class="md-ellipsis">
+            Storm ORM
+          </span>
+        </div>
+        <div class="md-header__topic" data-md-component="header-topic">
+          <span class="md-ellipsis">
+            
+              Field Types
+            
+          </span>
+        </div>
+      </div>
+    </div>
+    
+      
+        <form class="md-header__option" data-md-component="palette">
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="" data-md-color-scheme="default" data-md-color-primary="indigo" data-md-color-accent="indigo"  aria-label="Switch to dark mode"  type="radio" name="__palette" id="__palette_0">
+    
+      <label class="md-header__button md-icon" title="Switch to dark mode" for="__palette_1" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a4 4 0 0 0-4 4 4 4 0 0 0 4 4 4 4 0 0 0 4-4 4 4 0 0 0-4-4m0 10a6 6 0 0 1-6-6 6 6 0 0 1 6-6 6 6 0 0 1 6 6 6 6 0 0 1-6 6m8-9.31V4h-4.69L12 .69 8.69 4H4v4.69L.69 12 4 15.31V20h4.69L12 23.31 15.31 20H20v-4.69L23.31 12z"/></svg>
+      </label>
+    
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="" data-md-color-scheme="slate" data-md-color-primary="indigo" data-md-color-accent="indigo"  aria-label="Switch to light mode"  type="radio" name="__palette" id="__palette_1">
+    
+      <label class="md-header__button md-icon" title="Switch to light mode" for="__palette_0" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 18c-.89 0-1.74-.2-2.5-.55C11.56 16.5 13 14.42 13 12s-1.44-4.5-3.5-5.45C10.26 6.2 11.11 6 12 6a6 6 0 0 1 6 6 6 6 0 0 1-6 6m8-9.31V4h-4.69L12 .69 8.69 4H4v4.69L.69 12 4 15.31V20h4.69L12 23.31 15.31 20H20v-4.69L23.31 12z"/></svg>
+      </label>
+    
+  
+</form>
+      
+    
+    
+      <script>var palette=__md_get("__palette");if(palette&&palette.color){if("(prefers-color-scheme)"===palette.color.media){var media=matchMedia("(prefers-color-scheme: light)"),input=document.querySelector(media.matches?"[data-md-color-media='(prefers-color-scheme: light)']":"[data-md-color-media='(prefers-color-scheme: dark)']");palette.color.media=input.getAttribute("data-md-color-media"),palette.color.scheme=input.getAttribute("data-md-color-scheme"),palette.color.primary=input.getAttribute("data-md-color-primary"),palette.color.accent=input.getAttribute("data-md-color-accent")}for(var[key,value]of Object.entries(palette.color))document.body.setAttribute("data-md-color-"+key,value)}</script>
+    
+    
+    
+      
+      
+        <label class="md-header__button md-icon" for="__search">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        </label>
+        <div class="md-search" data-md-component="search" role="dialog">
+  <label class="md-search__overlay" for="__search"></label>
+  <div class="md-search__inner" role="search">
+    <form class="md-search__form" name="search">
+      <input type="text" class="md-search__input" name="query" aria-label="Search" placeholder="Search" autocapitalize="off" autocorrect="off" autocomplete="off" spellcheck="false" data-md-component="search-query" required>
+      <label class="md-search__icon md-icon" for="__search">
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
+      </label>
+      <nav class="md-search__options" aria-label="Search">
+        
+        <button type="reset" class="md-search__icon md-icon" title="Clear" aria-label="Clear" tabindex="-1">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+        </button>
+      </nav>
+      
+        <div class="md-search__suggest" data-md-component="search-suggest"></div>
+      
+    </form>
+    <div class="md-search__output">
+      <div class="md-search__scrollwrap" tabindex="0" data-md-scrollfix>
+        <div class="md-search-result" data-md-component="search-result">
+          <div class="md-search-result__meta">
+            Initializing search
+          </div>
+          <ol class="md-search-result__list" role="presentation"></ol>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+      
+    
+    
+      <div class="md-header__source">
+        <a href="https://github.com/spiritEcosse/storm" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    spiritEcosse/storm
+  </div>
+</a>
+      </div>
+    
+  </nav>
+  
+</header>
+    
+    <div class="md-container" data-md-component="container">
+      
+      
+        
+          
+        
+      
+      <main class="md-main" data-md-component="main">
+        <div class="md-main__inner md-grid">
+          
+            
+              
+              <div class="md-sidebar md-sidebar--primary" data-md-component="sidebar" data-md-type="navigation" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+
+
+<nav class="md-nav md-nav--primary" aria-label="Navigation" data-md-level="0">
+  <label class="md-nav__title" for="__drawer">
+    <a href="../../.." title="Storm ORM" class="md-nav__button md-logo" aria-label="Storm ORM" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    Storm ORM
+  </label>
+  
+    <div class="md-nav__source">
+      <a href="https://github.com/spiritEcosse/storm" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    spiritEcosse/storm
+  </div>
+</a>
+    </div>
+  
+  <ul class="md-nav__list" data-md-scrollfix>
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../.." class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Home
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+    
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--active md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_2" checked>
+        
+          
+          <label class="md-nav__link" for="__nav_2" id="__nav_2_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Guide
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_2_label" aria-expanded="true">
+          <label class="md-nav__title" for="__nav_2">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Guide
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../COOKBOOK/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Cookbook
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    
+    
+    
+    
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_2_2" >
+        
+          
+          <label class="md-nav__link" for="__nav_2_2" id="__nav_2_2_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Features
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_2_2_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_2_2">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Features
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../features/CRUD_OPERATIONS/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    CRUD Operations
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../features/SELECT_QUERIES/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    SELECT Queries
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../features/WHERE_CLAUSES/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    WHERE Clauses
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../features/JOIN_OPERATIONS/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    JOIN Operations
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../features/BATCH_OPERATIONS/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Batch Operations
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../features/REFERENTIAL_INTEGRITY/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Referential Integrity
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../features/CONNECTION_TUNING/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Connection Tuning
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+    
+  
+  
+  
+    
+    
+    
+    
+      
+    
+    
+    <li class="md-nav__item md-nav__item--active md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_2_3" checked>
+        
+          
+          <label class="md-nav__link" for="__nav_2_3" id="__nav_2_3_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Reference
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_2_3_label" aria-expanded="true">
+          <label class="md-nav__title" for="__nav_2_3">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Reference
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+    
+  
+  
+  
+    <li class="md-nav__item md-nav__item--active">
+      
+      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
+      
+      
+        
+      
+      
+        <label class="md-nav__link md-nav__link--active" for="__toc">
+          
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Field Types
+  
+
+    
+  </span>
+  
+  
+
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
+      <a href="./" class="md-nav__link md-nav__link--active">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Field Types
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+      
+        
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#integer-types" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Integer Types
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#floating-point-types" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Floating Point Types
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#boolean-type" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Boolean Type
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#string-types" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        String Types
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="String Types">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#bounded-length-max_lengthn-493" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Bounded length (max_length&lt;N&gt;) (#493)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#single-column-indexes-unique-indexed" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Single-column indexes (unique / indexed)
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#primary-keys-primary-primary_autoincrement-primary_assigned-primary_part" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Primary Keys (primary / primary_autoincrement / primary_assigned / primary_part)
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Primary Keys (primary / primary_autoincrement / primary_assigned / primary_part)">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#composite-multi-column-primary-keys-500" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Composite (multi-column) primary keys (#500)
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Composite (multi-column) primary keys (#500)">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#at-most-4-parts-537" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        At most 4 parts (#537)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#part-types-517" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Part types (#517)
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#update-and-delete-by-composite-key-501" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        UPDATE and DELETE by composite key (#501)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#insert-by-composite-key-502" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        INSERT by composite key (#502)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#upsert-by-composite-key-503" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        UPSERT by composite key (#503)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#uuid-primary-keys-507" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        UUID Primary Keys (#507)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#gotchas-uuid-primary-keys" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Gotchas: UUID Primary Keys
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#optional-types-null-support" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Optional Types (NULL Support)
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#blob-types-binary-data" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        BLOB Types (Binary Data)
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#automatic-timestamps-auto_create-auto_update" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Automatic Timestamps (auto_create / auto_update)
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#many-to-many-container-fields-many_to_many-many_to_many_through" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Many-to-Many Container Fields (many_to_many&lt;&gt; / many_to_many_through)
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#persistable-vs-filterable" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Persistable vs. Filterable
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#type-dispatch-implementation" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Type Dispatch Implementation
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Type Dispatch Implementation">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#bindabletype-concept-473" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        BindableType concept (#473)
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#future-type-support" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Future Type Support
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#table-creation-guidelines" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Table Creation Guidelines
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#type-safety" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Type Safety
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#model-type-validation-entity-472" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Model Type Validation (Entity) (#472)
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#field-selector-validation-validfieldinfo-478" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Field Selector Validation (ValidFieldInfo) (#478)
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#foreign-key-target-validation-validforeignkey-474" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Foreign Key Target Validation (ValidForeignKey) (#474)
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#numeric-aggregate-validation-numericaggregateable-475" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Numeric Aggregate Validation (NumericAggregateable) (#475)
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#primary-key-type-validation-primarykeytype-505" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Primary Key Type Validation (PrimaryKeyType) (#505)
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../MIGRATIONS/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Migrations
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_3" >
+        
+          
+          <label class="md-nav__link" for="__nav_3" id="__nav_3_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Internals
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_3_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_3">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Internals
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    
+    
+    
+    
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_3_1" >
+        
+          
+          <label class="md-nav__link" for="__nav_3_1" id="__nav_3_1_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Architecture
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_3_1_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_3_1">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Architecture
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../internals/architecture/OVERVIEW/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Overview
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../internals/architecture/DESIGN_DECISIONS/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Design Decisions
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../internals/architecture/REFLECTION/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Reflection
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../internals/architecture/SQL_GENERATION/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    SQL Generation
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../internals/architecture/MODULE_SYSTEM/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Module System
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../internals/architecture/STATEMENT_CACHING/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Statement Caching
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../internals/architecture/COMPILE_TIME_VS_RUNTIME/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Compile-Time vs Runtime
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    
+    
+    
+    
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_3_2" >
+        
+          
+          <label class="md-nav__link" for="__nav_3_2" id="__nav_3_2_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Building
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_3_2_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_3_2">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Building
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../internals/building/GETTING_STARTED/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Getting Started
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../internals/building/COMMON_TASKS/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Common Tasks
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../internals/building/ADDING_FEATURES/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Adding Features
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../internals/building/PRE_COMMIT/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Pre-Commit
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../internals/building/FORMATTING/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Formatting
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    
+    
+    
+    
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_3_3" >
+        
+          
+          <label class="md-nav__link" for="__nav_3_3" id="__nav_3_3_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Testing
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_3_3_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_3_3">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Testing
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../internals/testing/TESTING/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Testing
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../internals/testing/CODE_COVERAGE/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Code Coverage
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../internals/testing/SANITIZERS/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Sanitizers
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../internals/testing/FUZZING/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Fuzzing
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../internals/testing/MSAN_LIBC_FIX/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    MSAN libc Fix
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    
+    
+    
+    
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_3_4" >
+        
+          
+          <label class="md-nav__link" for="__nav_3_4" id="__nav_3_4_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Performance
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_3_4_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_3_4">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Performance
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../internals/performance/PERFORMANCE/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Performance
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../internals/performance/BENCHMARK_DASHBOARD/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Benchmark Dashboard
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../internals/performance/JOIN_ANALYSIS/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    JOIN Analysis
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../internals/performance/DISTINCT_ANALYSIS/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    DISTINCT Analysis
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    
+    
+    
+    
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_3_5" >
+        
+          
+          <label class="md-nav__link" for="__nav_3_5" id="__nav_3_5_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Compiler
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_3_5_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_3_5">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Compiler
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../internals/compiler/COMPILER_ISSUES/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Compiler Issues
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../internals/compiler/COMPILER_ATTRIBUTES/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Compiler Attributes
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../internals/compiler/CPP26_CODING_STANDARDS/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    C++26 Coding Standards
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../internals/compiler/CODE_QUALITY/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Code Quality
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_4" >
+        
+          
+          <label class="md-nav__link" for="__nav_4" id="__nav_4_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Archive
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_4_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_4">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Archive
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../archive/SELECT_OPTIMIZATION_REPORT/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    SELECT Optimization Report
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../archive/SELECT_PERFORMANCE_ANALYSIS/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    SELECT Performance Analysis
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../archive/UPDATE_OPTIMIZATION_REPORT/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    UPDATE Optimization Report
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+  </ul>
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+            
+              
+              <div class="md-sidebar md-sidebar--secondary" data-md-component="sidebar" data-md-type="toc" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#integer-types" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Integer Types
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#floating-point-types" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Floating Point Types
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#boolean-type" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Boolean Type
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#string-types" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        String Types
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="String Types">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#bounded-length-max_lengthn-493" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Bounded length (max_length&lt;N&gt;) (#493)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#single-column-indexes-unique-indexed" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Single-column indexes (unique / indexed)
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#primary-keys-primary-primary_autoincrement-primary_assigned-primary_part" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Primary Keys (primary / primary_autoincrement / primary_assigned / primary_part)
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Primary Keys (primary / primary_autoincrement / primary_assigned / primary_part)">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#composite-multi-column-primary-keys-500" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Composite (multi-column) primary keys (#500)
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Composite (multi-column) primary keys (#500)">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#at-most-4-parts-537" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        At most 4 parts (#537)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#part-types-517" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Part types (#517)
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#update-and-delete-by-composite-key-501" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        UPDATE and DELETE by composite key (#501)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#insert-by-composite-key-502" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        INSERT by composite key (#502)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#upsert-by-composite-key-503" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        UPSERT by composite key (#503)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#uuid-primary-keys-507" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        UUID Primary Keys (#507)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#gotchas-uuid-primary-keys" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Gotchas: UUID Primary Keys
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#optional-types-null-support" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Optional Types (NULL Support)
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#blob-types-binary-data" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        BLOB Types (Binary Data)
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#automatic-timestamps-auto_create-auto_update" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Automatic Timestamps (auto_create / auto_update)
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#many-to-many-container-fields-many_to_many-many_to_many_through" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Many-to-Many Container Fields (many_to_many&lt;&gt; / many_to_many_through)
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#persistable-vs-filterable" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Persistable vs. Filterable
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#type-dispatch-implementation" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Type Dispatch Implementation
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Type Dispatch Implementation">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#bindabletype-concept-473" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        BindableType concept (#473)
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#future-type-support" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Future Type Support
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#table-creation-guidelines" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Table Creation Guidelines
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#type-safety" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Type Safety
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#model-type-validation-entity-472" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Model Type Validation (Entity) (#472)
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#field-selector-validation-validfieldinfo-478" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Field Selector Validation (ValidFieldInfo) (#478)
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#foreign-key-target-validation-validforeignkey-474" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Foreign Key Target Validation (ValidForeignKey) (#474)
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#numeric-aggregate-validation-numericaggregateable-475" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Numeric Aggregate Validation (NumericAggregateable) (#475)
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#primary-key-type-validation-primarykeytype-505" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Primary Key Type Validation (PrimaryKeyType) (#505)
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+          
+          
+            <div class="md-content" data-md-component="content">
+              
+              <article class="md-content__inner md-typeset">
+                
+                  
+
+
+  
+  
+
+
+<h1 id="supported-field-types">Supported Field Types<a class="headerlink" href="#supported-field-types" title="Permanent link">&para;</a></h1>
+<p>Storm ORM supports all standard SQLite types through compile-time type dispatch in <code>BaseStatement::bind_value_by_type()</code> (src/orm/statements/base.cppm) and <code>SelectStatement::extract_column_inline_fast()</code> (src/orm/statements/select.cppm).</p>
+<blockquote>
+<p><strong>Annotation spelling (#442).</strong> All field annotations are re-exported into the top-level
+<code>storm</code> namespace, so models spell them as <code>primary</code>, <code>fk&lt;&gt;</code>,
+<code>fk&lt;storm::RefAction::Cascade&gt;</code>, <code>many_to_many&lt;&gt;</code>, <code>storm::reverse_fk&lt;...&gt;</code>.
+The longer <code>storm::meta::</code> spelling (<code>storm::meta::fk&lt;&gt;</code>, …) still works unchanged — the
+re-exports are purely additive. Examples in this document use the short <code>storm::</code> form.</p>
+</blockquote>
+<h2 id="integer-types">Integer Types<a class="headerlink" href="#integer-types" title="Permanent link">&para;</a></h2>
+<p>SQLite has one dynamic <code>INTEGER</code> storage class for every width. PostgreSQL does not, so
+<code>schema.cppm</code> picks the narrowest PG column that safely holds the C++ type's full value
+range (#603) — a signed N-byte source needs the same or a wider signed PG type; an
+unsigned N-byte source needs one size class wider (its top half doesn't fit a same-width
+signed range). <code>short</code>/<code>signed char</code>/<code>unsigned char</code>/<code>char</code> (1-byte types fit <code>SMALLINT</code>
+regardless of signedness) map to <code>SMALLINT</code>; <code>int</code>/<code>unsigned short</code> map to <code>INTEGER</code>; <code>int64_t</code>/<code>long</code>/<code>long long</code>/
+<code>unsigned int</code> map to <code>BIGINT</code>. Enums and <code>std::chrono::duration</code> fields follow their
+underlying/<code>rep</code> type. SQLite's mapping is unchanged — this is PG-only.</p>
+<table>
+<thead>
+<tr>
+<th>C++ Type</th>
+<th>SQLite Type</th>
+<th>PostgreSQL Type</th>
+<th>Binding Method</th>
+<th>Extraction Method</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>int</code></td>
+<td>INTEGER</td>
+<td>INTEGER</td>
+<td><code>bind_int()</code></td>
+<td><code>extract_int()</code></td>
+</tr>
+<tr>
+<td><code>short</code></td>
+<td>INTEGER</td>
+<td>SMALLINT</td>
+<td><code>bind_int()</code> (cast)</td>
+<td><code>extract_int()</code> (cast)</td>
+</tr>
+<tr>
+<td><code>unsigned short</code></td>
+<td>INTEGER</td>
+<td>INTEGER</td>
+<td><code>bind_int()</code> (cast)</td>
+<td><code>extract_int()</code> (cast)</td>
+</tr>
+<tr>
+<td><code>unsigned int</code></td>
+<td>INTEGER</td>
+<td>BIGINT</td>
+<td><code>bind_int64()</code> (widened, #729 — <strong>BREAKING</strong>: rows stored with values above <code>INT_MAX</code> before #729 hold a wrapped negative value; PG fix: <code>UPDATE t SET col = col + 4294967296 WHERE col &lt; 0</code>)</td>
+<td><code>extract_int()</code> (cast)</td>
+</tr>
+<tr>
+<td><code>int64_t</code></td>
+<td>INTEGER</td>
+<td>BIGINT</td>
+<td><code>bind_int64()</code></td>
+<td><code>extract_int64()</code></td>
+</tr>
+<tr>
+<td><code>long</code></td>
+<td>INTEGER</td>
+<td>BIGINT</td>
+<td><code>bind_int64()</code></td>
+<td><code>extract_int64()</code></td>
+</tr>
+<tr>
+<td><code>long long</code></td>
+<td>INTEGER</td>
+<td>BIGINT</td>
+<td><code>bind_int64()</code></td>
+<td><code>extract_int64()</code></td>
+</tr>
+<tr>
+<td><code>uint64_t</code></td>
+<td><em>annotation-gated</em></td>
+<td><em>annotation-gated</em></td>
+<td>see below</td>
+<td>see below</td>
+</tr>
+<tr>
+<td><code>unsigned long</code></td>
+<td><em>annotation-gated</em></td>
+<td><em>annotation-gated</em></td>
+<td>see below</td>
+<td>see below</td>
+</tr>
+<tr>
+<td><code>unsigned long long</code></td>
+<td><em>annotation-gated</em></td>
+<td><em>annotation-gated</em></td>
+<td>see below</td>
+<td>see below</td>
+</tr>
+</tbody>
+</table>
+<blockquote>
+<p>⚠️ <strong>64-bit unsigned fields require an explicit storage annotation (#436).</strong>
+Neither SQLite nor PostgreSQL has an unsigned 64-bit integer type, so a bare
+<code>uint64_t</code> / <code>unsigned long</code> / <code>unsigned long long</code> field is a <strong>compile-time
+error</strong>. Annotate the field with exactly one of:</p>
+<table>
+<thead>
+<tr>
+<th>Annotation</th>
+<th>Column type</th>
+<th>Range with correct ordering</th>
+<th>Cost</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>storm::signed_storage</code></td>
+<td><code>INTEGER</code> (SQLite) / <code>BIGINT</code> (PG)</td>
+<td><code>0 .. INT64_MAX</code> (2⁶³−1)</td>
+<td>none — same <code>bind_int64</code>/<code>extract_int64</code> hot path</td>
+</tr>
+<tr>
+<td><code>storm::full_unsigned</code></td>
+<td>zero-padded 20-char <code>TEXT</code> (SQLite) / <code>NUMERIC(20,0)</code> (PG)</td>
+<td><code>0 .. 2⁶⁴−1</code> (full range)</td>
+<td>slower string bind/extract, wider column</td>
+</tr>
+</tbody>
+</table>
+<p><strong><code>signed_storage</code></strong> keeps today's behavior. It is byte-identical to a plain
+signed 8-byte column and routes through the same <code>bind_int64</code>/<code>extract_int64</code>
+calls, so there is <strong>zero performance change</strong>. Use it when the values are
+always ≤ <code>INT64_MAX</code>. <strong>Caveat:</strong> a value &gt; <code>INT64_MAX</code> is stored as a negative
+<code>int64</code> — equality still round-trips (the read casts the signed bits back), but
+<code>ORDER BY</code> / <code>&gt;</code> / <code>&lt;</code> / <code>BETWEEN</code> sort by the signed interpretation (so <code>2⁶³+1</code>
+sorts <em>before</em> <code>1</code>) and any external reader (raw SQL, a BI tool) sees a negative
+number. Pinned by <code>Uint64SignedStorageTest</code> in <code>tests/schema/test_types.cpp</code>.</p>
+<p><strong><code>full_unsigned</code></strong> stores the value order-preservingly: a 20-character
+zero-padded decimal string on SQLite (<code>uint64_max</code> = <code>18446744073709551615</code> is
+20 digits, so lexicographic order == numeric order) and <code>NUMERIC(20,0)</code> on
+PostgreSQL. The <strong>full <code>0 .. 2⁶⁴−1</code> range round-trips for equality AND sorts
+correctly</strong>, and external readers see the true unsigned value. It pays a string
+bind/extract on every access, so reach for it only when you actually need values
+above <code>INT64_MAX</code>. Pinned by <code>Uint64FullUnsignedTest</code> in the same file.</p>
+<p>Signed 64-bit types (<code>int64_t</code> / <code>long</code> / <code>long long</code>) and all smaller integer
+types are unaffected — no annotation needed.</p>
+</blockquote>
+<p><strong>Usage (64-bit unsigned):</strong>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="k">struct</span><span class="w"> </span><span class="nc">Account</span><span class="w"> </span><span class="p">{</span>
+<a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a><span class="w">    </span><span class="p">[[=</span><span class="nd">primary</span><span class="p">]]</span><span class="w"> </span><span class="kt">int</span><span class="w"> </span><span class="n">id</span><span class="p">;</span>
+<a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a><span class="w">    </span><span class="p">[[=</span><span class="nd">storm</span><span class="p">::</span><span class="nd">signed_storage</span><span class="p">]]</span><span class="w"> </span><span class="n">std</span><span class="o">::</span><span class="kt">uint64_t</span><span class="w"> </span><span class="n">small_id</span><span class="p">;</span><span class="w">   </span><span class="c1">// ≤ INT64_MAX</span>
+<a id="__codelineno-0-4" name="__codelineno-0-4" href="#__codelineno-0-4"></a><span class="w">    </span><span class="p">[[=</span><span class="nd">storm</span><span class="p">::</span><span class="nd">full_unsigned</span><span class="p">]]</span><span class="w">  </span><span class="n">std</span><span class="o">::</span><span class="kt">uint64_t</span><span class="w"> </span><span class="n">full_range</span><span class="p">;</span><span class="w"> </span><span class="c1">// 0 .. 2⁶⁴−1</span>
+<a id="__codelineno-0-5" name="__codelineno-0-5" href="#__codelineno-0-5"></a><span class="p">};</span>
+</code></pre></div></p>
+<p><strong>Usage:</strong>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a><span class="k">struct</span><span class="w"> </span><span class="nc">Example</span><span class="w"> </span><span class="p">{</span>
+<a id="__codelineno-1-2" name="__codelineno-1-2" href="#__codelineno-1-2"></a><span class="w">    </span><span class="p">[[=</span><span class="nd">primary</span><span class="p">]]</span><span class="w"> </span><span class="kt">int</span><span class="w"> </span><span class="n">id</span><span class="p">;</span>
+<a id="__codelineno-1-3" name="__codelineno-1-3" href="#__codelineno-1-3"></a><span class="w">    </span><span class="kt">int64_t</span><span class="w"> </span><span class="n">big_number</span><span class="p">;</span>
+<a id="__codelineno-1-4" name="__codelineno-1-4" href="#__codelineno-1-4"></a><span class="w">    </span><span class="kt">unsigned</span><span class="w"> </span><span class="kt">short</span><span class="w"> </span><span class="n">count</span><span class="p">;</span>
+<a id="__codelineno-1-5" name="__codelineno-1-5" href="#__codelineno-1-5"></a><span class="p">};</span>
+</code></pre></div></p>
+<h2 id="floating-point-types">Floating Point Types<a class="headerlink" href="#floating-point-types" title="Permanent link">&para;</a></h2>
+<table>
+<thead>
+<tr>
+<th>C++ Type</th>
+<th>SQLite Type</th>
+<th>Binding Method</th>
+<th>Extraction Method</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>double</code></td>
+<td>REAL</td>
+<td><code>bind_double()</code></td>
+<td><code>extract_double()</code></td>
+</tr>
+<tr>
+<td><code>float</code></td>
+<td>REAL</td>
+<td><code>bind_double()</code> (cast)</td>
+<td><code>extract_float()</code></td>
+</tr>
+</tbody>
+</table>
+<p><strong>Usage:</strong>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a><span class="k">struct</span><span class="w"> </span><span class="nc">Measurement</span><span class="w"> </span><span class="p">{</span>
+<a id="__codelineno-2-2" name="__codelineno-2-2" href="#__codelineno-2-2"></a><span class="w">    </span><span class="p">[[=</span><span class="nd">primary</span><span class="p">]]</span><span class="w"> </span><span class="kt">int</span><span class="w"> </span><span class="n">id</span><span class="p">;</span>
+<a id="__codelineno-2-3" name="__codelineno-2-3" href="#__codelineno-2-3"></a><span class="w">    </span><span class="kt">double</span><span class="w"> </span><span class="n">precision_value</span><span class="p">;</span>
+<a id="__codelineno-2-4" name="__codelineno-2-4" href="#__codelineno-2-4"></a><span class="w">    </span><span class="kt">float</span><span class="w"> </span><span class="n">approximate_value</span><span class="p">;</span>
+<a id="__codelineno-2-5" name="__codelineno-2-5" href="#__codelineno-2-5"></a><span class="p">};</span>
+</code></pre></div></p>
+<h2 id="boolean-type">Boolean Type<a class="headerlink" href="#boolean-type" title="Permanent link">&para;</a></h2>
+<table>
+<thead>
+<tr>
+<th>C++ Type</th>
+<th>SQLite Type</th>
+<th>Binding Method</th>
+<th>Extraction Method</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>bool</code></td>
+<td>INTEGER</td>
+<td><code>bind_int()</code></td>
+<td><code>extract_bool()</code></td>
+</tr>
+</tbody>
+</table>
+<p><strong>Storage</strong>: Stored as INTEGER (0 = false, 1 = true)</p>
+<p><strong>Usage:</strong>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a><span class="k">struct</span><span class="w"> </span><span class="nc">User</span><span class="w"> </span><span class="p">{</span>
+<a id="__codelineno-3-2" name="__codelineno-3-2" href="#__codelineno-3-2"></a><span class="w">    </span><span class="p">[[=</span><span class="nd">primary</span><span class="p">]]</span><span class="w"> </span><span class="kt">int</span><span class="w"> </span><span class="n">id</span><span class="p">;</span>
+<a id="__codelineno-3-3" name="__codelineno-3-3" href="#__codelineno-3-3"></a><span class="w">    </span><span class="kt">bool</span><span class="w"> </span><span class="n">is_active</span><span class="p">;</span>
+<a id="__codelineno-3-4" name="__codelineno-3-4" href="#__codelineno-3-4"></a><span class="w">    </span><span class="kt">bool</span><span class="w"> </span><span class="n">is_admin</span><span class="p">;</span>
+<a id="__codelineno-3-5" name="__codelineno-3-5" href="#__codelineno-3-5"></a><span class="p">};</span>
+</code></pre></div></p>
+<h2 id="string-types">String Types<a class="headerlink" href="#string-types" title="Permanent link">&para;</a></h2>
+<table>
+<thead>
+<tr>
+<th>C++ Type</th>
+<th>SQLite Type</th>
+<th>Binding Method</th>
+<th>Extraction Method</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>std::string</code></td>
+<td>TEXT</td>
+<td><code>bind_text()</code></td>
+<td><code>extract_text_ptr()</code></td>
+</tr>
+<tr>
+<td><code>const char*</code></td>
+<td>TEXT</td>
+<td><code>bind_text()</code></td>
+<td>N/A (output only as std::string)</td>
+</tr>
+<tr>
+<td><code>std::string_view</code></td>
+<td>TEXT</td>
+<td><code>bind_text()</code></td>
+<td>N/A (output only as std::string)</td>
+</tr>
+</tbody>
+</table>
+<p><strong>Notes:</strong>
+- Any type convertible to <code>std::string_view</code> can be used for binding
+- Extraction always returns <code>std::string</code> (owns the data)
+- Optimized string extraction using <code>sqlite3_column_bytes()</code> (avoids strlen)</p>
+<p><strong>Usage:</strong>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a><span class="k">struct</span><span class="w"> </span><span class="nc">Document</span><span class="w"> </span><span class="p">{</span>
+<a id="__codelineno-4-2" name="__codelineno-4-2" href="#__codelineno-4-2"></a><span class="w">    </span><span class="p">[[=</span><span class="nd">primary</span><span class="p">]]</span><span class="w"> </span><span class="kt">int</span><span class="w"> </span><span class="n">id</span><span class="p">;</span>
+<a id="__codelineno-4-3" name="__codelineno-4-3" href="#__codelineno-4-3"></a><span class="w">    </span><span class="n">std</span><span class="o">::</span><span class="n">string</span><span class="w"> </span><span class="n">title</span><span class="p">;</span>
+<a id="__codelineno-4-4" name="__codelineno-4-4" href="#__codelineno-4-4"></a><span class="w">    </span><span class="n">std</span><span class="o">::</span><span class="n">string</span><span class="w"> </span><span class="n">content</span><span class="p">;</span>
+<a id="__codelineno-4-5" name="__codelineno-4-5" href="#__codelineno-4-5"></a><span class="p">};</span>
+<a id="__codelineno-4-6" name="__codelineno-4-6" href="#__codelineno-4-6"></a>
+<a id="__codelineno-4-7" name="__codelineno-4-7" href="#__codelineno-4-7"></a><span class="c1">// All these work for binding:</span>
+<a id="__codelineno-4-8" name="__codelineno-4-8" href="#__codelineno-4-8"></a><span class="n">Document</span><span class="w"> </span><span class="n">doc1</span><span class="p">{</span><span class="mi">0</span><span class="p">,</span><span class="w"> </span><span class="s">"Title"</span><span class="p">,</span><span class="w"> </span><span class="s">"Content"</span><span class="p">};</span>
+<a id="__codelineno-4-9" name="__codelineno-4-9" href="#__codelineno-4-9"></a><span class="n">Document</span><span class="w"> </span><span class="n">doc2</span><span class="p">{</span><span class="mi">0</span><span class="p">,</span><span class="w"> </span><span class="n">std</span><span class="o">::</span><span class="n">string</span><span class="p">(</span><span class="s">"Title"</span><span class="p">),</span><span class="w"> </span><span class="n">std</span><span class="o">::</span><span class="n">string</span><span class="p">(</span><span class="s">"Content"</span><span class="p">)};</span>
+<a id="__codelineno-4-10" name="__codelineno-4-10" href="#__codelineno-4-10"></a><span class="n">std</span><span class="o">::</span><span class="n">string_view</span><span class="w"> </span><span class="n">title_view</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s">"Title"</span><span class="p">;</span>
+<a id="__codelineno-4-11" name="__codelineno-4-11" href="#__codelineno-4-11"></a><span class="n">Document</span><span class="w"> </span><span class="n">doc3</span><span class="p">{</span><span class="mi">0</span><span class="p">,</span><span class="w"> </span><span class="n">std</span><span class="o">::</span><span class="n">string</span><span class="p">(</span><span class="n">title_view</span><span class="p">),</span><span class="w"> </span><span class="s">"Content"</span><span class="p">};</span>
+</code></pre></div></p>
+<h3 id="bounded-length-max_lengthn-493">Bounded length (<code>max_length&lt;N&gt;</code>) (#493)<a class="headerlink" href="#bounded-length-max_lengthn-493" title="Permanent link">&para;</a></h3>
+<p>Annotate a text field with <code>max_length&lt;N&gt;</code> to bound its length <strong>in the database</strong>:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-5-1" name="__codelineno-5-1" href="#__codelineno-5-1"></a><span class="k">struct</span><span class="w"> </span><span class="nc">Account</span><span class="w"> </span><span class="p">{</span>
+<a id="__codelineno-5-2" name="__codelineno-5-2" href="#__codelineno-5-2"></a><span class="w">    </span><span class="p">[[=</span><span class="nd">primary</span><span class="p">]]</span><span class="w"> </span><span class="kt">int</span><span class="w"> </span><span class="n">id</span><span class="p">;</span>
+<a id="__codelineno-5-3" name="__codelineno-5-3" href="#__codelineno-5-3"></a><span class="w">    </span><span class="p">[[=</span><span class="nd">storm</span><span class="p">::</span><span class="nd">max_length</span><span class="err">&lt;50&gt;</span><span class="p">]]</span><span class="w"> </span><span class="n">std</span><span class="o">::</span><span class="n">string</span><span class="w"> </span><span class="n">name</span><span class="p">;</span><span class="w">              </span><span class="c1">// NOT NULL, ≤ 50</span>
+<a id="__codelineno-5-4" name="__codelineno-5-4" href="#__codelineno-5-4"></a><span class="w">    </span><span class="p">[[=</span><span class="nd">storm</span><span class="p">::</span><span class="nd">max_length</span><span class="err">&lt;20&gt;</span><span class="p">]]</span><span class="w"> </span><span class="n">std</span><span class="o">::</span><span class="n">optional</span><span class="o">&lt;</span><span class="n">std</span><span class="o">::</span><span class="n">string</span><span class="o">&gt;</span><span class="w"> </span><span class="n">tag</span><span class="p">;</span><span class="w"> </span><span class="c1">// nullable, ≤ 20</span>
+<a id="__codelineno-5-5" name="__codelineno-5-5" href="#__codelineno-5-5"></a><span class="p">};</span>
+</code></pre></div>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>PostgreSQL</th>
+<th>SQLite</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>std::string name</code> + <code>max_length&lt;50&gt;</code></td>
+<td><code>name VARCHAR(50) NOT NULL</code></td>
+<td><code>name TEXT NOT NULL CHECK(length(name) &lt;= 50)</code></td>
+</tr>
+<tr>
+<td><code>std::optional&lt;std::string&gt; tag</code> + <code>max_length&lt;20&gt;</code></td>
+<td><code>tag VARCHAR(20)</code></td>
+<td><code>tag TEXT CHECK(length(tag) &lt;= 20)</code></td>
+</tr>
+</tbody>
+</table>
+<p><strong>Both dialects genuinely enforce the bound</strong> on every write path — Storm's own
+INSERT/UPDATE/upsert <em>and</em> any raw SQL. This is stronger than Django
+(<code>CharField(max_length=…)</code>) and SQLAlchemy (<code>String(…)</code>), which emit <code>varchar(N)</code> that
+<strong>SQLite silently ignores</strong>; they rely on an optional app-layer validator. Storm has no
+app layer, so it emits a real <code>CHECK</code> on SQLite — nothing to remember or bypass.</p>
+<ul>
+<li><strong>Nullable + bounded</strong>: the SQLite <code>CHECK</code> passes when the value is NULL (standard SQL),
+  so a <code>std::optional&lt;std::string&gt;</code> column allows NULL and still rejects over-limit values.</li>
+<li><strong>Combines with</strong> <code>unique</code> (appended after the CHECK/VARCHAR), a C++ default-member
+  initializer (<code>#413</code>, DEFAULT precedes the CHECK on SQLite), and <code>indexed</code> (orthogonal).
+  SQLite regular-field order: <code>&lt;name&gt; TEXT [NOT NULL] [DEFAULT &lt;v&gt;] [CHECK(length(&lt;name&gt;) &lt;= N)] [UNIQUE]</code>.</li>
+<li><strong>Type guard</strong>: <code>max_length&lt;N&gt;</code> on a non-text field is a <strong>compile error</strong> at the model
+  boundary (<code>ModelMaxLengthValid&lt;T&gt;</code>), consistent with the bare-<code>uint64</code> hard error — only
+  <code>std::string</code> / <code>std::string_view</code> / <code>std::optional&lt;those&gt;</code> accept it.</li>
+</ul>
+<p>Out of scope (YAGNI): <code>min_length</code> (separate follow-up — <code>CHECK(length &gt;= N)</code> passes on NULL,
+so it does <em>not</em> mean "required") and <code>check&lt;"expr"&gt;</code> (raw-SQL escape hatch).</p>
+<h3 id="single-column-indexes-unique-indexed">Single-column indexes (<code>unique</code> / <code>indexed</code>)<a class="headerlink" href="#single-column-indexes-unique-indexed" title="Permanent link">&para;</a></h3>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-6-1" name="__codelineno-6-1" href="#__codelineno-6-1"></a><span class="k">struct</span><span class="w"> </span><span class="nc">Person</span><span class="w"> </span><span class="p">{</span>
+<a id="__codelineno-6-2" name="__codelineno-6-2" href="#__codelineno-6-2"></a><span class="w">    </span><span class="p">[[</span><span class="err">=</span><span class="w"> </span><span class="na">primary</span><span class="p">]]</span><span class="w"> </span><span class="kt">int</span><span class="w"> </span><span class="n">id</span><span class="p">;</span>
+<a id="__codelineno-6-3" name="__codelineno-6-3" href="#__codelineno-6-3"></a><span class="w">    </span><span class="p">[[</span><span class="err">=</span><span class="w"> </span><span class="na">unique</span><span class="p">]]</span><span class="w"> </span><span class="n">std</span><span class="o">::</span><span class="n">string</span><span class="w"> </span><span class="n">email</span><span class="p">;</span><span class="w">    </span><span class="c1">// CREATE UNIQUE INDEX</span>
+<a id="__codelineno-6-4" name="__codelineno-6-4" href="#__codelineno-6-4"></a><span class="w">    </span><span class="p">[[</span><span class="err">=</span><span class="w"> </span><span class="na">indexed</span><span class="p">]]</span><span class="w"> </span><span class="n">std</span><span class="o">::</span><span class="n">string</span><span class="w"> </span><span class="n">name</span><span class="p">;</span><span class="w">    </span><span class="c1">// CREATE INDEX</span>
+<a id="__codelineno-6-5" name="__codelineno-6-5" href="#__codelineno-6-5"></a><span class="p">};</span>
+</code></pre></div>
+<p><code>unique</code> adds a uniqueness constraint (<code>UNIQUE INDEX</code>); <code>indexed</code> adds a plain lookup index
+with no uniqueness constraint. Foreign-key fields (<code>fk&lt;&gt;</code>) are indexed automatically without
+either tag. See <a href="../../features/INDEXES/">features/INDEXES.md</a> for full coverage, including
+composite (multi-column) indexes via <code>storm::Index&lt;&gt;</code> / <code>uniqueIndex&lt;&gt;</code>.</p>
+<h2 id="primary-keys-primary-primary_autoincrement-primary_assigned-primary_part">Primary Keys (<code>primary</code> / <code>primary_autoincrement</code> / <code>primary_assigned</code> / <code>primary_part</code>)<a class="headerlink" href="#primary-keys-primary-primary_autoincrement-primary_assigned-primary_part" title="Permanent link">&para;</a></h2>
+<p>Every model needs a primary key — <code>ModelWithPrimaryKey&lt;T&gt;</code> is a <code>BaseStatement&lt;T&gt;</code> constraint,
+so a model without one fails to compile at a named concept.</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-7-1" name="__codelineno-7-1" href="#__codelineno-7-1"></a><span class="k">struct</span><span class="w"> </span><span class="nc">Person</span><span class="w"> </span><span class="p">{</span>
+<a id="__codelineno-7-2" name="__codelineno-7-2" href="#__codelineno-7-2"></a><span class="w">    </span><span class="p">[[</span><span class="err">=</span><span class="w"> </span><span class="na">primary</span><span class="p">]]</span><span class="w"> </span><span class="kt">int</span><span class="w"> </span><span class="n">id</span><span class="p">;</span><span class="w">                 </span><span class="c1">// INTEGER PRIMARY KEY</span>
+<a id="__codelineno-7-3" name="__codelineno-7-3" href="#__codelineno-7-3"></a><span class="p">};</span>
+<a id="__codelineno-7-4" name="__codelineno-7-4" href="#__codelineno-7-4"></a>
+<a id="__codelineno-7-5" name="__codelineno-7-5" href="#__codelineno-7-5"></a><span class="k">struct</span><span class="w"> </span><span class="nc">Event</span><span class="w"> </span><span class="p">{</span>
+<a id="__codelineno-7-6" name="__codelineno-7-6" href="#__codelineno-7-6"></a><span class="w">    </span><span class="p">[[</span><span class="err">=</span><span class="w"> </span><span class="na">primary_autoincrement</span><span class="p">]]</span><span class="w"> </span><span class="kt">int</span><span class="w"> </span><span class="n">id</span><span class="p">;</span><span class="w">   </span><span class="c1">// + AUTOINCREMENT (SQLite never-reuse, #379)</span>
+<a id="__codelineno-7-7" name="__codelineno-7-7" href="#__codelineno-7-7"></a><span class="p">};</span>
+<a id="__codelineno-7-8" name="__codelineno-7-8" href="#__codelineno-7-8"></a>
+<a id="__codelineno-7-9" name="__codelineno-7-9" href="#__codelineno-7-9"></a><span class="k">struct</span><span class="w"> </span><span class="nc">ExternalRef</span><span class="w"> </span><span class="p">{</span>
+<a id="__codelineno-7-10" name="__codelineno-7-10" href="#__codelineno-7-10"></a><span class="w">    </span><span class="p">[[</span><span class="err">=</span><span class="w"> </span><span class="na">primary_assigned</span><span class="p">]]</span><span class="w"> </span><span class="kt">int</span><span class="w"> </span><span class="n">id</span><span class="p">;</span><span class="w">        </span><span class="c1">// caller supplies the id (#586)</span>
+<a id="__codelineno-7-11" name="__codelineno-7-11" href="#__codelineno-7-11"></a><span class="p">};</span>
+</code></pre></div>
+<h3 id="composite-multi-column-primary-keys-500">Composite (multi-column) primary keys (#500)<a class="headerlink" href="#composite-multi-column-primary-keys-500" title="Permanent link">&para;</a></h3>
+<p>Annotate two or more members with <code>primary_part</code> to make the key span several columns:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-8-1" name="__codelineno-8-1" href="#__codelineno-8-1"></a><span class="k">struct</span><span class="w"> </span><span class="nc">OrderItem</span><span class="w"> </span><span class="p">{</span>
+<a id="__codelineno-8-2" name="__codelineno-8-2" href="#__codelineno-8-2"></a><span class="w">    </span><span class="p">[[</span><span class="err">=</span><span class="w"> </span><span class="na">primary_part</span><span class="p">]]</span><span class="w"> </span><span class="kt">int</span><span class="w"> </span><span class="n">order_id</span><span class="p">;</span>
+<a id="__codelineno-8-3" name="__codelineno-8-3" href="#__codelineno-8-3"></a><span class="w">    </span><span class="p">[[</span><span class="err">=</span><span class="w"> </span><span class="na">primary_part</span><span class="p">]]</span><span class="w"> </span><span class="kt">int</span><span class="w"> </span><span class="n">product_id</span><span class="p">;</span>
+<a id="__codelineno-8-4" name="__codelineno-8-4" href="#__codelineno-8-4"></a><span class="w">    </span><span class="kt">int</span><span class="w"> </span><span class="n">quantity</span><span class="p">;</span>
+<a id="__codelineno-8-5" name="__codelineno-8-5" href="#__codelineno-8-5"></a><span class="p">};</span>
+</code></pre></div>
+<p>The parts are emitted as ordinary columns plus one table-level clause, in <strong>declaration
+order</strong> (column order is significant for the index the key creates):</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-9-1" name="__codelineno-9-1" href="#__codelineno-9-1"></a><span class="k">CREATE</span><span class="w"> </span><span class="k">TABLE</span><span class="w"> </span><span class="n">OrderItem</span><span class="w"> </span><span class="p">(</span>
+<a id="__codelineno-9-2" name="__codelineno-9-2" href="#__codelineno-9-2"></a><span class="w">    </span><span class="n">order_id</span><span class="w"> </span><span class="nb">INTEGER</span><span class="w"> </span><span class="k">NOT</span><span class="w"> </span><span class="k">NULL</span><span class="w"> </span><span class="k">DEFAULT</span><span class="w"> </span><span class="mi">0</span><span class="p">,</span>
+<a id="__codelineno-9-3" name="__codelineno-9-3" href="#__codelineno-9-3"></a><span class="w">    </span><span class="n">product_id</span><span class="w"> </span><span class="nb">INTEGER</span><span class="w"> </span><span class="k">NOT</span><span class="w"> </span><span class="k">NULL</span><span class="w"> </span><span class="k">DEFAULT</span><span class="w"> </span><span class="mi">0</span><span class="p">,</span>
+<a id="__codelineno-9-4" name="__codelineno-9-4" href="#__codelineno-9-4"></a><span class="w">    </span><span class="n">quantity</span><span class="w"> </span><span class="nb">INTEGER</span><span class="w"> </span><span class="k">NOT</span><span class="w"> </span><span class="k">NULL</span><span class="w"> </span><span class="k">DEFAULT</span><span class="w"> </span><span class="mi">0</span><span class="p">,</span>
+<a id="__codelineno-9-5" name="__codelineno-9-5" href="#__codelineno-9-5"></a><span class="w">    </span><span class="k">PRIMARY</span><span class="w"> </span><span class="k">KEY</span><span class="w"> </span><span class="p">(</span><span class="n">order_id</span><span class="p">,</span><span class="w"> </span><span class="n">product_id</span><span class="p">)</span>
+<a id="__codelineno-9-6" name="__codelineno-9-6" href="#__codelineno-9-6"></a><span class="p">)</span>
+</code></pre></div>
+<ul>
+<li><strong>Separate tag, by design</strong>: <code>primary_part</code> is its own annotation rather than "two
+  <code>primary</code> members means composite". Reusing <code>primary</code> would silently turn an accidental
+  double-<code>primary</code> typo into a legal composite key; keeping them distinct leaves that an error.</li>
+<li><strong>No autoincrement on a composite key</strong> — and this is not merely useless, it is
+  <em>unrepresentable</em>. SQLite rejects both spellings at parse time (a column-level <code>PRIMARY KEY</code>
+  cannot coexist with a table-level <code>PRIMARY KEY (...)</code>, and <code>AUTOINCREMENT</code> is only
+  grammatical directly after <code>INTEGER PRIMARY KEY</code>); PostgreSQL's <code>GENERATED … AS IDENTITY</code>
+  is single-column too. So the caller always supplies the full key — no part is ever DB-generated.</li>
+<li><strong>Both backends</strong>: SQLite and PostgreSQL emit the same table-level clause. Each part's own
+  column type follows the usual per-dialect mapping (#603) — an <code>int</code> part renders <code>INTEGER</code>
+  on both backends now; only wider/narrower part types (e.g. <code>int64_t</code>, <code>short</code>) diverge.</li>
+<li><strong>No separate index per part</strong>: the table-level <code>PRIMARY KEY</code> already indexes each part.</li>
+<li><strong><code>DEFAULT 0</code> on the parts</strong> is the ordinary auto-DEFAULT for NOT NULL columns (#413),
+  harmless here since the key is always caller-supplied.</li>
+</ul>
+<p><strong>Rejected at compile time</strong> by <code>ModelPrimaryKeyValid&lt;T&gt;</code> (a <code>BaseStatement&lt;T&gt;</code> constraint):</p>
+<table>
+<thead>
+<tr>
+<th>Declaration</th>
+<th>Why it's rejected</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Two or more <code>primary</code> / <code>primary_autoincrement</code> / <code>primary_assigned</code> members</td>
+<td>The accidental double-<code>primary</code> typo — the case the separate tag exists to catch</td>
+</tr>
+<tr>
+<td><code>primary</code> + <code>primary_part</code></td>
+<td>Two competing PK declarations — which one is the key?</td>
+</tr>
+<tr>
+<td><code>primary_autoincrement</code> + <code>primary_part</code></td>
+<td>Unrepresentable in SQL on either backend (above)</td>
+</tr>
+<tr>
+<td><code>primary_assigned</code> + <code>primary_part</code></td>
+<td>Unrepresentable in SQL — a caller-assigned key is still a single-column INTEGER PRIMARY KEY</td>
+</tr>
+<tr>
+<td><code>primary_assigned</code> + <code>primary_autoincrement</code></td>
+<td>Conflicting annotations on the same member</td>
+</tr>
+<tr>
+<td>Exactly one <code>primary_part</code></td>
+<td>That is a plain PK — spell it <code>primary</code></td>
+</tr>
+<tr>
+<td>A PK annotation on an m2m / reverse-FK container</td>
+<td>Not a column — the key would name something no column definition emits</td>
+</tr>
+<tr>
+<td>A PK annotation on <code>std::optional&lt;T&gt;</code></td>
+<td>A nullable PK is not a key (SQLite's legacy NULL quirk even admits duplicates, diverging from PG). Applies to a <strong>single</strong> <code>primary</code> too — a deliberate widening in #500, since a nullable PK was never correct</td>
+</tr>
+<tr>
+<td><code>primary_part</code> + <code>unique</code></td>
+<td>UNIQUE on one part allows at most one row per that part, defeating the composite key</td>
+</tr>
+</tbody>
+</table>
+<p>FK members make good parts — <code>[[= primary_part]] [[= fk&lt;&gt;]] Warehouse warehouse</code>
+is the canonical association-table key, and the clause names the FK's actual column
+(<code>PRIMARY KEY (warehouse_id, sku)</code>).</p>
+<h4 id="at-most-4-parts-537">At most 4 parts (#537)<a class="headerlink" href="#at-most-4-parts-537" title="Permanent link">&para;</a></h4>
+<p>A composite primary key may span <strong>at most 4 columns</strong>. A 5th part is a compile-time error
+via <code>ModelPrimaryKeyPartLimit&lt;T&gt;</code> (a <code>BaseStatement&lt;T&gt;</code> constraint):</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-10-1" name="__codelineno-10-1" href="#__codelineno-10-1"></a><span class="k">struct</span><span class="w"> </span><span class="nc">TooWide</span><span class="w"> </span><span class="p">{</span>
+<a id="__codelineno-10-2" name="__codelineno-10-2" href="#__codelineno-10-2"></a><span class="w">    </span><span class="p">[[</span><span class="err">=</span><span class="w"> </span><span class="na">primary_part</span><span class="p">]]</span><span class="w"> </span><span class="kt">int</span><span class="w"> </span><span class="n">a</span><span class="p">;</span>
+<a id="__codelineno-10-3" name="__codelineno-10-3" href="#__codelineno-10-3"></a><span class="w">    </span><span class="p">[[</span><span class="err">=</span><span class="w"> </span><span class="na">primary_part</span><span class="p">]]</span><span class="w"> </span><span class="kt">int</span><span class="w"> </span><span class="n">b</span><span class="p">;</span>
+<a id="__codelineno-10-4" name="__codelineno-10-4" href="#__codelineno-10-4"></a><span class="w">    </span><span class="p">[[</span><span class="err">=</span><span class="w"> </span><span class="na">primary_part</span><span class="p">]]</span><span class="w"> </span><span class="kt">int</span><span class="w"> </span><span class="n">c</span><span class="p">;</span>
+<a id="__codelineno-10-5" name="__codelineno-10-5" href="#__codelineno-10-5"></a><span class="w">    </span><span class="p">[[</span><span class="err">=</span><span class="w"> </span><span class="na">primary_part</span><span class="p">]]</span><span class="w"> </span><span class="kt">int</span><span class="w"> </span><span class="n">d</span><span class="p">;</span>
+<a id="__codelineno-10-6" name="__codelineno-10-6" href="#__codelineno-10-6"></a><span class="w">    </span><span class="p">[[</span><span class="err">=</span><span class="w"> </span><span class="na">primary_part</span><span class="p">]]</span><span class="w"> </span><span class="kt">int</span><span class="w"> </span><span class="n">e</span><span class="p">;</span><span class="w">   </span><span class="c1">// ❌ compile error — 5 parts</span>
+<a id="__codelineno-10-7" name="__codelineno-10-7" href="#__codelineno-10-7"></a><span class="p">};</span>
+</code></pre></div>
+<p>The limit comes from the m2m / reverse-FK eager load. That runs as two queries and stitches
+the second query's rows onto their owner through a hash map keyed on the owner's primary key;
+for a composite key, that map key is a fixed 32-byte inline buffer into which each part writes
+exactly one 8-byte word. Four parts fill it exactly.</p>
+<p>The buffer is <strong>not</strong> simply grown to make room, because its size is load-bearing for
+performance: a wider key measurably slows the stitch (which is why single-column keys bypass
+the buffer entirely for a bare 64-bit word). Folding surplus parts together was rejected too —
+two distinct keys colliding in the fold would attach rows to the <em>wrong</em> owner, a correctness
+bug rather than a recoverable hash collision.</p>
+<p>The limit applies to every model, not only to those that currently declare a relation: adding
+an m2m field later must not turn a previously fine model into a compile error in a distant file.
+Single-column keys are unaffected, as are the 2- and 3-part keys in the examples above.</p>
+<h4 id="part-types-517">Part types (#517)<a class="headerlink" href="#part-types-517" title="Permanent link">&para;</a></h4>
+<p>Every <code>primary_part</code> member's type is checked at compile time by <code>PrimaryKeyType&lt;T&gt;</code>
+(a <code>BaseStatement&lt;T&gt;</code> constraint):</p>
+<table>
+<thead>
+<tr>
+<th>Part type</th>
+<th>Verdict</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>short</code>, <code>int</code>, <code>long</code>, <code>long long</code> + <code>std::int16_t</code>/<code>int32_t</code>/<code>int64_t</code></td>
+<td>✅ accepted</td>
+</tr>
+<tr>
+<td><code>std::uint64_t</code> / <code>unsigned long</code> / <code>unsigned long long</code></td>
+<td>✅ <strong>only</strong> with <code>[[= storm::signed_storage]]</code></td>
+</tr>
+<tr>
+<td><code>storm::UUID</code></td>
+<td>✅ accepted</td>
+</tr>
+<tr>
+<td><code>std::string</code></td>
+<td>✅ accepted — <strong>composite parts only</strong></td>
+</tr>
+<tr>
+<td><code>std::string_view</code></td>
+<td>✅ accepted, but see the note below — it cannot be read back</td>
+</tr>
+<tr>
+<td>An FK member (<code>[[= fk&lt;&gt;]] Related</code>) whose target has a well-typed <strong>single</strong> PK (e.g. <code>[[= primary]] int id</code>)</td>
+<td>✅ accepted</td>
+</tr>
+<tr>
+<td>An FK member whose target has <strong>no</strong> primary key</td>
+<td>❌ rejected</td>
+</tr>
+<tr>
+<td>An FK member whose target's single PK is itself a rejected type (e.g. <code>double</code>, <code>std::string</code>)</td>
+<td>❌ rejected</td>
+</tr>
+<tr>
+<td>An FK member whose target is itself <strong>composite-keyed</strong></td>
+<td>❌ rejected — needs a multi-column FK (#504), out of scope here</td>
+</tr>
+<tr>
+<td><code>bool</code>, <code>char</code></td>
+<td>❌ a two-valued or 1-byte identity is not a key</td>
+</tr>
+<tr>
+<td><code>std::optional&lt;T&gt;</code></td>
+<td>❌ a nullable key is not a key</td>
+</tr>
+<tr>
+<td><code>unsigned int</code> and other bare unsigned types</td>
+<td>❌ not in the allowed set</td>
+</tr>
+<tr>
+<td><code>std::uint64_t</code> with <code>[[= storm::full_unsigned]]</code></td>
+<td>❌ stores as zero-padded TEXT, unreadable through the int64 PK paths</td>
+</tr>
+<tr>
+<td><code>double</code>, <code>std::vector&lt;uint8_t&gt;</code> (BLOB)</td>
+<td>❌ not a key type</td>
+</tr>
+</tbody>
+</table>
+<p><strong>An FK part is validated through its target's primary key, not its own declared type</strong>
+— it binds the <em>referenced</em> row's key (<code>bind_one_pk_part</code> splices
+<code>find_fk_primary_key&lt;FKType&gt;()</code>), so the member's own type is not the right question.
+This is the subtlest rule in the table, and it cuts both ways:</p>
+<ul>
+<li>The check is <strong>strictly stronger</strong> than "does the target have a PK at all"
+  (<code>ValidForeignKey</code>, used for ordinary FK fields and <code>join&lt;&gt;()</code>). Here, the target's
+  PK must <em>also</em> pass the single-PK allowlist (#505) — an FK part pointing at a model
+  whose PK is <code>double</code> is rejected, even though <code>join&lt;fields::T.fk&gt;()</code> on that same field
+  would be fine.</li>
+<li><strong>TEXT does not reach through an FK.</strong> The parts-only TEXT widening applies to the
+  FK member's <em>own</em> declared type, but an FK's declared type is never TEXT — it is the
+  related model type. So an FK part pointing at a <code>std::string</code>-PK model is rejected:
+  that target's single PK already fails #505 on its own terms, and the FK part
+  inherits that rejection rather than acquiring a new TEXT allowance.</li>
+<li><strong>A composite-keyed target is refused outright</strong> — not because composite FKs are
+  unsupported (#504 shipped those for ordinary FK fields), but because the PK-part bind
+  path still binds a single column: <code>bind_one_pk_part</code> splices the single-column
+  <code>find_fk_primary_key</code>, so an FK part pointing at an N-part key would bind one column
+  for a key spanning N. Supporting it means widening that bind path first.</li>
+</ul>
+<blockquote>
+<p><strong><code>std::string_view</code> parts bind but cannot be read back.</strong> The concept accepts a
+<code>std::string_view</code> part, and it generates DDL and binds correctly — but
+<code>ColumnExtractor</code> has no <code>std::string_view</code> arm, so SELECTing a model that contains one
+is a compile error. This is a project-wide limitation of <code>std::string_view</code> fields, not
+something specific to composite keys. <strong>Prefer <code>std::string</code> for any part you intend to
+read back.</strong></p>
+</blockquote>
+<p><strong>TEXT is allowed for a composite part but not for a single primary key.</strong> That split
+tracks a real distinction rather than an arbitrary one. A single PK still flows through
+Storm's integer-identity machinery (<code>RETURNING id</code>, <code>last_insert_rowid</code>, the int64 PK
+paths in <code>select.cppm</code>/<code>join.cppm</code>/<code>insert.cppm</code>), which is what makes a TEXT single PK
+a problem here. A composite key is <strong>never DB-generated</strong> (#502 — no <code>AUTOINCREMENT</code>, no
+<code>IDENTITY</code>, no <code>RETURNING</code>; the caller always supplies every part), so none of that
+machinery applies to a part.</p>
+<p>This also matches SQL itself and the wider ecosystem — SQLAlchemy's
+<code>Column(String(50), primary_key=True)</code>, Django's <code>CharField(primary_key=True)</code> and JPA's
+<code>@Id String</code> are all ordinary. The rule these systems actually enforce is not "primary
+keys must be integers" but <em>"auto-generated primary keys must be integers"</em>, which is
+exactly where Storm's line falls too.</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-11-1" name="__codelineno-11-1" href="#__codelineno-11-1"></a><span class="k">struct</span><span class="w"> </span><span class="nc">Inventory</span><span class="w"> </span><span class="p">{</span>
+<a id="__codelineno-11-2" name="__codelineno-11-2" href="#__codelineno-11-2"></a><span class="w">    </span><span class="p">[[</span><span class="err">=</span><span class="w"> </span><span class="na">primary_part</span><span class="p">]]</span><span class="w"> </span><span class="kt">int</span><span class="w">         </span><span class="n">warehouse</span><span class="p">;</span><span class="w">   </span><span class="c1">// ✅</span>
+<a id="__codelineno-11-3" name="__codelineno-11-3" href="#__codelineno-11-3"></a><span class="w">    </span><span class="p">[[</span><span class="err">=</span><span class="w"> </span><span class="na">primary_part</span><span class="p">]]</span><span class="w"> </span><span class="n">std</span><span class="o">::</span><span class="n">string</span><span class="w"> </span><span class="n">sku</span><span class="p">;</span><span class="w">         </span><span class="c1">// ✅ TEXT part</span>
+<a id="__codelineno-11-4" name="__codelineno-11-4" href="#__codelineno-11-4"></a><span class="w">    </span><span class="kt">int</span><span class="w"> </span><span class="n">on_hand</span><span class="p">;</span>
+<a id="__codelineno-11-5" name="__codelineno-11-5" href="#__codelineno-11-5"></a><span class="p">};</span>
+<a id="__codelineno-11-6" name="__codelineno-11-6" href="#__codelineno-11-6"></a>
+<a id="__codelineno-11-7" name="__codelineno-11-7" href="#__codelineno-11-7"></a><span class="k">struct</span><span class="w"> </span><span class="nc">Broken</span><span class="w"> </span><span class="p">{</span>
+<a id="__codelineno-11-8" name="__codelineno-11-8" href="#__codelineno-11-8"></a><span class="w">    </span><span class="p">[[</span><span class="err">=</span><span class="w"> </span><span class="na">primary_part</span><span class="p">]]</span><span class="w"> </span><span class="kt">int</span><span class="w">    </span><span class="n">id</span><span class="p">;</span>
+<a id="__codelineno-11-9" name="__codelineno-11-9" href="#__codelineno-11-9"></a><span class="w">    </span><span class="p">[[</span><span class="err">=</span><span class="w"> </span><span class="na">primary_part</span><span class="p">]]</span><span class="w"> </span><span class="kt">double</span><span class="w"> </span><span class="n">amount</span><span class="p">;</span><span class="w">           </span><span class="c1">// ❌ compile error</span>
+<a id="__codelineno-11-10" name="__codelineno-11-10" href="#__codelineno-11-10"></a><span class="p">};</span>
+</code></pre></div>
+<blockquote>
+<p><code>indexed</code> on a part is currently a no-op: the PK already indexes the parts, so the
+per-column index is suppressed for every PK member, as it is for a single-column PK.</p>
+</blockquote>
+<h3 id="update-and-delete-by-composite-key-501">UPDATE and DELETE by composite key (#501)<a class="headerlink" href="#update-and-delete-by-composite-key-501" title="Permanent link">&para;</a></h3>
+<p><code>update(obj)</code> and <code>erase(obj)</code> match on the <strong>whole</strong> key: the <code>WHERE pk = ?</code> of a
+single-PK model becomes <code>WHERE a = ? AND b = ?</code>, with every part bound in declaration
+order. A row matching only <em>some</em> parts is not touched.</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-12-1" name="__codelineno-12-1" href="#__codelineno-12-1"></a><span class="n">qs</span><span class="p">.</span><span class="n">erase</span><span class="p">(</span><span class="n">OrderItem</span><span class="p">{.</span><span class="n">order_id</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">1</span><span class="p">,</span><span class="w"> </span><span class="p">.</span><span class="n">product_id</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">20</span><span class="p">}).</span><span class="n">execute</span><span class="p">();</span>
+<a id="__codelineno-12-2" name="__codelineno-12-2" href="#__codelineno-12-2"></a><span class="c1">// DELETE FROM OrderItem WHERE order_id = ? AND product_id = ?</span>
+<a id="__codelineno-12-3" name="__codelineno-12-3" href="#__codelineno-12-3"></a>
+<a id="__codelineno-12-4" name="__codelineno-12-4" href="#__codelineno-12-4"></a><span class="n">qs</span><span class="p">.</span><span class="n">update</span><span class="p">(</span><span class="n">OrderItem</span><span class="p">{.</span><span class="n">order_id</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">1</span><span class="p">,</span><span class="w"> </span><span class="p">.</span><span class="n">product_id</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">20</span><span class="p">,</span><span class="w"> </span><span class="p">.</span><span class="n">quantity</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">7</span><span class="p">}).</span><span class="n">execute</span><span class="p">();</span>
+<a id="__codelineno-12-5" name="__codelineno-12-5" href="#__codelineno-12-5"></a><span class="c1">// UPDATE OrderItem SET quantity=? WHERE order_id = ? AND product_id = ?</span>
+</code></pre></div>
+<ul>
+<li><strong>No key part is ever a SET target.</strong> The UPDATE (and upsert <code>DO UPDATE</code>) SET clause
+  excludes <em>every</em> PK member, so a statement can never rewrite part of the key it matches on.</li>
+<li><strong>Batch DELETE uses a row-value <code>IN</code> list</strong> — <code>WHERE (a, b) IN ((?,?),(?,?))</code>. This is
+  standard SQL (PostgreSQL always; SQLite since 3.15, well under this project's 3.35 floor).
+  The per-column form <code>a IN (…) AND b IN (…)</code> would match the <em>cross product</em> of the parts
+  and delete keys that were never listed, so it is not used.</li>
+<li><strong>Batch chunking shrinks with key width.</strong> Each row costs one bound parameter per PK
+  column, so an N-part key fits <code>799 / N</code> rows per chunk instead of 799. Single-PK models
+  keep the historical 799.</li>
+<li><strong>Single-PK SQL is byte-identical</strong> to what Storm emitted before composite support.</li>
+</ul>
+<h3 id="insert-by-composite-key-502">INSERT by composite key (#502)<a class="headerlink" href="#insert-by-composite-key-502" title="Permanent link">&para;</a></h3>
+<p>A composite key is never DB-generated — <code>AUTOINCREMENT</code> (SQLite) and <code>GENERATED ... AS IDENTITY</code>
+(PostgreSQL) are single-column features. So <code>insert().execute()</code> on a composite model returns
+<code>std::expected&lt;void, Error&gt;</code> with <strong>no <code>RETURNING</code> clause</strong> (nothing to return). Every key part is
+caller-supplied and appears in the INSERT column list in <strong>declaration order</strong>.</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-13-1" name="__codelineno-13-1" href="#__codelineno-13-1"></a><span class="k">struct</span><span class="w"> </span><span class="nc">OrderItem</span><span class="w"> </span><span class="p">{</span>
+<a id="__codelineno-13-2" name="__codelineno-13-2" href="#__codelineno-13-2"></a><span class="w">    </span><span class="p">[[</span><span class="err">=</span><span class="w"> </span><span class="na">primary_part</span><span class="p">]]</span><span class="w"> </span><span class="kt">int</span><span class="w"> </span><span class="n">order_id</span><span class="p">;</span>
+<a id="__codelineno-13-3" name="__codelineno-13-3" href="#__codelineno-13-3"></a><span class="w">    </span><span class="p">[[</span><span class="err">=</span><span class="w"> </span><span class="na">primary_part</span><span class="p">]]</span><span class="w"> </span><span class="kt">int</span><span class="w"> </span><span class="n">product_id</span><span class="p">;</span>
+<a id="__codelineno-13-4" name="__codelineno-13-4" href="#__codelineno-13-4"></a><span class="w">    </span><span class="kt">int</span><span class="w"> </span><span class="n">quantity</span><span class="p">;</span>
+<a id="__codelineno-13-5" name="__codelineno-13-5" href="#__codelineno-13-5"></a><span class="p">};</span>
+<a id="__codelineno-13-6" name="__codelineno-13-6" href="#__codelineno-13-6"></a>
+<a id="__codelineno-13-7" name="__codelineno-13-7" href="#__codelineno-13-7"></a><span class="n">OrderItem</span><span class="w"> </span><span class="n">oi</span><span class="p">{.</span><span class="n">order_id</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">7</span><span class="p">,</span><span class="w"> </span><span class="p">.</span><span class="n">product_id</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">42</span><span class="p">,</span><span class="w"> </span><span class="p">.</span><span class="n">quantity</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">3</span><span class="p">};</span><span class="w">  </span><span class="c1">// caller supplies both PK parts</span>
+<a id="__codelineno-13-8" name="__codelineno-13-8" href="#__codelineno-13-8"></a><span class="n">qs</span><span class="p">.</span><span class="n">insert</span><span class="p">(</span><span class="n">oi</span><span class="p">).</span><span class="n">execute</span><span class="p">();</span><span class="w">   </span><span class="c1">// → std::expected&lt;void, Error&gt;</span>
+<a id="__codelineno-13-9" name="__codelineno-13-9" href="#__codelineno-13-9"></a><span class="c1">// SQL: INSERT INTO OrderItem (order_id, product_id, quantity) VALUES (?, ?, ?)</span>
+</code></pre></div>
+<p><strong>Return type and constraints:</strong></p>
+<ul>
+<li><strong><code>insert().execute()</code> returns <code>std::expected&lt;void, Error&gt;</code></strong> — no row ID to return since the
+  key is caller data.</li>
+<li><strong>No <code>RETURNING</code> clause is emitted</strong> — the single-PK <code>RETURNING id</code> fast path detects the
+  composite key at compile time and routes through <code>ReturnId::No</code> instead.</li>
+<li><strong><code>insert&lt;ReturnId::Yes&gt;</code> is a compile-time error</strong> — the <code>ReturnIdSupported&lt;T, R&gt;</code> concept
+  rejects it (would emit <code>RETURNING &lt;first part&gt;</code> — silently lossy and wrong). The diagnostic
+  fires at the user's call site.</li>
+<li><strong><code>insert&lt;ReturnId::No&gt;</code> is accepted and identical</strong> to the plain call. Generic code that
+  explicitly spells out the return type stays portable across model shapes.</li>
+<li><strong>Duplicate key surfaces as <code>Error</code></strong> — SQLite/PostgreSQL UNIQUE constraint violations return
+  an error code in the result; the caller can check <code>!result</code> or use <code>and_then()</code> to handle it.</li>
+<li><strong>Chunking unchanged</strong> — the auto batch size already divides by field count, which becomes
+  exactly right once the key columns count toward the parameter budget.</li>
+</ul>
+<p><strong>Single-PK models remain unchanged</strong> — they still return <code>int64_t</code> and emit <code>RETURNING id</code>.</p>
+<h3 id="upsert-by-composite-key-503">UPSERT by composite key (#503)<a class="headerlink" href="#upsert-by-composite-key-503" title="Permanent link">&para;</a></h3>
+<p>The <code>on_conflict&lt;...&gt;()</code> target may be the <strong>full</strong> composite-PK column set, in
+declaration order — a composite PK is itself a unique constraint over its N columns.
+A <strong>partial</strong> target (a strict subset) is rejected at compile time: one column of a
+composite key is not unique on its own.</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-14-1" name="__codelineno-14-1" href="#__codelineno-14-1"></a><span class="n">qs</span><span class="p">.</span><span class="n">insert</span><span class="p">(</span><span class="n">oi</span><span class="p">).</span><span class="n">on_conflict</span><span class="o">&lt;</span><span class="n">fields</span><span class="o">::</span><span class="n">OrderItem</span><span class="p">.</span><span class="n">order_id</span><span class="p">,</span><span class="w"> </span><span class="n">fields</span><span class="o">::</span><span class="n">OrderItem</span><span class="p">.</span><span class="n">product_id</span><span class="o">&gt;</span><span class="p">()</span>
+<a id="__codelineno-14-2" name="__codelineno-14-2" href="#__codelineno-14-2"></a><span class="w">   </span><span class="p">.</span><span class="n">update</span><span class="o">&lt;</span><span class="n">fields</span><span class="o">::</span><span class="n">OrderItem</span><span class="p">.</span><span class="n">quantity</span><span class="o">&gt;</span><span class="p">().</span><span class="n">execute</span><span class="p">();</span>
+<a id="__codelineno-14-3" name="__codelineno-14-3" href="#__codelineno-14-3"></a><span class="c1">// SQL: INSERT INTO OrderItem (order_id, product_id, quantity) VALUES (?, ?, ?)</span>
+<a id="__codelineno-14-4" name="__codelineno-14-4" href="#__codelineno-14-4"></a><span class="c1">//      ON CONFLICT (order_id, product_id) DO UPDATE SET quantity=excluded.quantity</span>
+<a id="__codelineno-14-5" name="__codelineno-14-5" href="#__codelineno-14-5"></a><span class="c1">//      -- no RETURNING clause</span>
+<a id="__codelineno-14-6" name="__codelineno-14-6" href="#__codelineno-14-6"></a>
+<a id="__codelineno-14-7" name="__codelineno-14-7" href="#__codelineno-14-7"></a><span class="n">qs</span><span class="p">.</span><span class="n">insert</span><span class="p">(</span><span class="n">oi</span><span class="p">).</span><span class="n">on_conflict</span><span class="o">&lt;</span><span class="n">fields</span><span class="o">::</span><span class="n">OrderItem</span><span class="p">.</span><span class="n">order_id</span><span class="o">&gt;</span><span class="p">()</span>
+<a id="__codelineno-14-8" name="__codelineno-14-8" href="#__codelineno-14-8"></a><span class="w">   </span><span class="c1">// COMPILE ERROR: order_id alone is not unique — it's one part of a 2-part key</span>
+</code></pre></div>
+<p>Same reasoning as plain INSERT (#502): a composite key is never DB-generated, so
+there is nothing for <code>RETURNING</code> to echo back.</p>
+<ul>
+<li><strong>No <code>RETURNING</code> clause is emitted</strong> for a composite target — both <code>DO UPDATE</code> and
+  <code>DO NOTHING</code> resolve to <code>std::expected&lt;void, Error&gt;</code> instead of the single-PK
+  <code>int64_t</code> / <code>std::optional&lt;int64_t&gt;</code>.</li>
+<li><strong><code>DO NOTHING</code>'s "was it skipped?" signal is unavailable</strong> for a composite target
+  (documented here rather than reconstructed some other way — there is no row to
+  report on since <code>RETURNING</code> is omitted).</li>
+<li><strong><code>DO UPDATE SET</code> still cannot target any key part</strong> — the SET-target gate excludes
+  every PK member, same as plain UPDATE (#501).</li>
+<li><strong>Single-PK upsert SQL is byte-identical</strong> to before — <code>RETURNING id</code> is still
+  emitted, and the return types are unchanged.</li>
+</ul>
+<blockquote>
+<p><strong>Scope</strong>: composite keys now cover the annotation (#500), compile-time PK machinery,
+<code>CREATE TABLE</code> DDL, UPDATE/DELETE by key (#501), INSERT by key (#502), and upsert
+<code>ON CONFLICT</code> targets (#503). Composite foreign keys / JOIN (#504) is still open.</p>
+</blockquote>
+<h3 id="uuid-primary-keys-507">UUID Primary Keys (#507)<a class="headerlink" href="#uuid-primary-keys-507" title="Permanent link">&para;</a></h3>
+<p>Storm supports <code>storm::UUID</code> as a primary key. UUID PKs are <strong>always client-generated</strong> — Storm does not auto-generate them at the database level (unlike integer <code>AUTOINCREMENT</code>/<code>IDENTITY</code>).</p>
+<p><code>storm::UUID</code> is accepted under any PK annotation, including <code>primary_assigned</code> — combining them
+(<code>[[= primary_assigned]] storm::UUID id;</code>) is redundant but harmless: <code>has_uuid_pk_()</code> and
+<code>has_caller_assigned_pk_()</code> are independent checks OR'd together in <code>pk_is_db_generated_()</code>, so
+either one alone already routes the model to the caller-supplied-key behavior described below.</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-15-1" name="__codelineno-15-1" href="#__codelineno-15-1"></a><span class="k">struct</span><span class="w"> </span><span class="nc">User</span><span class="w"> </span><span class="p">{</span>
+<a id="__codelineno-15-2" name="__codelineno-15-2" href="#__codelineno-15-2"></a><span class="w">    </span><span class="p">[[</span><span class="err">=</span><span class="w"> </span><span class="na">primary</span><span class="p">]]</span><span class="w"> </span><span class="n">storm</span><span class="o">::</span><span class="n">UUID</span><span class="w"> </span><span class="n">id</span><span class="p">;</span><span class="w">  </span><span class="c1">// Caller must set this before insert()</span>
+<a id="__codelineno-15-3" name="__codelineno-15-3" href="#__codelineno-15-3"></a><span class="w">    </span><span class="n">std</span><span class="o">::</span><span class="n">string</span><span class="w"> </span><span class="n">name</span><span class="p">;</span>
+<a id="__codelineno-15-4" name="__codelineno-15-4" href="#__codelineno-15-4"></a><span class="p">};</span>
+<a id="__codelineno-15-5" name="__codelineno-15-5" href="#__codelineno-15-5"></a>
+<a id="__codelineno-15-6" name="__codelineno-15-6" href="#__codelineno-15-6"></a><span class="c1">// Usage</span>
+<a id="__codelineno-15-7" name="__codelineno-15-7" href="#__codelineno-15-7"></a><span class="n">User</span><span class="w"> </span><span class="n">user</span><span class="p">{.</span><span class="n">id</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">storm</span><span class="o">::</span><span class="n">UUID</span><span class="o">::</span><span class="n">generate</span><span class="p">(),</span><span class="w"> </span><span class="p">.</span><span class="n">name</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s">"Alice"</span><span class="p">};</span><span class="w">  </span><span class="c1">// generate() call is required</span>
+<a id="__codelineno-15-8" name="__codelineno-15-8" href="#__codelineno-15-8"></a><span class="n">QuerySet</span><span class="o">&lt;</span><span class="n">User</span><span class="o">&gt;</span><span class="w"> </span><span class="n">qs</span><span class="p">;</span>
+<a id="__codelineno-15-9" name="__codelineno-15-9" href="#__codelineno-15-9"></a><span class="n">qs</span><span class="p">.</span><span class="n">insert</span><span class="p">(</span><span class="n">user</span><span class="p">).</span><span class="n">execute</span><span class="p">();</span><span class="w">  </span><span class="c1">// std::expected&lt;void, Error&gt; — nothing to return (#572)</span>
+</code></pre></div>
+<p><strong>Key differences from integer PKs:</strong></p>
+<ul>
+<li><strong><code>insert()</code> returns <code>std::expected&lt;void, Error&gt;</code>, not the id</strong> (#572). A UUID key is
+  caller-supplied, so there is nothing for <code>RETURNING</code> to hand back — no <code>RETURNING</code> clause is
+  emitted, and the same holds for <code>on_conflict().update()</code> / <code>.nothing()</code>. An explicit
+  <code>insert&lt;ReturnId::Yes&gt;</code> on a UUID-PK model is a <strong>compile error</strong> rather than a silently
+  meaningless integer; <code>insert&lt;ReturnId::No&gt;</code> stays valid on every model shape. You already have
+  the key — read it off the object you inserted.</li>
+<li><strong>The UUID key column is INSERTed like any other column</strong> (#565) — the caller's key is written,
+  not skipped as if it were an identity column. Same rule as a composite key (#502): neither is
+  ever DB-generated.</li>
+<li><strong>The caller must call <code>storm::UUID::generate()</code></strong> and assign it before insert — binding an empty UUID PK is an <strong>error</strong>.</li>
+<li><strong>On PostgreSQL</strong>, emits <code>id UUID PRIMARY KEY</code>. <strong>On SQLite</strong>, emits <code>id TEXT PRIMARY KEY</code>.</li>
+<li><strong>FK columns referencing a UUID-PK model</strong> emit <code>UUID</code> (PG) / <code>TEXT</code> (SQLite) — <strong>not</strong> INTEGER/BIGINT. The column type matches the referenced primary key type.</li>
+<li><strong>m2m auto-junction columns</strong> follow the same rule per side (#565): an m2m between UUID-PK models
+  emits <code>Doc_id UUID NOT NULL, Tag_id UUID NOT NULL</code> on PG (<code>TEXT</code> on SQLite). The two sides resolve
+  independently, so an integer-PK owner and a UUID-PK related model legitimately mix column types in
+  one junction. See
+  <a href="../../features/REFERENTIAL_INTEGRITY/#junction-column-type-follows-the-referenced-key-565">REFERENTIAL_INTEGRITY.md</a>.</li>
+<li><strong>Foreign keys, m2m, and reverse-FK eager loading</strong> work identically to integer PKs, with <strong>no performance impact</strong> — integer PKs are byte-identical (zero codegen overhead).</li>
+<li><strong>SELECT by UUID PK</strong> works identically to integer PKs.</li>
+<li><strong>UPDATE / DELETE by UUID PK reject an unset (empty) key</strong> with the same error INSERT raises
+  ("Primary key UUID must be explicitly set; auto-generation not allowed for PKs", #573) instead of
+  silently matching zero rows. The by-key WHERE clause binds the key through the PK-specific
+  binder, not the auto-generating binder INSERT/SET positions use.</li>
+<li><strong>Any <code>.where()</code>/<code>.having()</code> comparison against a <code>storm::UUID</code> column — PK or not, direct or
+  via a single-column FK to a UUID-PK model — rejects an unset (empty) operand</strong> ("UUID
+  comparison value must be explicitly set; auto-generation not allowed in a WHERE/HAVING clause",
+  #609) instead of silently matching nothing; a non-empty operand is also validated as RFC-4122
+  text. Ordering (<code>&gt;</code>, <code>&gt;=</code>, <code>&lt;</code>, <code>&lt;=</code>) and <code>.between()</code> on a UUID column are compile-time errors
+  — UUID is equality/<code>IN</code> only (#609/#407/<strong>#622, BREAKING</strong>: a string-spelled ordering
+  comparison against a UUID column used to compile as a plain lexicographic TEXT compare; it is
+  now rejected too, for consistency with the equality/IN-only contract). The equality guard keys
+  on the <strong>column's</strong> declared type, not just the operand's (#622): a plain-string <code>==</code>/<code>!=</code>
+  comparison (<code>== ""</code>, or the equality/<code>!=</code> case of a YAML/JSON-driven filter —
+  <code>query_builder.hpp</code>'s <code>typed_value_as</code> has no <code>storm::UUID</code> branch, so its <code>IN</code>/<code>BETWEEN</code> cases
+  don't get this conversion yet) is converted to <code>storm::UUID{...}</code> before binding, so it goes
+  through the same empty/malformed rejection as a <code>storm::UUID{}</code>-spelled operand. A non-UUID
+  operand (e.g. <code>uuid_col == 5</code>) is also now a compile-time rejection rather than a silent
+  wrong-type bind.</li>
+<li><strong>Thread safety</strong>: Same as integer PKs — per-thread <code>QuerySet</code> instances with thread-local connections.</li>
+</ul>
+<p><strong>Example with foreign keys:</strong></p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-16-1" name="__codelineno-16-1" href="#__codelineno-16-1"></a><span class="k">struct</span><span class="w"> </span><span class="nc">Message</span><span class="w"> </span><span class="p">{</span>
+<a id="__codelineno-16-2" name="__codelineno-16-2" href="#__codelineno-16-2"></a><span class="w">    </span><span class="p">[[</span><span class="err">=</span><span class="w"> </span><span class="na">primary</span><span class="p">]]</span><span class="w"> </span><span class="n">storm</span><span class="o">::</span><span class="n">UUID</span><span class="w"> </span><span class="n">id</span><span class="p">;</span>
+<a id="__codelineno-16-3" name="__codelineno-16-3" href="#__codelineno-16-3"></a><span class="w">    </span><span class="p">[[</span><span class="err">=</span><span class="w"> </span><span class="na">fk</span><span class="err">&lt;&gt;</span><span class="p">]]</span><span class="w"> </span><span class="n">User</span><span class="w"> </span><span class="n">sender</span><span class="p">;</span><span class="w">        </span><span class="c1">// FK to UUID-PK User — sender_id column is TEXT/UUID</span>
+<a id="__codelineno-16-4" name="__codelineno-16-4" href="#__codelineno-16-4"></a><span class="w">    </span><span class="n">std</span><span class="o">::</span><span class="n">string</span><span class="w"> </span><span class="n">text</span><span class="p">;</span>
+<a id="__codelineno-16-5" name="__codelineno-16-5" href="#__codelineno-16-5"></a><span class="p">};</span>
+<a id="__codelineno-16-6" name="__codelineno-16-6" href="#__codelineno-16-6"></a>
+<a id="__codelineno-16-7" name="__codelineno-16-7" href="#__codelineno-16-7"></a><span class="c1">// Insert a message referencing a UUID-PK user</span>
+<a id="__codelineno-16-8" name="__codelineno-16-8" href="#__codelineno-16-8"></a><span class="n">User</span><span class="w"> </span><span class="n">user</span><span class="p">{.</span><span class="n">id</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">storm</span><span class="o">::</span><span class="n">UUID</span><span class="o">::</span><span class="n">generate</span><span class="p">(),</span><span class="w"> </span><span class="p">.</span><span class="n">name</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s">"Alice"</span><span class="p">};</span>
+<a id="__codelineno-16-9" name="__codelineno-16-9" href="#__codelineno-16-9"></a><span class="n">QuerySet</span><span class="o">&lt;</span><span class="n">User</span><span class="o">&gt;</span><span class="p">().</span><span class="n">insert</span><span class="p">(</span><span class="n">user</span><span class="p">).</span><span class="n">execute</span><span class="p">();</span>
+<a id="__codelineno-16-10" name="__codelineno-16-10" href="#__codelineno-16-10"></a>
+<a id="__codelineno-16-11" name="__codelineno-16-11" href="#__codelineno-16-11"></a><span class="n">Message</span><span class="w"> </span><span class="n">msg</span><span class="p">{.</span><span class="n">id</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">storm</span><span class="o">::</span><span class="n">UUID</span><span class="o">::</span><span class="n">generate</span><span class="p">(),</span><span class="w"> </span><span class="p">.</span><span class="n">sender</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">user</span><span class="p">,</span><span class="w"> </span><span class="p">.</span><span class="n">text</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s">"Hello"</span><span class="p">};</span>
+<a id="__codelineno-16-12" name="__codelineno-16-12" href="#__codelineno-16-12"></a><span class="n">QuerySet</span><span class="o">&lt;</span><span class="n">Message</span><span class="o">&gt;</span><span class="p">().</span><span class="n">insert</span><span class="p">(</span><span class="n">msg</span><span class="p">).</span><span class="n">execute</span><span class="p">();</span><span class="w">  </span><span class="c1">// sender_id bound as TEXT/UUID, not INTEGER</span>
+</code></pre></div>
+<p><strong>Example with m2m and UUID-PK owner:</strong></p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-17-1" name="__codelineno-17-1" href="#__codelineno-17-1"></a><span class="k">struct</span><span class="w"> </span><span class="nc">Course</span><span class="w"> </span><span class="p">{</span>
+<a id="__codelineno-17-2" name="__codelineno-17-2" href="#__codelineno-17-2"></a><span class="w">    </span><span class="p">[[</span><span class="err">=</span><span class="w"> </span><span class="na">primary</span><span class="p">]]</span><span class="w"> </span><span class="kt">int</span><span class="w"> </span><span class="n">id</span><span class="p">;</span>
+<a id="__codelineno-17-3" name="__codelineno-17-3" href="#__codelineno-17-3"></a><span class="w">    </span><span class="n">std</span><span class="o">::</span><span class="n">string</span><span class="w"> </span><span class="n">title</span><span class="p">;</span>
+<a id="__codelineno-17-4" name="__codelineno-17-4" href="#__codelineno-17-4"></a><span class="p">};</span>
+<a id="__codelineno-17-5" name="__codelineno-17-5" href="#__codelineno-17-5"></a>
+<a id="__codelineno-17-6" name="__codelineno-17-6" href="#__codelineno-17-6"></a><span class="k">struct</span><span class="w"> </span><span class="nc">Student</span><span class="w"> </span><span class="p">{</span>
+<a id="__codelineno-17-7" name="__codelineno-17-7" href="#__codelineno-17-7"></a><span class="w">    </span><span class="p">[[</span><span class="err">=</span><span class="w"> </span><span class="na">primary</span><span class="p">]]</span><span class="w"> </span><span class="n">storm</span><span class="o">::</span><span class="n">UUID</span><span class="w"> </span><span class="n">id</span><span class="p">;</span><span class="w">     </span><span class="c1">// UUID PK</span>
+<a id="__codelineno-17-8" name="__codelineno-17-8" href="#__codelineno-17-8"></a><span class="w">    </span><span class="n">std</span><span class="o">::</span><span class="n">string</span><span class="w"> </span><span class="n">name</span><span class="p">;</span>
+<a id="__codelineno-17-9" name="__codelineno-17-9" href="#__codelineno-17-9"></a><span class="w">    </span><span class="p">[[</span><span class="err">=</span><span class="w"> </span><span class="na">many_to_many</span><span class="err">&lt;&gt;</span><span class="p">]]</span><span class="w"> </span><span class="n">std</span><span class="o">::</span><span class="n">vector</span><span class="o">&lt;</span><span class="n">Course</span><span class="o">&gt;</span><span class="w"> </span><span class="n">courses</span><span class="p">;</span><span class="w">  </span><span class="c1">// m2m joins through junction</span>
+<a id="__codelineno-17-10" name="__codelineno-17-10" href="#__codelineno-17-10"></a><span class="p">};</span>
+<a id="__codelineno-17-11" name="__codelineno-17-11" href="#__codelineno-17-11"></a>
+<a id="__codelineno-17-12" name="__codelineno-17-12" href="#__codelineno-17-12"></a><span class="c1">// Eager-load m2m with UUID-PK owner — stitch map keys on UUID, not int64_t</span>
+<a id="__codelineno-17-13" name="__codelineno-17-13" href="#__codelineno-17-13"></a><span class="k">auto</span><span class="w"> </span><span class="n">students</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">QuerySet</span><span class="o">&lt;</span><span class="n">Student</span><span class="o">&gt;</span><span class="p">()</span>
+<a id="__codelineno-17-14" name="__codelineno-17-14" href="#__codelineno-17-14"></a><span class="w">    </span><span class="p">.</span><span class="n">join</span><span class="o">&lt;</span><span class="n">fields</span><span class="o">::</span><span class="n">Student</span><span class="p">.</span><span class="n">courses</span><span class="o">&gt;</span><span class="p">()</span>
+<a id="__codelineno-17-15" name="__codelineno-17-15" href="#__codelineno-17-15"></a><span class="w">    </span><span class="p">.</span><span class="n">select</span><span class="p">();</span>
+<a id="__codelineno-17-16" name="__codelineno-17-16" href="#__codelineno-17-16"></a>
+<a id="__codelineno-17-17" name="__codelineno-17-17" href="#__codelineno-17-17"></a><span class="k">for</span><span class="w"> </span><span class="p">(</span><span class="k">const</span><span class="w"> </span><span class="k">auto</span><span class="o">&amp;</span><span class="w"> </span><span class="n">student</span><span class="w"> </span><span class="o">:</span><span class="w"> </span><span class="n">students</span><span class="p">)</span><span class="w"> </span><span class="p">{</span>
+<a id="__codelineno-17-18" name="__codelineno-17-18" href="#__codelineno-17-18"></a><span class="w">    </span><span class="k">for</span><span class="w"> </span><span class="p">(</span><span class="k">const</span><span class="w"> </span><span class="k">auto</span><span class="o">&amp;</span><span class="w"> </span><span class="n">course</span><span class="w"> </span><span class="o">:</span><span class="w"> </span><span class="n">student</span><span class="p">.</span><span class="n">courses</span><span class="p">)</span><span class="w"> </span><span class="p">{</span>
+<a id="__codelineno-17-19" name="__codelineno-17-19" href="#__codelineno-17-19"></a><span class="w">        </span><span class="n">std</span><span class="o">::</span><span class="n">cout</span><span class="w"> </span><span class="o">&lt;&lt;</span><span class="w"> </span><span class="n">student</span><span class="p">.</span><span class="n">name</span><span class="w"> </span><span class="o">&lt;&lt;</span><span class="w"> </span><span class="s">" takes "</span><span class="w"> </span><span class="o">&lt;&lt;</span><span class="w"> </span><span class="n">course</span><span class="p">.</span><span class="n">title</span><span class="w"> </span><span class="o">&lt;&lt;</span><span class="w"> </span><span class="s">"</span><span class="se">\n</span><span class="s">"</span><span class="p">;</span>
+<a id="__codelineno-17-20" name="__codelineno-17-20" href="#__codelineno-17-20"></a><span class="w">    </span><span class="p">}</span>
+<a id="__codelineno-17-21" name="__codelineno-17-21" href="#__codelineno-17-21"></a><span class="p">}</span>
+</code></pre></div>
+<h3 id="gotchas-uuid-primary-keys">Gotchas: UUID Primary Keys<a class="headerlink" href="#gotchas-uuid-primary-keys" title="Permanent link">&para;</a></h3>
+<p><strong>Q: My UUID PK insert fails with "Primary key UUID must be explicitly set"</strong></p>
+<p>A: UUID PKs require explicit generation. This is intentional — Storm doesn't auto-generate UUIDs like it does AUTOINCREMENT integers, so you must call <code>storm::UUID::generate()</code> at the call site:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-18-1" name="__codelineno-18-1" href="#__codelineno-18-1"></a><span class="c1">// ❌ Wrong — empty UUID not allowed for PKs</span>
+<a id="__codelineno-18-2" name="__codelineno-18-2" href="#__codelineno-18-2"></a><span class="n">User</span><span class="w"> </span><span class="n">user</span><span class="p">{.</span><span class="n">name</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s">"Alice"</span><span class="p">};</span>
+<a id="__codelineno-18-3" name="__codelineno-18-3" href="#__codelineno-18-3"></a><span class="n">QuerySet</span><span class="o">&lt;</span><span class="n">User</span><span class="o">&gt;</span><span class="p">().</span><span class="n">insert</span><span class="p">(</span><span class="n">user</span><span class="p">).</span><span class="n">execute</span><span class="p">();</span><span class="w">  </span><span class="c1">// Error: empty PK UUID</span>
+<a id="__codelineno-18-4" name="__codelineno-18-4" href="#__codelineno-18-4"></a>
+<a id="__codelineno-18-5" name="__codelineno-18-5" href="#__codelineno-18-5"></a><span class="c1">// ✅ Correct — explicitly set the UUID</span>
+<a id="__codelineno-18-6" name="__codelineno-18-6" href="#__codelineno-18-6"></a><span class="n">User</span><span class="w"> </span><span class="n">user</span><span class="p">{.</span><span class="n">id</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">storm</span><span class="o">::</span><span class="n">UUID</span><span class="o">::</span><span class="n">generate</span><span class="p">(),</span><span class="w"> </span><span class="p">.</span><span class="n">name</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s">"Alice"</span><span class="p">};</span>
+<a id="__codelineno-18-7" name="__codelineno-18-7" href="#__codelineno-18-7"></a><span class="n">QuerySet</span><span class="o">&lt;</span><span class="n">User</span><span class="o">&gt;</span><span class="p">().</span><span class="n">insert</span><span class="p">(</span><span class="n">user</span><span class="p">).</span><span class="n">execute</span><span class="p">();</span><span class="w">  </span><span class="c1">// OK</span>
+</code></pre></div>
+<p>This ensures the caller is aware of (and can control) the generated key. On INSERT, a non-PK UUID
+column left unset is still auto-generated (same as any non-PK field) — the PK-specific rejection
+above is only about the primary key itself. A <code>.where()</code>/<code>.having()</code> filter is different: ANY UUID
+column compared against an unset value rejects it too (#609), because auto-generating a random
+UUID to compare against is never meaningful in a filter position.</p>
+<p><strong>Q: Can I use composite keys with UUID?</strong></p>
+<p>A: Yes. Mix UUID and integer parts:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-19-1" name="__codelineno-19-1" href="#__codelineno-19-1"></a><span class="k">struct</span><span class="w"> </span><span class="nc">OrderLine</span><span class="w"> </span><span class="p">{</span>
+<a id="__codelineno-19-2" name="__codelineno-19-2" href="#__codelineno-19-2"></a><span class="w">    </span><span class="p">[[</span><span class="err">=</span><span class="w"> </span><span class="na">primary_part</span><span class="p">]]</span><span class="w"> </span><span class="n">storm</span><span class="o">::</span><span class="n">UUID</span><span class="w"> </span><span class="n">order_id</span><span class="p">;</span>
+<a id="__codelineno-19-3" name="__codelineno-19-3" href="#__codelineno-19-3"></a><span class="w">    </span><span class="p">[[</span><span class="err">=</span><span class="w"> </span><span class="na">primary_part</span><span class="p">]]</span><span class="w"> </span><span class="kt">int</span><span class="w"> </span><span class="n">product_id</span><span class="p">;</span>
+<a id="__codelineno-19-4" name="__codelineno-19-4" href="#__codelineno-19-4"></a><span class="w">    </span><span class="kt">int</span><span class="w"> </span><span class="n">quantity</span><span class="p">;</span>
+<a id="__codelineno-19-5" name="__codelineno-19-5" href="#__codelineno-19-5"></a><span class="p">};</span>
+<a id="__codelineno-19-6" name="__codelineno-19-6" href="#__codelineno-19-6"></a>
+<a id="__codelineno-19-7" name="__codelineno-19-7" href="#__codelineno-19-7"></a><span class="c1">// Caller supplies both parts</span>
+<a id="__codelineno-19-8" name="__codelineno-19-8" href="#__codelineno-19-8"></a><span class="n">OrderLine</span><span class="w"> </span><span class="n">line</span><span class="p">{.</span><span class="n">order_id</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">storm</span><span class="o">::</span><span class="n">UUID</span><span class="o">::</span><span class="n">generate</span><span class="p">(),</span><span class="w"> </span><span class="p">.</span><span class="n">product_id</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">42</span><span class="p">,</span><span class="w"> </span><span class="p">.</span><span class="n">quantity</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">1</span><span class="p">};</span>
+<a id="__codelineno-19-9" name="__codelineno-19-9" href="#__codelineno-19-9"></a><span class="n">QuerySet</span><span class="o">&lt;</span><span class="n">OrderLine</span><span class="o">&gt;</span><span class="p">().</span><span class="n">insert</span><span class="p">(</span><span class="n">line</span><span class="p">).</span><span class="n">execute</span><span class="p">();</span><span class="w">  </span><span class="c1">// → std::expected&lt;void, Error&gt;</span>
+</code></pre></div>
+<p>Composite keys follow the same rules as integer composites (#500): every part is caller-supplied, <code>AUTOINCREMENT</code>/<code>IDENTITY</code> is not emitted, and INSERT returns <code>void</code>.</p>
+<p><code>storm::UUID</code> is one option for a text-shaped part, not the only one — a plain
+<code>std::string</code> part is equally valid (#517). Use <code>storm::UUID</code> when you want RFC 4122
+validation on every write; use <code>std::string</code> for natural keys like a SKU or country code.
+See <a href="#part-types-517">Part types</a>.</p>
+<p><strong>Q: Can I upsert on a UUID PK?</strong></p>
+<p>A: Yes. Use <code>on_conflict&lt;fields::Model.id&gt;()</code> with the UUID PK member:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-20-1" name="__codelineno-20-1" href="#__codelineno-20-1"></a><span class="n">User</span><span class="w"> </span><span class="n">user</span><span class="p">{.</span><span class="n">id</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">storm</span><span class="o">::</span><span class="n">UUID</span><span class="o">::</span><span class="n">generate</span><span class="p">(),</span><span class="w"> </span><span class="p">.</span><span class="n">name</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s">"Alice"</span><span class="p">};</span>
+<a id="__codelineno-20-2" name="__codelineno-20-2" href="#__codelineno-20-2"></a><span class="n">QuerySet</span><span class="o">&lt;</span><span class="n">User</span><span class="o">&gt;</span><span class="p">()</span>
+<a id="__codelineno-20-3" name="__codelineno-20-3" href="#__codelineno-20-3"></a><span class="w">    </span><span class="p">.</span><span class="n">insert</span><span class="p">(</span><span class="n">user</span><span class="p">)</span>
+<a id="__codelineno-20-4" name="__codelineno-20-4" href="#__codelineno-20-4"></a><span class="w">    </span><span class="p">.</span><span class="n">on_conflict</span><span class="o">&lt;</span><span class="n">fields</span><span class="o">::</span><span class="n">User</span><span class="p">.</span><span class="n">id</span><span class="o">&gt;</span><span class="p">()</span>
+<a id="__codelineno-20-5" name="__codelineno-20-5" href="#__codelineno-20-5"></a><span class="w">    </span><span class="p">.</span><span class="n">update</span><span class="o">&lt;</span><span class="n">fields</span><span class="o">::</span><span class="n">User</span><span class="p">.</span><span class="n">name</span><span class="o">&gt;</span><span class="p">()</span>
+<a id="__codelineno-20-6" name="__codelineno-20-6" href="#__codelineno-20-6"></a><span class="w">    </span><span class="p">.</span><span class="n">execute</span><span class="p">();</span>
+<a id="__codelineno-20-7" name="__codelineno-20-7" href="#__codelineno-20-7"></a><span class="c1">// On conflict, update the name; insert if no conflict</span>
+</code></pre></div>
+<p>Return type follows composite-key upsert rules (#503): <code>std::expected&lt;void, Error&gt;</code> (no RETURNING).</p>
+<h2 id="optional-types-null-support">Optional Types (NULL Support)<a class="headerlink" href="#optional-types-null-support" title="Permanent link">&para;</a></h2>
+<table>
+<thead>
+<tr>
+<th>C++ Type</th>
+<th>SQLite Type</th>
+<th>Binding Method</th>
+<th>Extraction Method</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>std::optional&lt;T&gt;</code></td>
+<td>NULL / T's type</td>
+<td><code>bind_null()</code> / recursive</td>
+<td><code>is_null()</code> check</td>
+</tr>
+</tbody>
+</table>
+<p><strong>Supported optional types:</strong>
+- <code>std::optional&lt;int&gt;</code>
+- <code>std::optional&lt;int64_t&gt;</code>
+- <code>std::optional&lt;double&gt;</code>
+- <code>std::optional&lt;float&gt;</code>
+- <code>std::optional&lt;bool&gt;</code>
+- <code>std::optional&lt;std::string&gt;</code>
+- <code>std::optional&lt;std::vector&lt;uint8_t&gt;&gt;</code></p>
+<p><strong>Behavior:</strong>
+- <code>std::nullopt</code> → SQLite NULL
+- Value present → Recursively binds the contained value</p>
+<p><strong>Usage:</strong>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-21-1" name="__codelineno-21-1" href="#__codelineno-21-1"></a><span class="k">struct</span><span class="w"> </span><span class="nc">Contact</span><span class="w"> </span><span class="p">{</span>
+<a id="__codelineno-21-2" name="__codelineno-21-2" href="#__codelineno-21-2"></a><span class="w">    </span><span class="p">[[=</span><span class="nd">primary</span><span class="p">]]</span><span class="w"> </span><span class="kt">int</span><span class="w"> </span><span class="n">id</span><span class="p">;</span>
+<a id="__codelineno-21-3" name="__codelineno-21-3" href="#__codelineno-21-3"></a><span class="w">    </span><span class="n">std</span><span class="o">::</span><span class="n">string</span><span class="w"> </span><span class="n">name</span><span class="p">;</span>
+<a id="__codelineno-21-4" name="__codelineno-21-4" href="#__codelineno-21-4"></a><span class="w">    </span><span class="n">std</span><span class="o">::</span><span class="n">optional</span><span class="o">&lt;</span><span class="n">std</span><span class="o">::</span><span class="n">string</span><span class="o">&gt;</span><span class="w"> </span><span class="n">email</span><span class="p">;</span><span class="w">     </span><span class="c1">// Can be NULL</span>
+<a id="__codelineno-21-5" name="__codelineno-21-5" href="#__codelineno-21-5"></a><span class="w">    </span><span class="n">std</span><span class="o">::</span><span class="n">optional</span><span class="o">&lt;</span><span class="kt">int</span><span class="o">&gt;</span><span class="w"> </span><span class="n">age</span><span class="p">;</span><span class="w">               </span><span class="c1">// Can be NULL</span>
+<a id="__codelineno-21-6" name="__codelineno-21-6" href="#__codelineno-21-6"></a><span class="w">    </span><span class="n">std</span><span class="o">::</span><span class="n">optional</span><span class="o">&lt;</span><span class="kt">bool</span><span class="o">&gt;</span><span class="w"> </span><span class="n">is_verified</span><span class="p">;</span><span class="w">      </span><span class="c1">// Can be NULL</span>
+<a id="__codelineno-21-7" name="__codelineno-21-7" href="#__codelineno-21-7"></a><span class="p">};</span>
+<a id="__codelineno-21-8" name="__codelineno-21-8" href="#__codelineno-21-8"></a>
+<a id="__codelineno-21-9" name="__codelineno-21-9" href="#__codelineno-21-9"></a><span class="c1">// Examples</span>
+<a id="__codelineno-21-10" name="__codelineno-21-10" href="#__codelineno-21-10"></a><span class="n">Contact</span><span class="w"> </span><span class="n">c1</span><span class="p">{</span><span class="mi">1</span><span class="p">,</span><span class="w"> </span><span class="s">"Alice"</span><span class="p">,</span><span class="w"> </span><span class="s">"alice@example.com"</span><span class="p">,</span><span class="w"> </span><span class="mi">25</span><span class="p">,</span><span class="w"> </span><span class="nb">true</span><span class="p">};</span><span class="w">      </span><span class="c1">// All fields set</span>
+<a id="__codelineno-21-11" name="__codelineno-21-11" href="#__codelineno-21-11"></a><span class="n">Contact</span><span class="w"> </span><span class="n">c2</span><span class="p">{</span><span class="mi">2</span><span class="p">,</span><span class="w"> </span><span class="s">"Bob"</span><span class="p">,</span><span class="w"> </span><span class="n">std</span><span class="o">::</span><span class="n">nullopt</span><span class="p">,</span><span class="w"> </span><span class="n">std</span><span class="o">::</span><span class="n">nullopt</span><span class="p">,</span><span class="w"> </span><span class="n">std</span><span class="o">::</span><span class="n">nullopt</span><span class="p">};</span><span class="w"> </span><span class="c1">// NULLs</span>
+<a id="__codelineno-21-12" name="__codelineno-21-12" href="#__codelineno-21-12"></a><span class="n">Contact</span><span class="w"> </span><span class="n">c3</span><span class="p">{</span><span class="mi">3</span><span class="p">,</span><span class="w"> </span><span class="s">"Charlie"</span><span class="p">,</span><span class="w"> </span><span class="s">"charlie@example.com"</span><span class="p">,</span><span class="w"> </span><span class="n">std</span><span class="o">::</span><span class="n">nullopt</span><span class="p">,</span><span class="w"> </span><span class="nb">false</span><span class="p">};</span><span class="w"> </span><span class="c1">// Mixed</span>
+</code></pre></div></p>
+<h2 id="blob-types-binary-data">BLOB Types (Binary Data)<a class="headerlink" href="#blob-types-binary-data" title="Permanent link">&para;</a></h2>
+<table>
+<thead>
+<tr>
+<th>C++ Type</th>
+<th>SQLite Type</th>
+<th>Binding Method</th>
+<th>Extraction Method</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>std::vector&lt;uint8_t&gt;</code></td>
+<td>BLOB</td>
+<td><code>bind_blob()</code></td>
+<td><code>extract_blob()</code></td>
+</tr>
+<tr>
+<td><code>std::vector&lt;unsigned char&gt;</code></td>
+<td>BLOB</td>
+<td><code>bind_blob()</code></td>
+<td><code>extract_blob()</code></td>
+</tr>
+</tbody>
+</table>
+<p><strong>Usage:</strong>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-22-1" name="__codelineno-22-1" href="#__codelineno-22-1"></a><span class="k">struct</span><span class="w"> </span><span class="nc">FileData</span><span class="w"> </span><span class="p">{</span>
+<a id="__codelineno-22-2" name="__codelineno-22-2" href="#__codelineno-22-2"></a><span class="w">    </span><span class="p">[[=</span><span class="nd">primary</span><span class="p">]]</span><span class="w"> </span><span class="kt">int</span><span class="w"> </span><span class="n">id</span><span class="p">;</span>
+<a id="__codelineno-22-3" name="__codelineno-22-3" href="#__codelineno-22-3"></a><span class="w">    </span><span class="n">std</span><span class="o">::</span><span class="n">string</span><span class="w"> </span><span class="n">filename</span><span class="p">;</span>
+<a id="__codelineno-22-4" name="__codelineno-22-4" href="#__codelineno-22-4"></a><span class="w">    </span><span class="n">std</span><span class="o">::</span><span class="n">vector</span><span class="o">&lt;</span><span class="kt">uint8_t</span><span class="o">&gt;</span><span class="w"> </span><span class="n">data</span><span class="p">;</span>
+<a id="__codelineno-22-5" name="__codelineno-22-5" href="#__codelineno-22-5"></a><span class="p">};</span>
+<a id="__codelineno-22-6" name="__codelineno-22-6" href="#__codelineno-22-6"></a>
+<a id="__codelineno-22-7" name="__codelineno-22-7" href="#__codelineno-22-7"></a><span class="c1">// Example with binary data</span>
+<a id="__codelineno-22-8" name="__codelineno-22-8" href="#__codelineno-22-8"></a><span class="n">std</span><span class="o">::</span><span class="n">vector</span><span class="o">&lt;</span><span class="kt">uint8_t</span><span class="o">&gt;</span><span class="w"> </span><span class="n">binary_data</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="p">{</span><span class="mh">0x89</span><span class="p">,</span><span class="w"> </span><span class="mh">0x50</span><span class="p">,</span><span class="w"> </span><span class="mh">0x4E</span><span class="p">,</span><span class="w"> </span><span class="mh">0x47</span><span class="p">};</span><span class="w"> </span><span class="c1">// PNG header</span>
+<a id="__codelineno-22-9" name="__codelineno-22-9" href="#__codelineno-22-9"></a><span class="n">FileData</span><span class="w"> </span><span class="n">file</span><span class="p">{</span><span class="mi">0</span><span class="p">,</span><span class="w"> </span><span class="s">"image.png"</span><span class="p">,</span><span class="w"> </span><span class="n">binary_data</span><span class="p">};</span>
+</code></pre></div></p>
+<h2 id="automatic-timestamps-auto_create-auto_update">Automatic Timestamps (<code>auto_create</code> / <code>auto_update</code>)<a class="headerlink" href="#automatic-timestamps-auto_create-auto_update" title="Permanent link">&para;</a></h2>
+<p>Two field attributes populate <code>std::chrono::system_clock::time_point</code> columns with
+the current time automatically, so you never set them by hand (#209):</p>
+<table>
+<thead>
+<tr>
+<th>Attribute</th>
+<th>INSERT</th>
+<th>UPDATE</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>auto_create</code></td>
+<td>set to <code>now()</code></td>
+<td>preserved (bound from the object's stored value)</td>
+</tr>
+<tr>
+<td><code>auto_update</code></td>
+<td>set to <code>now()</code></td>
+<td>set to <code>now()</code></td>
+</tr>
+</tbody>
+</table>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-23-1" name="__codelineno-23-1" href="#__codelineno-23-1"></a><span class="k">struct</span><span class="w"> </span><span class="nc">User</span><span class="w"> </span><span class="p">{</span>
+<a id="__codelineno-23-2" name="__codelineno-23-2" href="#__codelineno-23-2"></a><span class="w">    </span><span class="p">[[=</span><span class="nd">primary</span><span class="p">]]</span><span class="w"> </span><span class="kt">int</span><span class="w"> </span><span class="n">id</span><span class="p">;</span>
+<a id="__codelineno-23-3" name="__codelineno-23-3" href="#__codelineno-23-3"></a><span class="w">    </span><span class="n">std</span><span class="o">::</span><span class="n">string</span><span class="w"> </span><span class="n">name</span><span class="p">;</span>
+<a id="__codelineno-23-4" name="__codelineno-23-4" href="#__codelineno-23-4"></a><span class="w">    </span><span class="p">[[=</span><span class="nd">storm</span><span class="p">::</span><span class="nd">auto_create</span><span class="p">]]</span><span class="w"> </span><span class="n">std</span><span class="o">::</span><span class="n">chrono</span><span class="o">::</span><span class="n">system_clock</span><span class="o">::</span><span class="n">time_point</span><span class="w"> </span><span class="n">created_at</span><span class="p">;</span>
+<a id="__codelineno-23-5" name="__codelineno-23-5" href="#__codelineno-23-5"></a><span class="w">    </span><span class="p">[[=</span><span class="nd">storm</span><span class="p">::</span><span class="nd">auto_update</span><span class="p">]]</span><span class="w"> </span><span class="n">std</span><span class="o">::</span><span class="n">chrono</span><span class="o">::</span><span class="n">system_clock</span><span class="o">::</span><span class="n">time_point</span><span class="w"> </span><span class="n">updated_at</span><span class="p">;</span>
+<a id="__codelineno-23-6" name="__codelineno-23-6" href="#__codelineno-23-6"></a><span class="p">};</span>
+<a id="__codelineno-23-7" name="__codelineno-23-7" href="#__codelineno-23-7"></a>
+<a id="__codelineno-23-8" name="__codelineno-23-8" href="#__codelineno-23-8"></a><span class="c1">// INSERT — both stamped automatically; any value you set is ignored.</span>
+<a id="__codelineno-23-9" name="__codelineno-23-9" href="#__codelineno-23-9"></a><span class="n">QuerySet</span><span class="o">&lt;</span><span class="n">User</span><span class="o">&gt;</span><span class="p">().</span><span class="n">insert</span><span class="p">(</span><span class="n">User</span><span class="p">{.</span><span class="n">name</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s">"John"</span><span class="p">}).</span><span class="n">execute</span><span class="p">();</span>
+<a id="__codelineno-23-10" name="__codelineno-23-10" href="#__codelineno-23-10"></a><span class="c1">// row: created_at = now, updated_at = now</span>
+<a id="__codelineno-23-11" name="__codelineno-23-11" href="#__codelineno-23-11"></a>
+<a id="__codelineno-23-12" name="__codelineno-23-12" href="#__codelineno-23-12"></a><span class="c1">// UPDATE — only updated_at re-stamped; created_at preserved.</span>
+<a id="__codelineno-23-13" name="__codelineno-23-13" href="#__codelineno-23-13"></a><span class="n">User</span><span class="w"> </span><span class="n">u</span><span class="p">{.</span><span class="n">id</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">1</span><span class="p">,</span><span class="w"> </span><span class="p">.</span><span class="n">name</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s">"Jane"</span><span class="p">,</span><span class="w"> </span><span class="p">.</span><span class="n">created_at</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">original_created_at</span><span class="p">};</span>
+<a id="__codelineno-23-14" name="__codelineno-23-14" href="#__codelineno-23-14"></a><span class="n">QuerySet</span><span class="o">&lt;</span><span class="n">User</span><span class="o">&gt;</span><span class="p">().</span><span class="n">update</span><span class="p">(</span><span class="n">u</span><span class="p">).</span><span class="n">execute</span><span class="p">();</span>
+<a id="__codelineno-23-15" name="__codelineno-23-15" href="#__codelineno-23-15"></a><span class="c1">// row: created_at unchanged, updated_at = now</span>
+</code></pre></div>
+<p><strong>Contract and constraints:</strong></p>
+<ul>
+<li><strong>Bind-time only, no write-back.</strong> The value is computed in C++ (<code>system_clock::now()</code>)
+  and bound as a parameter. The caller's in-memory object is <strong>not</strong> mutated — re-SELECT
+  the row to read the stamped value.</li>
+<li><strong>Preserving <code>created_at</code> on UPDATE</strong> requires the object to carry its original
+  <code>created_at</code> (UPDATE binds it from the object). Load-modify-save, or pass the value
+  you read on INSERT.</li>
+<li><strong>One <code>now()</code> per batch.</strong> A bulk INSERT/UPDATE reads the clock once and shares it
+  across every row, so all rows in a batch get the same timestamp.</li>
+<li><strong>Type-checked at compile time.</strong> An <code>auto_create</code>/<code>auto_update</code> field that is not a
+  <code>std::chrono::system_clock::time_point</code> fails to compile with a clear message.</li>
+<li><strong>Never on a primary key</strong> (#511). A key that stamps itself would be rewritten by the
+  statement matching on it, so <code>auto_create</code>/<code>auto_update</code> on a <code>primary</code>,
+  <code>primary_autoincrement</code>, or <code>primary_part</code> member is a compile-time error
+  (<code>ModelTimestampPkValid</code>) rather than a silently ignored annotation.</li>
+<li><strong>Zero cost when unused.</strong> Models without any timestamp field do not pay for the
+  clock read — the call compiles away.</li>
+</ul>
+<p>The column maps to <code>TIMESTAMP</code> (PostgreSQL) / <code>TEXT</code> (SQLite) and round-trips via the
+existing <code>time_point</code> ↔ <code>"YYYY-MM-DD HH:MM:SS"</code> conversion.</p>
+<h2 id="many-to-many-container-fields-many_to_many-many_to_many_through">Many-to-Many Container Fields (<code>many_to_many&lt;&gt;</code> / <code>many_to_many_through</code>)<a class="headerlink" href="#many-to-many-container-fields-many_to_many-many_to_many_through" title="Permanent link">&para;</a></h2>
+<p>A container member annotated with <code>[[= many_to_many&lt;&gt;]]</code> (or
+<code>many_to_many_through&lt;JunctionModel&gt;</code>) declares a many-to-many relationship (#203):</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-24-1" name="__codelineno-24-1" href="#__codelineno-24-1"></a><span class="k">struct</span><span class="w"> </span><span class="nc">Student</span><span class="w"> </span><span class="p">{</span>
+<a id="__codelineno-24-2" name="__codelineno-24-2" href="#__codelineno-24-2"></a><span class="w">    </span><span class="p">[[</span><span class="err">=</span><span class="w"> </span><span class="na">primary</span><span class="p">]]</span><span class="w"> </span><span class="kt">int</span><span class="w"> </span><span class="n">id</span><span class="p">{};</span>
+<a id="__codelineno-24-3" name="__codelineno-24-3" href="#__codelineno-24-3"></a><span class="w">    </span><span class="n">std</span><span class="o">::</span><span class="n">string</span><span class="w"> </span><span class="n">name</span><span class="p">;</span>
+<a id="__codelineno-24-4" name="__codelineno-24-4" href="#__codelineno-24-4"></a><span class="w">    </span><span class="p">[[</span><span class="err">=</span><span class="w"> </span><span class="na">many_to_many</span><span class="err">&lt;&gt;</span><span class="p">]]</span><span class="w"> </span><span class="n">std</span><span class="o">::</span><span class="n">vector</span><span class="o">&lt;</span><span class="n">Course</span><span class="o">&gt;</span><span class="w"> </span><span class="n">courses</span><span class="p">;</span>
+<a id="__codelineno-24-5" name="__codelineno-24-5" href="#__codelineno-24-5"></a><span class="p">};</span>
+</code></pre></div>
+<ul>
+<li><strong>Not a column.</strong> The member maps to a junction table, not to a column —
+  <code>INSERT</code>/<code>SELECT</code>/<code>UPDATE</code>/schema generation skip it entirely. Plain <code>select()</code>
+  leaves it empty; <code>join&lt;fields::Student.courses&gt;()</code> eager-loads it.</li>
+<li><strong>Supported containers:</strong> <code>std::vector&lt;T&gt;</code>, <code>plf::hive&lt;T&gt;</code>, <code>std::deque&lt;T&gt;</code>,
+  and smart-pointer elements (<code>std::vector&lt;std::shared_ptr&lt;T&gt;&gt;</code>); the related
+  model type is extracted via C++26 <code>std::meta</code>.</li>
+<li><strong>Junction DDL</strong> is auto-generated for the <code>many_to_many&lt;&gt;</code> form (see
+  <a href="../../features/JOIN_OPERATIONS/#many-to-many-joins-203">JOIN_OPERATIONS.md</a>).</li>
+</ul>
+<h2 id="persistable-vs-filterable">Persistable vs. Filterable<a class="headerlink" href="#persistable-vs-filterable" title="Permanent link">&para;</a></h2>
+<p>Every type on this page is <strong>persistable and readable</strong> — you can <code>INSERT</code> it and <code>SELECT</code>
+it back. A <strong>narrower</strong> set is <strong>filterable in a WHERE clause</strong> (<code>fields::T.field == …</code>,
+<code>.between(…)</code>, <code>.in(…)</code>): the expression system stores operands in a closed variant, so a
+type must have a variant arm to be filtered on (#407). Temporal types
+(<code>year_month_day</code>, <code>system_clock::time_point</code>) and <code>storm::UUID</code> are both persistable <strong>and</strong>
+filterable; <code>std::chrono::duration</code>, <code>std::filesystem::path</code>, and BLOB are persistable but
+<strong>not</strong> filterable. A <code>std::optional&lt;T&gt;</code> column is filterable exactly when <code>T</code> is — the operand
+type is the UNWRAPPED <code>T</code>, since the variant has no optional arm (#625) — and a NULL row never
+matches <code>==</code> or <code>.in(…)</code>; use <code>is_null()</code> to reach it. A type without an arm is rejected at the
+call site, not hard-errored. See the full filterability table in
+<a href="../../features/WHERE_CLAUSES/#filterable-field-types">WHERE_CLAUSES.md → Filterable field types</a>.</p>
+<h2 id="type-dispatch-implementation">Type Dispatch Implementation<a class="headerlink" href="#type-dispatch-implementation" title="Permanent link">&para;</a></h2>
+<p>The binding uses compile-time <code>if constexpr</code> type dispatch to select the appropriate SQLite binding function with <strong>zero runtime overhead</strong>.</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-25-1" name="__codelineno-25-1" href="#__codelineno-25-1"></a><span class="k">template</span><span class="w"> </span><span class="o">&lt;</span><span class="k">typename</span><span class="w"> </span><span class="nc">U</span><span class="o">&gt;</span>
+<a id="__codelineno-25-2" name="__codelineno-25-2" href="#__codelineno-25-2"></a><span class="k">static</span><span class="w"> </span><span class="k">constexpr</span><span class="w"> </span><span class="k">auto</span><span class="w"> </span><span class="n">bind_value_by_type</span><span class="p">(</span><span class="n">Statement</span><span class="o">&amp;</span><span class="w"> </span><span class="n">stmt</span><span class="p">,</span><span class="w"> </span><span class="kt">int</span><span class="w"> </span><span class="n">index</span><span class="p">,</span><span class="w"> </span><span class="k">const</span><span class="w"> </span><span class="n">U</span><span class="o">&amp;</span><span class="w"> </span><span class="n">value</span><span class="p">)</span><span class="w"> </span><span class="o">-&gt;</span><span class="w"> </span><span class="kt">bool</span><span class="w"> </span><span class="p">{</span>
+<a id="__codelineno-25-3" name="__codelineno-25-3" href="#__codelineno-25-3"></a><span class="w">    </span><span class="k">if</span><span class="w"> </span><span class="k">constexpr</span><span class="w"> </span><span class="p">(</span><span class="n">std</span><span class="o">::</span><span class="n">is_same_v</span><span class="o">&lt;</span><span class="n">U</span><span class="p">,</span><span class="w"> </span><span class="kt">int</span><span class="o">&gt;</span><span class="p">)</span><span class="w"> </span><span class="p">{</span>
+<a id="__codelineno-25-4" name="__codelineno-25-4" href="#__codelineno-25-4"></a><span class="w">        </span><span class="k">return</span><span class="w"> </span><span class="n">stmt</span><span class="p">.</span><span class="n">bind_int</span><span class="p">(</span><span class="n">index</span><span class="p">,</span><span class="w"> </span><span class="n">value</span><span class="p">);</span>
+<a id="__codelineno-25-5" name="__codelineno-25-5" href="#__codelineno-25-5"></a><span class="w">    </span><span class="p">}</span><span class="w"> </span><span class="k">else</span><span class="w"> </span><span class="k">if</span><span class="w"> </span><span class="k">constexpr</span><span class="w"> </span><span class="p">(</span><span class="n">std</span><span class="o">::</span><span class="n">is_same_v</span><span class="o">&lt;</span><span class="n">U</span><span class="p">,</span><span class="w"> </span><span class="kt">int64_t</span><span class="o">&gt;</span><span class="w"> </span><span class="o">||</span><span class="w"> </span><span class="n">std</span><span class="o">::</span><span class="n">is_same_v</span><span class="o">&lt;</span><span class="n">U</span><span class="p">,</span><span class="w"> </span><span class="kt">long</span><span class="o">&gt;</span><span class="w"> </span><span class="o">||</span><span class="w"> </span><span class="n">std</span><span class="o">::</span><span class="n">is_same_v</span><span class="o">&lt;</span><span class="n">U</span><span class="p">,</span><span class="w"> </span><span class="kt">long</span><span class="w"> </span><span class="kt">long</span><span class="o">&gt;</span><span class="p">)</span><span class="w"> </span><span class="p">{</span>
+<a id="__codelineno-25-6" name="__codelineno-25-6" href="#__codelineno-25-6"></a><span class="w">        </span><span class="k">return</span><span class="w"> </span><span class="n">stmt</span><span class="p">.</span><span class="n">bind_int64</span><span class="p">(</span><span class="n">index</span><span class="p">,</span><span class="w"> </span><span class="k">static_cast</span><span class="o">&lt;</span><span class="kt">int64_t</span><span class="o">&gt;</span><span class="p">(</span><span class="n">value</span><span class="p">));</span>
+<a id="__codelineno-25-7" name="__codelineno-25-7" href="#__codelineno-25-7"></a><span class="w">    </span><span class="p">}</span><span class="w"> </span><span class="k">else</span><span class="w"> </span><span class="k">if</span><span class="w"> </span><span class="k">constexpr</span><span class="w"> </span><span class="p">(</span><span class="n">std</span><span class="o">::</span><span class="n">is_same_v</span><span class="o">&lt;</span><span class="n">U</span><span class="p">,</span><span class="w"> </span><span class="kt">double</span><span class="o">&gt;</span><span class="p">)</span><span class="w"> </span><span class="p">{</span>
+<a id="__codelineno-25-8" name="__codelineno-25-8" href="#__codelineno-25-8"></a><span class="w">        </span><span class="k">return</span><span class="w"> </span><span class="n">stmt</span><span class="p">.</span><span class="n">bind_double</span><span class="p">(</span><span class="n">index</span><span class="p">,</span><span class="w"> </span><span class="n">value</span><span class="p">);</span>
+<a id="__codelineno-25-9" name="__codelineno-25-9" href="#__codelineno-25-9"></a><span class="w">    </span><span class="p">}</span><span class="w"> </span><span class="k">else</span><span class="w"> </span><span class="k">if</span><span class="w"> </span><span class="k">constexpr</span><span class="w"> </span><span class="p">(</span><span class="n">std</span><span class="o">::</span><span class="n">is_same_v</span><span class="o">&lt;</span><span class="n">U</span><span class="p">,</span><span class="w"> </span><span class="kt">bool</span><span class="o">&gt;</span><span class="p">)</span><span class="w"> </span><span class="p">{</span>
+<a id="__codelineno-25-10" name="__codelineno-25-10" href="#__codelineno-25-10"></a><span class="w">        </span><span class="k">return</span><span class="w"> </span><span class="n">stmt</span><span class="p">.</span><span class="n">bind_int</span><span class="p">(</span><span class="n">index</span><span class="p">,</span><span class="w"> </span><span class="n">value</span><span class="w"> </span><span class="o">?</span><span class="w"> </span><span class="mi">1</span><span class="w"> </span><span class="o">:</span><span class="w"> </span><span class="mi">0</span><span class="p">);</span>
+<a id="__codelineno-25-11" name="__codelineno-25-11" href="#__codelineno-25-11"></a><span class="w">    </span><span class="p">}</span><span class="w"> </span><span class="k">else</span><span class="w"> </span><span class="k">if</span><span class="w"> </span><span class="k">constexpr</span><span class="w"> </span><span class="p">(</span><span class="cm">/* string types */</span><span class="p">)</span><span class="w"> </span><span class="p">{</span>
+<a id="__codelineno-25-12" name="__codelineno-25-12" href="#__codelineno-25-12"></a><span class="w">        </span><span class="k">return</span><span class="w"> </span><span class="n">stmt</span><span class="p">.</span><span class="n">bind_text</span><span class="p">(</span><span class="n">index</span><span class="p">,</span><span class="w"> </span><span class="n">value</span><span class="p">);</span>
+<a id="__codelineno-25-13" name="__codelineno-25-13" href="#__codelineno-25-13"></a><span class="w">    </span><span class="p">}</span><span class="w"> </span><span class="k">else</span><span class="w"> </span><span class="k">if</span><span class="w"> </span><span class="k">constexpr</span><span class="w"> </span><span class="p">(</span><span class="cm">/* optional types */</span><span class="p">)</span><span class="w"> </span><span class="p">{</span>
+<a id="__codelineno-25-14" name="__codelineno-25-14" href="#__codelineno-25-14"></a><span class="w">        </span><span class="c1">// Handle std::optional recursively</span>
+<a id="__codelineno-25-15" name="__codelineno-25-15" href="#__codelineno-25-15"></a><span class="w">    </span><span class="p">}</span><span class="w"> </span><span class="k">else</span><span class="w"> </span><span class="k">if</span><span class="w"> </span><span class="k">constexpr</span><span class="w"> </span><span class="p">(</span><span class="cm">/* blob types */</span><span class="p">)</span><span class="w"> </span><span class="p">{</span>
+<a id="__codelineno-25-16" name="__codelineno-25-16" href="#__codelineno-25-16"></a><span class="w">        </span><span class="k">return</span><span class="w"> </span><span class="n">stmt</span><span class="p">.</span><span class="n">bind_blob</span><span class="p">(</span><span class="n">index</span><span class="p">,</span><span class="w"> </span><span class="n">value</span><span class="p">.</span><span class="n">data</span><span class="p">(),</span><span class="w"> </span><span class="n">value</span><span class="p">.</span><span class="n">size</span><span class="p">());</span>
+<a id="__codelineno-25-17" name="__codelineno-25-17" href="#__codelineno-25-17"></a><span class="w">    </span><span class="p">}</span>
+<a id="__codelineno-25-18" name="__codelineno-25-18" href="#__codelineno-25-18"></a><span class="p">}</span>
+</code></pre></div>
+<h3 id="bindabletype-concept-473"><code>BindableType</code> concept (#473)<a class="headerlink" href="#bindabletype-concept-473" title="Permanent link">&para;</a></h3>
+<blockquote>
+<p>Not exported by <code>import storm;</code> (#679) — add <code>import storm_orm_value_bind;</code> to name it directly. See <a href="../../../internals/architecture/MODULE_SYSTEM/#step-5-import-storm-exports-only-the-public-surface">MODULE_SYSTEM.md Step 5</a>.</p>
+</blockquote>
+<p>The parameter binder (<code>bind_parameter_value</code>) and the WHERE operand path
+(<code>normalize_operand</code>) are both constrained by
+<code>storm::orm::utilities::BindableType&lt;T&gt;</code> — a concept whose disjunction mirrors the
+<code>if constexpr</code> dispatch arms exactly (integer/64-bit-integer, <code>enum</code>, <code>bool</code>,
+<code>double</code>/<code>float</code>, chrono date/datetime/duration, <code>filesystem::path</code>, <code>UUID</code>, text,
+BLOB byte-vectors, and <code>std::optional&lt;U&gt;</code> where <code>U</code> is itself bindable). Passing an
+unsupported operand type now fails at the call site with a clear constraint
+violation instead of deep inside the binder's dispatch. Composed from the same
+<code>is_*_source_v</code> predicates the dispatcher branches on, so the concept cannot drift
+from what actually binds.</p>
+<h2 id="future-type-support">Future Type Support<a class="headerlink" href="#future-type-support" title="Permanent link">&para;</a></h2>
+<p>Planned additions:
+- <code>std::chrono::time_point</code> (as INTEGER or TEXT)
+- <code>std::chrono::duration</code> (as INTEGER)
+- <code>std::filesystem::path</code> (as TEXT)
+- Custom types via user-defined conversions
+- <code>std::span&lt;uint8_t&gt;</code> for BLOB (non-owning)</p>
+<h2 id="table-creation-guidelines">Table Creation Guidelines<a class="headerlink" href="#table-creation-guidelines" title="Permanent link">&para;</a></h2>
+<p>When creating tables, ensure column types match the C++ type mappings:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-26-1" name="__codelineno-26-1" href="#__codelineno-26-1"></a><span class="k">CREATE</span><span class="w"> </span><span class="k">TABLE</span><span class="w"> </span><span class="n">Example</span><span class="w"> </span><span class="p">(</span>
+<a id="__codelineno-26-2" name="__codelineno-26-2" href="#__codelineno-26-2"></a><span class="w">    </span><span class="n">id</span><span class="w"> </span><span class="nb">INTEGER</span><span class="w"> </span><span class="k">PRIMARY</span><span class="w"> </span><span class="k">KEY</span><span class="p">,</span><span class="w">  </span><span class="c1">-- AUTOINCREMENT is opt-in (#379): primary_autoincrement</span>
+<a id="__codelineno-26-3" name="__codelineno-26-3" href="#__codelineno-26-3"></a><span class="w">    </span><span class="n">name</span><span class="w"> </span><span class="nb">TEXT</span><span class="w"> </span><span class="k">NOT</span><span class="w"> </span><span class="k">NULL</span><span class="p">,</span>
+<a id="__codelineno-26-4" name="__codelineno-26-4" href="#__codelineno-26-4"></a><span class="w">    </span><span class="n">age</span><span class="w"> </span><span class="nb">INTEGER</span><span class="p">,</span>
+<a id="__codelineno-26-5" name="__codelineno-26-5" href="#__codelineno-26-5"></a><span class="w">    </span><span class="n">salary</span><span class="w"> </span><span class="nb">REAL</span><span class="p">,</span>
+<a id="__codelineno-26-6" name="__codelineno-26-6" href="#__codelineno-26-6"></a><span class="w">    </span><span class="n">is_active</span><span class="w"> </span><span class="nb">INTEGER</span><span class="p">,</span><span class="w">  </span><span class="c1">-- bool</span>
+<a id="__codelineno-26-7" name="__codelineno-26-7" href="#__codelineno-26-7"></a><span class="w">    </span><span class="n">email</span><span class="w"> </span><span class="nb">TEXT</span><span class="p">,</span><span class="w">         </span><span class="c1">-- std::optional&lt;std::string&gt; (can be NULL)</span>
+<a id="__codelineno-26-8" name="__codelineno-26-8" href="#__codelineno-26-8"></a><span class="w">    </span><span class="k">data</span><span class="w"> </span><span class="nb">BLOB</span>
+<a id="__codelineno-26-9" name="__codelineno-26-9" href="#__codelineno-26-9"></a><span class="p">);</span>
+</code></pre></div>
+<h2 id="type-safety">Type Safety<a class="headerlink" href="#type-safety" title="Permanent link">&para;</a></h2>
+<p>Storm ORM provides compile-time type safety:
+- Incorrect type usage → Compilation error
+- No runtime type checking overhead
+- SQLite type affinity automatically handled</p>
+<h2 id="model-type-validation-entity-472">Model Type Validation (<code>Entity</code>) (#472)<a class="headerlink" href="#model-type-validation-entity-472" title="Permanent link">&para;</a></h2>
+<p><code>storm::meta::Entity&lt;T&gt;</code> is the compile-time <strong>structural</strong> gate for model types — true iff
+<code>T</code> is a reflectable class:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-27-1" name="__codelineno-27-1" href="#__codelineno-27-1"></a><span class="k">template</span><span class="w"> </span><span class="o">&lt;</span><span class="k">typename</span><span class="w"> </span><span class="nc">T</span><span class="o">&gt;</span>
+<a id="__codelineno-27-2" name="__codelineno-27-2" href="#__codelineno-27-2"></a><span class="k">concept</span><span class="w"> </span><span class="nc">Entity</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">std</span><span class="o">::</span><span class="n">meta</span><span class="o">::</span><span class="n">is_class_type</span><span class="p">(</span><span class="o">^^</span><span class="n">T</span><span class="p">)</span><span class="w"> </span><span class="o">&amp;&amp;</span><span class="w"> </span><span class="k">requires</span><span class="w"> </span><span class="p">{</span>
+<a id="__codelineno-27-3" name="__codelineno-27-3" href="#__codelineno-27-3"></a><span class="w">    </span><span class="n">std</span><span class="o">::</span><span class="n">meta</span><span class="o">::</span><span class="n">nonstatic_data_members_of</span><span class="p">(</span><span class="o">^^</span><span class="n">T</span><span class="p">,</span><span class="w"> </span><span class="n">std</span><span class="o">::</span><span class="n">meta</span><span class="o">::</span><span class="n">access_context</span><span class="o">::</span><span class="n">unchecked</span><span class="p">());</span>
+<a id="__codelineno-27-4" name="__codelineno-27-4" href="#__codelineno-27-4"></a><span class="w">    </span><span class="n">std</span><span class="o">::</span><span class="n">meta</span><span class="o">::</span><span class="n">identifier_of</span><span class="p">(</span><span class="o">^^</span><span class="n">T</span><span class="p">);</span>
+<a id="__codelineno-27-5" name="__codelineno-27-5" href="#__codelineno-27-5"></a><span class="p">};</span>
+</code></pre></div>
+<p><code>QuerySet&lt;T&gt;</code> and <code>BaseStatement&lt;T&gt;</code> (and therefore every statement class) <code>require</code> it, so a
+non-model <code>T</code> — <code>int</code>, a pointer, a function type — fails at this named boundary with a clear
+constraint violation instead of deep inside reflection-based code.</p>
+<p><code>Entity</code> sits <strong>above</strong> and stays <strong>separate from</strong> the semantic model concepts on
+<code>BaseStatement&lt;T&gt;</code> — <code>ModelWithPrimaryKey</code>, <code>ModelStorageAnnotated</code>, <code>ModelFkPoliciesValid</code>.
+Those check model <em>policy</em> (a primary key exists, every <code>uint64_t</code> field is storage-annotated,
+every <code>SET NULL</code> FK is nullable); <code>Entity</code> checks <em>reflectability</em>. They are deliberately not
+merged: <code>QuerySet&lt;T&gt;</code> must be usable without requiring a primary key, so it needs the structural
+gate alone.</p>
+<p><code>Entity</code> is structural only — a <code>union</code> also satisfies it. Full model-ness is guaranteed by the
+semantic concepts together with <code>Entity</code>, not by <code>Entity</code> alone.</p>
+<h2 id="field-selector-validation-validfieldinfo-478">Field Selector Validation (<code>ValidFieldInfo</code>) (#478)<a class="headerlink" href="#field-selector-validation-validfieldinfo-478" title="Permanent link">&para;</a></h2>
+<p><code>storm::meta::ValidFieldInfo&lt;MemberInfo&gt;</code> is the compile-time gate that a <code>std::meta::info</code>
+<strong>NTTP</strong> names a real field — a non-static data member that has an identifier:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-28-1" name="__codelineno-28-1" href="#__codelineno-28-1"></a><span class="k">template</span><span class="w"> </span><span class="o">&lt;</span><span class="n">std</span><span class="o">::</span><span class="n">meta</span><span class="o">::</span><span class="n">info</span><span class="w"> </span><span class="n">MemberInfo</span><span class="o">&gt;</span>
+<a id="__codelineno-28-2" name="__codelineno-28-2" href="#__codelineno-28-2"></a><span class="k">concept</span><span class="w"> </span><span class="nc">ValidFieldInfo</span><span class="w"> </span><span class="o">=</span>
+<a id="__codelineno-28-3" name="__codelineno-28-3" href="#__codelineno-28-3"></a><span class="w">    </span><span class="n">std</span><span class="o">::</span><span class="n">meta</span><span class="o">::</span><span class="n">is_nonstatic_data_member</span><span class="p">(</span><span class="n">MemberInfo</span><span class="p">)</span><span class="w"> </span><span class="o">&amp;&amp;</span><span class="w"> </span><span class="n">std</span><span class="o">::</span><span class="n">meta</span><span class="o">::</span><span class="n">has_identifier</span><span class="p">(</span><span class="n">MemberInfo</span><span class="p">);</span>
+</code></pre></div>
+<p>The field selector <code>fields::Model.member</code> and its <code>Field</code> / <code>CollatedField</code> proxies <code>require</code> it,
+so a selector that is not a field — a static member, a member function, a whole-type reflection
+such as <code>^^Person</code>, or a scalar like <code>^^int</code> — fails at this named boundary instead of deep inside
+<code>identifier_of</code> / <code>type_of</code>. Both requirements are load-bearing: on the clang-p2996 build,
+<code>is_nonstatic_data_member(^^int)</code> and <code>is_nonstatic_data_member(^^Type::static_member)</code> are both
+<code>false</code>, so the concept genuinely rejects (contrast <code>Entity</code>, whose structural requirements alone
+accept <code>int</code> and rely on <code>is_class_type</code> to gate).</p>
+<p><code>ValidFieldInfo</code> is orthogonal to <code>Entity</code> (which gates the whole model <em>type</em>) and to the selector
+call site's extra <code>!is_relation_field(MemberInfo)</code> check, which excludes <code>many_to_many</code> /
+<code>reverse_fk</code> container members that are not persisted columns — that check is still ANDed alongside
+<code>ValidFieldInfo</code> at each selector site.</p>
+<h2 id="foreign-key-target-validation-validforeignkey-474">Foreign Key Target Validation (<code>ValidForeignKey</code>) (#474)<a class="headerlink" href="#foreign-key-target-validation-validforeignkey-474" title="Permanent link">&para;</a></h2>
+<blockquote>
+<p>Not exported by <code>import storm;</code> (#679) — add <code>import storm_orm_model_concepts;</code> to name it directly. See <a href="../../../internals/architecture/MODULE_SYSTEM/#step-5-import-storm-exports-only-the-public-surface">MODULE_SYSTEM.md Step 5</a>.</p>
+</blockquote>
+<p><code>storm::orm::statements::ValidForeignKey&lt;FieldType&gt;</code> is the compile-time gate that an FK field's
+target has a primary key — a plain alias over the existing model concept, unwrapping one level of
+<code>std::optional</code> first (an FK field is often <code>std::optional&lt;Related&gt;</code>):</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-29-1" name="__codelineno-29-1" href="#__codelineno-29-1"></a><span class="k">template</span><span class="w"> </span><span class="o">&lt;</span><span class="k">typename</span><span class="w"> </span><span class="nc">FieldType</span><span class="o">&gt;</span>
+<a id="__codelineno-29-2" name="__codelineno-29-2" href="#__codelineno-29-2"></a><span class="k">concept</span><span class="w"> </span><span class="nc">ValidForeignKey</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">ModelWithPrimaryKey</span><span class="o">&lt;</span><span class="n">utilities</span><span class="o">::</span><span class="n">optional_inner_type_t</span><span class="o">&lt;</span><span class="n">FieldType</span><span class="o">&gt;&gt;</span><span class="p">;</span>
+</code></pre></div>
+<p><code>join&lt;&gt;()</code> / <code>left_join&lt;&gt;()</code> and <code>find_fk_primary_key&lt;FKType&gt;()</code> <code>require</code> it, so calling
+<code>join&lt;fields::Message.sender&gt;()</code> when <code>sender</code>'s target type has no primary key fails at the join call
+site instead of deep inside FK-column extraction. It is single-level only — it checks the target's
+own PK, never recursing into the target's FKs (a Base⟷Owner reference cycle would otherwise never
+terminate). Loop bodies that walk members at runtime (e.g. <code>FKFieldOf</code>) can't splice a loop variable
+into <code>ValidForeignKey&lt;typename[:...:]&gt;</code>, so <code>model_concepts.cppm</code> also carries an info-value twin,
+<code>valid_fk_target(std::meta::info fk_type) -&gt; bool</code>, computing the same "target, optional-unwrapped,
+has a PK" check for that path.</p>
+<h2 id="numeric-aggregate-validation-numericaggregateable-475">Numeric Aggregate Validation (<code>NumericAggregateable</code>) (#475)<a class="headerlink" href="#numeric-aggregate-validation-numericaggregateable-475" title="Permanent link">&para;</a></h2>
+<blockquote>
+<p>Not exported by <code>import storm;</code> (#679) — add <code>import storm_orm_statements_aggregate;</code> to name it directly. See <a href="../../../internals/architecture/MODULE_SYSTEM/#step-5-import-storm-exports-only-the-public-surface">MODULE_SYSTEM.md Step 5</a>.</p>
+</blockquote>
+<p><code>storm::orm::statements::NumericAggregateable&lt;T&gt;</code> is the compile-time gate on the target field(s)
+of <code>sum()</code> / <code>avg()</code> / <code>min()</code> / <code>max()</code> — true for an arithmetic, non-<code>bool</code> type, unwrapping one
+level of <code>std::optional</code> (a nullable numeric column, e.g. <code>std::optional&lt;int&gt;</code>, is a legitimate
+aggregate target; SQL simply skips NULLs):</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-30-1" name="__codelineno-30-1" href="#__codelineno-30-1"></a><span class="k">template</span><span class="w"> </span><span class="o">&lt;</span><span class="k">typename</span><span class="w"> </span><span class="nc">T</span><span class="o">&gt;</span>
+<a id="__codelineno-30-2" name="__codelineno-30-2" href="#__codelineno-30-2"></a><span class="k">constexpr</span><span class="w"> </span><span class="kt">bool</span><span class="w"> </span><span class="n">is_numeric_aggregateable_v</span><span class="w"> </span><span class="o">=</span>
+<a id="__codelineno-30-3" name="__codelineno-30-3" href="#__codelineno-30-3"></a><span class="w">        </span><span class="n">utilities</span><span class="o">::</span><span class="n">is_optional_v</span><span class="o">&lt;</span><span class="n">T</span><span class="o">&gt;</span><span class="w"> </span><span class="o">?</span><span class="w"> </span><span class="n">is_numeric_scalar_v</span><span class="o">&lt;</span><span class="n">utilities</span><span class="o">::</span><span class="n">optional_inner_type_t</span><span class="o">&lt;</span><span class="n">T</span><span class="o">&gt;&gt;</span>
+<a id="__codelineno-30-4" name="__codelineno-30-4" href="#__codelineno-30-4"></a><span class="w">                                    </span><span class="o">:</span><span class="w"> </span><span class="n">is_numeric_scalar_v</span><span class="o">&lt;</span><span class="n">T</span><span class="o">&gt;</span><span class="p">;</span>
+<a id="__codelineno-30-5" name="__codelineno-30-5" href="#__codelineno-30-5"></a>
+<a id="__codelineno-30-6" name="__codelineno-30-6" href="#__codelineno-30-6"></a><span class="k">template</span><span class="w"> </span><span class="o">&lt;</span><span class="k">typename</span><span class="w"> </span><span class="nc">T</span><span class="o">&gt;</span>
+<a id="__codelineno-30-7" name="__codelineno-30-7" href="#__codelineno-30-7"></a><span class="k">concept</span><span class="w"> </span><span class="nc">NumericAggregateable</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">is_numeric_aggregateable_v</span><span class="o">&lt;</span><span class="n">T</span><span class="o">&gt;</span><span class="p">;</span>
+</code></pre></div>
+<p><code>AllNumericAggregateable&lt;FieldInfos...&gt;</code> folds this over the whole field pack (multi-field
+aggregates sum/min/max several columns, e.g. <code>SUM(a + b)</code>) and is the <code>requires</code>-clause on
+<code>QuerySet::sum/avg/min/max</code>. A string/BLOB/enum/UUID/temporal/<code>bool</code> field is a <strong>compile error</strong>
+at the aggregate call site, not a silent coercion. <code>count()</code> / <code>count_distinct()</code> are unconstrained
+— <code>COUNT</code> is type-agnostic and accepts any column.</p>
+<h2 id="primary-key-type-validation-primarykeytype-505">Primary Key Type Validation (<code>PrimaryKeyType</code>) (#505)<a class="headerlink" href="#primary-key-type-validation-primarykeytype-505" title="Permanent link">&para;</a></h2>
+<blockquote>
+<p>Not exported by <code>import storm;</code> (#679) — add <code>import storm_orm_model_concepts;</code> to name it directly. See <a href="../../../internals/architecture/MODULE_SYSTEM/#step-5-import-storm-exports-only-the-public-surface">MODULE_SYSTEM.md Step 5</a>.</p>
+</blockquote>
+<p><code>storm::orm::statements::PrimaryKeyType&lt;T&gt;</code> is the compile-time gate on the type of <code>T</code>'s
+primary-key member (the field annotated <code>primary</code> / <code>primary_autoincrement</code>).
+<strong>Supported primary-key types: <code>short</code>, <code>int</code>, <code>long</code>, <code>long long</code></strong>, their fixed-width
+spellings (<code>std::int16_t</code>, <code>std::int32_t</code>, <code>std::int64_t</code>, …), and <strong><code>storm::UUID</code></strong> (#507).
+A <code>uint64_t</code> (or <code>unsigned long</code> / <code>unsigned long long</code>) primary key is
+accepted only when explicitly annotated <code>storm::signed_storage</code>; <code>storm::full_unsigned</code> is
+rejected even though it is a storage annotation, because it stores as zero-padded <code>TEXT</code>,
+which would silently misread through every hardcoded-<code>int64</code> primary-key extraction site
+(<code>select.cppm</code>, <code>join.cppm</code>, <code>insert.cppm</code>).</p>
+<p>Rejected, each for a specific reason:
+- <strong><code>bool</code></strong> — integral, so a naive <code>std::is_integral_v</code> check would admit it, but a
+  two-valued primary key is nonsense. Same carve-out <code>NumericAggregateable</code> makes (#475).
+- <strong><code>char</code> / <code>signed char</code></strong> — a 1-byte identity is a pathological primary key; not in the
+  accepted width list.
+- <strong>Unsigned types without <code>storm::signed_storage</code></strong> — a bare <code>uint64_t</code> primary key is
+  already a compile error via <code>ModelStorageAnnotated</code> (#436); this concept additionally
+  rejects <code>full_unsigned</code> specifically as a primary-key type (see above).
+- <strong><code>std::optional&lt;T&gt;</code></strong> — a nullable primary key is meaningless; rejected outright, unlike
+  <code>ValidForeignKey</code>/<code>is_unsigned64_member</code>, which unwrap <code>std::optional</code> before checking.
+- <strong>Text types</strong> (<code>std::string</code>, <code>std::string_view</code>) — not supported as a primary key today.
+  Tracked as a future enhancement.</p>
+<p><strong>UUID Primary Keys</strong> (#507):
+<code>storm::UUID</code> is now a fully supported primary-key type. UUIDs are <strong>client-generated</strong> (not
+DB-generated like <code>AUTOINCREMENT</code>), so <code>insert().execute()</code> returns <code>std::expected&lt;void, Error&gt;</code>
+with no RETURNING clause (see "UUID Primary Keys" section above). Empty UUID PK values are rejected
+at bind time with an error — the caller must explicitly call <code>storm::UUID::generate()</code> before
+insert. FK columns, m2m, and reverse-FK joins work identically to integer PKs with full type safety
+and zero codegen overhead.</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-31-1" name="__codelineno-31-1" href="#__codelineno-31-1"></a><span class="k">template</span><span class="w"> </span><span class="o">&lt;</span><span class="k">typename</span><span class="w"> </span><span class="nc">T</span><span class="o">&gt;</span>
+<a id="__codelineno-31-2" name="__codelineno-31-2" href="#__codelineno-31-2"></a><span class="k">concept</span><span class="w"> </span><span class="nc">PrimaryKeyType</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="cm">/* T's primary-key member's type is in the allowed set above */</span><span class="p">;</span>
+</code></pre></div>
+<p><code>PrimaryKeyType&lt;T&gt;</code> is ANDed into <code>BaseStatement&lt;T&gt;</code>'s constraint list alongside
+<code>ModelWithPrimaryKey&lt;T&gt;</code>. <code>QuerySet&lt;T&gt;</code> itself only requires <code>Entity&lt;T&gt;</code> (it must stay
+usable without a primary key), so a model with an unsupported primary-key type — <code>bool</code>,
+<code>std::optional&lt;int&gt;</code>, a bare <code>unsigned int</code>, <code>std::string</code> — compiles as a
+bare <code>QuerySet&lt;T&gt;</code> but fails at the first call that instantiates a statement
+(<code>select()</code>, <code>insert()</code>, <code>join()</code>, …), naming <code>T</code> and <code>PrimaryKeyType</code> in the "constraints
+not satisfied" diagnostic trail. This replaces the previous behavior of failing
+inconsistently — sometimes at runtime with no mention of the primary key at all, sometimes
+at compile time deep inside <code>select.cppm</code> / <code>join.cppm</code> / <code>insert.cppm</code>.</p>
+
+
+
+
+
+
+
+
+
+
+
+
+                
+              </article>
+            </div>
+          
+          
+<script>var target=document.getElementById(location.hash.slice(1));target&&target.name&&(target.checked=target.name.startsWith("__tabbed_"))</script>
+        </div>
+        
+          <button type="button" class="md-top md-icon" data-md-component="top" hidden>
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M13 20h-2V8l-5.5 5.5-1.42-1.42L12 4.16l7.92 7.92-1.42 1.42L13 8z"/></svg>
+  Back to top
+</button>
+        
+      </main>
+      
+        <footer class="md-footer">
+  
+  <div class="md-footer-meta md-typeset">
+    <div class="md-footer-meta__inner md-grid">
+      <div class="md-copyright">
+  
+  
+    Made with
+    <a href="https://squidfunk.github.io/mkdocs-material/" target="_blank" rel="noopener">
+      Material for MkDocs
+    </a>
+  
+</div>
+      
+    </div>
+  </div>
+</footer>
+      
+    </div>
+    <div class="md-dialog" data-md-component="dialog">
+      <div class="md-dialog__inner md-typeset"></div>
+    </div>
+    
+    
+    
+      
+      
+      <script id="__config" type="application/json">{"annotate": null, "base": "../../..", "features": ["navigation.sections", "navigation.expand", "navigation.top", "search.suggest", "search.highlight", "content.code.copy"], "search": "../../../assets/javascripts/workers/search.a7633da7.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
+    
+    
+      <script src="../../../assets/javascripts/bundle.c21346df.min.js"></script>
+      
+    
+  </body>
+</html>

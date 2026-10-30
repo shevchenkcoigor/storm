@@ -1,0 +1,2884 @@
+
+<!doctype html>
+<html lang="en" class="no-js">
+  <head>
+    
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width,initial-scale=1">
+      
+        <meta name="description" content="C++26 ORM with compile-time reflection for SQLite">
+      
+      
+      
+        <link rel="canonical" href="https://spiritecosse.github.io/storm/internals/compiler/COMPILER_ISSUES/">
+      
+      
+        <link rel="prev" href="../../performance/DISTINCT_ANALYSIS/">
+      
+      
+        <link rel="next" href="../COMPILER_ATTRIBUTES/">
+      
+      
+        
+      
+      
+      <link rel="icon" href="../../../assets/images/favicon.png">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.8.0">
+    
+    
+      
+        <title>Compiler Issues - Storm ORM</title>
+      
+    
+    
+      <link rel="stylesheet" href="../../../assets/stylesheets/main.57a0d79d.min.css">
+      
+        
+        <link rel="stylesheet" href="../../../assets/stylesheets/palette.fb2fffe2.min.css">
+      
+      
+
+
+    
+    
+      
+    
+    
+      
+        
+        
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+        <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Roboto:300,300i,400,400i,700,700i%7CRoboto+Mono:400,400i,700,700i&display=fallback">
+        <style>:root{--md-text-font:"Roboto";--md-code-font:"Roboto Mono"}</style>
+      
+    
+    
+    <script>__md_scope=new URL("../../..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
+    
+      
+
+    
+    
+  </head>
+  
+  
+    
+    
+      
+    
+    
+    
+    
+    <body dir="ltr" data-md-color-scheme="default" data-md-color-primary="indigo" data-md-color-accent="indigo">
+  
+    
+    <input class="md-toggle" data-md-toggle="drawer" type="checkbox" id="__drawer" autocomplete="off">
+    <input class="md-toggle" data-md-toggle="search" type="checkbox" id="__search" autocomplete="off">
+    <label class="md-overlay" for="__drawer"></label>
+    <div data-md-component="skip">
+      
+        
+        <a href="#compiler-issues-and-workarounds" class="md-skip">
+          Skip to content
+        </a>
+      
+    </div>
+    <div data-md-component="announce">
+      
+    </div>
+    
+    
+      
+
+  
+
+<header class="md-header md-header--shadow" data-md-component="header">
+  <nav class="md-header__inner md-grid" aria-label="Header">
+    <a href="../../.." title="Storm ORM" class="md-header__button md-logo" aria-label="Storm ORM" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    <label class="md-header__button md-icon" for="__drawer">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M3 6h18v2H3zm0 5h18v2H3zm0 5h18v2H3z"/></svg>
+    </label>
+    <div class="md-header__title" data-md-component="header-title">
+      <div class="md-header__ellipsis">
+        <div class="md-header__topic">
+          <span class="md-ellipsis">
+            Storm ORM
+          </span>
+        </div>
+        <div class="md-header__topic" data-md-component="header-topic">
+          <span class="md-ellipsis">
+            
+              Compiler Issues
+            
+          </span>
+        </div>
+      </div>
+    </div>
+    
+      
+        <form class="md-header__option" data-md-component="palette">
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="" data-md-color-scheme="default" data-md-color-primary="indigo" data-md-color-accent="indigo"  aria-label="Switch to dark mode"  type="radio" name="__palette" id="__palette_0">
+    
+      <label class="md-header__button md-icon" title="Switch to dark mode" for="__palette_1" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a4 4 0 0 0-4 4 4 4 0 0 0 4 4 4 4 0 0 0 4-4 4 4 0 0 0-4-4m0 10a6 6 0 0 1-6-6 6 6 0 0 1 6-6 6 6 0 0 1 6 6 6 6 0 0 1-6 6m8-9.31V4h-4.69L12 .69 8.69 4H4v4.69L.69 12 4 15.31V20h4.69L12 23.31 15.31 20H20v-4.69L23.31 12z"/></svg>
+      </label>
+    
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="" data-md-color-scheme="slate" data-md-color-primary="indigo" data-md-color-accent="indigo"  aria-label="Switch to light mode"  type="radio" name="__palette" id="__palette_1">
+    
+      <label class="md-header__button md-icon" title="Switch to light mode" for="__palette_0" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 18c-.89 0-1.74-.2-2.5-.55C11.56 16.5 13 14.42 13 12s-1.44-4.5-3.5-5.45C10.26 6.2 11.11 6 12 6a6 6 0 0 1 6 6 6 6 0 0 1-6 6m8-9.31V4h-4.69L12 .69 8.69 4H4v4.69L.69 12 4 15.31V20h4.69L12 23.31 15.31 20H20v-4.69L23.31 12z"/></svg>
+      </label>
+    
+  
+</form>
+      
+    
+    
+      <script>var palette=__md_get("__palette");if(palette&&palette.color){if("(prefers-color-scheme)"===palette.color.media){var media=matchMedia("(prefers-color-scheme: light)"),input=document.querySelector(media.matches?"[data-md-color-media='(prefers-color-scheme: light)']":"[data-md-color-media='(prefers-color-scheme: dark)']");palette.color.media=input.getAttribute("data-md-color-media"),palette.color.scheme=input.getAttribute("data-md-color-scheme"),palette.color.primary=input.getAttribute("data-md-color-primary"),palette.color.accent=input.getAttribute("data-md-color-accent")}for(var[key,value]of Object.entries(palette.color))document.body.setAttribute("data-md-color-"+key,value)}</script>
+    
+    
+    
+      
+      
+        <label class="md-header__button md-icon" for="__search">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        </label>
+        <div class="md-search" data-md-component="search" role="dialog">
+  <label class="md-search__overlay" for="__search"></label>
+  <div class="md-search__inner" role="search">
+    <form class="md-search__form" name="search">
+      <input type="text" class="md-search__input" name="query" aria-label="Search" placeholder="Search" autocapitalize="off" autocorrect="off" autocomplete="off" spellcheck="false" data-md-component="search-query" required>
+      <label class="md-search__icon md-icon" for="__search">
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
+      </label>
+      <nav class="md-search__options" aria-label="Search">
+        
+        <button type="reset" class="md-search__icon md-icon" title="Clear" aria-label="Clear" tabindex="-1">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+        </button>
+      </nav>
+      
+        <div class="md-search__suggest" data-md-component="search-suggest"></div>
+      
+    </form>
+    <div class="md-search__output">
+      <div class="md-search__scrollwrap" tabindex="0" data-md-scrollfix>
+        <div class="md-search-result" data-md-component="search-result">
+          <div class="md-search-result__meta">
+            Initializing search
+          </div>
+          <ol class="md-search-result__list" role="presentation"></ol>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+      
+    
+    
+      <div class="md-header__source">
+        <a href="https://github.com/spiritEcosse/storm" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    spiritEcosse/storm
+  </div>
+</a>
+      </div>
+    
+  </nav>
+  
+</header>
+    
+    <div class="md-container" data-md-component="container">
+      
+      
+        
+          
+        
+      
+      <main class="md-main" data-md-component="main">
+        <div class="md-main__inner md-grid">
+          
+            
+              
+              <div class="md-sidebar md-sidebar--primary" data-md-component="sidebar" data-md-type="navigation" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+
+
+<nav class="md-nav md-nav--primary" aria-label="Navigation" data-md-level="0">
+  <label class="md-nav__title" for="__drawer">
+    <a href="../../.." title="Storm ORM" class="md-nav__button md-logo" aria-label="Storm ORM" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    Storm ORM
+  </label>
+  
+    <div class="md-nav__source">
+      <a href="https://github.com/spiritEcosse/storm" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    spiritEcosse/storm
+  </div>
+</a>
+    </div>
+  
+  <ul class="md-nav__list" data-md-scrollfix>
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../.." class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Home
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_2" >
+        
+          
+          <label class="md-nav__link" for="__nav_2" id="__nav_2_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Guide
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_2_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_2">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Guide
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../guide/COOKBOOK/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Cookbook
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    
+    
+    
+    
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_2_2" >
+        
+          
+          <label class="md-nav__link" for="__nav_2_2" id="__nav_2_2_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Features
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_2_2_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_2_2">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Features
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../guide/features/CRUD_OPERATIONS/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    CRUD Operations
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../guide/features/SELECT_QUERIES/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    SELECT Queries
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../guide/features/WHERE_CLAUSES/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    WHERE Clauses
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../guide/features/JOIN_OPERATIONS/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    JOIN Operations
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../guide/features/BATCH_OPERATIONS/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Batch Operations
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../guide/features/REFERENTIAL_INTEGRITY/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Referential Integrity
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../guide/features/CONNECTION_TUNING/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Connection Tuning
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    
+    
+    
+    
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_2_3" >
+        
+          
+          <label class="md-nav__link" for="__nav_2_3" id="__nav_2_3_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Reference
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_2_3_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_2_3">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Reference
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../guide/reference/FIELD_TYPES/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Field Types
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../guide/reference/MIGRATIONS/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Migrations
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+    
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--active md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_3" checked>
+        
+          
+          <label class="md-nav__link" for="__nav_3" id="__nav_3_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Internals
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_3_label" aria-expanded="true">
+          <label class="md-nav__title" for="__nav_3">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Internals
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    
+    
+    
+    
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_3_1" >
+        
+          
+          <label class="md-nav__link" for="__nav_3_1" id="__nav_3_1_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Architecture
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_3_1_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_3_1">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Architecture
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../architecture/OVERVIEW/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Overview
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../architecture/DESIGN_DECISIONS/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Design Decisions
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../architecture/REFLECTION/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Reflection
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../architecture/SQL_GENERATION/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    SQL Generation
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../architecture/MODULE_SYSTEM/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Module System
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../architecture/STATEMENT_CACHING/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Statement Caching
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../architecture/COMPILE_TIME_VS_RUNTIME/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Compile-Time vs Runtime
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    
+    
+    
+    
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_3_2" >
+        
+          
+          <label class="md-nav__link" for="__nav_3_2" id="__nav_3_2_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Building
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_3_2_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_3_2">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Building
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../building/GETTING_STARTED/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Getting Started
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../building/COMMON_TASKS/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Common Tasks
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../building/ADDING_FEATURES/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Adding Features
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../building/PRE_COMMIT/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Pre-Commit
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../building/FORMATTING/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Formatting
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    
+    
+    
+    
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_3_3" >
+        
+          
+          <label class="md-nav__link" for="__nav_3_3" id="__nav_3_3_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Testing
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_3_3_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_3_3">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Testing
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../testing/TESTING/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Testing
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../testing/CODE_COVERAGE/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Code Coverage
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../testing/SANITIZERS/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Sanitizers
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../testing/FUZZING/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Fuzzing
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../testing/MSAN_LIBC_FIX/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    MSAN libc Fix
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    
+    
+    
+    
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_3_4" >
+        
+          
+          <label class="md-nav__link" for="__nav_3_4" id="__nav_3_4_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Performance
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_3_4_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_3_4">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Performance
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../performance/PERFORMANCE/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Performance
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../performance/BENCHMARK_DASHBOARD/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Benchmark Dashboard
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../performance/JOIN_ANALYSIS/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    JOIN Analysis
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../performance/DISTINCT_ANALYSIS/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    DISTINCT Analysis
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+    
+  
+  
+  
+    
+    
+    
+    
+      
+    
+    
+    <li class="md-nav__item md-nav__item--active md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_3_5" checked>
+        
+          
+          <label class="md-nav__link" for="__nav_3_5" id="__nav_3_5_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Compiler
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_3_5_label" aria-expanded="true">
+          <label class="md-nav__title" for="__nav_3_5">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Compiler
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+    
+  
+  
+  
+    <li class="md-nav__item md-nav__item--active">
+      
+      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
+      
+      
+        
+      
+      
+        <label class="md-nav__link md-nav__link--active" for="__toc">
+          
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Compiler Issues
+  
+
+    
+  </span>
+  
+  
+
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
+      <a href="./" class="md-nav__link md-nav__link--active">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Compiler Issues
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+      
+        
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#compiler-requirements" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Compiler Requirements
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#known-issues" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Known Issues
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Known Issues">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#1-module-cache-corruption" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        1. Module Cache Corruption
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#2-stdmutex-in-modules" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        2. std::mutex in Modules
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#3-stdinplace_vector-not-available" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        3. std::inplace_vector Not Available
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#4-c-headers-cannot-be-imported" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        4. C Headers Cannot Be Imported
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#5-most-vexing-parse-with-constexprstring" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        5. Most Vexing Parse with ConstexprString
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#6-missing-statement-methods" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        6. Missing Statement Methods
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#7-clang-p2996-libc-modules-layout-mismatch" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        7. clang-p2996 libc++ Modules Layout Mismatch
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#8-cmake-picks-libstdc-instead-of-libc-for-import-std" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        8. CMake Picks libstdc++ Instead of libc++ for import std
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#9-import-std-migration-findings-header-rules" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        9. import std; Migration — Findings &amp; Header Rules
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="9. import std; Migration — Findings &amp; Header Rules">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#which-std-includes-can-be-folded-into-import-std" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Which std #includes can be folded into import std;
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#10-annotation_of_type-segfaults-on-bmi-imported-member-reflections" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        10. annotation_of_type Segfaults on BMI-Imported Member Reflections
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#11-explicit-specialization-in-a-multi-gmf-header-ambiguous-member-lookup" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        11. Explicit Specialization in a Multi-GMF Header — Ambiguous Member Lookup
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#12-non-templated-requires-expression-hard-errors-instead-of-evaluating-false" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        12. Non-Templated requires-Expression Hard-Errors Instead of Evaluating False
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#13-pch-import-std-ambiguous-string-types-and-clang-tidy-crashes" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        13. PCH + import std; — Ambiguous String Types, and clang-tidy Crashes
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#debugging-tips" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Debugging Tips
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#see-also" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        See Also
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../COMPILER_ATTRIBUTES/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Compiler Attributes
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../CPP26_CODING_STANDARDS/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    C++26 Coding Standards
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../CODE_QUALITY/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Code Quality
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_4" >
+        
+          
+          <label class="md-nav__link" for="__nav_4" id="__nav_4_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Archive
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_4_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_4">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Archive
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../archive/SELECT_OPTIMIZATION_REPORT/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    SELECT Optimization Report
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../archive/SELECT_PERFORMANCE_ANALYSIS/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    SELECT Performance Analysis
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../archive/UPDATE_OPTIMIZATION_REPORT/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    UPDATE Optimization Report
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+  </ul>
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+            
+              
+              <div class="md-sidebar md-sidebar--secondary" data-md-component="sidebar" data-md-type="toc" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#compiler-requirements" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Compiler Requirements
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#known-issues" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Known Issues
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Known Issues">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#1-module-cache-corruption" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        1. Module Cache Corruption
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#2-stdmutex-in-modules" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        2. std::mutex in Modules
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#3-stdinplace_vector-not-available" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        3. std::inplace_vector Not Available
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#4-c-headers-cannot-be-imported" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        4. C Headers Cannot Be Imported
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#5-most-vexing-parse-with-constexprstring" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        5. Most Vexing Parse with ConstexprString
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#6-missing-statement-methods" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        6. Missing Statement Methods
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#7-clang-p2996-libc-modules-layout-mismatch" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        7. clang-p2996 libc++ Modules Layout Mismatch
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#8-cmake-picks-libstdc-instead-of-libc-for-import-std" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        8. CMake Picks libstdc++ Instead of libc++ for import std
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#9-import-std-migration-findings-header-rules" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        9. import std; Migration — Findings &amp; Header Rules
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="9. import std; Migration — Findings &amp; Header Rules">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#which-std-includes-can-be-folded-into-import-std" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Which std #includes can be folded into import std;
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#10-annotation_of_type-segfaults-on-bmi-imported-member-reflections" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        10. annotation_of_type Segfaults on BMI-Imported Member Reflections
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#11-explicit-specialization-in-a-multi-gmf-header-ambiguous-member-lookup" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        11. Explicit Specialization in a Multi-GMF Header — Ambiguous Member Lookup
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#12-non-templated-requires-expression-hard-errors-instead-of-evaluating-false" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        12. Non-Templated requires-Expression Hard-Errors Instead of Evaluating False
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#13-pch-import-std-ambiguous-string-types-and-clang-tidy-crashes" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        13. PCH + import std; — Ambiguous String Types, and clang-tidy Crashes
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#debugging-tips" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Debugging Tips
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#see-also" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        See Also
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+          
+          
+            <div class="md-content" data-md-component="content">
+              
+              <article class="md-content__inner md-typeset">
+                
+                  
+
+
+  
+  
+
+
+<h1 id="compiler-issues-and-workarounds">Compiler Issues and Workarounds<a class="headerlink" href="#compiler-issues-and-workarounds" title="Permanent link">&para;</a></h1>
+<p>Storm ORM uses experimental Clang with C++26 reflection. Here are known issues and workarounds.</p>
+<h2 id="compiler-requirements">Compiler Requirements<a class="headerlink" href="#compiler-requirements" title="Permanent link">&para;</a></h2>
+<ul>
+<li><strong>Clang fork</strong>: clang-p2996 with reflection support</li>
+<li><strong>Location</strong>: <code>../clang-p2996/</code></li>
+<li><strong>Custom libc++</strong>: With reflection support</li>
+<li><strong>Module scanning</strong>: clang-scan-deps</li>
+<li><strong>Flags</strong>: <code>-freflection -fannotation-attributes</code></li>
+</ul>
+<h2 id="known-issues">Known Issues<a class="headerlink" href="#known-issues" title="Permanent link">&para;</a></h2>
+<h3 id="1-module-cache-corruption">1. Module Cache Corruption<a class="headerlink" href="#1-module-cache-corruption" title="Permanent link">&para;</a></h3>
+<p><strong>Symptom</strong>: <code>module '_Builtin_stdint' is defined in both [same_path] and [same_path]</code></p>
+<p><strong>Cause</strong>: Module cache corruption with C++26 modules + GoogleTest + custom libc++</p>
+<p><strong>Workaround</strong>: Simply run the build command again - second attempt usually succeeds</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a>ninja<span class="w"> </span>storm_tests<span class="w">  </span><span class="c1"># May fail</span>
+<a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a>ninja<span class="w"> </span>storm_tests<span class="w">  </span><span class="c1"># Will succeed</span>
+</code></pre></div>
+<p><strong>Nuclear option</strong>:
+<div class="highlight"><pre><span></span><code><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a>rm<span class="w"> </span>-rf<span class="w"> </span>~/.cache/clang/ModuleCache
+<a id="__codelineno-1-2" name="__codelineno-1-2" href="#__codelineno-1-2"></a>ninja<span class="w"> </span>storm_tests
+</code></pre></div></p>
+<h3 id="2-stdmutex-in-modules">2. std::mutex in Modules<a class="headerlink" href="#2-stdmutex-in-modules" title="Permanent link">&para;</a></h3>
+<p><strong>Status (since #326 <code>import std;</code> migration)</strong>: <code>std::mutex</code> /
+<code>std::condition_variable</code> work in a module purview when supplied by <code>import std;</code>.
+<code>src/db/pool.cppm</code> uses both directly and is validated under TSAN (1924/1924, zero
+data races) and ASAN/UBSAN. The earlier textual <code>#include &lt;mutex&gt;</code> /
+<code>#include &lt;condition_variable&gt;</code> in the global module fragment were dropped — the
+types now come from the std module.</p>
+<p><strong>Historical symptom</strong> (pre-#326, header-unit world): the compiler could crash
+when <code>std::mutex</code> was pulled in via a header-unit <code>import &lt;mutex&gt;;</code>. If you hit a
+mutex-related compiler crash, prefer <code>import std;</code> over a header-unit import, and
+keep mutex-using code in a module purview rather than a textual header included
+after <code>import std;</code> (see Finding B in §9).</p>
+<h3 id="3-stdinplace_vector-not-available">3. std::inplace_vector Not Available<a class="headerlink" href="#3-stdinplace_vector-not-available" title="Permanent link">&para;</a></h3>
+<p><strong>Symptom</strong>: <code>header file &lt;inplace_vector&gt; cannot be imported</code></p>
+<p><strong>Workaround</strong>: Use <code>std::array</code> with manual index tracking</p>
+<p><strong>Example</strong>:
+<div class="highlight"><pre><span></span><code><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a><span class="c1">// Instead of: std::inplace_vector&lt;T, N&gt;</span>
+<a id="__codelineno-2-2" name="__codelineno-2-2" href="#__codelineno-2-2"></a><span class="n">std</span><span class="o">::</span><span class="n">array</span><span class="o">&lt;</span><span class="n">T</span><span class="p">,</span><span class="w"> </span><span class="n">N</span><span class="o">&gt;</span><span class="w"> </span><span class="n">data</span><span class="p">;</span>
+<a id="__codelineno-2-3" name="__codelineno-2-3" href="#__codelineno-2-3"></a><span class="kt">size_t</span><span class="w"> </span><span class="n">size</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">0</span><span class="p">;</span>
+</code></pre></div></p>
+<h3 id="4-c-headers-cannot-be-imported">4. C Headers Cannot Be Imported<a class="headerlink" href="#4-c-headers-cannot-be-imported" title="Permanent link">&para;</a></h3>
+<p><strong>Symptom</strong>: <code>header file &lt;cassert&gt; cannot be imported because it is not known to be a header unit</code></p>
+<p><strong>Workaround</strong>: Include C headers in module preamble (before <code>export module</code>)</p>
+<p><strong>Example</strong>:
+<div class="highlight"><pre><span></span><code><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a><span class="cp">#include</span><span class="w"> </span><span class="cpf">&lt;cassert&gt;</span><span class="w">    </span><span class="c1">// Before export module</span>
+<a id="__codelineno-3-2" name="__codelineno-3-2" href="#__codelineno-3-2"></a><span class="cp">#include</span><span class="w"> </span><span class="cpf">&lt;cstring&gt;</span>
+<a id="__codelineno-3-3" name="__codelineno-3-3" href="#__codelineno-3-3"></a>
+<a id="__codelineno-3-4" name="__codelineno-3-4" href="#__codelineno-3-4"></a><span class="k">export</span><span class="w"> </span><span class="k">module</span><span class="w"> </span><span class="n">storm_orm_statements_base</span><span class="p">;</span>
+</code></pre></div></p>
+<h3 id="5-most-vexing-parse-with-constexprstring">5. Most Vexing Parse with ConstexprString<a class="headerlink" href="#5-most-vexing-parse-with-constexprstring" title="Permanent link">&para;</a></h3>
+<p><strong>Symptom</strong>: <code>type 'const std::array&lt;char, N&gt;' does not provide a call operator</code></p>
+<p><strong>Workaround</strong>: Use braced initialization or direct member access</p>
+<p><strong>Example</strong>:
+<div class="highlight"><pre><span></span><code><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a><span class="c1">// Wrong: Parentheses interpreted as function declaration</span>
+<a id="__codelineno-4-2" name="__codelineno-4-2" href="#__codelineno-4-2"></a><span class="n">std</span><span class="o">::</span><span class="n">string</span><span class="w"> </span><span class="nf">str</span><span class="p">(</span><span class="n">array</span><span class="p">.</span><span class="n">data</span><span class="p">(),</span><span class="w"> </span><span class="n">array</span><span class="p">.</span><span class="n">size</span><span class="p">());</span>
+<a id="__codelineno-4-3" name="__codelineno-4-3" href="#__codelineno-4-3"></a>
+<a id="__codelineno-4-4" name="__codelineno-4-4" href="#__codelineno-4-4"></a><span class="c1">// Right: Braced initialization</span>
+<a id="__codelineno-4-5" name="__codelineno-4-5" href="#__codelineno-4-5"></a><span class="n">std</span><span class="o">::</span><span class="n">string</span><span class="w"> </span><span class="n">str</span><span class="p">{</span><span class="n">array</span><span class="p">.</span><span class="n">data</span><span class="p">(),</span><span class="w"> </span><span class="n">array</span><span class="p">.</span><span class="n">size</span><span class="p">()};</span>
+<a id="__codelineno-4-6" name="__codelineno-4-6" href="#__codelineno-4-6"></a>
+<a id="__codelineno-4-7" name="__codelineno-4-7" href="#__codelineno-4-7"></a><span class="c1">// Right: ConstexprString member access</span>
+<a id="__codelineno-4-8" name="__codelineno-4-8" href="#__codelineno-4-8"></a><span class="n">std</span><span class="o">::</span><span class="n">string</span><span class="w"> </span><span class="n">str</span><span class="p">{</span><span class="n">cs</span><span class="p">.</span><span class="n">data</span><span class="p">.</span><span class="n">data</span><span class="p">(),</span><span class="w"> </span><span class="n">cs</span><span class="p">.</span><span class="n">len</span><span class="p">};</span>
+</code></pre></div></p>
+<h3 id="6-missing-statement-methods">6. Missing Statement Methods<a class="headerlink" href="#6-missing-statement-methods" title="Permanent link">&para;</a></h3>
+<p><strong>Symptom</strong>: <code>no member named 'column_count' in 'storm::db::sqlite::Statement'</code></p>
+<p><strong>Workaround</strong>: Use raw SQLite handle via <code>stmt-&gt;handle()</code></p>
+<p><strong>Example</strong>:
+<div class="highlight"><pre><span></span><code><a id="__codelineno-5-1" name="__codelineno-5-1" href="#__codelineno-5-1"></a><span class="c1">// Instead of: stmt-&gt;column_count()</span>
+<a id="__codelineno-5-2" name="__codelineno-5-2" href="#__codelineno-5-2"></a><span class="n">sqlite3_column_count</span><span class="p">(</span><span class="n">stmt</span><span class="o">-&gt;</span><span class="n">handle</span><span class="p">())</span>
+</code></pre></div></p>
+<h3 id="7-clang-p2996-libc-modules-layout-mismatch">7. clang-p2996 libc++ Modules Layout Mismatch<a class="headerlink" href="#7-clang-p2996-libc-modules-layout-mismatch" title="Permanent link">&para;</a></h3>
+<p><strong>Symptom</strong> (when enabling CMake's <code>import std;</code> support):
+<div class="highlight"><pre><span></span><code><a id="__codelineno-6-1" name="__codelineno-6-1" href="#__codelineno-6-1"></a>CMake Error: Cannot find source file:
+<a id="__codelineno-6-2" name="__codelineno-6-2" href="#__codelineno-6-2"></a>  &lt;LIBCXX_ROOT&gt;/build/share/libc++/v1/std.compat.cppm
+</code></pre></div></p>
+<p><strong>Cause</strong>: <code>&lt;LIBCXX_ROOT&gt;/build/lib/x86_64-…/libc++.modules.json</code> declares the
+sources at <code>share/libc++/v1/std.cppm</code>, but the build places them under
+<code>build/modules/c++/v1/</code>. Plain libc++ installs expose them via <code>share/</code>; the
+clang-p2996 build directory does not.</p>
+<p><strong>Workaround</strong>: <code>cmake/libcxx.cmake</code> creates a symlink
+<code>build/share/libc++/v1 -&gt; build/modules/c++/v1</code> at configure time. The logic
+is idempotent and won't overwrite a real directory if one exists.</p>
+<p><strong>Related</strong>: Issue <a href="https://github.com/spiritEcosse/storm/issues/326">#326</a>
+tracks the staged migration from per-header <code>import std.&lt;sub&gt;;</code> to a single
+<code>import std;</code>.</p>
+<h3 id="8-cmake-picks-libstdc-instead-of-libc-for-import-std">8. CMake Picks libstdc++ Instead of libc++ for <code>import std</code><a class="headerlink" href="#8-cmake-picks-libstdc-instead-of-libc-for-import-std" title="Permanent link">&para;</a></h3>
+<p><strong>Symptom</strong> (on any target with <code>CXX_MODULE_STD ON</code>):</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-7-1" name="__codelineno-7-1" href="#__codelineno-7-1"></a>[2/11] Scanning /usr/include/c++/16.1.1/bits/std.compat.cc for CXX dependencies
+<a id="__codelineno-7-2" name="__codelineno-7-2" href="#__codelineno-7-2"></a>[3/11] Scanning /usr/include/c++/16.1.1/bits/std.cc for CXX dependencies
+<a id="__codelineno-7-3" name="__codelineno-7-3" href="#__codelineno-7-3"></a>FAILED: CMakeFiles/__cmake_cxx_std_26.dir/usr/include/c++/16.1.1/bits/std.cc.o.ddi
+<a id="__codelineno-7-4" name="__codelineno-7-4" href="#__codelineno-7-4"></a>…
+<a id="__codelineno-7-5" name="__codelineno-7-5" href="#__codelineno-7-5"></a>/usr/include/c++/16.1.1/bits/std.cc:26:10: fatal error: 'bits/stdc++.h' file not found
+</code></pre></div>
+<p><strong>Cause</strong>: CMake's <code>Clang-CXX-CXXImportStd.cmake</code> runs <code>clang++
+-print-file-name=libstdc++.modules.json</code> when <code>CMAKE_CXX_STANDARD_LIBRARY</code>
+isn't explicitly <code>libc++</code>. Clang resolves that against the host GCC's
+<code>/usr/lib64/libstdc++.modules.json</code> and CMake then tries to compile GCC's
+<code>bits/std.cc</code> with <code>-nostdinc++</code> and our libc++ include paths, which breaks
+on <code>bits/stdc++.h</code>.</p>
+<p>Pinning <code>CMAKE_CXX_STANDARD_LIBRARY</code> alone is not enough — the variable
+isn't always consulted, and <code>CMAKE_CXX_STDLIB_MODULES_JSON</code> (CMake 4.2+) is
+the direct override.</p>
+<p><strong>Workaround</strong>: top-level <code>CMakeLists.txt</code> sets <code>CMAKE_CXX_STDLIB_MODULES_JSON</code>
+before <code>project()</code>, guarded by <code>if(DEFINED LIBCXX_ROOT)</code>. The path depends on
+the host that built clang-p2996: the Linux/Docker (amd64) build installs under
+a target-triple subdirectory
+(<code>build/lib/x86_64-unknown-linux-gnu/libc++.modules.json</code>); a native
+macOS/arm64 build installs flat (<code>build/lib/libc++.modules.json</code>), since
+<code>LLVM_ENABLE_RUNTIMES</code> only creates a per-triple subdirectory when more than
+one target is configured. <code>cmake/clang_p2996_host.cmake</code> resolves this ONCE
+(shelling out to <code>uname -m</code>, since <code>CMAKE_HOST_SYSTEM_PROCESSOR</code> isn't
+resolved yet before <code>project()</code>) and is <code>include()</code>d by both
+<code>CMakeLists.txt</code> and <code>cmake/libcxx.cmake</code> — the latter's analogous
+<code>LIBCXX_INCLUDE_DIR</code>/<code>_storm_libcxx_lib_dir</code> split reuses the same
+resolution rather than re-deriving it.</p>
+<p>On the native macOS/arm64 flat layout, <code>_storm_libcxx_lib_dir</code> (used for
+<code>-L</code>/<code>-rpath</code>) is clang-p2996's whole LLVM <code>build/lib</code> tree, not a narrow
+per-triple runtime dir like the Linux layout — a wider link search path, and
+it means the resulting binaries link BOTH <code>@rpath/libunwind.1.dylib</code> (from
+this dir) and macOS's system <code>libSystem.B.dylib</code> (which re-exports its own
+<code>_Unwind_*</code>). This works — clang-p2996's libc++abi loads before libSystem,
+so the throw path stays self-consistent — but if exception behavior ever
+looks wrong specifically on native macOS builds, the duplicate unwinder is
+worth checking first.</p>
+<p><strong>Related</strong>: Issue <a href="https://github.com/spiritEcosse/storm/issues/326">#326</a>.</p>
+<h3 id="9-import-std-migration-findings-header-rules">9. <code>import std;</code> Migration — Findings &amp; Header Rules<a class="headerlink" href="#9-import-std-migration-findings-header-rules" title="Permanent link">&para;</a></h3>
+<p>The tree consumes the C++26 named module via a single <code>import std;</code> (issues
+<a href="https://github.com/spiritEcosse/storm/issues/326">#326</a> /
+<a href="https://github.com/spiritEcosse/storm/issues/332">#332</a>) instead of per-header
+<code>import &lt;header&gt;;</code> header units. Four findings govern how std headers interact
+with the module.</p>
+<p><strong>Finding A — <code>import std;</code> does NOT export <code>std::meta::</code>.</strong>
+libc++'s <code>std.cppm</code> <code>#include</code>s <code>&lt;meta&gt;</code> internally, but the reflection symbols
+(<code>std::meta::info</code>, <code>std::meta::identifier_of</code>, the <code>^^</code> splice, …) are NOT
+re-exported across the module boundary (clang-p2996 limitation, same family as
+the annotations-lost-across-BMI issue). <strong>Any TU using <code>std::meta::</code> MUST still
+textually <code>#include &lt;meta&gt;</code>.</strong> <code>import std;</code> alone is insufficient for reflection
+code.</p>
+<p><strong>Finding B — <code>#include &lt;meta&gt;</code> (and any textual std header) must come BEFORE the
+imports in a non-module TU.</strong> <code>&lt;meta&gt;</code> transitively pulls textual libc++ headers
+(<code>&lt;optional&gt;</code> → <code>&lt;compare&gt;</code> → … → <code>promote.h</code>). If <code>import std;</code> (or <code>import
+storm;</code>, which transitively imports std) is processed first, the later textual
+headers redefine entities the std module already owns
+(<code>error: redefinition of '__promote_t'</code>). In <strong>module units</strong> this is a non-issue
+— the global module fragment is a separate context. In <strong>textual headers /
+plain TUs</strong>, put textual std <code>#include</code>s before the imports, or drop them and let
+<code>import std;</code> supply the types.</p>
+<p><strong>Finding C — clang-tidy needs the module BMIs built first.</strong> clang-tidy replays
+<code>build/release/compile_commands.json</code> but does NOT reconstruct CMake's
+<code>CXX_MODULE_STD</code> plumbing. An <code>import std;</code> TU fails with
+<code>module 'std' not found</code> (and <code>@…modmap</code> not found) unless the release build has
+already produced <code>std.pcm</code> + the per-TU <code>.modmap</code>. <code>commit.sh</code> builds the module
+BMIs before clang-tidy, detected via the synthesized <code>__cmake_cxx_std_26</code> target
+in <code>build/release/build.ninja</code> (NOT a <code>-fmodule-file=std=</code> flag — CMake's
+import-std support wires the std module via ninja dyndep, which never appears in
+<code>compile_commands.json</code>).</p>
+<p><strong>Finding D — sanitizer/instrumentation flags must precede <code>add_library(storm)</code>.</strong>
+<code>cmake/sanitizers.cmake</code> applies <code>-fsanitize=…</code> globally via
+<code>add_compile_options()</code> / <code>add_link_options()</code>, which only affect targets created
+AFTER the include. The CMake-synthesized <code>__cmake_cxx_std_26</code> std-module target
+compiles libc++'s <code>std.cppm</code>; if it misses the sanitizer flag, its
+container-annotation calls (<code>__sanitizer_annotate_contiguous_container</code>)
+link-fail with an undefined reference. <code>CMakeLists.txt</code> therefore includes the
+sanitizer plumbing <strong>before</strong> <code>add_library(${PROJECT_NAME})</code>. Also: a build dir
+configured before the import-std gate landed must be <strong>wiped</strong>, not
+reconfigured — <code>CMAKE_EXPERIMENTAL_CXX_IMPORT_STD</code> is a before-<code>project()</code> gate.</p>
+<h4 id="which-std-includes-can-be-folded-into-import-std">Which std <code>#include</code>s can be folded into <code>import std;</code><a class="headerlink" href="#which-std-includes-can-be-folded-into-import-std" title="Permanent link">&para;</a></h4>
+<table>
+<thead>
+<tr>
+<th>Header class</th>
+<th>Rule</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>&lt;cassert&gt;</code></td>
+<td><strong>KEEP</strong> — <code>assert</code> is a macro; modules cannot export macros</td>
+</tr>
+<tr>
+<td><code>&lt;meta&gt;</code></td>
+<td><strong>KEEP</strong> — <code>std::meta::</code> not re-exported (Finding A)</td>
+</tr>
+<tr>
+<td>POSIX (<code>&lt;csignal&gt;</code>, <code>&lt;sys/*.h&gt;</code>, <code>&lt;unistd.h&gt;</code>, <code>&lt;termios.h&gt;</code>, <code>&lt;poll.h&gt;</code>)</td>
+<td><strong>KEEP</strong> — not part of <code>import std;</code></td>
+</tr>
+<tr>
+<td>third-party (<code>&lt;sqlite3.h&gt;</code>, <code>&lt;plf_hive/…&gt;</code>, <code>&lt;libpq-fe.h&gt;</code>, <code>&lt;uuid.h&gt;</code>)</td>
+<td><strong>KEEP</strong> — not std</td>
+</tr>
+<tr>
+<td>pure-library (<code>&lt;vector&gt;</code>, <code>&lt;string&gt;</code>, <code>&lt;format&gt;</code>, <code>&lt;utility&gt;</code>, …)</td>
+<td><strong>FOLD where context allows</strong> (see below)</td>
+</tr>
+</tbody>
+</table>
+<p>Folding a pure-library header is only safe per location:</p>
+<ul>
+<li><strong>GMF of a <code>.cppm</code> that already has <code>import std;</code> in its purview</strong> → redundant,
+  drop it (e.g. <code>distinct.cppm</code> dropped <code>&lt;utility&gt;</code>; <code>pool.cppm</code> dropped
+  <code>&lt;mutex&gt;</code> / <code>&lt;condition_variable&gt;</code>).</li>
+<li><strong>A <code>.cppm</code> GMF whose textual model header needs the type before the imports</strong>
+  → <strong>KEEP</strong> (e.g. <code>crud_benchmark.cppm</code> / <code>query_benchmark.cppm</code> keep <code>&lt;tuple&gt;</code>
+  because <code>models.hpp</code>'s <code>Indexes&lt;T&gt;::type</code> is parsed in the GMF, before the
+  purview's <code>import std;</code>; dropping it triggers the Finding B <code>__promote_t</code>
+  redefinition).</li>
+<li><strong>A <code>.cppm</code> with NO <code>import std;</code></strong> (<code>parser</code>, <code>registry</code>, <code>wire</code>,
+  <code>socket_server</code>, <code>tui</code> bench modules) → <strong>KEEP textual</strong>. Adding <code>import std;</code>
+  would force <code>CXX_MODULE_STD ON</code> onto the <code>storm_tests</code> target (which compiles
+  some of these as its own FILE_SET units); these modules deliberately stay
+  header-free to avoid that.</li>
+<li><strong>A textual header <code>#include</code>d AFTER <code>import std;</code></strong> (dashboard
+  <code>args/backup/db/events.hpp</code>, <code>fuzz/fuzz_models.h</code>) → <strong>MUST drop</strong> the std
+  <code>#include</code>s (keeping them re-pulls libc++ headers after the module → Finding
+  B). The single consumer (<code>main.cpp</code> / the fuzz harness) supplies them via
+  <code>import std;</code>, with textual <code>&lt;meta&gt;</code> placed before its imports where the TU
+  uses reflection. <code>fuzz_models.h</code> dropped its <code>&lt;string&gt;</code>; the harness TUs that
+  use <code>std::meta::</code> keep textual <code>&lt;meta&gt;</code> before <code>import storm; import std;</code>.</li>
+</ul>
+<h3 id="10-annotation_of_type-segfaults-on-bmi-imported-member-reflections">10. <code>annotation_of_type</code> Segfaults on BMI-Imported Member Reflections<a class="headerlink" href="#10-annotation_of_type-segfaults-on-bmi-imported-member-reflections" title="Permanent link">&para;</a></h3>
+<p><strong>Problem</strong>: Calling <code>std::meta::annotation_of_type&lt;X&gt;(member)</code> on a reflection
+that was <strong>created in another module TU</strong> (e.g. returned by an exported consteval
+function and consumed across the BMI boundary) segfaults the compiler (exit 139,
+crash in <code>ExprConstant.cpp</code> metafunction evaluation). In constraint-satisfaction
+contexts the crash can instead surface as a misleading
+<code>error: cannot take the reflection of an overload set</code>.</p>
+<p><strong>Structural metafunctions are safe</strong> on the same BMI-crossing reflection:
+<code>is_nonstatic_data_member</code>, <code>parent_of</code>, <code>identifier_of</code>, <code>has_identifier</code> all
+work. Only annotation lookup breaks (same family as the annotations-lost-across-BMI
+issue, clang-p2996 <a href="https://github.com/bloomberg/clang-p2996/issues/262">#262</a>).</p>
+<p><strong>Solution</strong>: Re-derive the member from <code>^^T</code> locally before reading annotations —
+match by identifier, then call <code>annotation_of_type</code> on the freshly derived info:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-8-1" name="__codelineno-8-1" href="#__codelineno-8-1"></a><span class="c1">// ❌ Crashes when Member crossed a BMI boundary</span>
+<a id="__codelineno-8-2" name="__codelineno-8-2" href="#__codelineno-8-2"></a><span class="kt">bool</span><span class="w"> </span><span class="n">primary</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">meta</span><span class="o">::</span><span class="n">is_primary_member</span><span class="p">(</span><span class="n">Member</span><span class="p">);</span><span class="w"> </span><span class="c1">// scans annotations_of(Member)</span>
+<a id="__codelineno-8-3" name="__codelineno-8-3" href="#__codelineno-8-3"></a>
+<a id="__codelineno-8-4" name="__codelineno-8-4" href="#__codelineno-8-4"></a><span class="c1">// ✅ Safe — annotations read from a locally derived reflection</span>
+<a id="__codelineno-8-5" name="__codelineno-8-5" href="#__codelineno-8-5"></a><span class="k">for</span><span class="w"> </span><span class="p">(</span><span class="k">auto</span><span class="w"> </span><span class="n">m</span><span class="w"> </span><span class="o">:</span><span class="w"> </span><span class="n">storm</span><span class="o">::</span><span class="n">meta</span><span class="o">::</span><span class="n">data_members_of_v</span><span class="o">&lt;</span><span class="n">T</span><span class="o">&gt;</span><span class="p">)</span><span class="w"> </span><span class="p">{</span><span class="w">   </span><span class="c1">// #694: the memoised member list</span>
+<a id="__codelineno-8-6" name="__codelineno-8-6" href="#__codelineno-8-6"></a><span class="w">    </span><span class="k">if</span><span class="w"> </span><span class="p">(</span><span class="n">std</span><span class="o">::</span><span class="n">meta</span><span class="o">::</span><span class="n">identifier_of</span><span class="p">(</span><span class="n">m</span><span class="p">)</span><span class="w"> </span><span class="o">==</span><span class="w"> </span><span class="n">std</span><span class="o">::</span><span class="n">meta</span><span class="o">::</span><span class="n">identifier_of</span><span class="p">(</span><span class="n">Member</span><span class="p">))</span><span class="w"> </span><span class="p">{</span>
+<a id="__codelineno-8-7" name="__codelineno-8-7" href="#__codelineno-8-7"></a><span class="w">        </span><span class="kt">bool</span><span class="w"> </span><span class="n">primary</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">meta</span><span class="o">::</span><span class="n">is_primary_member</span><span class="p">(</span><span class="n">m</span><span class="p">);</span>
+<a id="__codelineno-8-8" name="__codelineno-8-8" href="#__codelineno-8-8"></a><span class="w">        </span><span class="c1">// ...</span>
+<a id="__codelineno-8-9" name="__codelineno-8-9" href="#__codelineno-8-9"></a><span class="w">    </span><span class="p">}</span>
+<a id="__codelineno-8-10" name="__codelineno-8-10" href="#__codelineno-8-10"></a><span class="p">}</span>
+</code></pre></div>
+<p>Found in #388: the <code>FKFieldOf&lt;T, Member&gt;</code> concept (model_concepts.cppm) constrains
+<code>join&lt;fields::T.field&gt;()</code> and must work with FK reflections produced by the benchmark
+registry module (<code>storm_benchmark_registry::resolve_fk_field</code>).</p>
+<p><strong>Since #694 the "locally derived" list can itself come from a BMI.</strong> <code>data_members_of_v&lt;T&gt;</code>
+is a variable template: when a module instantiates it (the <code>storm_benchmark_*</code> shape), its
+importers reuse that BMI copy, so the members re-derived from it are BMI-deserialised too.
+That path does not crash on the current toolchain:
+<code>tests/schema/test_reflection_cache_bmi.cpp</code> reads annotations through it (<code>FKFieldOf</code>,
+<code>fk_on_delete_action_of</code>, <code>max_length_of</code>, <code>is_relation_field</code>) on members the module
+already listed. If this section's crash comes back, that test is the canary.</p>
+<h3 id="11-explicit-specialization-in-a-multi-gmf-header-ambiguous-member-lookup">11. Explicit Specialization in a Multi-GMF Header — Ambiguous Member Lookup<a class="headerlink" href="#11-explicit-specialization-in-a-multi-gmf-header-ambiguous-member-lookup" title="Permanent link">&para;</a></h3>
+<p><strong>Problem</strong>: An explicit specialization of a module-owned class template (e.g.
+<code>template &lt;&gt; struct storm::Indexes&lt;Person&gt;</code>), placed in a header that is
+textually included in <strong>several module TUs' global module fragments</strong> plus a
+plain TU that imports those modules, can make member lookup ambiguous:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-9-1" name="__codelineno-9-1" href="#__codelineno-9-1"></a>src/orm/indexes.cppm:27:27: error: reference to 'type' is ambiguous
+<a id="__codelineno-9-2" name="__codelineno-9-2" href="#__codelineno-9-2"></a>shared/models/person.h:41:11: note: candidate found by name lookup is 'storm::Indexes&lt;Person&gt;::type'
+<a id="__codelineno-9-3" name="__codelineno-9-3" href="#__codelineno-9-3"></a>  (identical note repeated once per TU that carries the header)
+</code></pre></div>
+<p>Each GMF inclusion produces its own copy of the specialization; clang-p2996
+should merge them as one entity but fails when the specialization's members
+carry reflection NTTPs (<code>Index&lt;^^Person::department, ...&gt;</code> — same family as
+cross-BMI reflection-equality issues, see §10). The failure is <strong>latent</strong>: it
+only fires once the import graph gives the consumer TU more than one BMI path
+to the primary template. Found in #464: <code>storm_bench</code>'s <code>register.cpp</code> (textual
+<code>shared/models/person.h</code> + imports of 3 bench modules whose GMFs also include it)
+compiled fine until #458 added a second import path to <code>storm_orm_indexes</code>
+(<code>storm → insert → upsert_grammar → indexes</code>), then broke deterministically.</p>
+<p><strong>Solution</strong>: For model headers consumed by multiple module TUs, do not
+explicitly specialize the trait. Declare the index list as a nested typedef
+inside the model instead — the constrained partial specialization in
+<code>indexes.cppm</code> (single owner, exactly one visible declaration) picks it up:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-10-1" name="__codelineno-10-1" href="#__codelineno-10-1"></a><span class="c1">// ❌ Explicit specialization — one copy per including TU, fragile merging</span>
+<a id="__codelineno-10-2" name="__codelineno-10-2" href="#__codelineno-10-2"></a><span class="k">template</span><span class="w"> </span><span class="o">&lt;&gt;</span><span class="w"> </span><span class="k">struct</span><span class="w"> </span><span class="nc">storm</span><span class="o">::</span><span class="n">Indexes</span><span class="o">&lt;</span><span class="n">Person</span><span class="o">&gt;</span><span class="w"> </span><span class="p">{</span>
+<a id="__codelineno-10-3" name="__codelineno-10-3" href="#__codelineno-10-3"></a><span class="w">    </span><span class="k">using</span><span class="w"> </span><span class="n">type</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">std</span><span class="o">::</span><span class="n">tuple</span><span class="o">&lt;</span><span class="n">storm</span><span class="o">::</span><span class="n">Index</span><span class="o">&lt;^^</span><span class="n">Person</span><span class="o">::</span><span class="n">department</span><span class="p">,</span><span class="w"> </span><span class="o">^^</span><span class="n">Person</span><span class="o">::</span><span class="n">age</span><span class="o">&gt;&gt;</span><span class="p">;</span>
+<a id="__codelineno-10-4" name="__codelineno-10-4" href="#__codelineno-10-4"></a><span class="p">};</span>
+<a id="__codelineno-10-5" name="__codelineno-10-5" href="#__codelineno-10-5"></a>
+<a id="__codelineno-10-6" name="__codelineno-10-6" href="#__codelineno-10-6"></a><span class="c1">// ✅ Nested-typedef opt-in — merged as part of Person itself</span>
+<a id="__codelineno-10-7" name="__codelineno-10-7" href="#__codelineno-10-7"></a><span class="k">struct</span><span class="w"> </span><span class="nc">Person</span><span class="w"> </span><span class="p">{</span>
+<a id="__codelineno-10-8" name="__codelineno-10-8" href="#__codelineno-10-8"></a><span class="w">    </span><span class="c1">// ... fields ...</span>
+<a id="__codelineno-10-9" name="__codelineno-10-9" href="#__codelineno-10-9"></a><span class="w">    </span><span class="k">using</span><span class="w"> </span><span class="n">storm_indexes</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">std</span><span class="o">::</span><span class="n">tuple</span><span class="o">&lt;</span><span class="n">storm</span><span class="o">::</span><span class="n">Index</span><span class="o">&lt;^^</span><span class="n">Person</span><span class="o">::</span><span class="n">department</span><span class="p">,</span><span class="w"> </span><span class="o">^^</span><span class="n">Person</span><span class="o">::</span><span class="n">age</span><span class="o">&gt;&gt;</span><span class="p">;</span>
+<a id="__codelineno-10-10" name="__codelineno-10-10" href="#__codelineno-10-10"></a><span class="p">};</span>
+</code></pre></div>
+<p>Explicit specializations remain fine in single-TU contexts (test files,
+<code>tools/storm_schema</code>). Note: since #466 re-enabled the <code>ninja-release</code> CI job
+(the historical clang-scan-deps crash no longer reproduces with the clang-p2996
+build in the pinned CI image), CI compiles <code>storm_bench</code> on every PR — a green
+CI now does cover this class of bench-only breakage.</p>
+<h3 id="12-non-templated-requires-expression-hard-errors-instead-of-evaluating-false">12. Non-Templated <code>requires</code>-Expression Hard-Errors Instead of Evaluating False<a class="headerlink" href="#12-non-templated-requires-expression-hard-errors-instead-of-evaluating-false" title="Permanent link">&para;</a></h3>
+<p><strong>Problem</strong>: A <code>requires</code>-expression whose parameter type is a concrete type (not itself a
+template parameter of the enclosing declaration) can hard-error instead of evaluating to <code>false</code>
+when the checked expression is ill-formed, contradicting [expr.prim.req]:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-11-1" name="__codelineno-11-1" href="#__codelineno-11-1"></a><span class="c1">// ❌ Hard-errors on this compiler instead of making the requires-expression `false`</span>
+<a id="__codelineno-11-2" name="__codelineno-11-2" href="#__codelineno-11-2"></a><span class="k">static_assert</span><span class="p">(</span><span class="o">!</span><span class="k">requires</span><span class="p">(</span><span class="n">storm</span><span class="o">::</span><span class="n">UUID</span><span class="w"> </span><span class="n">u</span><span class="p">)</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="n">fields</span><span class="o">::</span><span class="n">SomeModel</span><span class="p">.</span><span class="n">some_field</span><span class="p">.</span><span class="n">between</span><span class="p">(</span><span class="n">u</span><span class="p">,</span><span class="w"> </span><span class="n">u</span><span class="p">);</span><span class="w"> </span><span class="p">});</span>
+</code></pre></div>
+<p>Found in #609 while pinning a compile-time rejection (<code>.between()</code> on a <code>storm::UUID</code> column,
+constrained via a <code>requires</code>-clause per rule 11 above): even though the checked member call fails
+overload resolution due to a genuine constraint violation — exactly the case a <code>requires</code>-expression
+is designed to swallow — clang-p2996 emits the underlying "no matching member function" diagnostic
+as a hard error at the <code>static_assert</code> site instead of treating the whole expression as <code>false</code>.</p>
+<p><strong>Solution</strong>: Wrap the check in a named <code>concept</code> parameterized on the operand type, matching the
+project's existing <code>CanWhereBetween</code>-style idiom (<code>tests/query/test_fk_column_name_orderby_aggregate_body.h</code>).
+Making the <code>requires</code>-expression depend on a template parameter of the concept, rather than a
+concrete parameter type, restores proper SFINAE behavior:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-12-1" name="__codelineno-12-1" href="#__codelineno-12-1"></a><span class="c1">// ✅ Named concept — the requires-expression is now dependent on V, SFINAE-friendly</span>
+<a id="__codelineno-12-2" name="__codelineno-12-2" href="#__codelineno-12-2"></a><span class="k">template</span><span class="w"> </span><span class="o">&lt;</span><span class="k">typename</span><span class="w"> </span><span class="nc">V</span><span class="o">&gt;</span>
+<a id="__codelineno-12-3" name="__codelineno-12-3" href="#__codelineno-12-3"></a><span class="k">concept</span><span class="w"> </span><span class="nc">CanBetweenUuidId</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="k">requires</span><span class="p">(</span><span class="n">V</span><span class="w"> </span><span class="n">v</span><span class="p">)</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="n">fields</span><span class="o">::</span><span class="n">SomeModel</span><span class="p">.</span><span class="n">some_field</span><span class="p">.</span><span class="n">between</span><span class="p">(</span><span class="n">v</span><span class="p">,</span><span class="w"> </span><span class="n">v</span><span class="p">);</span><span class="w"> </span><span class="p">};</span>
+<a id="__codelineno-12-4" name="__codelineno-12-4" href="#__codelineno-12-4"></a><span class="k">static_assert</span><span class="p">(</span><span class="o">!</span><span class="n">CanBetweenUuidId</span><span class="o">&lt;</span><span class="n">storm</span><span class="o">::</span><span class="n">UUID</span><span class="o">&gt;</span><span class="p">);</span>
+</code></pre></div>
+<h3 id="13-pch-import-std-ambiguous-string-types-and-clang-tidy-crashes">13. PCH + <code>import std;</code> — Ambiguous String Types, and clang-tidy Crashes<a class="headerlink" href="#13-pch-import-std-ambiguous-string-types-and-clang-tidy-crashes" title="Permanent link">&para;</a></h3>
+<p><code>tests/CMakeLists.txt</code> precompiles <code>&lt;gtest/gtest.h&gt;</code> for <code>storm_tests</code> (measured
+−1.9 to −2.4 s per TU; the gtest header is 2.2 s of an ~5.8 s per-TU floor that
+is 100% frontend — Backend is 0.03 s). Two clang-p2996 defects come with it.</p>
+<p><strong>(a) Ambiguous string types, order-dependent.</strong> Reaching libc++ through the PCH,
+completing an entity that lazily deserializes <code>&lt;__fwd/string.h&gt;</code> makes
+<code>std::__1::string</code> visible alongside the <code>std</code> module's <code>std::string</code>. From that
+point on, <em>every</em> mention of a string type in the TU is ambiguous:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-13-1" name="__codelineno-13-1" href="#__codelineno-13-1"></a><span class="k">static_assert</span><span class="p">(</span><span class="k">sizeof</span><span class="p">(</span><span class="n">std</span><span class="o">::</span><span class="n">filesystem</span><span class="o">::</span><span class="n">path</span><span class="p">)</span><span class="w"> </span><span class="o">&gt;</span><span class="w"> </span><span class="mi">0</span><span class="p">);</span><span class="w">   </span><span class="c1">// the trigger</span>
+<a id="__codelineno-13-2" name="__codelineno-13-2" href="#__codelineno-13-2"></a><span class="k">static_assert</span><span class="p">(</span><span class="k">sizeof</span><span class="p">(</span><span class="n">std</span><span class="o">::</span><span class="n">string</span><span class="p">)</span><span class="w"> </span><span class="o">&gt;</span><span class="w"> </span><span class="mi">0</span><span class="p">);</span><span class="w">             </span><span class="c1">// error: reference to 'string' is ambiguous</span>
+</code></pre></div>
+<p>Swap the two lines and it compiles. Known triggers: <code>std::filesystem::path</code>,
+<code>storm::UUID</code>. A textual <code>#include &lt;string&gt;</code> does <strong>not</strong> help — textually
+including the <em>trigger's</em> own header does, but that cuts against the <code>import std;</code>
+convention (Finding 9), so the fix is to opt the TU out:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-14-1" name="__codelineno-14-1" href="#__codelineno-14-1"></a><span class="nb">set_property</span><span class="p">(</span><span class="s">SOURCE</span><span class="w"> </span><span class="s">path/to/tu.cpp</span><span class="w"> </span><span class="s">PROPERTY</span><span class="w"> </span><span class="s">SKIP_PRECOMPILE_HEADERS</span><span class="w"> </span><span class="s">ON</span><span class="p">)</span>
+</code></pre></div>
+<p>Currently opted out: <code>schema/test_bindable_concept.cpp</code>,
+<code>schema/test_dialect_concepts.cpp</code>. This is <strong>not</strong> limited to compile-time-only
+TUs — any TU naming a trigger before a string type can hit it. It is always a
+hard compile error, never silent.</p>
+<p>The module interface units in the target's <code>FILE_SET</code> are opted out for a
+different reason: the PCH would force gtest's textual libc++ surface in ahead of
+their <code>module;</code> declaration and bake that into the BMIs every consumer imports.</p>
+<p><strong>(b) clang-tidy SIGSEGVs on a TU compiled with the PCH flags</strong>, once any check
+is enabled. Same crash signature as the <code>benchmarks/schema.cppm</code> entry in
+<code>scripts/clang_tidy_skiplist.py</code>. The crash prints no <code>: error:</code> or
+<code>: warning:</code> line, so a checker counting only those reads it as a clean pass.</p>
+<p>This is currently <strong>unreachable</strong>: the PCH is applied only to <code>storm_tests</code>, and
+<code>tests/.clang-tidy</code> disables every check (<code>Checks: '-*'</code>, issue #590), so
+clang-tidy exits before building an AST. Verified that no <code>src/</code> entry carries
+the flags (74 files, 0 with PCH). The guards below exist so that re-enabling
+checks for <code>tests/**</code> cannot silently un-lint the tree. <code>scripts/run_clang_tidy.py</code> therefore strips
+<code>-Xclang -include-pch</code> / <code>-include</code> / <code>-Winvalid-pch</code> from a temp copy of
+<code>compile_commands.json</code> before replaying commands (semantically identical: the
+PCH holds only <code>&lt;gtest/gtest.h&gt;</code>, which the TU includes textually anyway), and
+<code>--diff</code> now fails on <code>PLEASE submit a bug report</code> instead of reporting success.
+<strong>Removing either guard re-breaks the tidy gate silently.</strong></p>
+<h2 id="debugging-tips">Debugging Tips<a class="headerlink" href="#debugging-tips" title="Permanent link">&para;</a></h2>
+<ol>
+<li><strong>Clean build</strong>: <code>rm -rf build/ &amp;&amp; cmake --preset ninja-debug</code></li>
+<li><strong>Clear module cache</strong>: <code>rm -rf ~/.cache/clang/ModuleCache</code></li>
+<li><strong>Verbose output</strong>: <code>cmake --build --preset ninja-debug -v</code></li>
+<li><strong>Module graph</strong>: <code>clang-scan-deps --format=p1689 --</code></li>
+</ol>
+<h2 id="see-also">See Also<a class="headerlink" href="#see-also" title="Permanent link">&para;</a></h2>
+<ul>
+<li><a href="../../architecture/MODULE_SYSTEM/">Module System</a> - How modules are organized</li>
+<li><a href="../../building/ADDING_FEATURES/">Adding Features</a> - Development workflow</li>
+</ul>
+
+
+
+
+
+
+
+
+
+
+
+
+                
+              </article>
+            </div>
+          
+          
+<script>var target=document.getElementById(location.hash.slice(1));target&&target.name&&(target.checked=target.name.startsWith("__tabbed_"))</script>
+        </div>
+        
+          <button type="button" class="md-top md-icon" data-md-component="top" hidden>
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M13 20h-2V8l-5.5 5.5-1.42-1.42L12 4.16l7.92 7.92-1.42 1.42L13 8z"/></svg>
+  Back to top
+</button>
+        
+      </main>
+      
+        <footer class="md-footer">
+  
+  <div class="md-footer-meta md-typeset">
+    <div class="md-footer-meta__inner md-grid">
+      <div class="md-copyright">
+  
+  
+    Made with
+    <a href="https://squidfunk.github.io/mkdocs-material/" target="_blank" rel="noopener">
+      Material for MkDocs
+    </a>
+  
+</div>
+      
+    </div>
+  </div>
+</footer>
+      
+    </div>
+    <div class="md-dialog" data-md-component="dialog">
+      <div class="md-dialog__inner md-typeset"></div>
+    </div>
+    
+    
+    
+      
+      
+      <script id="__config" type="application/json">{"annotate": null, "base": "../../..", "features": ["navigation.sections", "navigation.expand", "navigation.top", "search.suggest", "search.highlight", "content.code.copy"], "search": "../../../assets/javascripts/workers/search.a7633da7.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
+    
+    
+      <script src="../../../assets/javascripts/bundle.c21346df.min.js"></script>
+      
+    
+  </body>
+</html>

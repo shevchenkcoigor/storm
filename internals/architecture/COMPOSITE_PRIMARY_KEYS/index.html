@@ -1,0 +1,2549 @@
+
+<!doctype html>
+<html lang="en" class="no-js">
+  <head>
+    
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width,initial-scale=1">
+      
+        <meta name="description" content="C++26 ORM with compile-time reflection for SQLite">
+      
+      
+      
+        <link rel="canonical" href="https://spiritecosse.github.io/storm/internals/architecture/COMPOSITE_PRIMARY_KEYS/">
+      
+      
+      
+      
+        
+      
+      
+      <link rel="icon" href="../../../assets/images/favicon.png">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.8.0">
+    
+    
+      
+        <title>Composite & Non-Integer Primary Keys - Storm ORM</title>
+      
+    
+    
+      <link rel="stylesheet" href="../../../assets/stylesheets/main.57a0d79d.min.css">
+      
+        
+        <link rel="stylesheet" href="../../../assets/stylesheets/palette.fb2fffe2.min.css">
+      
+      
+
+
+    
+    
+      
+    
+    
+      
+        
+        
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+        <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Roboto:300,300i,400,400i,700,700i%7CRoboto+Mono:400,400i,700,700i&display=fallback">
+        <style>:root{--md-text-font:"Roboto";--md-code-font:"Roboto Mono"}</style>
+      
+    
+    
+    <script>__md_scope=new URL("../../..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
+    
+      
+
+    
+    
+  </head>
+  
+  
+    
+    
+      
+    
+    
+    
+    
+    <body dir="ltr" data-md-color-scheme="default" data-md-color-primary="indigo" data-md-color-accent="indigo">
+  
+    
+    <input class="md-toggle" data-md-toggle="drawer" type="checkbox" id="__drawer" autocomplete="off">
+    <input class="md-toggle" data-md-toggle="search" type="checkbox" id="__search" autocomplete="off">
+    <label class="md-overlay" for="__drawer"></label>
+    <div data-md-component="skip">
+      
+        
+        <a href="#composite-non-integer-primary-keys" class="md-skip">
+          Skip to content
+        </a>
+      
+    </div>
+    <div data-md-component="announce">
+      
+    </div>
+    
+    
+      
+
+  
+
+<header class="md-header md-header--shadow" data-md-component="header">
+  <nav class="md-header__inner md-grid" aria-label="Header">
+    <a href="../../.." title="Storm ORM" class="md-header__button md-logo" aria-label="Storm ORM" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    <label class="md-header__button md-icon" for="__drawer">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M3 6h18v2H3zm0 5h18v2H3zm0 5h18v2H3z"/></svg>
+    </label>
+    <div class="md-header__title" data-md-component="header-title">
+      <div class="md-header__ellipsis">
+        <div class="md-header__topic">
+          <span class="md-ellipsis">
+            Storm ORM
+          </span>
+        </div>
+        <div class="md-header__topic" data-md-component="header-topic">
+          <span class="md-ellipsis">
+            
+              Composite &amp; Non-Integer Primary Keys
+            
+          </span>
+        </div>
+      </div>
+    </div>
+    
+      
+        <form class="md-header__option" data-md-component="palette">
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="" data-md-color-scheme="default" data-md-color-primary="indigo" data-md-color-accent="indigo"  aria-label="Switch to dark mode"  type="radio" name="__palette" id="__palette_0">
+    
+      <label class="md-header__button md-icon" title="Switch to dark mode" for="__palette_1" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a4 4 0 0 0-4 4 4 4 0 0 0 4 4 4 4 0 0 0 4-4 4 4 0 0 0-4-4m0 10a6 6 0 0 1-6-6 6 6 0 0 1 6-6 6 6 0 0 1 6 6 6 6 0 0 1-6 6m8-9.31V4h-4.69L12 .69 8.69 4H4v4.69L.69 12 4 15.31V20h4.69L12 23.31 15.31 20H20v-4.69L23.31 12z"/></svg>
+      </label>
+    
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="" data-md-color-scheme="slate" data-md-color-primary="indigo" data-md-color-accent="indigo"  aria-label="Switch to light mode"  type="radio" name="__palette" id="__palette_1">
+    
+      <label class="md-header__button md-icon" title="Switch to light mode" for="__palette_0" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 18c-.89 0-1.74-.2-2.5-.55C11.56 16.5 13 14.42 13 12s-1.44-4.5-3.5-5.45C10.26 6.2 11.11 6 12 6a6 6 0 0 1 6 6 6 6 0 0 1-6 6m8-9.31V4h-4.69L12 .69 8.69 4H4v4.69L.69 12 4 15.31V20h4.69L12 23.31 15.31 20H20v-4.69L23.31 12z"/></svg>
+      </label>
+    
+  
+</form>
+      
+    
+    
+      <script>var palette=__md_get("__palette");if(palette&&palette.color){if("(prefers-color-scheme)"===palette.color.media){var media=matchMedia("(prefers-color-scheme: light)"),input=document.querySelector(media.matches?"[data-md-color-media='(prefers-color-scheme: light)']":"[data-md-color-media='(prefers-color-scheme: dark)']");palette.color.media=input.getAttribute("data-md-color-media"),palette.color.scheme=input.getAttribute("data-md-color-scheme"),palette.color.primary=input.getAttribute("data-md-color-primary"),palette.color.accent=input.getAttribute("data-md-color-accent")}for(var[key,value]of Object.entries(palette.color))document.body.setAttribute("data-md-color-"+key,value)}</script>
+    
+    
+    
+      
+      
+        <label class="md-header__button md-icon" for="__search">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        </label>
+        <div class="md-search" data-md-component="search" role="dialog">
+  <label class="md-search__overlay" for="__search"></label>
+  <div class="md-search__inner" role="search">
+    <form class="md-search__form" name="search">
+      <input type="text" class="md-search__input" name="query" aria-label="Search" placeholder="Search" autocapitalize="off" autocorrect="off" autocomplete="off" spellcheck="false" data-md-component="search-query" required>
+      <label class="md-search__icon md-icon" for="__search">
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
+      </label>
+      <nav class="md-search__options" aria-label="Search">
+        
+        <button type="reset" class="md-search__icon md-icon" title="Clear" aria-label="Clear" tabindex="-1">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+        </button>
+      </nav>
+      
+        <div class="md-search__suggest" data-md-component="search-suggest"></div>
+      
+    </form>
+    <div class="md-search__output">
+      <div class="md-search__scrollwrap" tabindex="0" data-md-scrollfix>
+        <div class="md-search-result" data-md-component="search-result">
+          <div class="md-search-result__meta">
+            Initializing search
+          </div>
+          <ol class="md-search-result__list" role="presentation"></ol>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+      
+    
+    
+      <div class="md-header__source">
+        <a href="https://github.com/spiritEcosse/storm" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    spiritEcosse/storm
+  </div>
+</a>
+      </div>
+    
+  </nav>
+  
+</header>
+    
+    <div class="md-container" data-md-component="container">
+      
+      
+        
+          
+        
+      
+      <main class="md-main" data-md-component="main">
+        <div class="md-main__inner md-grid">
+          
+            
+              
+              <div class="md-sidebar md-sidebar--primary" data-md-component="sidebar" data-md-type="navigation" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+
+
+<nav class="md-nav md-nav--primary" aria-label="Navigation" data-md-level="0">
+  <label class="md-nav__title" for="__drawer">
+    <a href="../../.." title="Storm ORM" class="md-nav__button md-logo" aria-label="Storm ORM" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    Storm ORM
+  </label>
+  
+    <div class="md-nav__source">
+      <a href="https://github.com/spiritEcosse/storm" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    spiritEcosse/storm
+  </div>
+</a>
+    </div>
+  
+  <ul class="md-nav__list" data-md-scrollfix>
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../.." class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Home
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_2" >
+        
+          
+          <label class="md-nav__link" for="__nav_2" id="__nav_2_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Guide
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_2_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_2">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Guide
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../guide/COOKBOOK/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Cookbook
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    
+    
+    
+    
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_2_2" >
+        
+          
+          <label class="md-nav__link" for="__nav_2_2" id="__nav_2_2_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Features
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_2_2_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_2_2">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Features
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../guide/features/CRUD_OPERATIONS/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    CRUD Operations
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../guide/features/SELECT_QUERIES/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    SELECT Queries
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../guide/features/WHERE_CLAUSES/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    WHERE Clauses
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../guide/features/JOIN_OPERATIONS/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    JOIN Operations
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../guide/features/BATCH_OPERATIONS/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Batch Operations
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../guide/features/REFERENTIAL_INTEGRITY/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Referential Integrity
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../guide/features/CONNECTION_TUNING/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Connection Tuning
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    
+    
+    
+    
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_2_3" >
+        
+          
+          <label class="md-nav__link" for="__nav_2_3" id="__nav_2_3_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Reference
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_2_3_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_2_3">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Reference
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../guide/reference/FIELD_TYPES/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Field Types
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../guide/reference/MIGRATIONS/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Migrations
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_3" >
+        
+          
+          <label class="md-nav__link" for="__nav_3" id="__nav_3_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Internals
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_3_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_3">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Internals
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    
+    
+    
+    
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_3_1" >
+        
+          
+          <label class="md-nav__link" for="__nav_3_1" id="__nav_3_1_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Architecture
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_3_1_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_3_1">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Architecture
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../OVERVIEW/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Overview
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../DESIGN_DECISIONS/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Design Decisions
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../REFLECTION/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Reflection
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../SQL_GENERATION/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    SQL Generation
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../MODULE_SYSTEM/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Module System
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../STATEMENT_CACHING/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Statement Caching
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../COMPILE_TIME_VS_RUNTIME/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Compile-Time vs Runtime
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    
+    
+    
+    
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_3_2" >
+        
+          
+          <label class="md-nav__link" for="__nav_3_2" id="__nav_3_2_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Building
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_3_2_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_3_2">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Building
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../building/GETTING_STARTED/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Getting Started
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../building/COMMON_TASKS/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Common Tasks
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../building/ADDING_FEATURES/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Adding Features
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../building/PRE_COMMIT/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Pre-Commit
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../building/FORMATTING/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Formatting
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    
+    
+    
+    
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_3_3" >
+        
+          
+          <label class="md-nav__link" for="__nav_3_3" id="__nav_3_3_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Testing
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_3_3_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_3_3">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Testing
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../testing/TESTING/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Testing
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../testing/CODE_COVERAGE/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Code Coverage
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../testing/SANITIZERS/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Sanitizers
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../testing/FUZZING/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Fuzzing
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../testing/MSAN_LIBC_FIX/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    MSAN libc Fix
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    
+    
+    
+    
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_3_4" >
+        
+          
+          <label class="md-nav__link" for="__nav_3_4" id="__nav_3_4_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Performance
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_3_4_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_3_4">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Performance
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../performance/PERFORMANCE/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Performance
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../performance/BENCHMARK_DASHBOARD/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Benchmark Dashboard
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../performance/JOIN_ANALYSIS/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    JOIN Analysis
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../performance/DISTINCT_ANALYSIS/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    DISTINCT Analysis
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    
+    
+    
+    
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_3_5" >
+        
+          
+          <label class="md-nav__link" for="__nav_3_5" id="__nav_3_5_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Compiler
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_3_5_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_3_5">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Compiler
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../compiler/COMPILER_ISSUES/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Compiler Issues
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../compiler/COMPILER_ATTRIBUTES/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Compiler Attributes
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../compiler/CPP26_CODING_STANDARDS/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    C++26 Coding Standards
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../compiler/CODE_QUALITY/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Code Quality
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_4" >
+        
+          
+          <label class="md-nav__link" for="__nav_4" id="__nav_4_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Archive
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_4_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_4">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Archive
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../archive/SELECT_OPTIMIZATION_REPORT/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    SELECT Optimization Report
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../archive/SELECT_PERFORMANCE_ANALYSIS/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    SELECT Performance Analysis
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../archive/UPDATE_OPTIMIZATION_REPORT/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    UPDATE Optimization Report
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+  </ul>
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+            
+              
+              <div class="md-sidebar md-sidebar--secondary" data-md-component="sidebar" data-md-type="toc" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#the-recurring-failure-mode" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        The recurring failure mode
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#composite-keys-primary_part" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Composite keys (primary_part)
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Composite keys (primary_part)">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#annotation-and-ddl-500" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Annotation and DDL (#500)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#update-and-delete-501" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        UPDATE and DELETE (#501)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#insert-502" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        INSERT (#502)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#fks-and-joins-504" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        FKs and JOINs (#504)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#through-model-m2m-536" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Through-model m2m (#536)
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+          
+          
+            <div class="md-content" data-md-component="content">
+              
+              <article class="md-content__inner md-typeset">
+                
+                  
+
+
+  
+  
+
+
+<h1 id="composite-non-integer-primary-keys">Composite &amp; Non-Integer Primary Keys<a class="headerlink" href="#composite-non-integer-primary-keys" title="Permanent link">&para;</a></h1>
+<p>Design notes for primary keys that are not a single DB-generated integer: multi-column
+composite keys (<code>primary_part</code>, #500-#537) and <code>storm::UUID</code> keys (#507, #565). Also covers
+the PK/FK column-naming rules those keys forced (#422, #506, #519).</p>
+<p>These are implementation notes — the rationale behind each decision and the failure mode it
+prevents — kept out of <code>CLAUDE.md</code> to keep that file navigable. For user-facing usage see
+<a href="../../../guide/reference/FIELD_TYPES/">FIELD_TYPES.md</a> and
+<a href="../../../guide/features/REFERENTIAL_INTEGRITY/">REFERENTIAL_INTEGRITY.md</a>.</p>
+<h2 id="the-recurring-failure-mode">The recurring failure mode<a class="headerlink" href="#the-recurring-failure-mode" title="Permanent link">&para;</a></h2>
+<p>Nearly every bug below is one of two shapes, worth naming once:</p>
+<p><strong>A hardcode that only a non-default model reaches.</strong> A literal <code>"id"</code>, a literal <code>INTEGER</code>, a
+<code>primary_key_</code> that assumed one column. Each was correct for every in-tree model, so each shipped
+green and stayed dead until a model with a differently-named, differently-typed, or multi-column
+key existed. <code>if constexpr</code> guards make these invisible: the branch does not instantiate, so it
+does not even have to compile.</p>
+<p><strong>SQLite and PostgreSQL disagree about what is an error.</strong> SQLite does not type-check FK targets
+and does not validate that a <code>REFERENCES</code> column exists; PostgreSQL rejects both outright. So the
+same wrong DDL <em>silently misbehaves</em> on SQLite and <em>fails loudly</em> on PG. SQLite-only testing is
+therefore actively misleading here, which is why the tests for these paths are <code>TYPED_TEST</code>s
+executing on both backends rather than SQL-text assertions alone.</p>
+<h2 id="composite-keys-primary_part">Composite keys (<code>primary_part</code>)<a class="headerlink" href="#composite-keys-primary_part" title="Permanent link">&para;</a></h2>
+<h3 id="annotation-and-ddl-500">Annotation and DDL (#500)<a class="headerlink" href="#annotation-and-ddl-500" title="Permanent link">&para;</a></h3>
+<p><code>[[= primary_part]]</code> on two or more members declares a
+multi-column PK — a free-standing tag object like <code>primary</code> (#492), re-exported to top-level
+<code>storm::</code>. Deliberately a SEPARATE tag rather than "two <code>primary</code> members means composite": reusing
+<code>primary</code> would silently turn a double-<code>primary</code> typo into a legal key. <code>is_primary_part_member</code>
+detects it; <code>is_primary_member</code> now matches it too, so <code>ModelWithPrimaryKey&lt;T&gt;</code> accepts composite
+models. <code>BaseStatement</code> gains <code>primary_key_members_</code> (the full PK list in DECLARATION order — the
+order the DDL clause emits) and <code>has_composite_pk_</code>, alongside the unchanged <code>primary_key_</code>/<code>pk_name_</code>
+(= the first element, so the ~13 files reading them are untouched). <code>schema.cppm</code> routes composite
+models past the single-PK branch and emits every part as a regular column plus one table-level
+<code>PRIMARY KEY (a, b)</code>, reusing the junction-table pattern; single-PK DDL is byte-identical.
+<code>needs_index</code> now excludes every PK member (the table-level key already indexes each part).
+New concept <code>ModelPrimaryKeyValid&lt;T&gt;</code> (ANDed into the <code>BaseStatement</code> constraint list next to
+<code>ModelAnnotationsValid</code>) rejects: <code>primary</code> + <code>primary_part</code>, <code>primary_autoincrement</code> +
+<code>primary_part</code>, exactly one <code>primary_part</code>, <strong>two or more <code>primary</code>/<code>primary_autoincrement</code>
+members</strong> (the double-<code>primary</code> typo — without this the widened machinery would silently accept it
+as composite), and a PK annotation on an m2m/reverse-FK container, on a <code>std::optional&lt;T&gt;</code>, or
+<code>primary_part</code> + <code>unique</code>. The <code>std::optional</code> and relation-container rejections are gated on
+<code>is_primary_member</code>, so they cover a <strong>single</strong> <code>primary</code> too — a deliberate widening (a nullable PK
+was accepted before #500 and is never correct: SQLite's legacy NULL quirk admits duplicate keys while
+PG rejects them). No in-tree model used that shape. The PK clause writes parts via the canonical column-name writer
+(<code>append_column_name</code>, #422), so an FK part emits <code>warehouse_id</code> — a composite key over FKs is the
+canonical association-table case, and naming the bare member would emit a PK over a nonexistent
+column. <code>calculate_column_defs_size</code> keeps FK columns on the FK-suffix budget for composite models
+(the regular suffix under-counts and <code>ConstexprString</code> truncates silently); <code>build_sql_impl</code> gained a
+whole-SQL <code>std::unreachable()</code> backstop, since the per-column one can't catch a sizing shortfall. (#682 later deleted both hand-maintained budgets: the CREATE TABLE buffer is now measured by running the writer itself against the counting sink — see <a href="../../performance/COMPILE_TIME/#exact-size-create-table-buffer-682">COMPILE_TIME.md</a>.) Autoincrement on a composite key is <strong>unrepresentable</strong>,
+not just useless — SQLite rejects both spellings at parse time and PG's identity is single-column —
+hence the compile-time rejection. <strong>Scope</strong>: annotation + DDL only; UPDATE/DELETE by composite key
+land in #501 (below), INSERT/JOIN and composite FKs in #502–#504.
+See <a href="../../../guide/reference/FIELD_TYPES/">FIELD_TYPES.md</a>.</p>
+<h3 id="update-and-delete-501">UPDATE and DELETE (#501)<a class="headerlink" href="#update-and-delete-501" title="Permanent link">&para;</a></h3>
+<p>The by-key <code>WHERE pk = ?</code> widens to
+<code>WHERE a = ? AND b = ?</code>, AND-joined in declaration order. Three things changed, each with its own
+failure mode. (1) <strong>SQL text</strong>: the clause writer/sizer pair <code>append_pk_where_clause</code> /
+<code>pk_where_clause_size</code> are free functions in <code>statements/field_names.cppm</code> (NOT <code>BaseStatement</code> methods — that class is
+inherited by every statement type, and <code>SchemaStatement</code> already sits at the S1448 ceiling), taking
+the PK-member array as a parameter so <code>erase.cppm</code> and <code>update_grammar.cppm</code> share them without
+depending on each other. Parts go through <code>append_column_name</code> (#422), so an FK part emits
+<code>warehouse_id</code>. (2) <strong>Bind arithmetic</strong>: <code>bind_pk_values</code> binds all N parts via an index sequence
+(each part may be a DIFFERENT type — <code>int</code> + <code>std::string</code> is the canonical shape, so the dispatch is
+per-part at compile time) and threads <code>param_index</code> by REFERENCE, which is what removes the old
+<code>++param_index</code>-per-row stride assumption. In UPDATE the key follows the SET values, so it starts at
+N_set+1. (3) <strong>SET-target gate</strong>: <code>is_settable_member</code> in BOTH <code>update_grammar.cppm</code> and
+<code>upsert_grammar.cppm</code> now tests <code>Base::is_pk_member(M)</code> instead of <code>M != primary_key_</code> — the old test
+excluded only the FIRST part, leaving <code>SET b=? WHERE a=? AND b=?</code> (rewriting the key it matches on)
+legal. <code>bind_field_at_index</code> gained a <strong>separate</strong> <code>SkipAllPK</code> flag rather than widening <code>SkipPK</code>:
+INSERT passes <code>SkipPK</code> too, and composite INSERT is #502 — widening it would silently change INSERT's
+bind order as a side effect. Bulk DELETE uses a <strong>row-value IN list</strong>, <code>(a, b) IN ((?,?),(?,?))</code>
+(PG always, SQLite ≥ 3.15 vs the project's 3.35 floor); the per-column form <code>a IN (…) AND b IN (…)</code>
+is WRONG — it matches the parts' cross product and deletes unlisted keys. Chunking is now
+<code>MAX_CHUNK_ROWS = 799/N</code> since each row costs N parameters. The consteval DELETE grammar moved to a
+new <code>erase_grammar.cppm</code> leaf (mirroring <code>update_grammar.cppm</code>, #434) to keep <code>erase.cppm</code> under the
+file-size limit; its <code>append_row_placeholder_list</code> is shared by the consteval max-chunk builder AND
+the runtime per-count builder, so the two cannot drift into disagreeing placeholder counts.
+Single-PK SQL is byte-identical (regression-asserted), and single-PK UPDATE/DELETE benchmarks are
+within noise (≤1.4% deltas at cv 1.1–2.9%).</p>
+<h3 id="insert-502">INSERT (#502)<a class="headerlink" href="#insert-502" title="Permanent link">&para;</a></h3>
+<p>A composite key is never DB-generated — <code>AUTOINCREMENT</code> (SQLite)
+and <code>GENERATED ... AS IDENTITY</code> (PG) are single-integer-column features, so every key part is
+caller data. That inverts the single-PK rule twice. (1) <strong>The key columns join the INSERT</strong>: the
+<code>SkipPrimaryKey</code> skip in <code>FieldNameGrammar::for_each_field_name</code> and the plain-<code>SkipPK</code> branch of
+<code>skips_pk_column</code> are both gated on <code>!has_composite_pk_</code>, so a composite model emits and binds ALL
+fields in declaration order (one shared consteval iterator feeds the column list, its sizer, and
+the placeholders — they cannot drift). (2) <strong>There is nothing to RETURN</strong>: <code>insert().execute()</code> on
+a composite model returns <code>std::expected&lt;void, Error&gt;</code> with no <code>RETURNING</code> emitted, riding the
+pre-existing <code>ReturnId::No</code> fast path. The plain call resolves there via <code>default_return_id&lt;T&gt;()</code>
+(consteval: <code>No</code> for composite, <code>Yes</code> for single-PK), so the call site is IDENTICAL across model
+shapes; an explicit <code>insert&lt;ReturnId::Yes&gt;</code> on a composite model is a <strong>compile-time error</strong> via
+the <code>ReturnIdSupported&lt;T, R&gt;</code> concept (unconstrained it would emit <code>RETURNING &lt;first part&gt;</code> —
+silently lossy), constraining BOTH <code>QuerySet::insert</code> and <code>InsertStatement::query</code> so the
+diagnostic fires at the user's call site. <code>ReturnId::No</code> stays valid on every model shape (generic
+code that spells it out keeps compiling). The #413 auto-<code>DEFAULT</code> caveat was checked and does not
+fire: that <code>DEFAULT</code> is recovered from a C++ default-member-initializer — a compile-time constant
+already in the caller's object, not a DB-generated value. <code>placeholders_count()</code> widened to
+<code>field_count_</code> for composite models (feeds the upsert <code>auto_update</code> tail offset — #503's path);
+chunking needed NO change (the auto batch size already divides by ALL fields, which becomes exactly
+right once the key columns are bound). Single-PK INSERT SQL is byte-identical
+(regression-asserted) and the <code>RETURNING id</code> path is unchanged. Upsert/<code>ON CONFLICT</code> is #503,
+JOIN #504.</p>
+<h3 id="fks-and-joins-504">FKs and JOINs (#504)<a class="headerlink" href="#fks-and-joins-504" title="Permanent link">&para;</a></h3>
+<p>An FK may reference a composite-PK model, and every JOIN
+path (regular FK, m2m, reverse-FK) works over multi-column keys. An FK to an N-part target occupies
+<strong>N columns</strong>, named <code>&lt;member&gt;_&lt;part&gt;</code> (<code>line_order_id</code>, <code>line_product_id</code>) — the single-column
+<code>&lt;member&gt;_id</code> spelling is unchanged for single-PK targets, so all pre-#504 SQL is byte-identical
+(regression-asserted at every layer). Nullable composite FKs work: <code>std::optional&lt;Target&gt;</code> makes all
+N columns nullable together.</p>
+<p>Four things had to widen in lockstep, each with its own failure mode. (1) <strong>ON clauses</strong> AND-join
+one equality per part (<code>t2.a = t1.fk_a AND t2.b = t1.fk_b</code>) — matching only the first part would
+silently join rows sharing just that part. (2) <strong>The m2m/reverse-FK stitch key</strong> gained <code>StitchKey</code>,
+a fixed 32-byte inline buffer, for composite owners — a composite key is not one integer and may mix
+<code>int</code>/<code>std::string</code>/<code>int64_t</code>; the statement-side extractor and the object-side builder dispatch per
+part on the declared type and must stay in agreement. A <strong>single-column PK still keys the map on a
+bare <code>std::uint64_t</code></strong>, selected by <code>if constexpr</code> on <code>primary_key_column_count_</code>: <code>std::hash&lt;long&gt;</code>
+is the identity function and <code>operator==</code> on a <code>long</code> is one inlined compare, so routing single-PK
+models through <code>StitchKey</code> cost ~4% on the m2m eager-load path (<code>M2MRelation</code> carries a second
+fn-pointer for the narrow extractor; exactly one is populated). (3) <strong>The Q2 <code>IN</code>
+subquery</strong> uses the row-value form <code>(a, b) IN (SELECT a, b FROM …)</code> — the outer comparison side is
+parenthesized but the inner SELECT list is <strong>left unwrapped</strong>, because parenthesizing it makes
+SQLite parse it as one scalar expression rather than N columns. (4) <strong>Junction DDL</strong> emits one
+column per PK part per side, <code>&lt;Side&gt;_&lt;part&gt;</code>, with the PRIMARY KEY listing all N+M and each
+<code>FOREIGN KEY</code> naming the target's real key columns. That last part also fixed a latent bug: the
+old <code>REFERENCES &lt;Side&gt;(id)</code> named a nonexistent column for a composite side — SQLite silently
+accepts an unvalidated FK target, but PG rejects it outright, so composite-PK junction tables could
+not be created on PG at all. Composite PK is supported on <strong>either or both</strong> m2m sides.</p>
+<p>An FK member used as a <code>primary_part</code> stores the <em>referenced</em> key's type, not the whole struct —
+<code>pk_part_storage_type</code> routes through the same <code>is_fk_field</code> check as <code>bind_one_pk_part</code> (#501).
+Without it, a composite key over FKs (the canonical association-table shape) hard-errors inside a
+sizer with a message naming neither model nor field. Column names always go through
+<code>append_column_name</code> (#422), so an FK part emits <code>warehouse_id</code>. Sizing is exact: the junction
+sizer runs the <strong>writer itself</strong> into a counting sink, so the two cannot drift — and note
+<code>ConstexprString&lt;N&gt;</code> holds only <code>N-1</code> bytes (its <code>append</code> stops at <code>len &lt; N - 1</code>), so a buffer
+sized to exactly the rendered length silently drops the final character.</p>
+<h3 id="through-model-m2m-536">Through-model m2m (#536)<a class="headerlink" href="#through-model-m2m-536" title="Permanent link">&para;</a></h3>
+<p><code>many_to_many_through&lt;Model&gt;</code> over a composite side
+failed with <code>no such column: t2.&lt;fk&gt;_&lt;part&gt;_id</code>. Root cause: <strong>two junction tables, two naming
+rules, one code path</strong>. The auto-junction is Storm's SYNTHETIC table, so Storm names its columns —
+<code>&lt;Side&gt;_&lt;part&gt;</code> with each part routed through <code>append_column_name</code> (#422), so an FK part gains
+<code>_id</code>. A through model is a REAL user-declared model whose junction columns are ordinary
+composite-FK columns emitted by the regular model DDL (<code>append_composite_fk_part_column</code>), which
+spells the target part's <strong>bare</strong> identifier: <code>&lt;member&gt;_&lt;part&gt;</code>, no <code>_id</code>. The rules agree for a
+single-column PK and for a composite key of plain columns; they diverge exactly when a PK part is
+itself an FK — the canonical association-table shape, which nothing in-tree exercised. <code>join_grammar.cppm</code>'s
+<code>append_junction_side_col</code>/<code>_list</code> now take a <code>JunctionNaming</code> enum (<code>Auto</code>/<code>Through</code>) derived from
+the same <code>Through</code> alias that picks the table and column base names, so the three cannot disagree
+about which junction is addressed; the single-PK branch stays SHARED (both rules emit exactly
+<code>&lt;side&gt;_id</code> there), which is what keeps all pre-#536 junction SQL byte-identical.</p>
+<p>Fixing the naming alone was not enough — the FK-part shape was unreachable, broken in three more
+places that #504 left on the "does not occur in the current fixtures" path, all the same
+one-hop-out mistake (an FK <strong>part of the FK target's key</strong> stores the REFERENCED row's key, not the
+whole struct — exactly what <code>bind_one_pk_part</code> (#501) already handled for T's OWN key):
+<code>bind_one_fk_part</code> bound the whole struct (a hard <code>BindableType</code> error, so this shape did not
+compile at all), <code>extract_one_fk_part</code> mirrored it, <code>join.cppm</code>'s <code>extract_relation_fk_part</code> (the
+RELATION-side twin, for Q2 result rows — m2m related entities and reverse-FK owners) mirrored it
+again, and <code>append_composite_fk_part_column</code> typed the column from the part's DECLARED type —
+<code>StorageClass::Fallback</code> → nullable <code>TEXT</code> — so the
+table-level <code>FOREIGN KEY</code> compared TEXT against the target's <code>BIGINT</code> key. That last one is the</p>
+<h1 id="519506-asymmetry-again-sqlite-accepted-it-and-silently-never-matched-pg-rejected-the">519/#506 asymmetry again: **SQLite accepted it and silently never matched; PG rejected the<a class="headerlink" href="#519506-asymmetry-again-sqlite-accepted-it-and-silently-never-matched-pg-rejected-the" title="Permanent link">&para;</a></h1>
+<p><code>CREATE TABLE</code>** — so SQLite-only testing was actively misleading, which is why the tests are
+TYPED_TEST executing on both backends rather than SQL-text assertions. All four now route through
+the existing single-source helpers (<code>find_fk_primary_key</code>, <code>pk_part_storage_type</code>, moved above its
+first use in <code>schema.cppm</code>). Every fix is <code>if constexpr</code>-dispatched; single-PK and auto-junction SQL
+is byte-identical and benchmarks are unchanged.</p>
+<h3 id="at-most-4-parts-537">At most 4 parts (#537)<a class="headerlink" href="#at-most-4-parts-537" title="Permanent link">&para;</a></h3>
+<p>A composite key may span at most <strong>4</strong> columns;
+a 5th part is a compile-time error via <code>ModelPrimaryKeyPartLimit&lt;T&gt;</code> (ANDed into the
+<code>BaseStatement</code> constraint list next to <code>ModelPrimaryKeyValid</code>). The bound comes from
+<code>StitchKey</code> (#504), the m2m/reverse-FK stitch-map key: a fixed 32-byte inline buffer into which
+every part writes exactly one 8-byte word, so 4 parts fill it with <strong>zero slack</strong>. The only prior
+guard was <code>assert(len_ + sizeof(word) &lt;= CAPACITY)</code> in <code>append_word</code>, which <code>NDEBUG</code> compiles
+out — absent from exactly the Release configuration where the overrun matters, making a 5-part
+key a SILENT buffer overrun there. The gate reads <code>StitchKey::MAX_PARTS</code> (<code>= CAPACITY /
+sizeof(uint64_t)</code>), <strong>derived not hardcoded</strong>, so the limit cannot go stale against the buffer.
+Growing <code>CAPACITY</code> was rejected: #504 measured a wider key costing ~4% on the stitch hot path
+(hence single-PK models bypassing <code>StitchKey</code> for a bare <code>uint64_t</code>); folding surplus parts was
+rejected in #504 as a <em>mis-stitch</em> (rows attached to the wrong owner), not a recoverable
+collision. Gated at the MODEL rather than at the stitch for two reasons: the stitch runs behind
+<code>M2MRelation</code>'s type-erased fn-pointer vtable where <code>T</code> is out of scope (no call site to name the
+model in a diagnostic), and gating only models that currently declare a relation would make
+adding an unrelated m2m field later fail in a distant file. Single-PK and all in-tree composite
+models (2–3 parts) are unaffected — no SQL or hot-path change, so no benchmark movement.</p>
+<h2 id="key-column-naming-and-typing">Key column naming and typing<a class="headerlink" href="#key-column-naming-and-typing" title="Permanent link">&para;</a></h2>
+<h3 id="pkfk-naming-uses-the-real-identifier-not-a-literal-id-506">PK/FK naming uses the real identifier, not a literal <code>"id"</code> (#506)<a class="headerlink" href="#pkfk-naming-uses-the-real-identifier-not-a-literal-id-506" title="Permanent link">&para;</a></h3>
+<p>The single-PK
+<code>CREATE TABLE</code> branch (<code>append_single_pk_column_def</code>) emits <code>Base::pk_name_</code> (the PK member's
+actual identifier) ahead of the type/constraint suffix, and the per-field FK <code>REFERENCES
+&lt;Related&gt;(&lt;pk&gt;)</code> clause (<code>append_fk_column_def</code>) emits <code>find_fk_primary_key&lt;FieldType&gt;()</code>'s
+identifier — the same helper <code>bind_value_by_type</code> already used for the FK bind splice, so DDL and
+DML are guaranteed to name the same column. Previously both hardcoded the literal <code>"id"</code>, so a
+model whose PK member was not named <code>id</code> got DDL and queries that disagreed at runtime ("no such
+column"). Composite-PK models are unaffected (routed around this branch, #500). The consteval size
+budgets (<code>column_size_budget</code>'s <code>pk_size</code>, <code>fk_references_len</code>) were widened to measure the real
+identifier length instead of assuming the fixed 2-char <code>"id"</code>; <code>id</code>-named models (the ~50 existing
+ones) stay byte-identical. (Those budgets no longer exist since #682 — the buffer is measured from the emitted text.)</p>
+<h3 id="m2m-junction-references-uses-the-real-pk-identifier-519">m2m junction REFERENCES uses the real PK identifier (#519)<a class="headerlink" href="#m2m-junction-references-uses-the-real-pk-identifier-519" title="Permanent link">&para;</a></h3>
+<p>The same fix as #506, one path later.
+<code>detail::append_junction_fk</code>'s single-PK branch emitted the literal <code>REFERENCES &lt;Side&gt;(id)</code>, so an
+m2m whose owner or related PK member is not named <code>id</code> produced junction DDL naming a nonexistent
+column — unexecutable <code>CREATE TABLE</code>, the #506 failure class. (#504 fixed the COMPOSITE branch and
+deliberately left this one: generalising it there would have changed existing junction DDL outside
+that issue's scope.) The branch now emits <code>SideBase::pk_name_</code> — the same source <code>join.cppm</code>'s ON
+clauses read, so junction DDL and the two-query eager load cannot drift. Each side resolves
+INDEPENDENTLY (owner <code>id</code> + related <code>sticker_id</code> is a legal shape). The junction's OWN columns stay
+<code>&lt;Side&gt;_id</code> (<code>append_junction_side_column_name</code>): those are the junction's columns, and <code>join.cppm</code>
+derives them from <code>table_name_ + "_id"</code>, never from <code>pk_name_</code> — renaming the DDL side alone would
+INTRODUCE the very drift this fixes. No sizing change was needed: #504 replaced the old
+<code>5×name + 256</code> heuristic with a budget measured by rendering the emitter into <code>ClauseSizer</code>, so it
+tracks the real identifier automatically. <code>id</code>-named models keep byte-identical junction DDL
+(regression-asserted on the whole string).</p>
+<h3 id="m2m-junction-column-type-follows-the-referenced-pk-565">m2m junction column TYPE follows the referenced PK (#565)<a class="headerlink" href="#m2m-junction-column-type-follows-the-referenced-pk-565" title="Permanent link">&para;</a></h3>
+<p>The third and last hardcode in
+the same function family. <code>append_junction_side_column_def</code>'s single-PK branch typed every junction
+column <code>INTEGER</code>/<code>BIGINT</code> unconditionally, so an m2m between <code>storm::UUID</code>-PK models (#507) emitted
+an integer column whose <code>REFERENCES &lt;Side&gt;(&lt;uuid_pk&gt;)</code> clause — correctly NAMED since #519 — pointed
+at a <code>UUID</code>/<code>TEXT</code> key. <strong>PG rejects that <code>CREATE TABLE</code> outright</strong> (FK type mismatch, so such a
+model could not be created at all); <strong>SQLite accepts it</strong> and stores mismatched affinities silently —
+the #536/#519 asymmetry, which is why the tests are TYPED_TEST executing on both backends rather
+than SQL-text assertions alone. The branch is now GONE, not fixed: <code>primary_key_members_[0]</code> IS
+<code>primary_key_</code> for a single-PK model, so both shapes route through the one
+<code>pk_part_storage_type</code> + <code>storage_class_of</code> + <code>sql_type_for</code> chain the composite branch (#504) and
+the per-field FK path (<code>append_fk_column_def</code>) already used. An integer PK still renders exactly
+<code>INTEGER NOT NULL</code>/<code>BIGINT NOT NULL</code> — byte-identical, regression-asserted on the whole string.
+Each side resolves INDEPENDENTLY, so an integer-PK owner + UUID-PK related is a legal mixed
+junction. No sizing change (the #504 <code>ClauseSizer</code> budget runs the writer itself).</p>
+<h2 id="uuid-primary-keys">UUID primary keys<a class="headerlink" href="#uuid-primary-keys" title="Permanent link">&para;</a></h2>
+<h3 id="the-uuid-pk-path-was-dead-code-until-565">The UUID-PK path was dead code until #565<a class="headerlink" href="#the-uuid-pk-path-was-dead-code-until-565" title="Permanent link">&para;</a></h3>
+<p>Writing #565's executable test exposed that <strong>the whole UUID-PK path had never run</strong>. #507
+shipped as a self-described "partial implementation" whose only UUID-PK model appears in a
+<code>static_assert</code> — it never generated DDL, never ran a query — so three defects sat behind
+<code>if constexpr</code> guards that nothing instantiated. All three are fixed here, since #565's DoD
+(executable junction DDL + insert through it, on both backends) is unmeetable without them:</p>
+<ol>
+<li><strong>UUID-PK DDL never COMPILED</strong>: <code>SchemaStatement</code>'s two <code>uuid_type&lt;D&gt;()</code> calls
+   (<code>append_single_pk_column_def</code>, <code>append_fk_column_def</code>) were UNQUALIFIED, but that helper lives
+   in <code>namespace detail</code> and <code>SchemaStatement</code> sits outside it. <code>detail::</code>-qualified now.</li>
+<li><strong>INSERT dropped the key</strong>: <code>FieldNameGrammar::is_skipped_pk</code> and
+   <code>BaseStatement::skips_pk_column</code> skipped any single-column PK as DB-generated, emitting
+   <code>INSERT INTO UuidDoc (title) VALUES (?)</code> — the caller's key silently discarded, every row
+   landing with a NULL id. Both now also exclude <code>has_uuid_pk_()</code>, the #502 rule one shape wider:
+   <code>AUTOINCREMENT</code>/<code>GENERATED ... AS IDENTITY</code> are single-INTEGER-column features, so a UUID key is
+   always caller data. The two must change TOGETHER — one owns the column list, the other the bind
+   sequence, and a disagreement misaligns values against columns.</li>
+<li><strong>The UUID bind was wrong twice</strong>: <code>bind_optional_or_uuid_pk_field</code> passed a <code>Statement*</code> where
+   <code>bind_uuid_pk</code> takes <code>StmtType&amp;</code>, and returned without <code>++param_index</code> (every sibling branch
+   reaches that through <code>bind_one</code>). The missing increment bound the NEXT field over the key at the
+   same slot and left the last placeholder unset — surfacing as a NOT NULL violation naming the
+   WRONG column.</li>
+</ol>
+<h3 id="572-nothing-is-returned-for-a-caller-supplied-key-breaking">#572 — nothing is RETURNed for a caller-supplied key (BREAKING)<a class="headerlink" href="#572-nothing-is-returned-for-a-caller-supplied-key-breaking" title="Permanent link">&para;</a></h3>
+<p>The fourth defect of the same #507 batch, split out because it changes a return type. Plain
+<code>insert(uuid_model)</code> defaulted to <code>ReturnId::Yes</code>, emitting <code>RETURNING &lt;uuid_pk&gt;</code> and extracting
+that TEXT/UUID column with <code>extract_int64</code> — <code>0</code> on SQLite, garbage or an error on PostgreSQL.
+The caller got an <code>std::expected&lt;int64_t, Error&gt;</code> whose value could never identify the row.</p>
+<p>This is #502's reasoning one shape wider, and the fix is a single named predicate rather than the
+condition repeated per site:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="c1">// BaseStatement&lt;T&gt;, next to has_composite_pk_ / has_uuid_pk_()</span>
+<a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a><span class="k">static</span><span class="w"> </span><span class="k">consteval</span><span class="w"> </span><span class="k">auto</span><span class="w"> </span><span class="n">pk_is_db_generated_</span><span class="p">()</span><span class="w"> </span><span class="o">-&gt;</span><span class="w"> </span><span class="kt">bool</span><span class="w"> </span><span class="p">{</span>
+<a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a><span class="w">    </span><span class="k">return</span><span class="w"> </span><span class="o">!</span><span class="n">has_composite_pk_</span><span class="w"> </span><span class="o">&amp;&amp;</span><span class="w"> </span><span class="o">!</span><span class="n">has_uuid_pk_</span><span class="p">();</span>
+<a id="__codelineno-0-4" name="__codelineno-0-4" href="#__codelineno-0-4"></a><span class="p">}</span>
+</code></pre></div>
+<p><code>AUTOINCREMENT</code> and <code>GENERATED ... AS IDENTITY</code> are single-INTEGER-column features, so only a
+single-column integer key has a value the database produces. Four decision points read the
+predicate, and they are load-bearing in PAIRS — a disagreement emits a <code>RETURNING</code> clause the
+runtime never reads, or reads a row the SQL never asked for:</p>
+<table>
+<thead>
+<tr>
+<th>Site</th>
+<th>Decides</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>default_return_id&lt;T&gt;()</code></td>
+<td>what plain <code>insert()</code> resolves to</td>
+</tr>
+<tr>
+<td><code>ReturnIdSupported&lt;T, R&gt;</code></td>
+<td>rejects an explicit <code>ReturnId::Yes</code> at the CALL SITE</td>
+</tr>
+<tr>
+<td><code>UpsertGrammar::nothing_sql()</code> / <code>update_sql()</code></td>
+<td>whether the SQL TEXT carries <code>RETURNING</code></td>
+</tr>
+<tr>
+<td><code>execute_upsert_nothing()</code> / <code>UpsertUpdateRunner::run()</code></td>
+<td>whether the runtime READS a returned row</td>
+</tr>
+</tbody>
+</table>
+<p><strong>The upsert half was an unowned defect.</strong> #572 as filed covered only plain <code>insert()</code>; the two
+<code>UpsertGrammar</code> clauses gated <code>RETURNING</code> on <code>has_composite_pk_</code> alone, so
+<code>insert(uuid_model).on_conflict&lt;...&gt;().update&lt;...&gt;()</code> kept emitting the same lossy statement one
+call away from the fix. Folded in here rather than left for a fifth issue — the #507 pattern this
+whole document exists to record.</p>
+<p>Breaking surface: <code>insert(uuid_model).execute()</code> and both upsert terminals now return
+<code>std::expected&lt;void, Error&gt;</code>. <code>insert&lt;ReturnId::No&gt;</code> was already valid and is unchanged, so the
+in-tree callers written against the gap (<code>test_junction_column_type.cpp</code>, <code>test_upsert.cpp</code>)
+needed no edit.</p>
+<p>Note the two halves are gated the same way but reached differently: <code>ReturnId</code> is a template
+argument on <code>insert()</code> only, and does NOT propagate through <code>on_conflict()</code>. The upsert terminals
+read the model shape directly, so <code>insert&lt;ReturnId::No&gt;(int_pk_obj).on_conflict&lt;…&gt;().update&lt;…&gt;()</code>
+still emits <code>RETURNING</code> and still returns the id. That predates this issue and is unchanged by it.</p>
+<h3 id="585-a-key-insert-emits-can-be-an-on-conflict-target">#585 — a key INSERT EMITS can be an ON CONFLICT target<a class="headerlink" href="#585-a-key-insert-emits-can-be-an-on-conflict-target" title="Permanent link">&para;</a></h3>
+<p>Folded into the same change, because it is the same dead premise one clause over.
+<code>ConflictTargetUnique</code> accepts a single <code>unique</code> field, a matching <code>UniqueIndex&lt;...&gt;</code>, or the full
+PK column set — the last via <code>target_matches_primary_key</code>, which was gated on <code>has_composite_pk_</code>
+and justified by its own comment:</p>
+<blockquote>
+<p>Gated on <code>has_composite_pk_</code> so a single-column PK is NOT matched here: INSERT omits it from the
+statement entirely, so it can never conflict.</p>
+</blockquote>
+<p>True for a DB-generated integer key. False for a <code>storm::UUID</code> key ever since #565 put that column
+back into the INSERT — a duplicate UUID key really does raise a PK violation. So the natural
+upsert was a compile error:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a><span class="n">qs</span><span class="p">.</span><span class="n">insert</span><span class="p">(</span><span class="n">doc</span><span class="p">).</span><span class="n">on_conflict</span><span class="o">&lt;</span><span class="n">fields</span><span class="o">::</span><span class="n">UuidDoc</span><span class="p">.</span><span class="n">id</span><span class="o">&gt;</span><span class="p">().</span><span class="n">update</span><span class="o">&lt;</span><span class="n">fields</span><span class="o">::</span><span class="n">UuidDoc</span><span class="p">.</span><span class="n">title</span><span class="o">&gt;</span><span class="p">().</span><span class="n">execute</span><span class="p">();</span>
+<a id="__codelineno-1-2" name="__codelineno-1-2" href="#__codelineno-1-2"></a><span class="c1">// pre-#585: constraints not satisfied — ConflictTargetUnique&lt;UuidDoc, ^^UuidDoc::id&gt; is false</span>
+</code></pre></div>
+<p>…workaround-able only by declaring a redundant <code>UniqueIndex&lt;^^UuidDoc::id&gt;</code> over the primary key,
+which emits a duplicate unique constraint.</p>
+<p>The gate is now <code>!pk_is_db_generated_()</code> — the same "does INSERT emit this key" question, so the
+integer case stays rejected <strong>for the reason that actually applies to it</strong> rather than by accident
+of arity:</p>
+<table>
+<thead>
+<tr>
+<th>Key</th>
+<th>In the INSERT?</th>
+<th>Can collide?</th>
+<th>Valid conflict target</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>single INTEGER (<code>AUTOINCREMENT</code>/IDENTITY)</td>
+<td>no — DB generates it</td>
+<td>no</td>
+<td>rejected</td>
+</tr>
+<tr>
+<td>single <code>storm::UUID</code></td>
+<td>yes — caller data (#565)</td>
+<td>yes</td>
+<td><strong>accepted (#585)</strong></td>
+</tr>
+<tr>
+<td>composite (all parts)</td>
+<td>yes — caller data (#502)</td>
+<td>yes</td>
+<td>accepted (#503)</td>
+</tr>
+<tr>
+<td>composite (strict subset)</td>
+<td>—</td>
+<td>—</td>
+<td>rejected (not unique alone)</td>
+</tr>
+</tbody>
+</table>
+<p>PostgreSQL is the backend that proves this rather than merely accepting it: it requires the
+<code>ON CONFLICT</code> target to be backed by a real unique constraint and errors otherwise, so the
+round-trip tests fail loudly there if the PK were not genuinely the constraint named.</p>
+<p><strong>Known limitation (#586)</strong>: the table above classifies <em>every</em> single-column INTEGER key as
+DB-generated, so there is no way to declare a <strong>caller-assigned integer key</strong> — <code>insert()</code> silently
+drops the caller's value and lets the DB assign its own. The DDL already permits one on both
+backends (PG emits <code>GENERATED BY DEFAULT AS IDENTITY</code>, the permissive form, not <code>GENERATED ALWAYS</code>;
+SQLite's plain <code>INTEGER PRIMARY KEY</code> is a rowid alias), and <code>primary</code> vs
+<code>primary_autoincrement</code> currently differ in exactly one DDL keyword — nothing under
+<code>src/orm/statements/**</code> reads <code>is_primary_autoincrement</code> at all. Supporting it is one more term in
+<code>pk_is_db_generated_()</code>, which already feeds all five decisions that follow. The blocking question
+is how "caller assigns" gets <em>declared</em>: unlike a UUID (empty = unset), an integer <code>id == 0</code> is
+indistinguishable from a deliberately-assigned zero, so it needs an annotation rather than a
+runtime check.</p>
+<h3 id="573-updatedelete-by-an-unset-uuid-key-silently-no-opped">#573 — UPDATE/DELETE by an unset UUID key silently no-opped<a class="headerlink" href="#573-updatedelete-by-an-unset-uuid-key-silently-no-opped" title="Permanent link">&para;</a></h3>
+<p><code>BaseStatement::bind_one_pk_part</code> bound every by-key PK part (the WHERE clause <code>update(obj)</code> /
+<code>erase(obj)</code> use) through the generic <code>bind_value_by_type</code> → <code>bind_parameter_value</code> →
+<code>utilities::bind_uuid</code>, which <strong>auto-generates a fresh random UUID when the value is empty</strong>.
+Correct for a non-PK UUID column (an unset <code>storm::UUID</code> field on INSERT should get a value); wrong
+for a KEY used to locate a row. An unset key silently bound a random UUID into the WHERE clause,
+matched zero rows, and reported success — the #501/#502 failure mode (a hardcode/wrong-path only a
+non-default model shape reaches) one call site over, this time on the READ-back-by-key side rather
+than DDL or INSERT.</p>
+<p>INSERT already had the right guard (<code>bind_optional_or_uuid_pk_field</code> → <code>utilities::bind_uuid_pk</code>,
+which rejects an empty value instead of generating one — see "UUID-PK path was dead code until</p>
+<h1 id="565-above-the-fix-routes-bind_one_pk_part-through-the-same-bind_uuid_pk-dispatched">565" above). The fix routes <code>bind_one_pk_part</code> through the same <code>bind_uuid_pk</code>, dispatched<a class="headerlink" href="#565-above-the-fix-routes-bind_one_pk_part-through-the-same-bind_uuid_pk-dispatched" title="Permanent link">&para;</a></h1>
+<p><code>if constexpr</code> on the part's own type (or, for an FK part, the referenced row's PK type via
+<code>find_fk_primary_key&lt;FKType&gt;()</code>) so an integer-PK model's bind is byte-identical to before — no
+runtime branch added to the single-row UPDATE/DELETE hot path.</p>
+<p><strong>Residual gap fixed separately — same root cause, different call site, tracked as #609:</strong> a
+<code>.where(field == storm::UUID{})</code> filter comparison still auto-generated. WHERE operands bind through
+<code>ComparisonExpr</code>/<code>InExpression</code>/<code>BetweenExpr</code> → <code>bind_parameter_value</code> → <code>bind_uuid</code>, one level below
+where the #573 fix landed — genuinely silent (no FK constraint to catch it), whether or not <code>field</code>
+happens to be the PK. See
+<a href="../../../guide/features/WHERE_CLAUSES/">docs/guide/features/WHERE_CLAUSES.md</a> and
+<a href="../../../guide/reference/FIELD_TYPES/">docs/guide/reference/FIELD_TYPES.md</a> for the shipped guard.
+A narrower residual — the guard keys off the <em>operand's</em> type, not the <em>column's</em>, so a
+string/YAML-spelled operand against a UUID column still bypasses it — remains open as #622.</p>
+<h3 id="608-insert-of-a-composite-key-whose-fk-part-targets-a-uuid-key-still-auto-generated">#608 — INSERT of a composite key whose FK part targets a UUID key still auto-generated<a class="headerlink" href="#608-insert-of-a-composite-key-whose-fk-part-targets-a-uuid-key-still-auto-generated" title="Permanent link">&para;</a></h3>
+<p><code>bind_field_at_index</code> dispatches <code>is_fk_field(member)</code> <em>before</em> it would reach the UUID-PK guard
+<code>bind_optional_or_uuid_pk_field</code> gives a bare (non-FK) UUID PK member, so <code>bind_fk_field_at_index</code>
+routed the FK target's value straight through <code>bind_one</code> → <code>bind_value_by_type</code> →
+<code>utilities::bind_uuid</code>, which auto-generates a fresh random UUID when the value is empty — the same
+failure mode as #573, one call site over, on the INSERT side rather than the by-key WHERE side. Not
+silent — SQLite (<code>PRAGMA foreign_keys = ON</code>) and PostgreSQL both reject the fabricated key with a
+FOREIGN KEY constraint error — but it names the wrong problem instead of #573's own guard message.</p>
+<p>Fixed by threading the same <code>is_pk_member</code> + <code>bind_pk_scalar</code> dispatch #573 gave <code>bind_one_pk_part</code>
+into <code>bind_fk_field_at_index</code>'s single-column-target branch: when the FK member is itself a
+composite-PK part, its target value routes through <code>bind_pk_scalar</code> (which dispatches to
+<code>bind_uuid_pk</code> for a <code>storm::UUID</code> target) instead of the generic <code>bind_one</code>. Scoped to the
+single-column FK-target shape (<code>fk_primary_key_count&lt;FKType&gt;() == 1</code>, the shape #608 and its tests
+describe) — the composite-FK-target path (<code>bind_fk_parts</code>/<code>bind_one_fk_part</code>) is left alone because
+it is unreachable with <code>is_pk_member(member)</code> true, not merely untested: <code>valid_fk_key_target</code>
+(<code>model_concepts.cppm</code>, guarding <code>is_primary_key_part_typed_member</code>) rejects a <code>primary_part</code> FK whose target
+itself has a composite key at the <code>PrimaryKeyType&lt;T&gt;</code> constraint, before such a model can even
+instantiate <code>BaseStatement</code>. The same constraint rejects an optional FK as a PK part, which is why
+the sibling optional-FK branch a few lines above is untouched too — both guards must move together
+if <code>valid_fk_key_target</code> is ever widened (see the warning above <code>valid_fk_key_target</code> in <code>model_concepts.cppm</code>).</p>
+
+
+
+
+
+
+
+
+
+
+
+
+                
+              </article>
+            </div>
+          
+          
+<script>var target=document.getElementById(location.hash.slice(1));target&&target.name&&(target.checked=target.name.startsWith("__tabbed_"))</script>
+        </div>
+        
+          <button type="button" class="md-top md-icon" data-md-component="top" hidden>
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M13 20h-2V8l-5.5 5.5-1.42-1.42L12 4.16l7.92 7.92-1.42 1.42L13 8z"/></svg>
+  Back to top
+</button>
+        
+      </main>
+      
+        <footer class="md-footer">
+  
+  <div class="md-footer-meta md-typeset">
+    <div class="md-footer-meta__inner md-grid">
+      <div class="md-copyright">
+  
+  
+    Made with
+    <a href="https://squidfunk.github.io/mkdocs-material/" target="_blank" rel="noopener">
+      Material for MkDocs
+    </a>
+  
+</div>
+      
+    </div>
+  </div>
+</footer>
+      
+    </div>
+    <div class="md-dialog" data-md-component="dialog">
+      <div class="md-dialog__inner md-typeset"></div>
+    </div>
+    
+    
+    
+      
+      
+      <script id="__config" type="application/json">{"annotate": null, "base": "../../..", "features": ["navigation.sections", "navigation.expand", "navigation.top", "search.suggest", "search.highlight", "content.code.copy"], "search": "../../../assets/javascripts/workers/search.a7633da7.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
+    
+    
+      <script src="../../../assets/javascripts/bundle.c21346df.min.js"></script>
+      
+    
+  </body>
+</html>

@@ -1,0 +1,4209 @@
+
+<!doctype html>
+<html lang="en" class="no-js">
+  <head>
+    
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width,initial-scale=1">
+      
+        <meta name="description" content="C++26 ORM with compile-time reflection for SQLite">
+      
+      
+      
+        <link rel="canonical" href="https://spiritecosse.github.io/storm/internals/performance/COMPILE_TIME/">
+      
+      
+      
+      
+        
+      
+      
+      <link rel="icon" href="../../../assets/images/favicon.png">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.8.0">
+    
+    
+      
+        <title>Compile-Time Analysis - Storm ORM</title>
+      
+    
+    
+      <link rel="stylesheet" href="../../../assets/stylesheets/main.57a0d79d.min.css">
+      
+        
+        <link rel="stylesheet" href="../../../assets/stylesheets/palette.fb2fffe2.min.css">
+      
+      
+
+
+    
+    
+      
+    
+    
+      
+        
+        
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+        <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Roboto:300,300i,400,400i,700,700i%7CRoboto+Mono:400,400i,700,700i&display=fallback">
+        <style>:root{--md-text-font:"Roboto";--md-code-font:"Roboto Mono"}</style>
+      
+    
+    
+    <script>__md_scope=new URL("../../..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
+    
+      
+
+    
+    
+  </head>
+  
+  
+    
+    
+      
+    
+    
+    
+    
+    <body dir="ltr" data-md-color-scheme="default" data-md-color-primary="indigo" data-md-color-accent="indigo">
+  
+    
+    <input class="md-toggle" data-md-toggle="drawer" type="checkbox" id="__drawer" autocomplete="off">
+    <input class="md-toggle" data-md-toggle="search" type="checkbox" id="__search" autocomplete="off">
+    <label class="md-overlay" for="__drawer"></label>
+    <div data-md-component="skip">
+      
+        
+        <a href="#compile-time-analysis" class="md-skip">
+          Skip to content
+        </a>
+      
+    </div>
+    <div data-md-component="announce">
+      
+    </div>
+    
+    
+      
+
+  
+
+<header class="md-header md-header--shadow" data-md-component="header">
+  <nav class="md-header__inner md-grid" aria-label="Header">
+    <a href="../../.." title="Storm ORM" class="md-header__button md-logo" aria-label="Storm ORM" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    <label class="md-header__button md-icon" for="__drawer">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M3 6h18v2H3zm0 5h18v2H3zm0 5h18v2H3z"/></svg>
+    </label>
+    <div class="md-header__title" data-md-component="header-title">
+      <div class="md-header__ellipsis">
+        <div class="md-header__topic">
+          <span class="md-ellipsis">
+            Storm ORM
+          </span>
+        </div>
+        <div class="md-header__topic" data-md-component="header-topic">
+          <span class="md-ellipsis">
+            
+              Compile-Time Analysis
+            
+          </span>
+        </div>
+      </div>
+    </div>
+    
+      
+        <form class="md-header__option" data-md-component="palette">
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="" data-md-color-scheme="default" data-md-color-primary="indigo" data-md-color-accent="indigo"  aria-label="Switch to dark mode"  type="radio" name="__palette" id="__palette_0">
+    
+      <label class="md-header__button md-icon" title="Switch to dark mode" for="__palette_1" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a4 4 0 0 0-4 4 4 4 0 0 0 4 4 4 4 0 0 0 4-4 4 4 0 0 0-4-4m0 10a6 6 0 0 1-6-6 6 6 0 0 1 6-6 6 6 0 0 1 6 6 6 6 0 0 1-6 6m8-9.31V4h-4.69L12 .69 8.69 4H4v4.69L.69 12 4 15.31V20h4.69L12 23.31 15.31 20H20v-4.69L23.31 12z"/></svg>
+      </label>
+    
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="" data-md-color-scheme="slate" data-md-color-primary="indigo" data-md-color-accent="indigo"  aria-label="Switch to light mode"  type="radio" name="__palette" id="__palette_1">
+    
+      <label class="md-header__button md-icon" title="Switch to light mode" for="__palette_0" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 18c-.89 0-1.74-.2-2.5-.55C11.56 16.5 13 14.42 13 12s-1.44-4.5-3.5-5.45C10.26 6.2 11.11 6 12 6a6 6 0 0 1 6 6 6 6 0 0 1-6 6m8-9.31V4h-4.69L12 .69 8.69 4H4v4.69L.69 12 4 15.31V20h4.69L12 23.31 15.31 20H20v-4.69L23.31 12z"/></svg>
+      </label>
+    
+  
+</form>
+      
+    
+    
+      <script>var palette=__md_get("__palette");if(palette&&palette.color){if("(prefers-color-scheme)"===palette.color.media){var media=matchMedia("(prefers-color-scheme: light)"),input=document.querySelector(media.matches?"[data-md-color-media='(prefers-color-scheme: light)']":"[data-md-color-media='(prefers-color-scheme: dark)']");palette.color.media=input.getAttribute("data-md-color-media"),palette.color.scheme=input.getAttribute("data-md-color-scheme"),palette.color.primary=input.getAttribute("data-md-color-primary"),palette.color.accent=input.getAttribute("data-md-color-accent")}for(var[key,value]of Object.entries(palette.color))document.body.setAttribute("data-md-color-"+key,value)}</script>
+    
+    
+    
+      
+      
+        <label class="md-header__button md-icon" for="__search">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        </label>
+        <div class="md-search" data-md-component="search" role="dialog">
+  <label class="md-search__overlay" for="__search"></label>
+  <div class="md-search__inner" role="search">
+    <form class="md-search__form" name="search">
+      <input type="text" class="md-search__input" name="query" aria-label="Search" placeholder="Search" autocapitalize="off" autocorrect="off" autocomplete="off" spellcheck="false" data-md-component="search-query" required>
+      <label class="md-search__icon md-icon" for="__search">
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
+      </label>
+      <nav class="md-search__options" aria-label="Search">
+        
+        <button type="reset" class="md-search__icon md-icon" title="Clear" aria-label="Clear" tabindex="-1">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+        </button>
+      </nav>
+      
+        <div class="md-search__suggest" data-md-component="search-suggest"></div>
+      
+    </form>
+    <div class="md-search__output">
+      <div class="md-search__scrollwrap" tabindex="0" data-md-scrollfix>
+        <div class="md-search-result" data-md-component="search-result">
+          <div class="md-search-result__meta">
+            Initializing search
+          </div>
+          <ol class="md-search-result__list" role="presentation"></ol>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+      
+    
+    
+      <div class="md-header__source">
+        <a href="https://github.com/spiritEcosse/storm" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    spiritEcosse/storm
+  </div>
+</a>
+      </div>
+    
+  </nav>
+  
+</header>
+    
+    <div class="md-container" data-md-component="container">
+      
+      
+        
+          
+        
+      
+      <main class="md-main" data-md-component="main">
+        <div class="md-main__inner md-grid">
+          
+            
+              
+              <div class="md-sidebar md-sidebar--primary" data-md-component="sidebar" data-md-type="navigation" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+
+
+<nav class="md-nav md-nav--primary" aria-label="Navigation" data-md-level="0">
+  <label class="md-nav__title" for="__drawer">
+    <a href="../../.." title="Storm ORM" class="md-nav__button md-logo" aria-label="Storm ORM" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    Storm ORM
+  </label>
+  
+    <div class="md-nav__source">
+      <a href="https://github.com/spiritEcosse/storm" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    spiritEcosse/storm
+  </div>
+</a>
+    </div>
+  
+  <ul class="md-nav__list" data-md-scrollfix>
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../.." class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Home
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_2" >
+        
+          
+          <label class="md-nav__link" for="__nav_2" id="__nav_2_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Guide
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_2_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_2">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Guide
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../guide/COOKBOOK/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Cookbook
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    
+    
+    
+    
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_2_2" >
+        
+          
+          <label class="md-nav__link" for="__nav_2_2" id="__nav_2_2_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Features
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_2_2_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_2_2">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Features
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../guide/features/CRUD_OPERATIONS/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    CRUD Operations
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../guide/features/SELECT_QUERIES/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    SELECT Queries
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../guide/features/WHERE_CLAUSES/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    WHERE Clauses
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../guide/features/JOIN_OPERATIONS/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    JOIN Operations
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../guide/features/BATCH_OPERATIONS/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Batch Operations
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../guide/features/REFERENTIAL_INTEGRITY/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Referential Integrity
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../guide/features/CONNECTION_TUNING/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Connection Tuning
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    
+    
+    
+    
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_2_3" >
+        
+          
+          <label class="md-nav__link" for="__nav_2_3" id="__nav_2_3_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Reference
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_2_3_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_2_3">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Reference
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../guide/reference/FIELD_TYPES/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Field Types
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../guide/reference/MIGRATIONS/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Migrations
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_3" >
+        
+          
+          <label class="md-nav__link" for="__nav_3" id="__nav_3_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Internals
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_3_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_3">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Internals
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    
+    
+    
+    
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_3_1" >
+        
+          
+          <label class="md-nav__link" for="__nav_3_1" id="__nav_3_1_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Architecture
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_3_1_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_3_1">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Architecture
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../architecture/OVERVIEW/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Overview
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../architecture/DESIGN_DECISIONS/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Design Decisions
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../architecture/REFLECTION/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Reflection
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../architecture/SQL_GENERATION/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    SQL Generation
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../architecture/MODULE_SYSTEM/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Module System
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../architecture/STATEMENT_CACHING/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Statement Caching
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../architecture/COMPILE_TIME_VS_RUNTIME/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Compile-Time vs Runtime
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    
+    
+    
+    
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_3_2" >
+        
+          
+          <label class="md-nav__link" for="__nav_3_2" id="__nav_3_2_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Building
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_3_2_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_3_2">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Building
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../building/GETTING_STARTED/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Getting Started
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../building/COMMON_TASKS/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Common Tasks
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../building/ADDING_FEATURES/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Adding Features
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../building/PRE_COMMIT/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Pre-Commit
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../building/FORMATTING/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Formatting
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    
+    
+    
+    
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_3_3" >
+        
+          
+          <label class="md-nav__link" for="__nav_3_3" id="__nav_3_3_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Testing
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_3_3_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_3_3">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Testing
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../testing/TESTING/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Testing
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../testing/CODE_COVERAGE/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Code Coverage
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../testing/SANITIZERS/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Sanitizers
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../testing/FUZZING/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Fuzzing
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../testing/MSAN_LIBC_FIX/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    MSAN libc Fix
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    
+    
+    
+    
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_3_4" >
+        
+          
+          <label class="md-nav__link" for="__nav_3_4" id="__nav_3_4_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Performance
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_3_4_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_3_4">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Performance
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../PERFORMANCE/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Performance
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../BENCHMARK_DASHBOARD/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Benchmark Dashboard
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../JOIN_ANALYSIS/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    JOIN Analysis
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../DISTINCT_ANALYSIS/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    DISTINCT Analysis
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    
+    
+    
+    
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_3_5" >
+        
+          
+          <label class="md-nav__link" for="__nav_3_5" id="__nav_3_5_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Compiler
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_3_5_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_3_5">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Compiler
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../compiler/COMPILER_ISSUES/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Compiler Issues
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../compiler/COMPILER_ATTRIBUTES/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Compiler Attributes
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../compiler/CPP26_CODING_STANDARDS/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    C++26 Coding Standards
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../compiler/CODE_QUALITY/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Code Quality
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_4" >
+        
+          
+          <label class="md-nav__link" for="__nav_4" id="__nav_4_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Archive
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_4_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_4">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Archive
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../archive/SELECT_OPTIMIZATION_REPORT/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    SELECT Optimization Report
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../archive/SELECT_PERFORMANCE_ANALYSIS/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    SELECT Performance Analysis
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../archive/UPDATE_OPTIMIZATION_REPORT/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    UPDATE Optimization Report
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+  </ul>
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+            
+              
+              <div class="md-sidebar md-sidebar--secondary" data-md-component="sidebar" data-md-type="toc" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#where-the-time-goes" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Where the time goes
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Where the time goes">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#re-measured-after-634-2026-09-08" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Re-measured after #634 (2026-09-08)
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#the-per-tu-floor" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        The per-TU floor
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#after-the-pch-issue-633" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        After the PCH (issue #633)
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="After the PCH (issue #633)">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#what-that-residual-actually-is" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        What that residual actually is
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#what-one-average-tu-is-made-of" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        What one average TU is made of
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="What one average TU is made of">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#the-fixture-model-audit-measured-and-empty" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        The fixture-model audit — measured, and empty
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#inside-the-fixture-layer-and-why-its-biggest-item-cannot-be-moved" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Inside the fixture layer — and why its biggest item cannot be moved
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#the-yaml-corpus-is-not-the-problem" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        The YAML corpus is not the problem
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#what-was-tried-and-rejected" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        What was tried and rejected
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="What was tried and rejected">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#ccache-safe-but-the-bmis-are-not-byte-reproducible" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        ccache — safe, but the BMIs are not byte-reproducible
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="ccache — safe, but the BMIs are not byte-reproducible">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#the-superseded-first-round" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        The superseded first round
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#unity_build-mutually-exclusive-with-module-scanning" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        UNITY_BUILD — mutually exclusive with module scanning
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#extern-template-no-effect-on-time" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        extern template — no effect on time
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#stdvisit-over-expressionvariant-swapped-for-a-switch-no-reproducible-effect" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        std::visit over ExpressionVariant — swapped for a switch, no reproducible effect
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="std::visit over ExpressionVariant — swapped for a switch, no reproducible effect">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#the-measurement-mistake-this-cost-worth-not-repeating" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        The measurement mistake this cost, worth not repeating
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#import-storm-inside-the-pch-a-regression-not-a-win-633" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        import storm; inside the PCH — a regression, not a win (#633)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#narrowing-storm_orm_querysets-exports-633" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Narrowing storm_orm_queryset's exports (#633)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#tests-importing-submodules-instead-of-the-umbrella-633" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Tests importing submodules instead of the umbrella (#633)
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+          
+          
+            <div class="md-content" data-md-component="content">
+              
+              <article class="md-content__inner md-typeset">
+                
+                  
+
+
+  
+  
+
+
+<h1 id="compile-time-analysis">Compile-Time Analysis<a class="headerlink" href="#compile-time-analysis" title="Permanent link">&para;</a></h1>
+<p>Where Storm's build time actually goes, measured rather than assumed, and what
+moves it. All numbers below are measurements on a 4-core dev container
+(clang-p2996, <code>ninja-debug</code> unless stated), reproducible with the methods in
+<a href="#method">Method</a>.</p>
+<p><strong>Summary</strong>: the build is dominated by the ~110 hand-written test TUs, not by
+the YAML-driven test corpus. Each test TU used to pay a <strong>~5.8 s fixed floor</strong>
+before its first assertion, <strong>entirely frontend</strong> — Backend is 0.03 s. The gtest
+PCH removed most of that floor; what survives it is measured in
+<a href="#after-the-pch-issue-633">After the PCH</a>.</p>
+<hr />
+<h2 id="where-the-time-goes">Where the time goes<a class="headerlink" href="#where-the-time-goes" title="Permanent link">&para;</a></h2>
+<p>Object compiles only, ninja edges deduplicated (a C++ module edge emits both
+<code>.pcm</code> and <code>.o</code> and must be counted once):</p>
+<table>
+<thead>
+<tr>
+<th>bucket</th>
+<th style="text-align: right;">files</th>
+<th style="text-align: right;">sec</th>
+<th style="text-align: right;">%</th>
+<th style="text-align: right;">avg</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>hand-written test TUs</td>
+<td style="text-align: right;">110</td>
+<td style="text-align: right;">2558</td>
+<td style="text-align: right;"><strong>85.2%</strong></td>
+<td style="text-align: right;">23.3s</td>
+</tr>
+<tr>
+<td>storm library modules</td>
+<td style="text-align: right;">35</td>
+<td style="text-align: right;">216</td>
+<td style="text-align: right;">7.2%</td>
+<td style="text-align: right;">6.2s</td>
+</tr>
+<tr>
+<td>YAML corpus TUs</td>
+<td style="text-align: right;">4</td>
+<td style="text-align: right;">159</td>
+<td style="text-align: right;"><strong>5.3%</strong></td>
+<td style="text-align: right;">39.7s</td>
+</tr>
+<tr>
+<td>mock test binaries</td>
+<td style="text-align: right;">6</td>
+<td style="text-align: right;">54</td>
+<td style="text-align: right;">1.8%</td>
+<td style="text-align: right;">9.0s</td>
+</tr>
+</tbody>
+</table>
+<p>Total ≈ <strong>3003 s</strong> of compile CPU. Release is ~32% more expensive again (3954 s)
+despite Debug carrying coverage instrumentation — <code>-O2</code> over this much template
+instantiation costs more than the instrumentation does.</p>
+<p>By test directory: <code>query/</code> 42.6%, <code>schema/</code> 24.3%, <code>crud/</code> 19.3%, <code>yaml/</code> 6.2%.</p>
+<p>That table is the <strong>baseline</strong>, before any of <a href="#what-was-fixed">What was fixed</a> —
+its 23.3 s average per test TU is the pre-PCH figure, when each TU still paid the
+5.8 s floor below.</p>
+<h3 id="re-measured-after-634-2026-09-08">Re-measured after #634 (2026-09-08)<a class="headerlink" href="#re-measured-after-634-2026-09-08" title="Permanent link">&para;</a></h3>
+<p>Everything above is arithmetic from that baseline minus per-change deltas. This
+is an actual whole-build measurement of the current tree, so the two can be
+compared for <em>shape</em> — but <strong>not</strong> subtracted for a saving: it is a different
+machine, and the doc's own rule applies (read the deltas within a section, not
+absolute seconds across sections).</p>
+<p>Method exactly as in <a href="#method">Method</a>, and reproducible with
+<code>scripts/ninjalog_stats.py</code>: <code>rm -rf build/debug</code>, configure + build
+<code>ninja-debug</code> to completion, then</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a>scripts/ninjalog_stats.py build/debug/.ninja_log
+</code></pre></div>
+<p>which deduplicates on <code>(start, end, cmdhash)</code> and counts object compiles only —
+the 217 module-scan edges (<code>.ddi</code>/<code>.dd</code>/<code>.modmap</code>, 48 s together) are excluded,
+as they are above, and reported separately so the exclusion stays visible.</p>
+<table>
+<thead>
+<tr>
+<th>bucket</th>
+<th style="text-align: right;">files</th>
+<th style="text-align: right;">sec</th>
+<th style="text-align: right;">%</th>
+<th style="text-align: right;">avg</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>hand-written test TUs</td>
+<td style="text-align: right;">110</td>
+<td style="text-align: right;">1518</td>
+<td style="text-align: right;"><strong>73.8%</strong></td>
+<td style="text-align: right;">13.8s</td>
+</tr>
+<tr>
+<td>storm library modules</td>
+<td style="text-align: right;">70</td>
+<td style="text-align: right;">336</td>
+<td style="text-align: right;">16.3%</td>
+<td style="text-align: right;">4.8s</td>
+</tr>
+<tr>
+<td>YAML corpus TUs</td>
+<td style="text-align: right;">5</td>
+<td style="text-align: right;">104</td>
+<td style="text-align: right;">5.1%</td>
+<td style="text-align: right;">20.9s</td>
+</tr>
+<tr>
+<td>other (gtest/gmock, std module, tools, deps)</td>
+<td style="text-align: right;">8</td>
+<td style="text-align: right;">52</td>
+<td style="text-align: right;">2.5%</td>
+<td style="text-align: right;">6.5s</td>
+</tr>
+<tr>
+<td>mock test binaries</td>
+<td style="text-align: right;">6</td>
+<td style="text-align: right;">47</td>
+<td style="text-align: right;">2.3%</td>
+<td style="text-align: right;">7.9s</td>
+</tr>
+</tbody>
+</table>
+<p>Total <strong>2059 s</strong> of object-compile CPU over 199 edges, <strong>397 s wall</strong> (≈5.2x
+effective parallelism on 4 cores). Test TUs come out at 110 and mock binaries at
+6, both matching the baseline exactly, which is what makes the rows comparable;
+the <code>storm library modules</code> row deliberately does not — 70 here counts the
+synthesized-module BMI edges that the baseline's 35 (<code>.cppm</code> files only) leaves
+out.</p>
+<p><strong>Host for this measurement</strong> — recorded because the baseline's is not, and the
+absolute seconds mean nothing without it:</p>
+<table>
+<thead>
+<tr>
+<th></th>
+<th></th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>CPU</td>
+<td>Intel Xeon @ 2.80 GHz, <strong>4 vCPU</strong></td>
+</tr>
+<tr>
+<td>RAM</td>
+<td>16 GB</td>
+</tr>
+<tr>
+<td>kernel / host OS</td>
+<td>Linux 6.18.44-fc-v24, Ubuntu 24.04.4 LTS (sandboxed microVM)</td>
+</tr>
+<tr>
+<td>disk</td>
+<td>virtio <code>/dev/vda</code>, ext4</td>
+</tr>
+<tr>
+<td>container</td>
+<td><code>docker/ci/Dockerfile</code> (Manjaro base) via <code>scripts/dev-container.sh</code></td>
+</tr>
+<tr>
+<td>compiler</td>
+<td>clang-p2996 21.0.0git, commit <code>9ffb96e3</code></td>
+</tr>
+<tr>
+<td>cmake / ninja</td>
+<td>4.4.3 / 1.13.2 (default <code>-j</code>, i.e. 6 jobs on 4 cores)</td>
+</tr>
+<tr>
+<td>preset</td>
+<td><code>ninja-debug</code> (coverage instrumentation on)</td>
+</tr>
+<tr>
+<td>tree</td>
+<td>commit <code>27c0f0f</code> (#634 landed)</td>
+</tr>
+</tbody>
+</table>
+<p>Do <strong>not</strong> read <code>3003 -&gt; 2059</code> as a 31% win. The changes in
+<a href="#what-was-fixed">What was fixed</a> sum to roughly -350 to -450 s; the rest of the
+gap is hardware. Attributing it properly needs the baseline re-run on this same
+host, which has not been done.</p>
+<h2 id="the-per-tu-floor">The per-TU floor<a class="headerlink" href="#the-per-tu-floor" title="Permanent link">&para;</a></h2>
+<p>This is the <strong>pre-PCH</strong> floor — the measurement that motivated precompiling
+gtest. Probe TUs whose entire body is <code>int p(){return 0;}</code> (min of 3 runs each,
+warm):</p>
+<table>
+<thead>
+<tr>
+<th>probe</th>
+<th style="text-align: right;">sec</th>
+<th>delta</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>empty</td>
+<td style="text-align: right;">0.0</td>
+<td>—</td>
+</tr>
+<tr>
+<td><code>#include &lt;gtest/gtest.h&gt;</code></td>
+<td style="text-align: right;">2.2</td>
+<td><strong>+2.2</strong></td>
+</tr>
+<tr>
+<td>+ <code>import std;</code></td>
+<td style="text-align: right;">2.4</td>
+<td>+0.2</td>
+</tr>
+<tr>
+<td>+ <code>import storm;</code></td>
+<td style="text-align: right;">4.3</td>
+<td><strong>+2.1</strong></td>
+</tr>
+<tr>
+<td>+ <code>test_db_helpers.h</code> + <code>shared/models.h</code> (the pre-#634 umbrella)</td>
+<td style="text-align: right;">5.8</td>
+<td><strong>+1.4</strong></td>
+</tr>
+</tbody>
+</table>
+<p><code>-ftime-trace</code> on a TU containing one <code>EXPECT_TRUE(true)</code>: Frontend 6.28 s,
+<strong>Backend 0.03 s</strong>. Parsing (<code>Source</code>) is 3.09 s of it; the rest is 448 function
+and 1197 class instantiations, in a file that instantiates nothing of its own.</p>
+<p>Two counter-intuitive results worth keeping:</p>
+<ul>
+<li><strong>A module import is nearly free until something uses it.</strong> <code>import std;</code> and
+  <code>import storm;</code> in isolation measure 0.0 s — BMI loading is lazy. The 2.1 s
+  above appears only <em>alongside</em> gtest: the cost is reconciling storm's BMI
+  against the textual libc++ declarations gtest drags in, not deserialising the
+  BMI as such.</li>
+<li><strong>Inside storm, the cost is concentrated.</strong> Over the gtest baseline:
+  <code>storm_db_sqlite</code> +0.0 s, <code>storm_orm_utilities</code> +0.2 s,
+  <code>storm_orm_statements_join</code> +0.8 s, <code>storm_orm_schema</code> +1.0 s,
+  <strong><code>storm_orm_queryset</code> +1.6 s</strong> — of a +2.1 s total for the umbrella <code>storm</code>.</li>
+</ul>
+<p>The second of these is an artefact of the empty probe body and does <strong>not</strong>
+  survive re-measurement — see <a href="#after-the-pch-issue-633">After the PCH</a>.</p>
+<h2 id="after-the-pch-issue-633">After the PCH (issue #633)<a class="headerlink" href="#after-the-pch-issue-633" title="Permanent link">&para;</a></h2>
+<p>Numbers in this section are from a <strong>different, faster host</strong> than the rest of
+the document (gtest alone: 1.65 s here vs 2.2 s above), so read the deltas, not
+the absolute seconds.</p>
+<p>Precompiling gtest did not only remove gtest's own share of the floor. It
+removed most of <code>import storm;</code> with it, which is exactly what the causal story
+above predicts — once gtest arrives already serialised, there are no textual
+libc++ declarations left to reconcile against:</p>
+<table>
+<thead>
+<tr>
+<th>probe (body <code>int p(){return 0;}</code>)</th>
+<th style="text-align: right;">textual gtest</th>
+<th style="text-align: right;">gtest via PCH</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>gtest</td>
+<td style="text-align: right;">1.65</td>
+<td style="text-align: right;">0.04</td>
+</tr>
+<tr>
+<td>+ <code>import std;</code></td>
+<td style="text-align: right;">1.72</td>
+<td style="text-align: right;">0.05</td>
+</tr>
+<tr>
+<td>+ <code>import storm;</code></td>
+<td style="text-align: right;">3.10</td>
+<td style="text-align: right;">0.29</td>
+</tr>
+<tr>
+<td><strong>cost of <code>import storm;</code></strong></td>
+<td style="text-align: right;"><strong>+1.38</strong></td>
+<td style="text-align: right;"><strong>+0.24</strong></td>
+</tr>
+</tbody>
+</table>
+<p>An empty body understates it, because declarations come out of the PCH lazily
+and a probe that never mentions <code>EXPECT_*</code> never pulls them. With a body that
+uses gtest for real, all three variants via the PCH:</p>
+<table>
+<thead>
+<tr>
+<th>body</th>
+<th style="text-align: right;">no storm</th>
+<th style="text-align: right;">+ <code>import storm;</code></th>
+<th style="text-align: right;">delta</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>EXPECT_TRUE(true)</code></td>
+<td style="text-align: right;">0.14</td>
+<td style="text-align: right;">0.65</td>
+<td style="text-align: right;">+0.51</td>
+</tr>
+<tr>
+<td>strings + vectors</td>
+<td style="text-align: right;">0.25</td>
+<td style="text-align: right;">0.99</td>
+<td style="text-align: right;">+0.74</td>
+</tr>
+<tr>
+<td><code>TYPED_TEST</code></td>
+<td style="text-align: right;">0.23</td>
+<td style="text-align: right;">1.02</td>
+<td style="text-align: right;">+0.79</td>
+</tr>
+<tr>
+<td>strings + vectors, textual gtest</td>
+<td style="text-align: right;">1.82</td>
+<td style="text-align: right;">3.31</td>
+<td style="text-align: right;">+1.49</td>
+</tr>
+</tbody>
+</table>
+<p>So the surviving cost of <code>import storm;</code> is <strong>+0.5 to +0.8 s per TU</strong>, scaling
+with how much gtest the TU uses — roughly <strong>55-90 s</strong> over the suite, not the
+~230 s that issue #633 was opened against.</p>
+<h3 id="what-that-residual-actually-is">What that residual actually is<a class="headerlink" href="#what-that-residual-actually-is" title="Permanent link">&para;</a></h3>
+<p><code>-ftime-trace</code> on <code>import storm_orm_queryset;</code> against a gtest-only baseline,
+same body, <code>-ftime-trace-granularity=0</code>. Of the +0.63 s:</p>
+<table>
+<thead>
+<tr>
+<th>bucket</th>
+<th style="text-align: right;">delta</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>ParseDeclarationOrFunctionDefinition</code></td>
+<td style="text-align: right;">+0.29</td>
+</tr>
+<tr>
+<td><code>PerformPendingInstantiations</code></td>
+<td style="text-align: right;">+0.16</td>
+</tr>
+<tr>
+<td><code>CodeGen Function</code> + <code>DebugType</code></td>
+<td style="text-align: right;">+0.18</td>
+</tr>
+<tr>
+<td><code>InstantiateFunction</code> + <code>InstantiateClass</code></td>
+<td style="text-align: right;">+0.18</td>
+</tr>
+<tr>
+<td><code>ReadAST</code> + <code>Module Load</code> + <code>Load External Specializations</code></td>
+<td style="text-align: right;"><strong>+0.06-0.10</strong></td>
+</tr>
+</tbody>
+</table>
+<p>Reading the BMI is under a sixth of it. The rest is <strong>gtest's own
+instantiations getting slower</strong>. The heaviest entries with storm imported are,
+in order, <code>testing::internal::CmpHelperEQ</code>, <code>EqHelper::Compare</code>,
+<code>PrintToString</code>, <code>UniversalPrint</code>, and <code>std::__can_be_converted_to_string_view</code> /
+<code>std::is_convertible</code> — gtest and libc++ templates. <strong>No storm declaration
+appears anywhere in the top instantiations.</strong></p>
+<p>The mechanism, then, is not that storm is expensive to load. It is that storm's
+declarations join the lookup set, and every later template instantiation in the
+TU pays for the larger set. That single fact predicts every other result here:
+the cost tracks gtest usage rather than storm usage; <code>storm_orm_queryset</code>'s own
+body costs ~0; putting <code>import storm;</code> in the PCH makes things <em>worse</em>; and
+narrowing what a module exports cannot help, because the cost is in the set
+existing, not in what is reachable through it.</p>
+<p>It also scales with the size of the declaration set added, not merely with the
+act of importing — leaf modules are genuinely free. Over a gtest-only baseline
+of 0.24 s, with a real gtest body:</p>
+<table>
+<thead>
+<tr>
+<th>import</th>
+<th style="text-align: right;">sec</th>
+<th style="text-align: right;">delta</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>storm_db_concept</code>, <code>storm_db_sqlite</code>, <code>storm_orm_generator</code>, <code>storm_orm_transaction</code></td>
+<td style="text-align: right;">0.25-0.27</td>
+<td style="text-align: right;">~0.00</td>
+</tr>
+<tr>
+<td><code>storm_orm_where</code>, <code>storm_orm_fields</code>, <code>storm_orm_statements_orderby</code></td>
+<td style="text-align: right;">0.35-0.41</td>
+<td style="text-align: right;">+0.10-0.16</td>
+</tr>
+<tr>
+<td><code>storm_orm_statements_base</code></td>
+<td style="text-align: right;">0.49</td>
+<td style="text-align: right;">+0.25</td>
+</tr>
+<tr>
+<td><code>storm_orm_statements_select</code></td>
+<td style="text-align: right;">0.59</td>
+<td style="text-align: right;">+0.35</td>
+</tr>
+<tr>
+<td><strong>queryset's own imports, without <code>storm_orm_queryset</code></strong></td>
+<td style="text-align: right;"><strong>0.91</strong></td>
+<td style="text-align: right;"><strong>+0.67</strong></td>
+</tr>
+<tr>
+<td><code>storm_orm_queryset</code></td>
+<td style="text-align: right;">0.88</td>
+<td style="text-align: right;">+0.64</td>
+</tr>
+<tr>
+<td><code>storm</code> (umbrella)</td>
+<td style="text-align: right;">0.95</td>
+<td style="text-align: right;">+0.71</td>
+</tr>
+</tbody>
+</table>
+<p>The decisive row is the second-to-last: importing everything
+<code>storm_orm_queryset</code> imports, but <em>not</em> <code>storm_orm_queryset</code> itself, costs the
+same as importing it. Its own content contributes nothing measurable. The
+umbrella adds only +0.07 s on top of it, so even a perfectly narrowed umbrella
+is worth ~8 s over the suite.</p>
+<h2 id="what-one-average-tu-is-made-of">What one average TU is made of<a class="headerlink" href="#what-one-average-tu-is-made-of" title="Permanent link">&para;</a></h2>
+<p><a href="#the-per-tu-floor">The per-TU floor</a> and <a href="#after-the-pch-issue-633">After the PCH</a> measure
+probes — TUs with a synthetic body. This section measures a <strong>real</strong> one by ablating it and
+recompiling: <code>tests/crud/test_conditional_update.cpp</code>, 449 lines, 34 <code>TYPED_TEST</code> blocks, picked
+for its shape rather than its size — one <code>TYPED_TEST</code> suite over both backends, a fixture with
+three models, and bodies that are query chains and assertions and nothing else, which is what
+most of the 110 hand-written test TUs are. It is deliberately NOT picked by comparing its 11.48 s
+against the 13.8 s per-TU mean in <a href="#re-measured-after-634-2026-09-08">Re-measured after #634</a>:
+that mean is of per-edge <strong>wall</strong> times from a <code>-j6</code>-on-4-cores build, and this section's seconds
+are serial, uncontended, min-of-3 replays. The two are not the same quantity. Reproducible with
+<code>scripts/tu_ablation.py</code>; each column below is internally consistent, so read a column against
+itself and never against another section's seconds.</p>
+<table>
+<thead>
+<tr>
+<th>step</th>
+<th style="text-align: right;">A: sec</th>
+<th style="text-align: right;">A: Δ</th>
+<th style="text-align: right;">B: sec</th>
+<th style="text-align: right;">B: Δ</th>
+<th>what the step adds</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>n=0</code> — every test block deleted</td>
+<td style="text-align: right;">2.07</td>
+<td style="text-align: right;">—</td>
+<td style="text-align: right;">2.00</td>
+<td style="text-align: right;">—</td>
+<td>includes, the gtest PCH, <code>import storm;</code>, models + <code>fields::</code> proxies</td>
+</tr>
+<tr>
+<td><code>trivial1-1model</code> — one block, body <code>EXPECT_TRUE(true)</code>, fixture on one model</td>
+<td style="text-align: right;">5.58</td>
+<td style="text-align: right;">+3.51</td>
+<td style="text-align: right;">5.32</td>
+<td style="text-align: right;">+3.32</td>
+<td>gtest's typed-test registration and <code>StormTestFixture&lt;Person&gt;</code>'s table machinery, ×2 backends</td>
+</tr>
+<tr>
+<td><code>trivial1</code> — same, fixture on the file's three models</td>
+<td style="text-align: right;">6.74</td>
+<td style="text-align: right;">+1.16</td>
+<td style="text-align: right;">5.89</td>
+<td style="text-align: right;">+0.57</td>
+<td><code>ensure_tables</code> for <code>Message</code> and <code>TimestampedRecord</code>, ×2</td>
+</tr>
+<tr>
+<td><code>full</code> — all 34 blocks</td>
+<td style="text-align: right;">11.48</td>
+<td style="text-align: right;"><strong>+4.74</strong></td>
+<td style="text-align: right;">10.62</td>
+<td style="text-align: right;"><strong>+4.73</strong></td>
+<td>the bodies: 22 distinct WHERE shapes, 8 <code>update&lt;&gt;</code> packs, 117 assertions</td>
+</tr>
+</tbody>
+</table>
+<p>Two independent sessions, A and B, because one is not enough — see
+<a href="#the-measurement-mistake-this-cost-worth-not-repeating">the measurement mistake</a> this section
+paid for. <strong>Read the three-way split, which both sessions agree on, and not the individual
+seconds:</strong></p>
+<table>
+<thead>
+<tr>
+<th>layer</th>
+<th style="text-align: right;">A</th>
+<th style="text-align: right;">B</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>entering the TU</td>
+<td style="text-align: right;">2.07 (18%)</td>
+<td style="text-align: right;">2.00 (19%)</td>
+</tr>
+<tr>
+<td>fixture + typed-test registration</td>
+<td style="text-align: right;">4.67 (41%)</td>
+<td style="text-align: right;">3.89 (37%)</td>
+</tr>
+<tr>
+<td>the test bodies</td>
+<td style="text-align: right;">4.74 (41%)</td>
+<td style="text-align: right;">4.73 (45%)</td>
+</tr>
+</tbody>
+</table>
+<p><strong>The bodies are ~41-45% of the TU and the fixture is another ~37-41%.</strong> Neither dominates,
+which is why "the tests are slow" has no single fix — and the entry cost that the probe sections
+above measure is the smallest of the three. <code>-ftime-trace</code> agrees on the middle layer: under the
+first block's <code>TypeParameterizedTest</code> (3.12 s on the PG side) sits <code>TestFactoryImpl::CreateTest</code>
+(2.82 s), then <code>StormTestFixture::on_setup</code> (1.39 s), then <code>storm::test::ensure_tables</code> (1.38 s).</p>
+<p>What does NOT reproduce is the fixture's per-model slope: the same two extra models cost 1.16 s in
+A and 0.57 s in B. Treat an extra fixture model as <strong>~0.3-0.6 s</strong>, and do not quote a point value.</p>
+<p>Two further ablations say the bodies are not reachable either. Both keep every assertion and
+every query shape, changing only how they are spelled:</p>
+<table>
+<thead>
+<tr>
+<th>variant</th>
+<th style="text-align: right;">A: Δ</th>
+<th style="text-align: right;">B: Δ</th>
+<th>reading</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>merge</code> — all 34 bodies concatenated into ONE block, each in its own scope</td>
+<td style="text-align: right;">−0.57 (−5.0%)</td>
+<td style="text-align: right;">−0.17 (−1.6%)</td>
+<td>a <code>TYPED_TEST</code> block's wrapper is nearly free</td>
+</tr>
+<tr>
+<td><code>sink</code> — every <code>EXPECT_*</code>/<code>ASSERT_*</code> replaced by a variadic no-op that still instantiates its arguments</td>
+<td style="text-align: right;">−0.61 (−5.3%)</td>
+<td style="text-align: right;">−0.11 (−1.0%)</td>
+<td>so is gtest's comparison and printing machinery</td>
+</tr>
+<tr>
+<td><code>merge+sink</code></td>
+<td style="text-align: right;">−1.48 (−12.9%)</td>
+<td style="text-align: right;">−0.58 (−5.5%)</td>
+<td><strong>more</strong> than additive in both sessions</td>
+</tr>
+</tbody>
+</table>
+<p>These deltas are the ones that move most between sessions — a factor of 3 — so the honest reading
+is their <strong>ceiling</strong>, not their value: together the two levers are worth <strong>at most ~13%, and
+possibly ~5%</strong>. The rest of the ~4.7 s is the distinct query shapes themselves — the six
+comparison operators, <code>IN</code>/<code>BETWEEN</code>/<code>LIKE</code>/<code>IS NULL</code>, the <code>AND</code>/<code>OR</code> combinations the testing
+checklist requires. Cutting them is the same trade as
+<a href="#dropping-the-second-backend-from-typed_test">dropping the second backend</a>, and gets the same
+answer: the coverage is cheap. So the only levers inside a test file cost either failure
+granularity (one merged block reports one failure) or diagnostic quality (a no-op assertion prints
+nothing), for a single-digit percentage. Neither is worth taking.</p>
+<h3 id="the-fixture-model-audit-measured-and-empty">The fixture-model audit — measured, and empty<a class="headerlink" href="#the-fixture-model-audit-measured-and-empty" title="Permanent link">&para;</a></h3>
+<p>~0.3-0.6 s per extra fixture model looks like free money: a fixture naming a model no test uses
+pays it for nothing. Audited across all 116 <code>tests/**/*.cpp</code> files (the 110 above is the
+<code>ninjalog_stats.py</code> bucket, which excludes the mock-binary TUs) — every <code>StormTestFixture&lt;...&gt;</code>
+model list
+against the rest of its own file — and there are <strong>two</strong> candidates, one of them false. <code>Course</code>
+in <code>tests/query/test_many_to_many_modifiers.cpp</code> is never named again but is the m2m target of
+<code>Student</code>, so its table must exist. The one real leftover is <code>Message</code> in
+<code>tests/query/test_setop.cpp:17</code>. That is one model's worth across the whole tree. Recorded so
+nobody re-runs the audit expecting more.</p>
+<h3 id="inside-the-fixture-layer-and-why-its-biggest-item-cannot-be-moved">Inside the fixture layer — and why its biggest item cannot be moved<a class="headerlink" href="#inside-the-fixture-layer-and-why-its-biggest-item-cannot-be-moved" title="Permanent link">&para;</a></h3>
+<p><a href="#what-one-average-tu-is-made-of">The decomposition above</a> leaves the fixture and typed-test
+registration as ~37-41% of a TU, its largest unexplored layer. A ladder of hand-written probe TUs
+splits it — each rung adds exactly one thing over the previous, and each is compiled by replaying a
+real TU's command, the same method as <code>scripts/compile_time_probe.py</code>. The rungs are minimal TUs, so
+read the deltas and not the totals; the ladder itself was ad-hoc and is not shipped, since the table
+below says exactly what each rung contains:</p>
+<table>
+<thead>
+<tr>
+<th>rung</th>
+<th style="text-align: right;">Δ</th>
+<th>what it adds</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>a plain <code>TEST_F</code> over <code>::testing::Test</code></td>
+<td style="text-align: right;">+0.08-0.13</td>
+<td>gtest having a fixture at all</td>
+</tr>
+<tr>
+<td>the same made <code>TYPED_TEST</code> over <code>DatabaseTypes</code></td>
+<td style="text-align: right;">+0.17-0.23</td>
+<td><strong>gtest's typed-test machinery, both backends</strong></td>
+</tr>
+<tr>
+<td>a fixture touching only <code>QuerySet&lt;Person, Conn&gt;</code> statics</td>
+<td style="text-align: right;">+0.67-0.75</td>
+<td><code>set_</code>/<code>clear_default_connection</code>, ×2</td>
+</tr>
+<tr>
+<td><code>pg_schema_init</code> + <code>rollback_test_txn</code></td>
+<td style="text-align: right;"><strong>+1.07</strong></td>
+<td>the PG isolation helpers in <code>tests/test_db_helpers.h</code></td>
+</tr>
+<tr>
+<td><code>ensure_tables&lt;Conn, Person&gt;</code></td>
+<td style="text-align: right;">+0.85-1.14</td>
+<td>storm's <code>SchemaStatement</code> DDL generator, ×2</td>
+</tr>
+<tr>
+<td>two more models in the fixture</td>
+<td style="text-align: right;">+0.30-0.45</td>
+<td>the per-model slope</td>
+</tr>
+</tbody>
+</table>
+<p><strong>gtest is ~10% of the layer, not its bulk</strong> — the typed-test registration that the trace makes look
+dominant (<code>TypeParameterizedTest</code> 3.12 s) is dominant only because everything else nests <em>inside</em>
+it. The single most expensive item is <code>tests/test_db_helpers.h</code>'s six <code>std::format</code> calls: swapping
+them for concatenation in the probe took that rung from +1.07 to +0.22, so <strong><code>std::format</code>
+instantiation alone was 0.85 s per TU</strong> — more than storm's own DDL generator — for setup that runs
+once per process.</p>
+<p>That looked like ~85 s over the suite for a test-only, coverage-neutral change. It is not
+available:</p>
+<ul>
+<li><strong>Moving the six calls into a separately-compiled TU does not build.</strong> Neither does replacing
+  them with concatenation, nor keeping only one that formats an <code>int</code>. All three fail the same way:
+  <code>definition with same mangled name '_ZNSt3__17vformat…' as another definition</code>, in <em>other</em> TUs
+  (<code>test_upsert.cpp</code>, <code>test_select_large.cpp</code>, …). The header's textual <code>&lt;format&gt;</code> and the imported
+  <code>std</code> module each define those specializations, and it is the header's own <code>std::format</code> calls —
+  instantiated early, in the global module — that make them merge. Remove the instantiations and
+  the two definitions collide.</li>
+<li><strong>Keeping exactly one call that formats a <code>std::string</code> does build</strong>, which locates the
+  requirement precisely: <code>format&lt;std::string&amp;&gt;</code> is the specialization the reconciliation needs. But
+  it saves nothing measurable — three interleaved rounds give −0.17 s and −0.08 s on two TUs, with
+  the baseline side spreading wider than that. The cost is the <em>specialization</em>, not the number of
+  call sites, so keeping one keeps the bill.</li>
+</ul>
+<p>So the 0.85 s is real and load-bearing at once. It is a compiler-interaction cost
+(<a href="../../compiler/COMPILER_ISSUES/">COMPILER_ISSUES.md</a> territory, and the same <code>&lt;format&gt;</code> fragility
+<a href="#import-storm-inside-the-pch--a-regression-not-a-win-633">the PCH attempt hit</a>), not a test-code
+cost, and it moves only if the textual/modular <code>std</code> reconciliation stops needing a witness.</p>
+<p><strong>The probe said otherwise, and the probe was wrong.</strong> The concatenation rung compiled fine as a
+standalone probe because a minimal TU never instantiates <code>CollatedField</code> — the <code>where.cppm</code>
+<code>std::format</code> call whose merge the header was silently underwriting. A probe establishes a cost; it
+cannot establish that a change is <em>possible</em>. Build the tree before believing a probe's saving.</p>
+<h2 id="the-yaml-corpus-is-not-the-problem">The YAML corpus is not the problem<a class="headerlink" href="#the-yaml-corpus-is-not-the-problem" title="Permanent link">&para;</a></h2>
+<p>It registers <strong>494 of the suite's 3093 tests (16%) for 5.3% of compile time</strong>.
+Inside the heaviest of its four TUs (36.5 s), <code>-ftime-trace</code> splits as: template
+instantiation ~55%, codegen ~20%, and the consteval JSON parsing that the corpus
+is often blamed for — <code>EvaluateAsConstantExpr</code> 1.6 s + <code>EvaluateAsInitializer</code>
+2.8 s — <strong>~5-8%</strong>.</p>
+<p>Per registered test the corpus costs 0.32 s against ~0.98 s for hand-written
+tests, but that comparison is confounded: hand-written TUs pay the fixed floor
+110 times and test structurally heavier things. The honest statement is that the
+whole question is bounded by ~160 s in either direction, so <strong>compile time is not
+a good reason to keep or drop the corpus</strong>.</p>
+<p>Note that the cost driver is the number of <em>distinct compile-time queries</em>, not
+the corpus format. Hand-porting the same cases pays the same instantiation.</p>
+<hr />
+<h2 id="what-was-tried-and-rejected">What was tried and rejected<a class="headerlink" href="#what-was-tried-and-rejected" title="Permanent link">&para;</a></h2>
+<p>Each of these looked promising and was killed by measurement.</p>
+<h3 id="ccache-safe-but-the-bmis-are-not-byte-reproducible">ccache — safe, but the BMIs are not byte-reproducible<a class="headerlink" href="#ccache-safe-but-the-bmis-are-not-byte-reproducible" title="Permanent link">&para;</a></h3>
+<p>Measured twice, with opposite conclusions. The second measurement (ccache
+<strong>4.14</strong>, issue #630) supersedes the first, which is kept below only to say why
+it was wrong. The ccache version the first round used was not recorded, but the
+difference is methodological, not a version difference — see there.</p>
+<p>Test TUs cache beautifully: 8.8 s → <strong>0.13 s</strong>, 100% cacheable, direct hit.
+<code>.cppm</code> compiles are 100% uncacheable (<code>unsupported_source_language:
+c++-module</code>) and fall through at no cost, so the 85% of build time that lives
+in the ~110 test TUs is the part in play. Two preconditions:</p>
+<ul>
+<li><code>CCACHE_SLOPPINESS=pch_defines,time_macros</code> is <strong>mandatory</strong> — without it the
+  gtest PCH makes every test TU uncacheable (<code>Result:
+  could_not_use_precompiled_header</code>), reported as a flat 0% cacheable with no
+  other explanation.</li>
+<li>The launcher must not reach <code>.cppm</code> compiles expecting hits; it costs nothing
+  but never returns any.</li>
+</ul>
+<p><strong>ccache 4.14 is module-aware and safe here.</strong> Its log shows <code>Hashing module
+file …bmi</code> for every BMI in CMake's <code>.modmap</code>, so a rebuilt module interface
+changes the cache key. The <code>#embed</code> corpus is covered too, by a different
+route: direct mode misses on those 4 TUs (<code>direct_cache_miss</code>) and ccache falls
+back to running the preprocessor, whose output carries the embedded bytes
+(<code>preprocessed_cache_hit</code>). Mutating <code>unified_cases_select.json</code> correctly
+produced a miss.</p>
+<p><strong>What kills it is that BMIs are not byte-reproducible.</strong> Two back-to-back
+<code>--precompile</code> runs of the same untouched <code>src/storm.cppm</code> differ in content
+<em>and in size</em> (14,933,024 vs 14,933,008 bytes; the first difference is a
+~20-byte signature region at offset 11860). <code>-Xclang -fno-pch-timestamp</code> does
+not help. Because ccache hashes the BMI bytes, <strong>every BMI rebuild permanently
+invalidates every downstream test-TU entry</strong>. On 5 test TUs:</p>
+<table>
+<thead>
+<tr>
+<th>scenario</th>
+<th style="text-align: right;">hits</th>
+<th style="text-align: right;">wall</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>objects deleted, BMIs untouched</td>
+<td style="text-align: right;">5/5</td>
+<td style="text-align: right;">125 ms</td>
+</tr>
+<tr>
+<td><code>touch</code> 2 module sources (content identical), BMIs rebuilt</td>
+<td style="text-align: right;">0/5</td>
+<td style="text-align: right;">30.7 s</td>
+</tr>
+<tr>
+<td>same churn again</td>
+<td style="text-align: right;">0/5</td>
+<td style="text-align: right;">29.9 s</td>
+</tr>
+<tr>
+<td>objects deleted, BMIs untouched again</td>
+<td style="text-align: right;">5/5</td>
+<td style="text-align: right;">152 ms</td>
+</tr>
+</tbody>
+</table>
+<p>So hits occur exactly while the BMIs on disk are unchanged, which excludes
+every workflow that motivates a compiler cache: <code>rm -rf build</code>, a fresh
+worktree (which the branching rules mandate per branch, and which also moves
+the source paths), a CI run in a fresh container, and any branch switch
+touching <code>src/</code>. What remains is a branch flip or <code>git stash pop</code> touching
+<strong>only</strong> <code>tests/</code> — real, but narrow. Not wired in.</p>
+<p>The upstream dependency worth watching is <strong>clang BMI reproducibility</strong>, not
+ccache's module support. Any compiler cache that hashes BMIs inherits this;
+one that does not hash them is unsafe. <code>sccache</code> was not measured.</p>
+<h4 id="the-superseded-first-round">The superseded first round<a class="headerlink" href="#the-superseded-first-round" title="Permanent link">&para;</a></h4>
+<p>The earlier round concluded "ccache does not hash the BMIs a TU imports" from
+this observation — editing <code>src/orm/queryset.cppm</code> and recompiling a test TU
+through ccache returns a HIT with a byte-identical object:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a>before editing the module : md5=7a7510190425  hits=1
+<a id="__codelineno-1-2" name="__codelineno-1-2" href="#__codelineno-1-2"></a>after  editing the module : md5=7a7510190425  hits=2
+</code></pre></div>
+<p>That reproduces on 4.14, and is <strong>not</strong> a stale hit. It only appears when the
+TU's command line is replayed directly, without letting ninja rebuild the BMI
+first — and against an unchanged BMI on disk, that object is exactly what a
+cacheless clang would produce. Driven through ninja, the BMI is rebuilt before
+its dependents and ccache misses (row 2 of the table above). The <code>#embed</code> half
+of that finding is likewise obsolete, per the preprocessed-mode fallback above.</p>
+<h3 id="unity_build-mutually-exclusive-with-module-scanning">UNITY_BUILD — mutually exclusive with module scanning<a class="headerlink" href="#unity_build-mutually-exclusive-with-module-scanning" title="Permanent link">&para;</a></h3>
+<p>CMake <strong>silently</strong> disables <code>UNITY_BUILD</code> whenever <code>CXX_SCAN_FOR_MODULES</code> is ON,
+with no warning:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a>CMAKE_CXX_SCAN_FOR_MODULES=OFF -&gt; "Unity" edges in build.ninja: 4
+<a id="__codelineno-2-2" name="__codelineno-2-2" href="#__codelineno-2-2"></a>CMAKE_CXX_SCAN_FOR_MODULES=ON  -&gt; "Unity" edges in build.ninja: 0
+</code></pre></div>
+<p>Scanning cannot be turned off for these TUs, because a TU with <code>import std;</code> and
+<code>CXX_SCAN_FOR_MODULES OFF</code> fails with <code>fatal error: module 'std' not found</code> — no
+module map is generated for it.</p>
+<h3 id="extern-template-no-effect-on-time"><code>extern template</code> — no effect on time<a class="headerlink" href="#extern-template-no-effect-on-time" title="Permanent link">&para;</a></h3>
+<p>It works mechanically (object 10.9 MB → 10.2 MB, symbols 8404 → 7736) but does
+not move compile time, because it suppresses codegen and codegen is 0.03 s of the
+floor. An early "-47%" reading was a cold-cache artifact of the first compile in
+a session; with warm caches and min-of-3 the effect is zero or slightly negative.</p>
+<h3 id="stdvisit-over-expressionvariant-swapped-for-a-switch-no-reproducible-effect"><code>std::visit</code> over <code>ExpressionVariant</code> — swapped for a <code>switch</code>, no reproducible effect<a class="headerlink" href="#stdvisit-over-expressionvariant-swapped-for-a-switch-no-reproducible-effect" title="Permanent link">&para;</a></h3>
+<p><code>ExpressionVariant</code> has <strong>28 alternatives</strong> (27 before <code>InExpression&lt;bool&gt;</code>, #625), and <code>bind_params_direct</code> is templated on the
+statement type, so libc++'s <code>__make_fmatrix</code> / <code>__visit_alt</code> tower is rebuilt once per backend in
+every TU that runs a WHERE. Self-time attributable to that machinery in the TU above (containment
+stack over <code>-ftime-trace</code>, 20219 events) is <strong>0.77 s of 11.48 s — 6.7%</strong>, which projected to
+~100 s over the suite: bigger than anything in <a href="#what-was-fixed">What was fixed</a> except the PCH,
+library-side rather than test-side, and free of any coverage trade. It was worth trying.</p>
+<p>Replaced both visit sites with one <code>visit_expression</code> helper — a <code>switch</code> over <code>index()</code> with 27
+explicit cases and a <code>static_assert</code> on <code>variant_size_v</code> as the guard against an alternative being
+added without its case. It is correct (3093 tests, 3092 passed and the 1 skip is the pre-existing
+PG <code>COLLATE NOCASE</code> one) and runtime-neutral: Release A/B on <code>Storm/WHERE/.*</code>, 5 interleaved
+rounds of 12 repetitions, cv 1.4-2.6%, worst delta <strong>+0.23%</strong> — an order of magnitude under the
+noise, as expected since a switch over <code>index()</code> lowers to the same jump table.</p>
+<p><strong>But the compile-time win does not reproduce.</strong> Three interleaved rounds, rebuilding and
+re-measuring each side (medians):</p>
+<table>
+<thead>
+<tr>
+<th>TU</th>
+<th style="text-align: right;"><code>std::visit</code></th>
+<th style="text-align: right;"><code>switch</code></th>
+<th style="text-align: right;">Δ</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>crud/test_conditional_update.cpp</code></td>
+<td style="text-align: right;">10.95</td>
+<td style="text-align: right;">11.25</td>
+<td style="text-align: right;"><strong>+0.30 (+2.7%)</strong></td>
+</tr>
+<tr>
+<td><code>query/test_where.cpp</code></td>
+<td style="text-align: right;">10.42</td>
+<td style="text-align: right;">10.04</td>
+<td style="text-align: right;"><strong>−0.38 (−3.6%)</strong></td>
+</tr>
+</tbody>
+</table>
+<p>Opposite signs, and the within-side spread (10.96-11.30 against 10.64-11.00) is the size of the
+between-side gap. The mechanism is visible in libc++: <code>std::get_if&lt;N&gt;</code> reaches its alternative
+through <code>__get_alt&lt;N&gt;</code> recursing down the union tail, so the change trades one template tower for
+another of about the same cost. The 0.77 s is a real <em>label</em> for the work; it is not removed by
+changing how the dispatch is spelled. Reverted.</p>
+<p>What this does not close: the 0.77 s scales with the <strong>number of alternatives</strong>, and 27 is a
+choice — <code>ComparisonExpr&lt;T&gt;</code>, <code>BetweenExpr&lt;T&gt;</code> and <code>InExpression&lt;T&gt;</code> contribute one alternative
+per value type. Nesting the value variant inside a single node type would make the outer variant
+~5-wide. Unmeasured, and a much larger refactor (every node's <code>to_sql</code>/<code>bind_impl</code>), so it is a
+hypothesis, not a plan.</p>
+<h4 id="the-measurement-mistake-this-cost-worth-not-repeating">The measurement mistake this cost, worth not repeating<a class="headerlink" href="#the-measurement-mistake-this-cost-worth-not-repeating" title="Permanent link">&para;</a></h4>
+<p>The first, uncontrolled reading of this change was <strong>11.48 s → 10.70 s (−6.8%)</strong>, matching the
+trace's 0.77 s almost exactly — which is precisely what made it convincing. It was an artifact:
+the two runs sat on opposite sides of a BMI rebuild, and the doc's own warm-up rule
+(<a href="#method">Method</a>) does not cover a cold <em>rebuilt</em> BMI. The tell was in the same table and was
+missed: <code>n=0</code> moved too (2.07 → 1.94), and a variant with no test blocks at all cannot be sped up
+by a change inside a WHERE visitor. <strong>Any single before/after spanning a library edit is
+worthless here; interleave rebuild-and-measure rounds and read medians per side</strong>, exactly as
+<code>/benchmark</code> requires for runtime. Same trap, different resource — see the <code>extern template</code>
+entry above, whose "-47%" died the same way.</p>
+<h3 id="import-storm-inside-the-pch-a-regression-not-a-win-633"><code>import storm;</code> inside the PCH — a regression, not a win (#633)<a class="headerlink" href="#import-storm-inside-the-pch-a-regression-not-a-win-633" title="Permanent link">&para;</a></h3>
+<p>The obvious follow-up to precompiling gtest is to precompile the storm import
+alongside it, paying the reconciliation once instead of ~110 times. It is
+mechanically possible and measurably worse.</p>
+<p>CMake does not scan the PCH source for module imports — its
+<code>compile_commands.json</code> entry carries no <code>@...modmap</code> — so the PCH build fails
+outright with <code>fatal error: module 'std' not found</code>. Appending a real test TU's
+modmap by hand gets it to build, and then:</p>
+<table>
+<thead>
+<tr>
+<th>PCH contents</th>
+<th style="text-align: right;">PCH build</th>
+<th style="text-align: right;">TU (strings)</th>
+<th style="text-align: right;">TU (<code>TYPED_TEST</code>)</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>gtest only (shipping)</td>
+<td style="text-align: right;">2.15</td>
+<td style="text-align: right;"><strong>1.00</strong></td>
+<td style="text-align: right;"><strong>1.01</strong></td>
+</tr>
+<tr>
+<td>gtest, then <code>import storm;</code></td>
+<td style="text-align: right;">8.07</td>
+<td style="text-align: right;">1.27</td>
+<td style="text-align: right;">1.31</td>
+</tr>
+<tr>
+<td><code>import storm;</code>, then gtest</td>
+<td style="text-align: right;"><strong>compile error</strong></td>
+<td style="text-align: right;">—</td>
+<td style="text-align: right;">—</td>
+</tr>
+</tbody>
+</table>
+<p>Every TU gets <strong>0.27-0.30 s slower</strong>, which follows directly from the mechanism
+above: the import does not amortise, it enlarges the lookup set that the PCH's
+own contents are then resolved against. Importing storm <em>before</em> gtest does not
+compile at all — the same textual-libc++-versus-module clash that already forces
+four groups of files onto <code>SKIP_PRECOMPILE_HEADERS</code> in <code>tests/CMakeLists.txt</code>.</p>
+<p>Folding the other lever's headers in fails the same way: a PCH of gtest +
+<code>import storm;</code> + <code>test_db_helpers.h</code> + <code>test_models.h</code> dies on
+<code>test_db_helpers.h</code>'s global-module forward declaration of
+<code>storm::db::sqlite::Connection</code> (<code>declaration of 'Connection' in the global
+module follows declaration in module storm_db_sqlite</code>). Dropping storm and
+precompiling <code>test_db_helpers.h</code> alone — the half that needs no storm import —
+breaks 3 of 4 sampled TUs inside libc++'s <code>&lt;format&gt;</code>
+(<code>call to implicitly-deleted default constructor of 'formatter&lt;...&gt;'</code>), and the
+one TU that still compiles is +0.08 s. So the ~150 s <code>test_db_helpers.h</code> lever
+is <strong>not</strong> reachable by extending the PCH.</p>
+<h3 id="narrowing-storm_orm_querysets-exports-633">Narrowing <code>storm_orm_queryset</code>'s exports (#633)<a class="headerlink" href="#narrowing-storm_orm_querysets-exports-633" title="Permanent link">&para;</a></h3>
+<p>Issue #633's second proposed direction. There is nothing to narrow: importing
+<code>storm_orm_queryset</code>'s dependency list <em>without</em> <code>storm_orm_queryset</code> costs
++0.67 s against +0.64 s for the module itself. The facade's own content is free;
+the cost is the transitive surface a QuerySet consumer needs regardless.</p>
+<h3 id="tests-importing-submodules-instead-of-the-umbrella-633">Tests importing submodules instead of the umbrella (#633)<a class="headerlink" href="#tests-importing-submodules-instead-of-the-umbrella-633" title="Permanent link">&para;</a></h3>
+<p>Issue #633's first proposed direction. It works and it is small.</p>
+<p>Of the ~110 test TUs, <strong>9</strong> import <code>storm</code> without needing
+<code>storm_orm_queryset</code> — every other TU reaches <code>storm::QuerySet</code> through
+<code>tests/test_models.h</code>'s fixtures. Three of the nine cannot be converted anyway:
+<code>schema/test_valid_foreign_key_concept.cpp</code> and <code>query/test_fields_selector.cpp</code>
+spell <code>primary</code>, and <code>schema/test_dialect_concepts.cpp</code> calls
+<code>storm::begin</code> — names that exist only in the umbrella (<code>primary</code> is</p>
+<h1 id="442s-top-level-re-export-converting-would-mean-reverting-those-tests-to">442's top-level re-export; converting would mean reverting those tests to<a class="headerlink" href="#442s-top-level-re-export-converting-would-mean-reverting-those-tests-to" title="Permanent link">&para;</a></h1>
+<p><code>storm::meta::</code>).</p>
+<p>The remaining six, replayed with their own commands from
+<code>compile_commands.json</code>:</p>
+<table>
+<thead>
+<tr>
+<th>TU</th>
+<th style="text-align: right;"><code>import storm;</code></th>
+<th style="text-align: right;">submodules</th>
+<th style="text-align: right;">delta</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>schema/test_stitch_key.cpp</code></td>
+<td style="text-align: right;">1.47</td>
+<td style="text-align: right;">0.45</td>
+<td style="text-align: right;">−1.02</td>
+</tr>
+<tr>
+<td><code>schema/test_valid_field_info_concept.cpp</code></td>
+<td style="text-align: right;">0.96</td>
+<td style="text-align: right;">0.37</td>
+<td style="text-align: right;">−0.60</td>
+</tr>
+<tr>
+<td><code>schema/test_bindable_concept.cpp</code></td>
+<td style="text-align: right;">3.27</td>
+<td style="text-align: right;">1.90</td>
+<td style="text-align: right;">−1.37</td>
+</tr>
+<tr>
+<td><code>db/test_statement_move.cpp</code></td>
+<td style="text-align: right;">0.84</td>
+<td style="text-align: right;">0.21</td>
+<td style="text-align: right;">−0.63</td>
+</tr>
+<tr>
+<td><code>db/test_cache_invalidation.cpp</code></td>
+<td style="text-align: right;">2.44</td>
+<td style="text-align: right;">1.21</td>
+<td style="text-align: right;">−1.23</td>
+</tr>
+<tr>
+<td><code>db/test_sqlite_tuning.cpp</code></td>
+<td style="text-align: right;">4.98</td>
+<td style="text-align: right;">2.94</td>
+<td style="text-align: right;">−2.04</td>
+</tr>
+<tr>
+<td><strong>total</strong></td>
+<td style="text-align: right;"><strong>13.97</strong></td>
+<td style="text-align: right;"><strong>7.08</strong></td>
+<td style="text-align: right;"><strong>−6.89</strong></td>
+</tr>
+</tbody>
+</table>
+<p>−6.9 s of ~3000 s (0.2%), in exchange for six test files naming internal module
+names. Not adopted. <code>errors/test_error_construction.cpp</code> and
+<code>yaml/test_init_dataset_size.cpp</code> already import submodules directly, so the
+option remains open per-file if a TU ever needs it.</p>
+<h3 id="dropping-the-second-backend-from-typed_test">Dropping the second backend from <code>TYPED_TEST</code><a class="headerlink" href="#dropping-the-second-backend-from-typed_test" title="Permanent link">&para;</a></h3>
+<p>Every <code>TYPED_TEST</code> over <code>DatabaseTypes</code> instantiates its body twice, once per
+backend, which looks like an obvious 2x. It is not: measured by compiling real
+TUs as-is, then again with <code>DatabaseTypes</code> narrowed to SQLite alone (bodies
+untouched, min of 3, ccache off).</p>
+<table>
+<thead>
+<tr>
+<th>TU</th>
+<th style="text-align: right;">2 backends</th>
+<th style="text-align: right;">1 backend</th>
+<th style="text-align: right;">delta</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>schema/test_types.cpp</code></td>
+<td style="text-align: right;">20.45</td>
+<td style="text-align: right;">16.53</td>
+<td style="text-align: right;"><strong>−19.2%</strong></td>
+</tr>
+<tr>
+<td><code>query/test_distinct.cpp</code></td>
+<td style="text-align: right;">17.11</td>
+<td style="text-align: right;">15.00</td>
+<td style="text-align: right;">−12.3%</td>
+</tr>
+<tr>
+<td><code>crud/test_conditional_update.cpp</code></td>
+<td style="text-align: right;">13.75</td>
+<td style="text-align: right;">11.57</td>
+<td style="text-align: right;">−15.8%</td>
+</tr>
+<tr>
+<td><code>query/test_sql_verify.cpp</code></td>
+<td style="text-align: right;">12.10</td>
+<td style="text-align: right;">10.52</td>
+<td style="text-align: right;">−13.1%</td>
+</tr>
+<tr>
+<td><code>query/test_collate.cpp</code> (control)</td>
+<td style="text-align: right;">12.10</td>
+<td style="text-align: right;">12.21</td>
+<td style="text-align: right;">+0.9%</td>
+</tr>
+<tr>
+<td><strong>total</strong></td>
+<td style="text-align: right;"><strong>75.51</strong></td>
+<td style="text-align: right;"><strong>65.83</strong></td>
+<td style="text-align: right;"><strong>−12.8%</strong></td>
+</tr>
+</tbody>
+</table>
+<p><code>test_collate.cpp</code> is the control: it declares <code>SqliteTypes</code>, not
+<code>DatabaseTypes</code>, so the edit could not reach it. Its +0.9% is the noise floor,
+which puts the other four comfortably in signal.</p>
+<p>So the second backend costs <strong>~13%</strong>, not ~50% — the two instantiations share
+most of their work. Over the 2558 s the hand-written test TUs cost, that is
+~330 s of a ~3000 s build (~11%): the largest single lever measured so far, and
+the only one still available at that size.</p>
+<p><strong>Not adopted, and not recommended.</strong> It buys ~11% by deleting the PostgreSQL
+half of the suite's coverage — the thing cross-backend tests exist for, and
+which CLAUDE.md requires for exactly the failure class (SQLite and PG disagree
+about what is an error) that composite-PK and FK work keeps hitting. Recorded
+here so the trade is known and nobody has to re-measure it: the coverage is
+cheap, at 13% of test compile time.</p>
+<h3 id="replacing-googletest-poor-return">Replacing GoogleTest — poor return<a class="headerlink" href="#replacing-googletest-poor-return" title="Permanent link">&para;</a></h3>
+<p>The ceiling is gtest's 2.2 s, but any framework includes standard headers
+textually, so the +2.1 s storm/libc++ reconciliation stays regardless. That
+ceiling is available from a PCH instead, without rewriting 3093 tests.</p>
+<h3 id="computing-col_def_buffer-once-and-passing-it-as-an-nttp-half-the-win-682">Computing <code>col_def_buffer</code> once and passing it as an NTTP — half the win (#682)<a class="headerlink" href="#computing-col_def_buffer-once-and-passing-it-as-an-nttp-half-the-win-682" title="Permanent link">&para;</a></h3>
+<p>The first fix for the per-column re-evaluation <a href="#exact-size-create-table-buffer-682">below</a>:
+evaluate <code>col_def_buffer&lt;D&gt;()</code> once in the table builder and pass it to
+<code>build_column_def</code> as a template argument. It removes the 0.66 s template-argument
+hotspot and halves <code>arr</code>, but leaves every function instantiation in place
+(16270 → 16270), costs a new 0.16 s <code>col_buf</code> initializer, and keeps both the
+per-column buffer copy and the hand-maintained sizers. Superseded by writing columns
+straight into one buffer sized by the writer itself, which is cheaper on every
+counter and deletes code instead of adding a parameter.</p>
+<h3 id="a-per-field-reflection-cache-in-schemastatement-more-work-not-less-670">A per-field reflection cache in <code>SchemaStatement</code> — more work, not less (#670)<a class="headerlink" href="#a-per-field-reflection-cache-in-schemastatement-more-work-not-less-670" title="Permanent link">&para;</a></h3>
+<p>The hypothesis: <code>SchemaStatement</code> asks the same questions of each field several
+times over (<code>identifier_of</code>, <code>dealias</code>, <code>find_fk_primary_key</code> in the column
+builder, the FK-clause sizer, the CREATE TABLE sizer and the index builder), so
+answer them once into a <code>static constexpr std::array&lt;FieldMeta, N&gt;</code> and read that
+everywhere. Measured as an ablation against the
+<a href="#lazy-per-dialect-create-table-sql-670">lazy CREATE TABLE change</a> it shipped
+beside, same host, deterministic event counts:</p>
+<table>
+<thead>
+<tr>
+<th>TU</th>
+<th style="text-align: right;">lazy only</th>
+<th style="text-align: right;">lazy + <code>FieldMeta</code></th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>test_orm_schema.cpp</code> — InstantiateFunction / EvaluateAsConstantExpr</td>
+<td style="text-align: right;">3387 / 17733</td>
+<td style="text-align: right;">3415 / 17872</td>
+</tr>
+<tr>
+<td><code>test_referential_integrity.cpp</code> — same</td>
+<td style="text-align: right;">3942 / 17413</td>
+<td style="text-align: right;">3975 / 17611</td>
+</tr>
+</tbody>
+</table>
+<p>It <strong>adds</strong> ~30 function instantiations and ~140-200 constant evaluations per TU
+and moved no wall time. The cache is itself a <code>static constexpr</code> member, so it is
+built eagerly for every instantiated <code>SchemaStatement&lt;T&gt;</code> — whether or not that
+TU ever generates DDL — and each repeated query it replaced was already cheap,
+memoised reflection. Dropped.</p>
+<hr />
+<h2 id="what-was-fixed">What was fixed<a class="headerlink" href="#what-was-fixed" title="Permanent link">&para;</a></h2>
+<table>
+<thead>
+<tr>
+<th>change</th>
+<th>effect</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>removed dead <code>create_table_sql</code> globals from <code>tests/test_models.h</code> (referenced by nothing, but forced full consteval schema generation in all 89 including TUs)</td>
+<td>−0.7 s/TU ≈ <strong>−62 s</strong></td>
+</tr>
+<tr>
+<td><code>#embed</code> corpora declared as real build inputs (<code>OBJECT_DEPENDS</code>)</td>
+<td>correctness</td>
+</tr>
+<tr>
+<td>precompiled <code>&lt;gtest/gtest.h&gt;</code> for <code>storm_tests</code></td>
+<td>−2.15 s/TU ≈ <strong>−220 s</strong> (understated — see below)</td>
+</tr>
+<tr>
+<td><code>run_clang_tidy.py --diff</code> no longer reports a crashed clang-tidy as a clean pass</td>
+<td>correctness</td>
+</tr>
+<tr>
+<td>split <code>shared/models.h</code> + <code>tests/test_models.h</code> so a TU pulls only the models and helpers it uses (#634)</td>
+<td>−0.67 s/TU ≈ <strong>−64 s</strong></td>
+</tr>
+<tr>
+<td><code>SchemaStatement::create_table_sql&lt;D&gt;()</code> builds only the dialect a TU asks for (#670)</td>
+<td>−8% function instantiations in a mostly-single-dialect schema TU, 0 in one using both; wall time below the noise floor — see <a href="#lazy-per-dialect-create-table-sql-670">below</a></td>
+</tr>
+<tr>
+<td>CREATE TABLE written straight into one exact-size buffer, measured by the writer itself (#682)</td>
+<td>slowest TU <code>test_ddl_execution_audit.cpp</code> 13.10 → 10.33 s (−21%, median of 3 alternated rounds), −16.8% function instantiations; ~−6% instantiations in a light schema TU — see <a href="#exact-size-create-table-buffer-682">below</a></td>
+</tr>
+</tbody>
+</table>
+<p>≈ <strong>−344 s of ~3000 s (−11%)</strong> — a sum of per-change deltas, not a measured
+total. For an actual whole-build number on the current tree (with the host it
+was taken on, which this baseline lacks), see
+<a href="#re-measured-after-634-2026-09-08">Re-measured after #634</a>.</p>
+<p>The gtest PCH row understates what it bought. It was measured as the removal of
+gtest's own share of the floor, but it also took most of <code>import storm;</code> with it
+— +1.38 s per TU down to +0.24-0.79 s, roughly another 100 s — because the
+reconciliation it removes is between storm's BMI and gtest's <em>textual</em> libc++
+declarations. See <a href="#after-the-pch-issue-633">After the PCH</a>.</p>
+<h3 id="splitting-sharedmodelsh-per-model-634-rejected-on-probes-adopted-on-measurement">Splitting <code>shared/models.h</code> per model (#634) — rejected on probes, adopted on measurement<a class="headerlink" href="#splitting-sharedmodelsh-per-model-634-rejected-on-probes-adopted-on-measurement" title="Permanent link">&para;</a></h3>
+<p>Issue #634's proposal: every test TU parses 12 models and generates 49
+field-selector proxies to use one, so give each model its own header. Measured
+after the gtest PCH landed, on the same host as
+<a href="#after-the-pch-issue-633">After the PCH</a>. Baseline <strong>B</strong> is
+<code>gtest(PCH) + import storm; + import std; + test_db_helpers.h</code>; probes add a
+generated header carrying the first N model structs and their <code>fields::</code> blocks.</p>
+<p>The header block is genuinely expensive — more so than #634 measured, because the
+PCH shrank everything around it:</p>
+<table>
+<thead>
+<tr>
+<th>probe (empty body)</th>
+<th style="text-align: right;">sec</th>
+<th style="text-align: right;">Δ over B</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>A — without <code>test_db_helpers.h</code></td>
+<td style="text-align: right;">0.40</td>
+<td style="text-align: right;">—</td>
+</tr>
+<tr>
+<td><strong>B</strong> — baseline</td>
+<td style="text-align: right;">0.49</td>
+<td style="text-align: right;">+0.09</td>
+</tr>
+<tr>
+<td>B + 1 model, no <code>fields::</code> proxy</td>
+<td style="text-align: right;">1.10</td>
+<td style="text-align: right;">+0.65</td>
+</tr>
+<tr>
+<td>B + 11 models, no proxies</td>
+<td style="text-align: right;">1.48</td>
+<td style="text-align: right;">+1.03</td>
+</tr>
+<tr>
+<td><strong>B + 1 model + its proxy</strong></td>
+<td style="text-align: right;"><strong>2.09</strong></td>
+<td style="text-align: right;"><strong>+1.64</strong></td>
+</tr>
+<tr>
+<td>B + 3 models + 3 proxies</td>
+<td style="text-align: right;">2.11</td>
+<td style="text-align: right;">+1.66</td>
+</tr>
+<tr>
+<td>B + 5 models + 5 proxies</td>
+<td style="text-align: right;">2.42</td>
+<td style="text-align: right;">+1.97</td>
+</tr>
+<tr>
+<td>B + 7 models + 6 proxies</td>
+<td style="text-align: right;">2.54</td>
+<td style="text-align: right;">+2.09</td>
+</tr>
+<tr>
+<td><strong>B + 11 models + 6 proxies</strong></td>
+<td style="text-align: right;"><strong>2.59</strong></td>
+<td style="text-align: right;"><strong>+2.14</strong></td>
+</tr>
+<tr>
+<td>B + full <code>shared/models.h</code> (12 + seed arrays)</td>
+<td style="text-align: right;">2.69</td>
+<td style="text-align: right;">+2.20</td>
+</tr>
+<tr>
+<td>B + full <code>test_models.h</code> (+ helpers, fixture)</td>
+<td style="text-align: right;">3.19</td>
+<td style="text-align: right;">+2.70</td>
+</tr>
+</tbody>
+</table>
+<p><strong>The cost is an intercept, not a slope.</strong> The first model and its first proxy
+cost +1.64 s; the other ten models and five proxies together cost +0.50 s, about
+0.05 s each. Split finer: the first annotated struct is +0.65 s, the first
+<code>define_aggregate</code> + <code>FieldRef</code>/<code>Field</code> proxy is +0.99 s, each subsequent struct
+~0.04 s, each subsequent proxy ~0.02 s. The seed arrays (<code>PEOPLE_25</code>,
+<code>MESSAGES_8</code>) are +0.06 s — not worth moving.</p>
+<p>Since every test TU needs at least one model, a per-model split cannot touch the
+intercept. It can only recover the slope, and only for TUs that need one model.</p>
+<p><strong>With a real body it recovers even less.</strong> The probes above have trivial bodies;
+a real TU calls <code>QuerySet&lt;Person&gt;</code> and <code>fields::Person</code>, which instantiates the
+same machinery the intercept pays for. Same probes, body one <code>where().order_by()
+.limit().select()</code> plus a <code>count().execute()</code>:</p>
+<table>
+<thead>
+<tr>
+<th>probe (real body)</th>
+<th style="text-align: right;">sec</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>1 model</td>
+<td style="text-align: right;">6.55</td>
+</tr>
+<tr>
+<td>11 models</td>
+<td style="text-align: right;">6.88</td>
+</tr>
+<tr>
+<td>full <code>shared/models.h</code></td>
+<td style="text-align: right;">7.15</td>
+</tr>
+<tr>
+<td>full <code>test_models.h</code></td>
+<td style="text-align: right;">6.87</td>
+</tr>
+</tbody>
+</table>
+<p><strong>~0.3-0.6 s on a ~6.9 s TU</strong>, and note that full <code>test_models.h</code> measured
+<em>below</em> full <code>shared/models.h</code> despite being a strict superset — the noise floor
+at this magnitude is ~0.3 s, the same size as the effect. Extrapolated over the
+89 including TUs that projects roughly <strong>30 s of a ~3000 s build (~1%)</strong>, against</p>
+<h1 id="634s-estimate-of-150-s">634's estimate of ~150 s.<a class="headerlink" href="#634s-estimate-of-150-s" title="Permanent link">&para;</a></h1>
+<p>The mechanism is the same one <a href="#after-the-pch-issue-633">After the PCH</a> found for
+<code>import storm;</code>: the cost is <em>entering</em> the reflection machinery, not the volume
+pulled through it. <code>test_db_helpers.h</code>, which #634's title names alongside the
+models, is +0.09 s and was never the problem.</p>
+<h4 id="what-the-probes-missed-and-why-the-split-shipped-anyway">What the probes missed, and why the split shipped anyway<a class="headerlink" href="#what-the-probes-missed-and-why-the-split-shipped-anyway" title="Permanent link">&para;</a></h4>
+<p>Those probes vary only the <em>model</em> content, so they answer "how much do the
+other eleven models cost" and not "how much does the umbrella cost". Two things
+the split removes are outside what they varied:</p>
+<p>Counts used below, since the earlier text says 89: <strong>82 files</strong> named
+<code>test_models.h</code> at HEAD (81 TUs plus the umbrella's own usage example), and
+<strong>97 compilation units</strong> reached <code>shared/models.h</code> through their include
+closure — the extra 15 arrive via shared body headers. 97 is the denominator
+for the extrapolation.</p>
+<ul>
+<li><strong>The helper block.</strong> <code>make_record</code>/<code>make_updated_record</code>/<code>is_original_record</code>
+  and <code>populate_join_test_data</code> are used by 2 and 2 TUs respectively, but every
+  TU parsed them. The probe table above prices helpers+fixture together at
+  +0.50 s and never separates them; the fixture is what almost every TU actually
+  wanted.</li>
+<li><strong>TUs that need no shared model at all.</strong> 14 of the 97 declare their own
+  models and used the umbrella purely for <code>StormTestFixture</code>.</li>
+</ul>
+<p>Measured A/B on the real tree rather than on probes — same host, same BMIs, the
+split stashed and unstashed between runs, min of 3 after a warm-up, ccache off:</p>
+<table>
+<thead>
+<tr>
+<th>TU</th>
+<th>shared models it needs</th>
+<th style="text-align: right;">before</th>
+<th style="text-align: right;">after</th>
+<th style="text-align: right;">Δ</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>db/test_pool.cpp</code></td>
+<td>Person</td>
+<td style="text-align: right;">7.02</td>
+<td style="text-align: right;">5.64</td>
+<td style="text-align: right;"><strong>−1.38</strong></td>
+</tr>
+<tr>
+<td><code>schema/test_ddl_execution_audit.cpp</code></td>
+<td>all 11</td>
+<td style="text-align: right;">38.77</td>
+<td style="text-align: right;">37.47</td>
+<td style="text-align: right;"><strong>−1.30</strong></td>
+</tr>
+<tr>
+<td><code>crud/test_select.cpp</code></td>
+<td>Person</td>
+<td style="text-align: right;">11.45</td>
+<td style="text-align: right;">10.31</td>
+<td style="text-align: right;">−1.14</td>
+</tr>
+<tr>
+<td><code>schema/test_max_length.cpp</code></td>
+<td>none</td>
+<td style="text-align: right;">8.07</td>
+<td style="text-align: right;">7.11</td>
+<td style="text-align: right;">−0.96</td>
+</tr>
+<tr>
+<td><code>schema/test_types.cpp</code></td>
+<td>7</td>
+<td style="text-align: right;">23.90</td>
+<td style="text-align: right;">23.14</td>
+<td style="text-align: right;">−0.76</td>
+</tr>
+<tr>
+<td><code>schema/test_short_annotations.cpp</code></td>
+<td>none</td>
+<td style="text-align: right;">6.22</td>
+<td style="text-align: right;">5.66</td>
+<td style="text-align: right;">−0.56</td>
+</tr>
+<tr>
+<td><code>query/test_many_to_many_sqlite.cpp</code></td>
+<td>none</td>
+<td style="text-align: right;">10.99</td>
+<td style="text-align: right;">10.64</td>
+<td style="text-align: right;">−0.35</td>
+</tr>
+<tr>
+<td><code>query/test_where_temporal.cpp</code></td>
+<td>ExtendedTypes</td>
+<td style="text-align: right;">13.52</td>
+<td style="text-align: right;">13.26</td>
+<td style="text-align: right;">−0.26</td>
+</tr>
+<tr>
+<td><code>query/test_where.cpp</code></td>
+<td>3 + seed array</td>
+<td style="text-align: right;">14.61</td>
+<td style="text-align: right;">14.68</td>
+<td style="text-align: right;">+0.07</td>
+</tr>
+</tbody>
+</table>
+<p>The decisive row is <code>test_ddl_execution_audit.cpp</code>. It needs <em>every</em> model, so
+the per-model split cannot help it, and it still gained 1.30 s — that is the
+helper block alone. <strong>The intercept finding stands; it was just not the whole
+cost.</strong> Adopted on that basis, not on the per-model slope.</p>
+<p>That row was measured with the audit TU on per-model includes. It <strong>ships on the
+umbrella instead</strong>, deliberately: it is the only TU that wants every model, and
+making it the umbrellas' one consumer is what keeps <code>test_models.h</code> and
+<code>shared/models.h</code> compiled at all — a header nothing includes is never parsed and
+rots silently. So its 1.30 s is given back on purpose, and the shipped saving is
+the other eight rows:</p>
+<p>mean <strong>−0.67 s/TU</strong>, median −0.66, 7 of 8 negative — ≈ <strong>−64 s</strong> over the 96
+remaining TUs. Still about 2x what the probes projected, and the same magnitude
+as the <code>create_table_sql</code> removal already in <a href="#what-was-fixed">What was fixed</a>.</p>
+<h3 id="the-schema-module-under-ftime-trace-670">The schema module under <code>-ftime-trace</code> (#670)<a class="headerlink" href="#the-schema-module-under-ftime-trace-670" title="Permanent link">&para;</a></h3>
+<p>Captured with <code>scripts/time_trace.py</code> (see <a href="#method">Method</a>) at granularity 0,
+baseline develop <code>b199413</code>. <strong>Different host from the rest of this document</strong>:
+native macOS arm64, 8 cores, <code>ninja-debug</code> (coverage flags included), and
+another worktree's build shared the machine for part of the session (load
+average up to 77) — so wall times below are best-of-3 and still wander by
+several seconds between rounds. The event <strong>counts</strong> are deterministic and are
+what the conclusions rest on.</p>
+<p><strong>The BMI itself</strong> (<code>src/orm/schema.cppm</code>, traced as its <code>--precompile</code> job):
+3.4 s on the quietest round, of which <strong><code>WriteAST</code> — serializing the BMI — is
+~70% (2.3 s)</strong> and the whole frontend ~1.0 s (<code>ParseClass</code> 907 events / 0.43 s,
+the largest single one <code>SchemaStatement</code> itself at ~0.3-0.9 s;
+<code>InstantiateFunction</code> 201 events, almost all libc++ <code>vector&lt;string&gt;</code> /
+<code>set&lt;string&gt;</code> machinery; constant evaluation 6697 events / 0.01 s). Nothing in
+the module's own body is reflection-expensive: <code>SchemaStatement&lt;T&gt;</code> is a template
+and is not instantiated until a consumer names a model. The change below leaves
+every one of these counts identical, as it should.</p>
+<p><strong>The consumers</strong> are where schema cost lands. In <code>tests/schema/test_orm_schema.cpp</code>
+(12 models, mostly SQLite DDL), top-level events naming <code>SchemaStatement</code> add up
+to ~1.9 s of a ~7 s TU. The trace showed why: the largest of them was the
+<strong>class</strong> instantiation — <code>SchemaStatement&lt;Person&gt;</code> 2.7 s — and inside it the
+<code>EvaluateAsInitializer</code> of <code>sqlite_create_table_sql_array_</code> <strong>and</strong>
+<code>pg_create_table_sql_array_</code>, for every model, in every TU.</p>
+<h4 id="lazy-per-dialect-create-table-sql-670">Lazy per-dialect CREATE TABLE SQL (#670)<a class="headerlink" href="#lazy-per-dialect-create-table-sql-670" title="Permanent link">&para;</a></h4>
+<p>Those two arrays were <code>static constexpr</code> data members, and Clang instantiates a
+<code>static constexpr</code> member's initializer together with its class. So any TU that
+instantiated <code>SchemaStatement&lt;T&gt;</code> for any reason — <code>create_index_sql&lt;T&gt;()</code>,
+<code>create_table_sql&lt;T&gt;()</code> for one dialect — paid the full consteval CREATE TABLE
+build for <strong>both</strong> dialects. They are now a function-local <code>static constexpr</code>
+inside <code>create_table_sql&lt;D&gt;()</code>, generated only for the dialect a TU asks for.
+DDL text is unchanged (same <code>build_create_table_sql&lt;D&gt;()</code>; the suite's exact-DDL
+assertions pass on both backends).</p>
+<table>
+<thead>
+<tr>
+<th>TU</th>
+<th style="text-align: right;">InstantiateFunction</th>
+<th style="text-align: right;">EvaluateAsConstantExpr</th>
+<th style="text-align: right;">best-of-3 wall, median of 3 rounds</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>test_orm_schema.cpp</code> before</td>
+<td style="text-align: right;">3683</td>
+<td style="text-align: right;">18710</td>
+<td style="text-align: right;">6.98 s</td>
+</tr>
+<tr>
+<td><code>test_orm_schema.cpp</code> after</td>
+<td style="text-align: right;"><strong>3387 (−8.0%)</strong></td>
+<td style="text-align: right;"><strong>17733 (−5.2%)</strong></td>
+<td style="text-align: right;">6.50 s</td>
+</tr>
+<tr>
+<td><code>test_referential_integrity.cpp</code> before</td>
+<td style="text-align: right;">3978</td>
+<td style="text-align: right;">17557</td>
+<td style="text-align: right;">8.32 s</td>
+</tr>
+<tr>
+<td><code>test_referential_integrity.cpp</code> after</td>
+<td style="text-align: right;">3942 (−0.9%)</td>
+<td style="text-align: right;">17413 (−0.8%)</td>
+<td style="text-align: right;">7.81 s</td>
+</tr>
+<tr>
+<td><code>test_types.cpp</code> before / after</td>
+<td style="text-align: right;">7216 / 7216</td>
+<td style="text-align: right;">42314 / 42314</td>
+<td style="text-align: right;">—</td>
+</tr>
+</tbody>
+</table>
+<p>Same-load single traces of <code>test_orm_schema.cpp</code> show where it went:
+<code>SchemaStatement&lt;Person&gt;</code> class instantiation <strong>2.72 s → 1.02 s</strong>, <code>&lt;Task&gt;</code>
+1.13 → 0.33 s, <code>&lt;Message&gt;</code> 1.08 → 0.35 s, and the <code>*_create_table_sql_array_</code>
+initializers gone from the class-instantiation path entirely.</p>
+<p><strong>What it is worth is bounded by how many dialects a TU uses.</strong> A <code>TYPED_TEST</code>
+over both backends asks for both, and <code>test_types.cpp</code> gets nothing — its counts
+are identical. The saving is real only where a model is instantiated but one
+dialect (or no CREATE TABLE at all) is used. The wall-time column moves the
+right way on both TUs that changed, by ~0.5 s, but this session's noise was
+larger than that — and the "after" wall times come from a separate block of rounds
+(the shipped code built as an ablation tree), not interleaved with the "before"
+ones — so read it as consistent with the counts rather than as a measured number — per the <a href="#method">Method</a> rule, a whole-build A/B on a quiet
+host is what would turn it into seconds.</p>
+<p><strong>Trade-off:</strong> the consteval guards inside <code>build_create_table_sql&lt;D&gt;()</code> (the PG-only <code>has_pinned_bigint_pk</code> cross-check, the sizer-overflow <code>std::unreachable()</code> backstops — one exact-length check since <a href="#exact-size-create-table-buffer-682">#682</a>) now fire per dialect, only in a TU that requests that dialect's DDL for a model — not for both on every instantiation.</p>
+<h4 id="exact-size-create-table-buffer-682">Exact-size CREATE TABLE buffer (#682)<a class="headerlink" href="#exact-size-create-table-buffer-682" title="Permanent link">&para;</a></h4>
+<p><code>tests/schema/test_ddl_execution_audit.cpp</code> is the slowest TU in the tree: ~61
+models × 2 dialects through <code>TYPED_TEST</code>, so ~122 <code>build_create_table_sql&lt;D&gt;()</code>
+evaluations. Traced at granularity 0 (same host and method as #670 above), the
+<code>arr</code> initializer in <code>create_table_sql&lt;D&gt;()</code> was 1.08 s over 122 evaluations, and
+a further <strong>0.66 s / 416 events</strong> sat on one line: <code>build_column_def&lt;Index, D&gt;</code>
+declared its buffer as <code>ConstexprString&lt;col_def_buffer&lt;D&gt;()&gt;</code>. A consteval call in
+a template argument is <strong>not memoised</strong> — it is re-evaluated for every column
+instantiation, and the #361 backstop <code>col.len &gt;= col_def_buffer&lt;D&gt;() - 1</code> ran it
+once more per column inside <code>arr</code>. <code>col_def_buffer</code> loops every field
+(<code>identifier_of</code>) and folds <code>max_composite_fk_columns_len</code>, so the DDL build was
+O(fields²) per model per dialect.</p>
+<p>Three steps, each measured (deterministic counts, <code>test_ddl_execution_audit.cpp</code>):</p>
+<table>
+<thead>
+<tr>
+<th>variant</th>
+<th style="text-align: right;">InstantiateFunction</th>
+<th style="text-align: right;">EvaluateAsConstantExpr</th>
+<th style="text-align: right;">EvaluateAsRValue</th>
+<th style="text-align: right;"><code>arr</code></th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>baseline (develop <code>82e7cfd</code>)</td>
+<td style="text-align: right;">16270</td>
+<td style="text-align: right;">84303</td>
+<td style="text-align: right;">66908</td>
+<td style="text-align: right;">1.08 s</td>
+</tr>
+<tr>
+<td><code>col_def_buffer</code> computed once, passed as an NTTP</td>
+<td style="text-align: right;">16270</td>
+<td style="text-align: right;">84009</td>
+<td style="text-align: right;">66908</td>
+<td style="text-align: right;">0.59 s (+0.16 s <code>col_buf</code>)</td>
+</tr>
+<tr>
+<td>columns appended straight into the table buffer (hand sizers kept)</td>
+<td style="text-align: right;">15352</td>
+<td style="text-align: right;">79782</td>
+<td style="text-align: right;">60813</td>
+<td style="text-align: right;">0.39 s</td>
+</tr>
+<tr>
+<td><strong>+ buffer sized by running the writer against <code>ClauseSizer</code> (shipped)</strong></td>
+<td style="text-align: right;"><strong>13539 (−16.8%)</strong></td>
+<td style="text-align: right;"><strong>72521 (−14.0%)</strong></td>
+<td style="text-align: right;"><strong>55206 (−17.5%)</strong></td>
+<td style="text-align: right;">0.29 s</td>
+</tr>
+</tbody>
+</table>
+<p>What shipped is the last row. Each column is written straight into the CREATE
+TABLE sink (<code>append_column_def&lt;Index, D&gt;(sql)</code>) — no per-column <code>ConstexprString</code>,
+whose by-value copy into the table SQL was itself a measurable share of <code>arr</code> —
+and the whole statement is sized by running the <strong>same writer</strong> against
+<code>detail::ClauseSizer</code> first, the technique <code>build_junction_sql</code> already used
+(#504). That made the hand-maintained sizers dead, and they were deleted:
+<code>col_def_buffer</code>, <code>column_size_budget</code>/<code>ColumnSizeBudget</code>, <code>calculate_column_defs_size</code>,
+<code>calculate_create_table_sql_size</code>, <code>fk_references_len</code>/<code>max_fk_references_len</code>,
+<code>max_default_clause_len</code>/<code>max_max_length_clause_len</code>, and the composite-FK
+column/constraint size helpers — about 300 lines whose only job was to predict
+text the writer then emitted, and which #361, #412, #413, #493, #504 and #506 each
+had to widen by hand when a clause grew. The buffer is now exact (it used to carry
+<code>XL_BUFFER</code> = 100 bytes of slack per table), and the backstop becomes
+<code>sql.len != size - 1</code> → <code>std::unreachable()</code>: if the sink and <code>ConstexprString</code>
+ever counted differently the build fails rather than truncating.</p>
+<p>Wall time, best-of-3 per round, three rounds alternated A/B/A/B/A/B with a BMI
+rebuild before each (per <a href="#method">Method</a>):</p>
+<table>
+<thead>
+<tr>
+<th>TU</th>
+<th>baseline rounds</th>
+<th>shipped rounds</th>
+<th style="text-align: right;">median Δ</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>test_ddl_execution_audit.cpp</code></td>
+<td>13.04 / 13.10 / 13.43 s</td>
+<td>10.33 / 10.24 / 10.56 s</td>
+<td style="text-align: right;"><strong>−2.77 s (−21%)</strong></td>
+</tr>
+<tr>
+<td><code>test_orm_schema.cpp</code> (12 models, mostly one dialect)</td>
+<td>4.47 / 4.30 / 4.57 s</td>
+<td>4.99 / 4.18 / 4.25 s</td>
+<td style="text-align: right;">−0.21 s, within noise</td>
+</tr>
+</tbody>
+</table>
+<p>The second TU's counts move the same way (InstantiateFunction 3404 → 3198, −6.1%;
+EvaluateAsConstantExpr 18164 → 17231, −5.1%), but that is below its wall-time noise
+floor. The saving scales with columns × dialects actually generated, so the
+heavy DDL TU is where it shows. DDL text is unchanged — the writer's append
+sequence is the same, only the buffer it lands in moved — and the suite's
+exact-DDL assertions pass on both backends.</p>
+<p><strong>What is left in the DDL path is not worth chasing.</strong> After the change the
+largest DDL events are <code>arr</code> (0.29 s / 122) and the exact sizing pass (~0.12 s /
+122); everything above them in the trace is per-model concept checking (below)
+and gtest. The class-scope <code>index_sql_strings_</code> is still built eagerly per model
+(#670's lesson) but was not on this TU's top list.</p>
+<p><strong>Follow-up, done in #686:</strong> <code>count_primary_key_flavours&lt;T&gt;()</code> (<code>model_concepts.cppm</code>)
+was evaluated twice per model — once by <code>ModelPrimaryKeyValid</code>, once by
+<code>ModelPrimaryKeyPartLimit</code>. See <a href="#primary-key-counts-evaluated-once-per-model-686">the #686 entry</a>.</p>
+<h3 id="memoised-reflection-lookups-694">Memoised reflection lookups (#694)<a class="headerlink" href="#memoised-reflection-lookups-694" title="Permanent link">&para;</a></h3>
+<p>After #682 the DDL text was no longer the cost. A bottom-up micro-lab (one generated
+TU per primitive, swept over N, slope fitted; Apple M1, clang-p2996 Release, no
+assertions) priced what the remaining per-model work is made of:</p>
+<table>
+<thead>
+<tr>
+<th>primitive</th>
+<th style="text-align: right;">cost</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>trivial template instantiation</td>
+<td style="text-align: right;">~10 µs</td>
+</tr>
+<tr>
+<td><code>-O0</code> codegen, one function</td>
+<td style="text-align: right;">~70 µs</td>
+</tr>
+<tr>
+<td>consteval: one loop step / one <code>constexpr</code> call</td>
+<td style="text-align: right;">~2 µs / ~11 µs</td>
+</tr>
+<tr>
+<td><code>std::meta::nonstatic_data_members_of(^^T, …)</code></td>
+<td style="text-align: right;">~1.3 ms + ~75 µs per field, <strong>every call</strong></td>
+</tr>
+<tr>
+<td><code>std::meta::annotations_of(member)</code></td>
+<td style="text-align: right;">~0.4 ms, every call</td>
+</tr>
+<tr>
+<td>the same member list read back from a variable template</td>
+<td style="text-align: right;">~1.7 µs</td>
+</tr>
+</tbody>
+</table>
+<p>Stock Apple clang 17 runs the consteval calibration at the same speed, so this is
+clang's tree-walking evaluator, not the toolchain build. The two <code>&lt;meta&gt;</code> queries are
+not compiler builtins: they are libc++ code run by that evaluator (<code>members_of</code> builds a
+<code>std::vector</code>, then copies and filters it twice). The rule that matters: <strong>a consteval
+call is never memoised; a template instantiation is.</strong></p>
+<p>Measured against the real BMIs with generated models, instantiating <code>SchemaStatement&lt;M&gt;</code>
+(concepts + <code>BaseStatement</code> statics) cost <strong>~56 ms + ~4.5 ms per field</strong>, and both
+dialects' <code>CREATE TABLE</code> text only ~30 ms more. That per-model work re-derives the same
+answers over and over: 26 call sites run <code>nonstatic_data_members_of(^^T)</code> for the same
+<code>T</code>, and every flag predicate re-runs <code>annotations_of</code> — <code>is_primary_member</code> alone is up
+to four calls per field, looped by every model concept.</p>
+<p>The fix memoises both, in variable templates that hold <strong>plain values</strong>:</p>
+<ul>
+<li><strong>The member list:</strong> <code>data_members_of_v&lt;T&gt;</code> (in <code>storm_orm_field_attr</code>) is a
+  <code>std::array&lt;std::meta::info, N&gt;</code> built once per <code>T</code>. The 26 <code>^^T</code> scans read it. The
+  <code>Entity</code> concept's structural <code>requires</code> probe stays a raw call.</li>
+<li><strong>The annotation answers:</strong> <code>has_annotation_type&lt;Tag&gt;</code>, <code>fk_annotation_type_of</code>,
+  <code>max_length_of</code> and <code>annotation_type_specializing</code> (in <code>relation_meta</code>) each store their
+  <em>answer</em> (<code>bool</code> / <code>std::optional&lt;info&gt;</code> / <code>std::optional&lt;std::size_t&gt;</code>) per member, in a
+  variable template. A predicate's <code>member</code> is not a constant expression, so it reaches
+  that template through <code>memoised&lt;R&gt;</code> in the leaf module <code>storm_orm_reflection_cache</code>,
+  which is <code>extract&lt;R&gt;(substitute(var_template, args))</code>.</li>
+</ul>
+<p>Wall time, best-of-3 per round, three rounds alternated develop/branch, same host:</p>
+<table>
+<thead>
+<tr>
+<th>TU</th>
+<th>develop rounds</th>
+<th>#694 rounds</th>
+<th style="text-align: right;">median Δ</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>test_ddl_execution_audit.cpp</code></td>
+<td>16.37 / 15.30 / 15.36 s</td>
+<td>11.31 / 11.48 / 11.34 s</td>
+<td style="text-align: right;"><strong>−26.2%</strong></td>
+</tr>
+<tr>
+<td><code>test_orm_schema.cpp</code></td>
+<td>6.02 / 5.99 / 6.00 s</td>
+<td>5.74 / 5.74 / 5.74 s</td>
+<td style="text-align: right;">−4.3%</td>
+</tr>
+<tr>
+<td><code>query/test_distinct.cpp</code></td>
+<td>10.10 / 10.12 / 10.09 s</td>
+<td>9.87 / 9.88 / 9.97 s</td>
+<td style="text-align: right;">−2.2%</td>
+</tr>
+</tbody>
+</table>
+<p>The absolute seconds are higher than #682's 10.3 s because the host was loaded; the
+rounds do not overlap. Of the −26.2%, the annotation answers alone are −16.5% and the
+member list adds the rest.</p>
+<p>Two variants were measured and dropped:</p>
+<table>
+<thead>
+<tr>
+<th>variant</th>
+<th style="text-align: right;">DDL TU</th>
+<th>why dropped</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>one per-member list of annotation types, shared by every predicate</td>
+<td style="text-align: right;">−25.3%</td>
+<td>worse: the answers are already memoised per (tag, member), so a shared list saves only each tag's first scan, and it costs a second <code>annotations_of</code> (one to size the array, one to fill it)</td>
+</tr>
+<tr>
+<td><code>ConstexprString::append</code> as one <code>std::char_traits&lt;char&gt;::copy</code> instead of a per-char loop</td>
+<td style="text-align: right;">−26.6%</td>
+<td>noise: 4.3x faster per append in isolation (322 → 75 µs for 23 chars), but the DDL writes too few characters for it to show</td>
+</tr>
+</tbody>
+</table>
+<p><strong>Memoise values, never <code>define_static_array</code> storage.</strong> The first version stored both
+lists as <code>std::span</code>s into <code>define_static_array</code> storage. It passed every test and broke
+<code>storm_bench</code> (Release): <code>storm_benchmark_*</code> instantiate the statements for
+<code>storm::benchmark::User</code> inside their BMI, and an importer reading that span back gets
+"initializer of <code>data_members_of_v&lt;User&gt;</code> is not a constant expression". No <code>tests/</code> TU
+had that shape, a model instantiated inside a module and then used from an importer, so
+<code>tests/schema/test_bmi_fk_module.cppm</code> + <code>test_reflection_cache_bmi.cpp</code> now are that
+shape. Against the span version that pair does not compile (clang-p2996 crashes); a
+<code>std::array</code> or a scalar crosses the BMI like any <code>static constexpr</code> value.</p>
+<p>Three things worth knowing before reading a trace of this change:</p>
+<ul>
+<li><strong>Event counts go the wrong way.</strong> <code>EvaluateAsConstantExpr</code> rises on the DDL TU, because
+  every <code>substitute</code> lookup is an evaluation of its own. Each is far cheaper than the
+  <code>annotations_of</code> it replaces, so here the count is not a cost proxy, unlike #670/#682,
+  where it was.</li>
+<li><strong>What no cache removes:</strong> the first reflection query on a fresh class costs ~4.5 ms
+  once per class (measured in Storm's module context), and the <code>SchemaStatement&lt;M&gt;</code>
+  class-body instantiation itself is ~13 ms per model.</li>
+<li><strong>#262 and the BMI.</strong> A member list or memoised answer built inside a module BMI is now
+  reused by its importers, so member reflections do cross a BMI on this path. The BMI
+  regression test above queries annotations (FK, <code>max_length</code>) through that path and
+  passes; it is the test to extend if #262 resurfaces.</li>
+</ul>
+<h3 id="primary-key-counts-evaluated-once-per-model-686">Primary-key counts evaluated once per model (#686)<a class="headerlink" href="#primary-key-counts-evaluated-once-per-model-686" title="Permanent link">&para;</a></h3>
+<p><code>ModelPrimaryKeyValid</code> and <code>ModelPrimaryKeyPartLimit</code> both sit on <code>BaseStatement&lt;T&gt;</code>'s
+constraint list and each called <code>count_primary_key_flavours&lt;T&gt;()</code>. Clang does not
+memoise consteval calls, so the member scan ran twice per model in every TU that
+instantiates a statement. Both concepts now read
+<code>primary_key_counts_v&lt;T&gt;</code>, an <code>inline constexpr</code> variable template — instantiated once
+per <code>T</code>, on first use, so it stays lazy (it is a namespace-scope variable template, not
+the class-scope static of #670).</p>
+<p>Deterministic <code>-ftime-trace</code> event counts (<code>scripts/time_trace.py</code>, one run each):</p>
+<table>
+<thead>
+<tr>
+<th>TU</th>
+<th style="text-align: right;"><code>EvaluateAsConstantExpr</code></th>
+<th style="text-align: right;"><code>EvaluateAsInitializer</code></th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>test_ddl_execution_audit.cpp</code> (61 models)</td>
+<td style="text-align: right;">136202 → 126542 (−9660)</td>
+<td style="text-align: right;">21777 → 21838 (+61)</td>
+</tr>
+<tr>
+<td><code>test_distinct.cpp</code> (2 models)</td>
+<td style="text-align: right;">56356 → 55860 (−496)</td>
+<td style="text-align: right;">5841 → 5843 (+2)</td>
+</tr>
+</tbody>
+</table>
+<p>The removed evaluations are ~158 per model on the audit TU. The <code>EvaluateAsInitializer</code>
+increase is the one new variable-template initializer per model.</p>
+<p><strong>Wall time: within noise.</strong> Three alternated before/after rounds, each the best of 3
+<code>-ftime-trace</code> replays (a rebuild of the library between sides):</p>
+<table>
+<thead>
+<tr>
+<th>TU</th>
+<th>before</th>
+<th>after</th>
+<th style="text-align: right;">median Δ</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>test_ddl_execution_audit.cpp</code></td>
+<td>7.706 / 7.878 / 7.827 s</td>
+<td>7.716 / 7.729 / 7.758 s</td>
+<td style="text-align: right;">−0.10 s (−1.3%)</td>
+</tr>
+<tr>
+<td><code>test_distinct.cpp</code></td>
+<td>6.856 / 6.941 / 6.971 s</td>
+<td>6.964 / 6.947 / 6.881 s</td>
+<td style="text-align: right;">+0.006 s</td>
+</tr>
+</tbody>
+</table>
+<p>The audit TU's −0.10 s is about what 61 removed member scans predict (~1% of the
+compile), but it is the same size as the spread between the "before" rounds (0.17 s), so
+it is not a claimed win. <code>test_distinct.cpp</code> has too few models to show anything. An
+earlier attempt at these rounds was discarded: it ran under heavy outside load and the
+same unchanged build timed 13.3 s then 30.6 s.</p>
+<p>Concept names and logic are unchanged; the one visible difference is that a failing
+<code>ModelPrimaryKeyPartLimit</code> now prints <code>primary_key_counts_v&lt;T&gt;.columns &lt;= …</code> as its
+constraint text (no test matches on it). The full suite passes (3129 passed, 1
+self-skipped).</p>
+<h3 id="two-correctness-bugs-found-along-the-way">Two correctness bugs found along the way<a class="headerlink" href="#two-correctness-bugs-found-along-the-way" title="Permanent link">&para;</a></h3>
+<p><strong><code>#embed</code> is invisible to the dependency scanner.</strong> Clang does not list an
+embedded file in the depfile, so ninja recorded no edge from the consuming object
+to the JSON (<code>ninja -t deps</code> showed none). Editing <code>unified_cases.yaml</code>
+regenerated the JSON and left the objects stale — the suite kept running the
+previous corpus, green. The benchmark corpus had the identical bug.</p>
+<p><strong>A crashed clang-tidy read as success.</strong> <code>--diff</code> counted only <code>": error:"</code> and
+<code>": warning:"</code> lines, and a SIGSEGV prints neither. <code>--full</code> already treated an
+unexpected crash as failure; <code>--diff</code> did not.</p>
+<h3 id="a-build-state-trap-worth-recognising">A build-state trap worth recognising<a class="headerlink" href="#a-build-state-trap-worth-recognising" title="Permanent link">&para;</a></h3>
+<p>If a build is interrupted (Ctrl-C, OOM kill, a killed CI job), ninja's
+<code>.ninja_deps</code> can be left truncated. Every subsequent build then prints</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a>ninja: warning: premature end of file; recovering
+</code></pre></div>
+<p>and rebuilds the whole <code>import storm;</code> dependency graph despite unchanged
+sources — indistinguishable from "compilation is just slow". <code>ninja -t recompact</code>
+followed by <strong>one build that runs to completion uninterrupted</strong> restores true
+incremental behaviour (verified: the next build was <code>no work to do</code>, 0 s).</p>
+<hr />
+<h2 id="remaining-levers">Remaining levers<a class="headerlink" href="#remaining-levers" title="Permanent link">&para;</a></h2>
+<table>
+<thead>
+<tr>
+<th>lever</th>
+<th style="text-align: right;">ceiling</th>
+<th>note</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>~~<code>import storm;</code> per TU~~</td>
+<td style="text-align: right;">~~230 s~~</td>
+<td><strong>Closed by measurement (#633).</strong> The gtest PCH already took it from +1.38 s to +0.5-0.8 s per TU. What remains is gtest's own instantiations slowing down because storm's declarations are in the lookup set — not storm being loaded — so it is not reachable from storm's side. Both directions #633 proposed were measured and rejected above; together they are worth ~15 s.</td>
+</tr>
+<tr>
+<td>~~<code>test_db_helpers.h</code> + <code>shared/models.h</code>~~</td>
+<td style="text-align: right;">~~150 s~~</td>
+<td><strong>Done (#634), for ~half the reason the issue gave.</strong> The model cost is an <em>intercept</em> — the first model and its first <code>fields::</code> proxy are +1.64 s, the other eleven models +0.50 s — so the per-model split reaches only the slope. What made it worth doing is the part the probes bundled in with the models: the helper block every TU parsed for 2 TUs' benefit, and the 14 TUs that need no shared model at all. Measured <strong>−0.67 s/TU ≈ −64 s</strong> as shipped, not the ~150 s estimated nor the ~30 s the probes projected. <code>test_db_helpers.h</code> itself is +0.09 s and was never the problem. See <a href="#splitting-sharedmodelsh-per-model-634--rejected-on-probes-adopted-on-measurement">above</a>.</td>
+</tr>
+<tr>
+<td>the test bodies themselves</td>
+<td style="text-align: right;">≤13% of a TU, not recommended</td>
+<td><strong>Closed by measurement.</strong> Of an average TU the bodies are ~41-45% and the fixture another ~37-41% (<a href="#what-one-average-tu-is-made-of">above</a>). Inside the bodies the only levers are merging every <code>TYPED_TEST</code> into one block and neutering the assertions — together worth 12.9% in one session and 5.5% in another, so ≤13% is a ceiling, not a value. Both keep full coverage but cost failure granularity and diagnostic quality respectively. The rest is the distinct query shapes, i.e. the checklist's coverage.</td>
+</tr>
+<tr>
+<td><code>ExpressionVariant</code>'s 28 alternatives</td>
+<td style="text-align: right;">~100 s, unmeasured</td>
+<td>The variant-visitation machinery is 6.7% of a TU, and it scales with the ALTERNATIVE COUNT — which is a design choice, since <code>ComparisonExpr&lt;T&gt;</code>/<code>BetweenExpr&lt;T&gt;</code>/<code>InExpression&lt;T&gt;</code> each contribute one per value type. Replacing <code>std::visit</code> with a <code>switch</code> does <strong>not</strong> reach it (<a href="#stdvisit-over-expressionvariant--swapped-for-a-switch-no-reproducible-effect">measured and reverted</a>); nesting the value variant inside one node type to make the outer variant ~5-wide might, at the cost of a refactor of every node's <code>to_sql</code>/<code>bind_impl</code>. Measure a prototype before opening it as work.</td>
+</tr>
+<tr>
+<td>the fixture + registration layer</td>
+<td style="text-align: right;">~0 reachable</td>
+<td><strong>Closed by measurement.</strong> Split into its axes <a href="#inside-the-fixture-layer--and-why-its-biggest-item-cannot-be-moved">above</a>: gtest's typed-test machinery is only ~10% of it, and the largest single item — 0.85 s per TU of <code>std::format</code> instantiation in <code>tests/test_db_helpers.h</code> — cannot be removed, moved, or reduced without the textual/modular <code>std</code> reconciliation collapsing in unrelated TUs. What remains is storm's <code>QuerySet</code> statics (~0.7 s) and its DDL generator (~0.9 s), both of which a test genuinely uses.</td>
+</tr>
+<tr>
+<td>the reflection intercept itself</td>
+<td style="text-align: right;">unmeasured</td>
+<td>What the row above leaves on the table: ~1.6 s per TU to enter the machinery (first annotated struct +0.65 s, first <code>define_aggregate</code>/<code>FieldRef</code> proxy +0.99 s). Library-side, so it would benefit users and not only tests — but it is the cost of the reflection a querying TU needs anyway, so whether <em>any</em> of it is removable is unknown. Measure before opening it as work.</td>
+</tr>
+<tr>
+<td><code>storm_orm_schema</code>'s BMI serialization</td>
+<td style="text-align: right;">~2-7 s per library build, unmeasured as a saving</td>
+<td><code>WriteAST</code> is ~70% of building <code>schema.cppm</code>'s BMI; its frontend is ~1 s (<a href="#the-schema-module-under--ftime-trace-670">above</a>). Paid once per library rebuild, not per test TU, so it bounds incremental rebuilds after a schema edit rather than the full build. Whether it is this module's own declarations or the imported ones it references (it imports <code>storm_orm_statements_base</code> and five more, re-exporting none) that dominate is not yet split. In the consumers, the largest remaining <code>SchemaStatement</code> instantiation is <code>create_index_sql</code>/<code>build_all_index_sql</code> (~1 s for <code>Person</code>) — single-dialect already, so laziness does not reach it.</td>
+</tr>
+<tr>
+<td>clang's bytecode constant interpreter</td>
+<td style="text-align: right;">unmeasured; blocked</td>
+<td><code>-fexperimental-new-constant-interpreter</code> runs plain consteval ~3.7x faster (calibration 6.77 → 1.84 s), and constant evaluation is ~44% of the heaviest TU. <strong>Blocked (#693):</strong> it cannot evaluate <code>&lt;meta&gt;</code> yet, so 33 of 44 modules fail to build with it (<code>value_bind</code> also on <code>std::format</code>); the 11 that pass save ~0.3 s once per library build. Per-module flags would not reach the cost anyway, which lands in the TUs that instantiate templates over models. Re-test on each toolchain bump. Independent of <a href="#memoised-reflection-lookups-694">#694</a>, which cuts the number of evaluations rather than their speed, so they would stack.</td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h2 id="method">Method<a class="headerlink" href="#method" title="Permanent link">&para;</a></h2>
+<p>Five scripts implement the measurements below, so a later investigation re-runs
+them rather than rebuilding the harness (and rediscovering the mistakes in the
+bullets that follow). Four of them answer "what does one TU pay" from different
+angles; <code>ninjalog_stats.py</code> answers "where does the whole build's time go". They
+share one replay harness, <code>scripts/lib/compile_replay.py</code>, so they agree on what
+a timed compile is:</p>
+<table>
+<thead>
+<tr>
+<th>script</th>
+<th>answers</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>scripts/compile_time_probe.py</code></td>
+<td>what a TU pays before its first assertion — generates probes carrying N models from <code>shared/models/</code>, replays a real TU's command against each, reports deltas</td>
+</tr>
+<tr>
+<td><code>scripts/typed_test_cost.py</code></td>
+<td>what the second backend costs — compiles real TUs as-is, then with <code>DatabaseTypes</code> narrowed to SQLite, bodies untouched</td>
+</tr>
+<tr>
+<td><code>scripts/ninjalog_stats.py</code></td>
+<td>where the whole build's time goes — parses <code>.ninja_log</code> into the bucket table above, deduplicating module edges and excluding scan edges</td>
+</tr>
+<tr>
+<td><code>scripts/tu_ablation.py</code></td>
+<td>what ONE TU's time is made of — ablates a real test file (drop bodies, merge them into one block, neuter the assertions, narrow the fixture) and recompiles each variant</td>
+</tr>
+<tr>
+<td><code>scripts/time_trace.py</code></td>
+<td>where ONE TU's (or one module's) time goes inside the compiler — replays it with <code>-ftime-trace -ftime-trace-granularity=0</code>, best of N, and prints clang's <code>Total &lt;event&gt;</code> aggregates plus the longest <code>InstantiateFunction</code>/<code>InstantiateClass</code>/<code>ParseClass</code>/constant-evaluation events, optionally <code>--filter</code>ed by detail</td>
+</tr>
+</tbody>
+</table>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a>scripts/dev-container.sh<span class="w"> </span><span class="nb">exec</span><span class="w"> </span>python3<span class="w"> </span>scripts/compile_time_probe.py
+<a id="__codelineno-4-2" name="__codelineno-4-2" href="#__codelineno-4-2"></a>scripts/dev-container.sh<span class="w"> </span><span class="nb">exec</span><span class="w"> </span>python3<span class="w"> </span>scripts/compile_time_probe.py<span class="w"> </span>--body<span class="w"> </span>real
+<a id="__codelineno-4-3" name="__codelineno-4-3" href="#__codelineno-4-3"></a>scripts/dev-container.sh<span class="w"> </span><span class="nb">exec</span><span class="w"> </span>python3<span class="w"> </span>scripts/typed_test_cost.py
+<a id="__codelineno-4-4" name="__codelineno-4-4" href="#__codelineno-4-4"></a>scripts/ninjalog_stats.py<span class="w"> </span>build/debug/.ninja_log<span class="w">     </span><span class="c1"># after a build from scratch</span>
+<a id="__codelineno-4-5" name="__codelineno-4-5" href="#__codelineno-4-5"></a>scripts/dev-container.sh<span class="w"> </span><span class="nb">exec</span><span class="w"> </span>python3<span class="w"> </span>scripts/tu_ablation.py<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-4-6" name="__codelineno-4-6" href="#__codelineno-4-6"></a><span class="w">    </span>tests/crud/test_conditional_update.cpp<span class="w"> </span>--variants<span class="w"> </span>full,merge,sink,trivial1,n<span class="o">=</span><span class="m">0</span>
+<a id="__codelineno-4-7" name="__codelineno-4-7" href="#__codelineno-4-7"></a>scripts/dev-container.sh<span class="w"> </span><span class="nb">exec</span><span class="w"> </span>python3<span class="w"> </span>scripts/time_trace.py<span class="w"> </span>src/orm/schema.cppm
+<a id="__codelineno-4-8" name="__codelineno-4-8" href="#__codelineno-4-8"></a>scripts/dev-container.sh<span class="w"> </span><span class="nb">exec</span><span class="w"> </span>python3<span class="w"> </span>scripts/time_trace.py<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-4-9" name="__codelineno-4-9" href="#__codelineno-4-9"></a><span class="w">    </span>tests/schema/test_orm_schema.cpp<span class="w"> </span>--filter<span class="w"> </span>SchemaStatement<span class="w"> </span>--top<span class="w"> </span><span class="m">15</span>
+</code></pre></div>
+<p>All four replay scripts refuse to run if <code>compile_commands.json</code> shows a
+compiler launcher, since timing through a cache measures nothing.
+<code>typed_test_cost.py</code> edits <code>tests/test_db_helpers.h</code> in place and restores it in
+a <code>finally</code> block — run it on a clean tree, and check <code>git diff</code> if it is
+interrupted. <code>tu_ablation.py</code> does <strong>not</strong> touch the tree: each variant goes to a
+temporary file compiled with <code>-iquote &lt;the TU's own directory&gt;</code> added, so the
+relative includes resolve as they do in the real build while the source stays
+untouched, an interrupted run leaves nothing behind, and two runs cannot clobber
+each other. <code>-iquote</code> rather than <code>-I</code> because the quoted-include search order is
+<em>including file's directory, <code>-iquote</code>, <code>-I</code>, <code>-isystem</code></em> — an appended <code>-I</code> would
+land BEHIND the command's own <code>-I</code> list, where an earlier entry could shadow a
+same-named header, and would widen the angle-bracket path the real build never
+puts that directory on. Its ablated variants are compiled with the unused-entity warnings
+suppressed — <code>full</code> included, so the rows stay comparable — because deleting
+bodies orphans the file-scope helpers only those bodies used and the tree builds
+with <code>-Werror</code>.</p>
+<ul>
+<li><strong>Per-TU timing</strong>: replay a TU's exact command from <code>compile_commands.json</code>
+  with <code>-o</code> stripped, serially, min of 3 runs. Timing through <code>ninja</code> instead adds
+  the scan step and roughly ±2 s of noise; the replay harness holds ±0.1-0.3 s.</li>
+<li><strong>Always disable ccache when timing.</strong> <code>CMAKE_CXX_COMPILER_LAUNCHER</code> set with
+  <code>CACHE ... FORCE</code> survives removal of the module that set it — <code>cmake -U
+  CMAKE_CXX_COMPILER_LAUNCHER .</code> clears it. A stale launcher silently served
+  objects in 0.2 s and invalidated a whole measurement round.</li>
+<li><strong>Warm up before measuring.</strong> The first compile in a session is inflated by
+  cold page cache for the module BMIs — this produced a fake 47% win once.</li>
+<li><strong>A warm-up does not cover a REBUILT BMI, and one before/after pair is not a
+  result.</strong> To compare two versions of the library, the two runs necessarily sit
+  on opposite sides of a BMI rebuild, and that alone moved a TU by ~0.8 s here —
+  enough to manufacture a 7% win that three interleaved rounds erased. Rebuild
+  and re-measure each side several times, alternating sides, and read the median
+  per side, exactly as <code>/benchmark</code> requires for runtime. A cross-check that
+  costs nothing: a change confined to one code path must leave the variants that
+  never reach it (<code>n=0</code>) unmoved — if those shift too, the run is drifting, not
+  the code. See
+  <a href="#stdvisit-over-expressionvariant--swapped-for-a-switch-no-reproducible-effect">the std::visit entry</a>.</li>
+<li><strong>Whole-build breakdown</strong>: parse <code>.ninja_log</code>, deduplicating on
+  <code>(start, end, cmdhash)</code> — one module compile emits both a <code>.pcm</code> and a <code>.o</code>
+  and logs a line per output, so the raw log double-counts every module edge.
+  <code>scripts/ninjalog_stats.py</code> implements this; measure a build from scratch, as
+  the log accumulates across runs.</li>
+<li><strong>Inside one TU</strong>: <code>-ftime-trace</code>, then aggregate <code>InstantiateFunction</code> /
+  <code>InstantiateClass</code> / <code>Source</code> events by <code>args.detail</code> — <code>scripts/time_trace.py</code>.
+  It needs no extra preset or build tree: it replays from an existing build's
+  <code>compile_commands.json</code> and writes the trace to <code>build/time-trace/</code>, so default
+  builds are untouched. Prefer its event <strong>counts</strong> for an A/B — they are
+  deterministic, while the durations carry the same noise as any replay.</li>
+<li><strong>A module interface unit is two compiler jobs.</strong> For a <code>.cppm</code> the driver runs
+  <code>-emit-module-interface</code> and then <code>-emit-obj</code> <em>from that BMI</em>, and both write
+  the one <code>-ftime-trace</code> file — so a naive <code>-c</code> replay reports only the second,
+  which never parses the source (<code>schema.cppm</code> read as <strong>0.1 s</strong> that way, against
+  ~3.4 s for the real BMI build). <code>time_trace.py</code> traces a <code>.cppm</code> with
+  <code>--precompile</code>, and drops the modmap's <code>-fmodule-output</code> so a replay can never
+  overwrite the build's own BMI (which would make ninja rebuild every importer).</li>
+</ul>
+
+
+
+
+
+
+
+
+
+
+
+
+                
+              </article>
+            </div>
+          
+          
+<script>var target=document.getElementById(location.hash.slice(1));target&&target.name&&(target.checked=target.name.startsWith("__tabbed_"))</script>
+        </div>
+        
+          <button type="button" class="md-top md-icon" data-md-component="top" hidden>
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M13 20h-2V8l-5.5 5.5-1.42-1.42L12 4.16l7.92 7.92-1.42 1.42L13 8z"/></svg>
+  Back to top
+</button>
+        
+      </main>
+      
+        <footer class="md-footer">
+  
+  <div class="md-footer-meta md-typeset">
+    <div class="md-footer-meta__inner md-grid">
+      <div class="md-copyright">
+  
+  
+    Made with
+    <a href="https://squidfunk.github.io/mkdocs-material/" target="_blank" rel="noopener">
+      Material for MkDocs
+    </a>
+  
+</div>
+      
+    </div>
+  </div>
+</footer>
+      
+    </div>
+    <div class="md-dialog" data-md-component="dialog">
+      <div class="md-dialog__inner md-typeset"></div>
+    </div>
+    
+    
+    
+      
+      
+      <script id="__config" type="application/json">{"annotate": null, "base": "../../..", "features": ["navigation.sections", "navigation.expand", "navigation.top", "search.suggest", "search.highlight", "content.code.copy"], "search": "../../../assets/javascripts/workers/search.a7633da7.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
+    
+    
+      <script src="../../../assets/javascripts/bundle.c21346df.min.js"></script>
+      
+    
+  </body>
+</html>

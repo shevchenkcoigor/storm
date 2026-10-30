@@ -1,0 +1,3902 @@
+
+<!doctype html>
+<html lang="en" class="no-js">
+  <head>
+    
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width,initial-scale=1">
+      
+        <meta name="description" content="C++26 ORM with compile-time reflection for SQLite">
+      
+      
+      
+        <link rel="canonical" href="https://spiritecosse.github.io/storm/guide/features/JOIN_OPERATIONS/">
+      
+      
+        <link rel="prev" href="../WHERE_CLAUSES/">
+      
+      
+        <link rel="next" href="../BATCH_OPERATIONS/">
+      
+      
+        
+      
+      
+      <link rel="icon" href="../../../assets/images/favicon.png">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.8.0">
+    
+    
+      
+        <title>JOIN Operations - Storm ORM</title>
+      
+    
+    
+      <link rel="stylesheet" href="../../../assets/stylesheets/main.57a0d79d.min.css">
+      
+        
+        <link rel="stylesheet" href="../../../assets/stylesheets/palette.fb2fffe2.min.css">
+      
+      
+
+
+    
+    
+      
+    
+    
+      
+        
+        
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+        <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Roboto:300,300i,400,400i,700,700i%7CRoboto+Mono:400,400i,700,700i&display=fallback">
+        <style>:root{--md-text-font:"Roboto";--md-code-font:"Roboto Mono"}</style>
+      
+    
+    
+    <script>__md_scope=new URL("../../..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
+    
+      
+
+    
+    
+  </head>
+  
+  
+    
+    
+      
+    
+    
+    
+    
+    <body dir="ltr" data-md-color-scheme="default" data-md-color-primary="indigo" data-md-color-accent="indigo">
+  
+    
+    <input class="md-toggle" data-md-toggle="drawer" type="checkbox" id="__drawer" autocomplete="off">
+    <input class="md-toggle" data-md-toggle="search" type="checkbox" id="__search" autocomplete="off">
+    <label class="md-overlay" for="__drawer"></label>
+    <div data-md-component="skip">
+      
+        
+        <a href="#join-operations" class="md-skip">
+          Skip to content
+        </a>
+      
+    </div>
+    <div data-md-component="announce">
+      
+    </div>
+    
+    
+      
+
+  
+
+<header class="md-header md-header--shadow" data-md-component="header">
+  <nav class="md-header__inner md-grid" aria-label="Header">
+    <a href="../../.." title="Storm ORM" class="md-header__button md-logo" aria-label="Storm ORM" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    <label class="md-header__button md-icon" for="__drawer">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M3 6h18v2H3zm0 5h18v2H3zm0 5h18v2H3z"/></svg>
+    </label>
+    <div class="md-header__title" data-md-component="header-title">
+      <div class="md-header__ellipsis">
+        <div class="md-header__topic">
+          <span class="md-ellipsis">
+            Storm ORM
+          </span>
+        </div>
+        <div class="md-header__topic" data-md-component="header-topic">
+          <span class="md-ellipsis">
+            
+              JOIN Operations
+            
+          </span>
+        </div>
+      </div>
+    </div>
+    
+      
+        <form class="md-header__option" data-md-component="palette">
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="" data-md-color-scheme="default" data-md-color-primary="indigo" data-md-color-accent="indigo"  aria-label="Switch to dark mode"  type="radio" name="__palette" id="__palette_0">
+    
+      <label class="md-header__button md-icon" title="Switch to dark mode" for="__palette_1" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a4 4 0 0 0-4 4 4 4 0 0 0 4 4 4 4 0 0 0 4-4 4 4 0 0 0-4-4m0 10a6 6 0 0 1-6-6 6 6 0 0 1 6-6 6 6 0 0 1 6 6 6 6 0 0 1-6 6m8-9.31V4h-4.69L12 .69 8.69 4H4v4.69L.69 12 4 15.31V20h4.69L12 23.31 15.31 20H20v-4.69L23.31 12z"/></svg>
+      </label>
+    
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="" data-md-color-scheme="slate" data-md-color-primary="indigo" data-md-color-accent="indigo"  aria-label="Switch to light mode"  type="radio" name="__palette" id="__palette_1">
+    
+      <label class="md-header__button md-icon" title="Switch to light mode" for="__palette_0" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 18c-.89 0-1.74-.2-2.5-.55C11.56 16.5 13 14.42 13 12s-1.44-4.5-3.5-5.45C10.26 6.2 11.11 6 12 6a6 6 0 0 1 6 6 6 6 0 0 1-6 6m8-9.31V4h-4.69L12 .69 8.69 4H4v4.69L.69 12 4 15.31V20h4.69L12 23.31 15.31 20H20v-4.69L23.31 12z"/></svg>
+      </label>
+    
+  
+</form>
+      
+    
+    
+      <script>var palette=__md_get("__palette");if(palette&&palette.color){if("(prefers-color-scheme)"===palette.color.media){var media=matchMedia("(prefers-color-scheme: light)"),input=document.querySelector(media.matches?"[data-md-color-media='(prefers-color-scheme: light)']":"[data-md-color-media='(prefers-color-scheme: dark)']");palette.color.media=input.getAttribute("data-md-color-media"),palette.color.scheme=input.getAttribute("data-md-color-scheme"),palette.color.primary=input.getAttribute("data-md-color-primary"),palette.color.accent=input.getAttribute("data-md-color-accent")}for(var[key,value]of Object.entries(palette.color))document.body.setAttribute("data-md-color-"+key,value)}</script>
+    
+    
+    
+      
+      
+        <label class="md-header__button md-icon" for="__search">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        </label>
+        <div class="md-search" data-md-component="search" role="dialog">
+  <label class="md-search__overlay" for="__search"></label>
+  <div class="md-search__inner" role="search">
+    <form class="md-search__form" name="search">
+      <input type="text" class="md-search__input" name="query" aria-label="Search" placeholder="Search" autocapitalize="off" autocorrect="off" autocomplete="off" spellcheck="false" data-md-component="search-query" required>
+      <label class="md-search__icon md-icon" for="__search">
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
+      </label>
+      <nav class="md-search__options" aria-label="Search">
+        
+        <button type="reset" class="md-search__icon md-icon" title="Clear" aria-label="Clear" tabindex="-1">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+        </button>
+      </nav>
+      
+        <div class="md-search__suggest" data-md-component="search-suggest"></div>
+      
+    </form>
+    <div class="md-search__output">
+      <div class="md-search__scrollwrap" tabindex="0" data-md-scrollfix>
+        <div class="md-search-result" data-md-component="search-result">
+          <div class="md-search-result__meta">
+            Initializing search
+          </div>
+          <ol class="md-search-result__list" role="presentation"></ol>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+      
+    
+    
+      <div class="md-header__source">
+        <a href="https://github.com/spiritEcosse/storm" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    spiritEcosse/storm
+  </div>
+</a>
+      </div>
+    
+  </nav>
+  
+</header>
+    
+    <div class="md-container" data-md-component="container">
+      
+      
+        
+          
+        
+      
+      <main class="md-main" data-md-component="main">
+        <div class="md-main__inner md-grid">
+          
+            
+              
+              <div class="md-sidebar md-sidebar--primary" data-md-component="sidebar" data-md-type="navigation" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+
+
+<nav class="md-nav md-nav--primary" aria-label="Navigation" data-md-level="0">
+  <label class="md-nav__title" for="__drawer">
+    <a href="../../.." title="Storm ORM" class="md-nav__button md-logo" aria-label="Storm ORM" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    Storm ORM
+  </label>
+  
+    <div class="md-nav__source">
+      <a href="https://github.com/spiritEcosse/storm" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    spiritEcosse/storm
+  </div>
+</a>
+    </div>
+  
+  <ul class="md-nav__list" data-md-scrollfix>
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../.." class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Home
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+    
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--active md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_2" checked>
+        
+          
+          <label class="md-nav__link" for="__nav_2" id="__nav_2_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Guide
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_2_label" aria-expanded="true">
+          <label class="md-nav__title" for="__nav_2">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Guide
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../COOKBOOK/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Cookbook
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+    
+  
+  
+  
+    
+    
+    
+    
+      
+    
+    
+    <li class="md-nav__item md-nav__item--active md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_2_2" checked>
+        
+          
+          <label class="md-nav__link" for="__nav_2_2" id="__nav_2_2_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Features
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_2_2_label" aria-expanded="true">
+          <label class="md-nav__title" for="__nav_2_2">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Features
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../CRUD_OPERATIONS/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    CRUD Operations
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../SELECT_QUERIES/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    SELECT Queries
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../WHERE_CLAUSES/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    WHERE Clauses
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+    
+  
+  
+  
+    <li class="md-nav__item md-nav__item--active">
+      
+      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
+      
+      
+        
+      
+      
+        <label class="md-nav__link md-nav__link--active" for="__toc">
+          
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    JOIN Operations
+  
+
+    
+  </span>
+  
+  
+
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
+      <a href="./" class="md-nav__link md-nav__link--active">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    JOIN Operations
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+      
+        
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#overview" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Overview
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#basic-usage" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Basic Usage
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Basic Usage">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#single-fk-join" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Single FK JOIN
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#multi-fk-join" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Multi-FK JOIN
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#join-types" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        JOIN Types
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="JOIN Types">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#inner-join-default" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        INNER JOIN (Default)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#left-join" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        LEFT JOIN
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#many-to-many-joins-203" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Many-to-Many Joins (#203)
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Many-to-Many Joins (#203)">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#phase-1-auto-generated-junction-table" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Phase 1: Auto-Generated Junction Table
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#phase-2-explicit-junction-model-metadata" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Phase 2: Explicit Junction Model (metadata)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#multiple-m2m-relations-392" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Multiple m2m relations (#392)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#semantics" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Semantics
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#limitations" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Limitations
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#execution-strategy-391" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Execution Strategy (#391)
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#reverse-fk-joins-398" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Reverse-FK Joins (#398)
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Reverse-FK Joins (#398)">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#1-annotated-container-destination-select" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        1. Annotated container destination (select())
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#2-cross-model-fk-selector-aggregate-filter-chains" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        2. Cross-model FK selector (aggregate / filter chains)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#execution-semantics" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Execution &amp; semantics
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#limitations_1" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Limitations
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#composite-primary-keys-in-joins-504" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Composite Primary Keys in JOINs (#504)
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Composite Primary Keys in JOINs (#504)">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#fk-columns" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        FK columns
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#on-clauses" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        ON clauses
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#junction-tables-m2m" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Junction tables (m2m)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#through-models-many_to_many_through-536" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Through models (many_to_many_through&lt;&gt;, #536)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#stitching" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Stitching
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#notes" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Notes
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#architecture" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Architecture
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Architecture">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#type-erased-sql-builder-pattern" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Type-Erased SQL Builder Pattern
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#queryset-integration" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        QuerySet Integration
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#selectstatement-integration" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        SelectStatement Integration
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#performance-analysis" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Performance Analysis
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Performance Analysis">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#benchmark-results-10000-rows-100-iterations-release-build" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Benchmark Results (10,000 rows, 100 iterations, Release build)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#performance-characteristics" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Performance Characteristics
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#performance-bottlenecks" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Performance Bottlenecks
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#template-vs-function-pointer-experiment" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Template vs Function Pointer Experiment
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#optimization-recommendations" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Optimization Recommendations
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Optimization Recommendations">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#1-string-handling-biggest-potential-win" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        1. String Handling (Biggest Potential Win)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#2-memory-management" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        2. Memory Management
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#3-column-extraction" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        3. Column Extraction
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#4-caching-improvements" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        4. Caching Improvements
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#chaining-with-where" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Chaining with WHERE
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#testing" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Testing
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#benchmarking" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Benchmarking
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#key-benefits" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Key Benefits
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#see-also" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        See Also
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../BATCH_OPERATIONS/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Batch Operations
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../REFERENTIAL_INTEGRITY/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Referential Integrity
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../CONNECTION_TUNING/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Connection Tuning
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    
+    
+    
+    
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_2_3" >
+        
+          
+          <label class="md-nav__link" for="__nav_2_3" id="__nav_2_3_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Reference
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_2_3_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_2_3">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Reference
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../reference/FIELD_TYPES/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Field Types
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../reference/MIGRATIONS/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Migrations
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_3" >
+        
+          
+          <label class="md-nav__link" for="__nav_3" id="__nav_3_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Internals
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_3_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_3">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Internals
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    
+    
+    
+    
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_3_1" >
+        
+          
+          <label class="md-nav__link" for="__nav_3_1" id="__nav_3_1_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Architecture
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_3_1_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_3_1">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Architecture
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../internals/architecture/OVERVIEW/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Overview
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../internals/architecture/DESIGN_DECISIONS/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Design Decisions
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../internals/architecture/REFLECTION/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Reflection
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../internals/architecture/SQL_GENERATION/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    SQL Generation
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../internals/architecture/MODULE_SYSTEM/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Module System
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../internals/architecture/STATEMENT_CACHING/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Statement Caching
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../internals/architecture/COMPILE_TIME_VS_RUNTIME/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Compile-Time vs Runtime
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    
+    
+    
+    
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_3_2" >
+        
+          
+          <label class="md-nav__link" for="__nav_3_2" id="__nav_3_2_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Building
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_3_2_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_3_2">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Building
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../internals/building/GETTING_STARTED/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Getting Started
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../internals/building/COMMON_TASKS/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Common Tasks
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../internals/building/ADDING_FEATURES/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Adding Features
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../internals/building/PRE_COMMIT/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Pre-Commit
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../internals/building/FORMATTING/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Formatting
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    
+    
+    
+    
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_3_3" >
+        
+          
+          <label class="md-nav__link" for="__nav_3_3" id="__nav_3_3_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Testing
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_3_3_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_3_3">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Testing
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../internals/testing/TESTING/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Testing
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../internals/testing/CODE_COVERAGE/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Code Coverage
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../internals/testing/SANITIZERS/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Sanitizers
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../internals/testing/FUZZING/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Fuzzing
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../internals/testing/MSAN_LIBC_FIX/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    MSAN libc Fix
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    
+    
+    
+    
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_3_4" >
+        
+          
+          <label class="md-nav__link" for="__nav_3_4" id="__nav_3_4_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Performance
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_3_4_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_3_4">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Performance
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../internals/performance/PERFORMANCE/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Performance
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../internals/performance/BENCHMARK_DASHBOARD/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Benchmark Dashboard
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../internals/performance/JOIN_ANALYSIS/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    JOIN Analysis
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../internals/performance/DISTINCT_ANALYSIS/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    DISTINCT Analysis
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    
+    
+    
+    
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_3_5" >
+        
+          
+          <label class="md-nav__link" for="__nav_3_5" id="__nav_3_5_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Compiler
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_3_5_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_3_5">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Compiler
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../internals/compiler/COMPILER_ISSUES/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Compiler Issues
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../internals/compiler/COMPILER_ATTRIBUTES/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Compiler Attributes
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../internals/compiler/CPP26_CODING_STANDARDS/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    C++26 Coding Standards
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../internals/compiler/CODE_QUALITY/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Code Quality
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_4" >
+        
+          
+          <label class="md-nav__link" for="__nav_4" id="__nav_4_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Archive
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_4_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_4">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Archive
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../archive/SELECT_OPTIMIZATION_REPORT/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    SELECT Optimization Report
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../archive/SELECT_PERFORMANCE_ANALYSIS/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    SELECT Performance Analysis
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../archive/UPDATE_OPTIMIZATION_REPORT/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    UPDATE Optimization Report
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+  </ul>
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+            
+              
+              <div class="md-sidebar md-sidebar--secondary" data-md-component="sidebar" data-md-type="toc" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#overview" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Overview
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#basic-usage" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Basic Usage
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Basic Usage">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#single-fk-join" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Single FK JOIN
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#multi-fk-join" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Multi-FK JOIN
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#join-types" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        JOIN Types
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="JOIN Types">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#inner-join-default" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        INNER JOIN (Default)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#left-join" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        LEFT JOIN
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#many-to-many-joins-203" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Many-to-Many Joins (#203)
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Many-to-Many Joins (#203)">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#phase-1-auto-generated-junction-table" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Phase 1: Auto-Generated Junction Table
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#phase-2-explicit-junction-model-metadata" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Phase 2: Explicit Junction Model (metadata)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#multiple-m2m-relations-392" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Multiple m2m relations (#392)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#semantics" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Semantics
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#limitations" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Limitations
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#execution-strategy-391" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Execution Strategy (#391)
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#reverse-fk-joins-398" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Reverse-FK Joins (#398)
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Reverse-FK Joins (#398)">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#1-annotated-container-destination-select" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        1. Annotated container destination (select())
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#2-cross-model-fk-selector-aggregate-filter-chains" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        2. Cross-model FK selector (aggregate / filter chains)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#execution-semantics" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Execution &amp; semantics
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#limitations_1" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Limitations
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#composite-primary-keys-in-joins-504" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Composite Primary Keys in JOINs (#504)
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Composite Primary Keys in JOINs (#504)">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#fk-columns" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        FK columns
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#on-clauses" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        ON clauses
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#junction-tables-m2m" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Junction tables (m2m)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#through-models-many_to_many_through-536" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Through models (many_to_many_through&lt;&gt;, #536)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#stitching" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Stitching
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#notes" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Notes
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#architecture" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Architecture
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Architecture">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#type-erased-sql-builder-pattern" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Type-Erased SQL Builder Pattern
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#queryset-integration" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        QuerySet Integration
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#selectstatement-integration" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        SelectStatement Integration
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#performance-analysis" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Performance Analysis
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Performance Analysis">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#benchmark-results-10000-rows-100-iterations-release-build" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Benchmark Results (10,000 rows, 100 iterations, Release build)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#performance-characteristics" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Performance Characteristics
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#performance-bottlenecks" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Performance Bottlenecks
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#template-vs-function-pointer-experiment" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Template vs Function Pointer Experiment
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#optimization-recommendations" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Optimization Recommendations
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Optimization Recommendations">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#1-string-handling-biggest-potential-win" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        1. String Handling (Biggest Potential Win)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#2-memory-management" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        2. Memory Management
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#3-column-extraction" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        3. Column Extraction
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#4-caching-improvements" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        4. Caching Improvements
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#chaining-with-where" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Chaining with WHERE
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#testing" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Testing
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#benchmarking" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Benchmarking
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#key-benefits" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Key Benefits
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#see-also" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        See Also
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+          
+          
+            <div class="md-content" data-md-component="content">
+              
+              <article class="md-content__inner md-typeset">
+                
+                  
+
+
+  
+  
+
+
+<h1 id="join-operations">JOIN Operations<a class="headerlink" href="#join-operations" title="Permanent link">&para;</a></h1>
+<p>Storm ORM supports efficient single and multi-FK JOIN operations using a type-erased SQL builder pattern that achieves <strong>77% average efficiency</strong> compared to raw SQLite.</p>
+<h2 id="overview">Overview<a class="headerlink" href="#overview" title="Permanent link">&para;</a></h2>
+<p>Key features:
+- <strong>Single and multi-FK JOINs</strong> - Variadic template handles both cases
+- <strong>Type erasure without std::function</strong> - Uses abstract base class pattern
+- <strong>Compile-time SQL generation</strong> - Zero runtime SQL construction
+- <strong>Automatic FK population</strong> - Fully populates joined objects
+- <strong>77% average efficiency</strong> - Near-raw SQLite performance</p>
+<h2 id="basic-usage">Basic Usage<a class="headerlink" href="#basic-usage" title="Permanent link">&para;</a></h2>
+<h3 id="single-fk-join">Single FK JOIN<a class="headerlink" href="#single-fk-join" title="Permanent link">&para;</a></h3>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="k">struct</span><span class="w"> </span><span class="nc">User</span><span class="w"> </span><span class="p">{</span>
+<a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a><span class="w">    </span><span class="p">[[=</span><span class="nd">primary</span><span class="p">]]</span><span class="w"> </span><span class="kt">int</span><span class="w"> </span><span class="n">id</span><span class="p">;</span>
+<a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a><span class="w">    </span><span class="n">std</span><span class="o">::</span><span class="n">string</span><span class="w"> </span><span class="n">username</span><span class="p">;</span>
+<a id="__codelineno-0-4" name="__codelineno-0-4" href="#__codelineno-0-4"></a><span class="w">    </span><span class="kt">int</span><span class="w"> </span><span class="n">level</span><span class="p">;</span>
+<a id="__codelineno-0-5" name="__codelineno-0-5" href="#__codelineno-0-5"></a><span class="p">};</span>
+<a id="__codelineno-0-6" name="__codelineno-0-6" href="#__codelineno-0-6"></a>
+<a id="__codelineno-0-7" name="__codelineno-0-7" href="#__codelineno-0-7"></a><span class="k">struct</span><span class="w"> </span><span class="nc">Message</span><span class="w"> </span><span class="p">{</span>
+<a id="__codelineno-0-8" name="__codelineno-0-8" href="#__codelineno-0-8"></a><span class="w">    </span><span class="p">[[=</span><span class="nd">primary</span><span class="p">]]</span><span class="w"> </span><span class="kt">int</span><span class="w"> </span><span class="n">id</span><span class="p">;</span>
+<a id="__codelineno-0-9" name="__codelineno-0-9" href="#__codelineno-0-9"></a><span class="w">    </span><span class="n">std</span><span class="o">::</span><span class="n">string</span><span class="w"> </span><span class="n">content</span><span class="p">;</span>
+<a id="__codelineno-0-10" name="__codelineno-0-10" href="#__codelineno-0-10"></a><span class="w">    </span><span class="n">User</span><span class="w"> </span><span class="n">sender</span><span class="p">;</span><span class="w">  </span><span class="c1">// FK field</span>
+<a id="__codelineno-0-11" name="__codelineno-0-11" href="#__codelineno-0-11"></a><span class="p">};</span>
+<a id="__codelineno-0-12" name="__codelineno-0-12" href="#__codelineno-0-12"></a>
+<a id="__codelineno-0-13" name="__codelineno-0-13" href="#__codelineno-0-13"></a><span class="n">storm</span><span class="o">::</span><span class="n">QuerySet</span><span class="o">&lt;</span><span class="n">Message</span><span class="o">&gt;</span><span class="w"> </span><span class="n">message_qs</span><span class="p">(</span><span class="n">conn</span><span class="p">);</span>
+<a id="__codelineno-0-14" name="__codelineno-0-14" href="#__codelineno-0-14"></a>
+<a id="__codelineno-0-15" name="__codelineno-0-15" href="#__codelineno-0-15"></a><span class="c1">// Populates sender field fully for each message</span>
+<a id="__codelineno-0-16" name="__codelineno-0-16" href="#__codelineno-0-16"></a><span class="k">auto</span><span class="w"> </span><span class="n">result</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">message_qs</span><span class="p">.</span><span class="n">join</span><span class="o">&lt;</span><span class="n">fields</span><span class="o">::</span><span class="n">Message</span><span class="p">.</span><span class="n">sender</span><span class="o">&gt;</span><span class="p">().</span><span class="n">select</span><span class="p">().</span><span class="n">execute</span><span class="p">();</span>
+<a id="__codelineno-0-17" name="__codelineno-0-17" href="#__codelineno-0-17"></a><span class="k">if</span><span class="w"> </span><span class="p">(</span><span class="n">result</span><span class="p">)</span><span class="w"> </span><span class="p">{</span>
+<a id="__codelineno-0-18" name="__codelineno-0-18" href="#__codelineno-0-18"></a><span class="w">    </span><span class="k">for</span><span class="w"> </span><span class="p">(</span><span class="k">const</span><span class="w"> </span><span class="k">auto</span><span class="o">&amp;</span><span class="w"> </span><span class="n">msg</span><span class="w"> </span><span class="o">:</span><span class="w"> </span><span class="n">result</span><span class="p">.</span><span class="n">value</span><span class="p">())</span><span class="w"> </span><span class="p">{</span>
+<a id="__codelineno-0-19" name="__codelineno-0-19" href="#__codelineno-0-19"></a><span class="w">        </span><span class="n">std</span><span class="o">::</span><span class="n">cout</span><span class="w"> </span><span class="o">&lt;&lt;</span><span class="w"> </span><span class="n">msg</span><span class="p">.</span><span class="n">content</span><span class="w"> </span><span class="o">&lt;&lt;</span><span class="w"> </span><span class="s">" from "</span><span class="w"> </span><span class="o">&lt;&lt;</span><span class="w"> </span><span class="n">msg</span><span class="p">.</span><span class="n">sender</span><span class="p">.</span><span class="n">username</span><span class="w"> </span><span class="o">&lt;&lt;</span><span class="w"> </span><span class="n">std</span><span class="o">::</span><span class="n">endl</span><span class="p">;</span>
+<a id="__codelineno-0-20" name="__codelineno-0-20" href="#__codelineno-0-20"></a><span class="w">    </span><span class="p">}</span>
+<a id="__codelineno-0-21" name="__codelineno-0-21" href="#__codelineno-0-21"></a><span class="p">}</span>
+</code></pre></div>
+<p><strong>SQL Generated</strong>:
+<div class="highlight"><pre><span></span><code><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a><span class="k">SELECT</span><span class="w"> </span><span class="n">t1</span><span class="p">.</span><span class="n">id</span><span class="p">,</span><span class="w"> </span><span class="n">t1</span><span class="p">.</span><span class="n">content</span><span class="p">,</span><span class="w"> </span><span class="n">t1</span><span class="p">.</span><span class="n">sender_id</span><span class="p">,</span><span class="w"> </span><span class="n">t2</span><span class="p">.</span><span class="n">id</span><span class="p">,</span><span class="w"> </span><span class="n">t2</span><span class="p">.</span><span class="n">username</span><span class="p">,</span><span class="w"> </span><span class="n">t2</span><span class="p">.</span><span class="k">level</span>
+<a id="__codelineno-1-2" name="__codelineno-1-2" href="#__codelineno-1-2"></a><span class="k">FROM</span><span class="w"> </span><span class="n">Message</span><span class="w"> </span><span class="n">t1</span>
+<a id="__codelineno-1-3" name="__codelineno-1-3" href="#__codelineno-1-3"></a><span class="k">INNER</span><span class="w"> </span><span class="k">JOIN</span><span class="w"> </span><span class="k">User</span><span class="w"> </span><span class="n">t2</span><span class="w"> </span><span class="k">ON</span><span class="w"> </span><span class="n">t2</span><span class="p">.</span><span class="n">id</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">t1</span><span class="p">.</span><span class="n">sender_id</span>
+</code></pre></div></p>
+<p><strong>Performance</strong>: 4.4M rows/sec (59% of raw SQLite for INNER JOIN)</p>
+<h3 id="multi-fk-join">Multi-FK JOIN<a class="headerlink" href="#multi-fk-join" title="Permanent link">&para;</a></h3>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a><span class="k">struct</span><span class="w"> </span><span class="nc">Message</span><span class="w"> </span><span class="p">{</span>
+<a id="__codelineno-2-2" name="__codelineno-2-2" href="#__codelineno-2-2"></a><span class="w">    </span><span class="p">[[=</span><span class="nd">primary</span><span class="p">]]</span><span class="w"> </span><span class="kt">int</span><span class="w"> </span><span class="n">id</span><span class="p">;</span>
+<a id="__codelineno-2-3" name="__codelineno-2-3" href="#__codelineno-2-3"></a><span class="w">    </span><span class="n">std</span><span class="o">::</span><span class="n">string</span><span class="w"> </span><span class="n">content</span><span class="p">;</span>
+<a id="__codelineno-2-4" name="__codelineno-2-4" href="#__codelineno-2-4"></a><span class="w">    </span><span class="n">User</span><span class="w"> </span><span class="n">sender</span><span class="p">;</span><span class="w">    </span><span class="c1">// First FK</span>
+<a id="__codelineno-2-5" name="__codelineno-2-5" href="#__codelineno-2-5"></a><span class="w">    </span><span class="n">User</span><span class="w"> </span><span class="n">receiver</span><span class="p">;</span><span class="w">  </span><span class="c1">// Second FK</span>
+<a id="__codelineno-2-6" name="__codelineno-2-6" href="#__codelineno-2-6"></a><span class="p">};</span>
+<a id="__codelineno-2-7" name="__codelineno-2-7" href="#__codelineno-2-7"></a>
+<a id="__codelineno-2-8" name="__codelineno-2-8" href="#__codelineno-2-8"></a><span class="c1">// Populates both sender and receiver fields</span>
+<a id="__codelineno-2-9" name="__codelineno-2-9" href="#__codelineno-2-9"></a><span class="k">auto</span><span class="w"> </span><span class="n">result</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">message_qs</span><span class="p">.</span><span class="n">join</span><span class="o">&lt;</span><span class="n">fields</span><span class="o">::</span><span class="n">Message</span><span class="p">.</span><span class="n">sender</span><span class="p">,</span><span class="w"> </span><span class="n">fields</span><span class="o">::</span><span class="n">Message</span><span class="p">.</span><span class="n">receiver</span><span class="o">&gt;</span><span class="p">().</span><span class="n">select</span><span class="p">().</span><span class="n">execute</span><span class="p">();</span>
+<a id="__codelineno-2-10" name="__codelineno-2-10" href="#__codelineno-2-10"></a><span class="k">if</span><span class="w"> </span><span class="p">(</span><span class="n">result</span><span class="p">)</span><span class="w"> </span><span class="p">{</span>
+<a id="__codelineno-2-11" name="__codelineno-2-11" href="#__codelineno-2-11"></a><span class="w">    </span><span class="k">for</span><span class="w"> </span><span class="p">(</span><span class="k">const</span><span class="w"> </span><span class="k">auto</span><span class="o">&amp;</span><span class="w"> </span><span class="n">msg</span><span class="w"> </span><span class="o">:</span><span class="w"> </span><span class="n">result</span><span class="p">.</span><span class="n">value</span><span class="p">())</span><span class="w"> </span><span class="p">{</span>
+<a id="__codelineno-2-12" name="__codelineno-2-12" href="#__codelineno-2-12"></a><span class="w">        </span><span class="n">std</span><span class="o">::</span><span class="n">cout</span><span class="w"> </span><span class="o">&lt;&lt;</span><span class="w"> </span><span class="n">msg</span><span class="p">.</span><span class="n">sender</span><span class="p">.</span><span class="n">username</span><span class="w"> </span><span class="o">&lt;&lt;</span><span class="w"> </span><span class="s">" → "</span>
+<a id="__codelineno-2-13" name="__codelineno-2-13" href="#__codelineno-2-13"></a><span class="w">                  </span><span class="o">&lt;&lt;</span><span class="w"> </span><span class="n">msg</span><span class="p">.</span><span class="n">receiver</span><span class="p">.</span><span class="n">username</span><span class="w"> </span><span class="o">&lt;&lt;</span><span class="w"> </span><span class="s">": "</span>
+<a id="__codelineno-2-14" name="__codelineno-2-14" href="#__codelineno-2-14"></a><span class="w">                  </span><span class="o">&lt;&lt;</span><span class="w"> </span><span class="n">msg</span><span class="p">.</span><span class="n">content</span><span class="w"> </span><span class="o">&lt;&lt;</span><span class="w"> </span><span class="n">std</span><span class="o">::</span><span class="n">endl</span><span class="p">;</span>
+<a id="__codelineno-2-15" name="__codelineno-2-15" href="#__codelineno-2-15"></a><span class="w">    </span><span class="p">}</span>
+<a id="__codelineno-2-16" name="__codelineno-2-16" href="#__codelineno-2-16"></a><span class="p">}</span>
+</code></pre></div>
+<p><strong>SQL Generated</strong>:
+<div class="highlight"><pre><span></span><code><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a><span class="k">SELECT</span><span class="w"> </span><span class="n">t1</span><span class="p">.</span><span class="n">id</span><span class="p">,</span><span class="w"> </span><span class="n">t1</span><span class="p">.</span><span class="n">content</span><span class="p">,</span><span class="w"> </span><span class="n">t1</span><span class="p">.</span><span class="n">sender_id</span><span class="p">,</span><span class="w"> </span><span class="n">t1</span><span class="p">.</span><span class="n">receiver_id</span><span class="p">,</span>
+<a id="__codelineno-3-2" name="__codelineno-3-2" href="#__codelineno-3-2"></a><span class="w">       </span><span class="n">t2</span><span class="p">.</span><span class="n">id</span><span class="p">,</span><span class="w"> </span><span class="n">t2</span><span class="p">.</span><span class="n">username</span><span class="p">,</span><span class="w"> </span><span class="n">t2</span><span class="p">.</span><span class="k">level</span><span class="p">,</span>
+<a id="__codelineno-3-3" name="__codelineno-3-3" href="#__codelineno-3-3"></a><span class="w">       </span><span class="n">t3</span><span class="p">.</span><span class="n">id</span><span class="p">,</span><span class="w"> </span><span class="n">t3</span><span class="p">.</span><span class="n">username</span><span class="p">,</span><span class="w"> </span><span class="n">t3</span><span class="p">.</span><span class="k">level</span>
+<a id="__codelineno-3-4" name="__codelineno-3-4" href="#__codelineno-3-4"></a><span class="k">FROM</span><span class="w"> </span><span class="n">Message</span><span class="w"> </span><span class="n">t1</span>
+<a id="__codelineno-3-5" name="__codelineno-3-5" href="#__codelineno-3-5"></a><span class="k">INNER</span><span class="w"> </span><span class="k">JOIN</span><span class="w"> </span><span class="k">User</span><span class="w"> </span><span class="n">t2</span><span class="w"> </span><span class="k">ON</span><span class="w"> </span><span class="n">t2</span><span class="p">.</span><span class="n">id</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">t1</span><span class="p">.</span><span class="n">sender_id</span>
+<a id="__codelineno-3-6" name="__codelineno-3-6" href="#__codelineno-3-6"></a><span class="k">INNER</span><span class="w"> </span><span class="k">JOIN</span><span class="w"> </span><span class="k">User</span><span class="w"> </span><span class="n">t3</span><span class="w"> </span><span class="k">ON</span><span class="w"> </span><span class="n">t3</span><span class="p">.</span><span class="n">id</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">t1</span><span class="p">.</span><span class="n">receiver_id</span>
+</code></pre></div></p>
+<p><strong>Performance</strong>: 3.7M rows/sec (62% of raw SQLite for INNER JOIN)</p>
+<h2 id="join-types">JOIN Types<a class="headerlink" href="#join-types" title="Permanent link">&para;</a></h2>
+<p>Storm ORM supports INNER and LEFT JOIN. RIGHT JOIN was removed in #397: its only
+distinguishing output — unmatched related-side rows materialized as defaulted base
+entities — was not useful. The related-side query ("all users, each with the
+messages pointing at them") is tracked as a reverse-relation feature in #398.</p>
+<h3 id="inner-join-default">INNER JOIN (Default)<a class="headerlink" href="#inner-join-default" title="Permanent link">&para;</a></h3>
+<p>Only returns rows where FK relationship exists:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a><span class="k">auto</span><span class="w"> </span><span class="n">result</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">message_qs</span><span class="p">.</span><span class="n">join</span><span class="o">&lt;</span><span class="n">fields</span><span class="o">::</span><span class="n">Message</span><span class="p">.</span><span class="n">sender</span><span class="o">&gt;</span><span class="p">().</span><span class="n">select</span><span class="p">().</span><span class="n">execute</span><span class="p">();</span>
+</code></pre></div>
+<p><strong>Use when</strong>: You only want messages with valid senders</p>
+<h3 id="left-join">LEFT JOIN<a class="headerlink" href="#left-join" title="Permanent link">&para;</a></h3>
+<p>Returns all base table rows, FK fields may be NULL:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-5-1" name="__codelineno-5-1" href="#__codelineno-5-1"></a><span class="k">auto</span><span class="w"> </span><span class="n">result</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">message_qs</span><span class="p">.</span><span class="n">left_join</span><span class="o">&lt;</span><span class="n">fields</span><span class="o">::</span><span class="n">Message</span><span class="p">.</span><span class="n">sender</span><span class="o">&gt;</span><span class="p">().</span><span class="n">select</span><span class="p">().</span><span class="n">execute</span><span class="p">();</span>
+</code></pre></div>
+<p><strong>Use when</strong>: You want all messages, even those without senders
+<strong>Note</strong>: FK fields must use <code>std::optional&lt;User&gt;</code> for NULL safety</p>
+<h2 id="many-to-many-joins-203">Many-to-Many Joins (#203)<a class="headerlink" href="#many-to-many-joins-203" title="Permanent link">&para;</a></h2>
+<p>Many-to-many relationships use a container field annotated with <code>many_to_many&lt;&gt;</code>
+(auto-generated junction table) or <code>many_to_many_through&lt;Model&gt;</code> (explicit
+junction model). The same <code>join&lt;^^Field&gt;()</code> API eager-loads the relationship with
+a <strong>predicate-pushdown two-query</strong> strategy (#391) — no N+1 problem. See
+<a href="#execution-strategy-391">Execution Strategy</a> below for why two queries beat one.
+Several m2m fields of the same model can be loaded in <strong>one call</strong> (#392) — see
+<a href="#multiple-m2m-relations-392">Multiple m2m relations</a>.</p>
+<h3 id="phase-1-auto-generated-junction-table">Phase 1: Auto-Generated Junction Table<a class="headerlink" href="#phase-1-auto-generated-junction-table" title="Permanent link">&para;</a></h3>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-6-1" name="__codelineno-6-1" href="#__codelineno-6-1"></a><span class="k">struct</span><span class="w"> </span><span class="nc">Course</span><span class="w"> </span><span class="p">{</span>
+<a id="__codelineno-6-2" name="__codelineno-6-2" href="#__codelineno-6-2"></a><span class="w">    </span><span class="p">[[</span><span class="err">=</span><span class="w"> </span><span class="na">primary</span><span class="p">]]</span><span class="w"> </span><span class="kt">int</span><span class="w"> </span><span class="n">id</span><span class="p">{};</span>
+<a id="__codelineno-6-3" name="__codelineno-6-3" href="#__codelineno-6-3"></a><span class="w">    </span><span class="n">std</span><span class="o">::</span><span class="n">string</span><span class="w"> </span><span class="n">title</span><span class="p">;</span>
+<a id="__codelineno-6-4" name="__codelineno-6-4" href="#__codelineno-6-4"></a><span class="p">};</span>
+<a id="__codelineno-6-5" name="__codelineno-6-5" href="#__codelineno-6-5"></a>
+<a id="__codelineno-6-6" name="__codelineno-6-6" href="#__codelineno-6-6"></a><span class="k">struct</span><span class="w"> </span><span class="nc">Student</span><span class="w"> </span><span class="p">{</span>
+<a id="__codelineno-6-7" name="__codelineno-6-7" href="#__codelineno-6-7"></a><span class="w">    </span><span class="p">[[</span><span class="err">=</span><span class="w"> </span><span class="na">primary</span><span class="p">]]</span><span class="w"> </span><span class="kt">int</span><span class="w"> </span><span class="n">id</span><span class="p">{};</span>
+<a id="__codelineno-6-8" name="__codelineno-6-8" href="#__codelineno-6-8"></a><span class="w">    </span><span class="n">std</span><span class="o">::</span><span class="n">string</span><span class="w"> </span><span class="n">name</span><span class="p">;</span>
+<a id="__codelineno-6-9" name="__codelineno-6-9" href="#__codelineno-6-9"></a><span class="w">    </span><span class="kt">int</span><span class="w"> </span><span class="n">age</span><span class="p">{};</span>
+<a id="__codelineno-6-10" name="__codelineno-6-10" href="#__codelineno-6-10"></a><span class="w">    </span><span class="p">[[</span><span class="err">=</span><span class="w"> </span><span class="na">many_to_many</span><span class="err">&lt;&gt;</span><span class="p">]]</span><span class="w"> </span><span class="n">std</span><span class="o">::</span><span class="n">vector</span><span class="o">&lt;</span><span class="n">Course</span><span class="o">&gt;</span><span class="w"> </span><span class="n">courses</span><span class="p">;</span>
+<a id="__codelineno-6-11" name="__codelineno-6-11" href="#__codelineno-6-11"></a><span class="p">};</span>
+<a id="__codelineno-6-12" name="__codelineno-6-12" href="#__codelineno-6-12"></a>
+<a id="__codelineno-6-13" name="__codelineno-6-13" href="#__codelineno-6-13"></a><span class="c1">// Two queries (in one transaction): base students, then their courses, stitched</span>
+<a id="__codelineno-6-14" name="__codelineno-6-14" href="#__codelineno-6-14"></a><span class="c1">// client-side by a pk→entity hash map.</span>
+<a id="__codelineno-6-15" name="__codelineno-6-15" href="#__codelineno-6-15"></a><span class="k">auto</span><span class="w"> </span><span class="n">students</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">QuerySet</span><span class="o">&lt;</span><span class="n">Student</span><span class="o">&gt;</span><span class="p">().</span><span class="n">join</span><span class="o">&lt;</span><span class="n">fields</span><span class="o">::</span><span class="n">Student</span><span class="p">.</span><span class="n">courses</span><span class="o">&gt;</span><span class="p">().</span><span class="n">select</span><span class="p">().</span><span class="n">execute</span><span class="p">();</span>
+<a id="__codelineno-6-16" name="__codelineno-6-16" href="#__codelineno-6-16"></a><span class="k">for</span><span class="w"> </span><span class="p">(</span><span class="k">const</span><span class="w"> </span><span class="k">auto</span><span class="o">&amp;</span><span class="w"> </span><span class="n">s</span><span class="w"> </span><span class="o">:</span><span class="w"> </span><span class="o">*</span><span class="n">students</span><span class="p">)</span><span class="w"> </span><span class="p">{</span>
+<a id="__codelineno-6-17" name="__codelineno-6-17" href="#__codelineno-6-17"></a><span class="w">    </span><span class="c1">// s.courses holds ALL of the student's courses</span>
+<a id="__codelineno-6-18" name="__codelineno-6-18" href="#__codelineno-6-18"></a><span class="p">}</span>
+</code></pre></div>
+<ul>
+<li>The related type (<code>Course</code>) is extracted from the container via C++26 <code>std::meta</code>
+  — <code>std::vector&lt;T&gt;</code>, <code>plf::hive&lt;T&gt;</code>, <code>std::deque&lt;T&gt;</code>, and
+  <code>std::vector&lt;std::shared_ptr&lt;T&gt;&gt;</code> / <code>unique_ptr</code> elements all work.</li>
+<li><code>create_table_if_not_exists&lt;Student&gt;</code> also creates the junction table
+  <code>Student_Course (Student_id, Course_id, PRIMARY KEY(both))</code> — naming is
+  <code>&lt;OwnerTable&gt;_&lt;RelatedTable&gt;</code> with <code>&lt;Table&gt;_id</code> columns.</li>
+<li>The m2m container member is <strong>not a column</strong>: plain <code>select()</code>, <code>insert()</code>,
+  <code>update()</code> ignore it entirely (zero cost for models without m2m fields).
+  Explicitly naming it as a SET target — <code>update&lt;fields::Student.courses&gt;(proto)</code>,
+  <code>update_all&lt;fields::Student.courses&gt;(proto)</code>, or upsert
+  <code>.on_conflict&lt;…&gt;().update&lt;fields::Student.courses&gt;()</code> — is <strong>rejected at compile
+  time</strong> (#486): the <code>is_settable_member</code> gate on both grammars ANDs in
+  <code>!is_relation_field(Member)</code>, so the error fires at the call site as a
+  constraint violation instead of at runtime with "no such column". The same
+  holds for reverse-FK containers. A relation member is likewise not a valid
+  conflict target (it carries no <code>unique</code> annotation and cannot appear in a
+  <code>UniqueIndex</code>).</li>
+</ul>
+<p><strong>SQL Generated</strong> (two statements, run inside one transaction):
+<div class="highlight"><pre><span></span><code><a id="__codelineno-7-1" name="__codelineno-7-1" href="#__codelineno-7-1"></a><span class="c1">-- Q1: the base entities to load (a plain SELECT — no join, no sorter)</span>
+<a id="__codelineno-7-2" name="__codelineno-7-2" href="#__codelineno-7-2"></a><span class="k">SELECT</span><span class="w"> </span><span class="n">id</span><span class="p">,</span><span class="w"> </span><span class="n">name</span><span class="p">,</span><span class="w"> </span><span class="n">age</span><span class="w"> </span><span class="k">FROM</span><span class="w"> </span><span class="n">Student</span><span class="p">;</span>
+<a id="__codelineno-7-3" name="__codelineno-7-3" href="#__codelineno-7-3"></a>
+<a id="__codelineno-7-4" name="__codelineno-7-4" href="#__codelineno-7-4"></a><span class="c1">-- Q2: their courses, filtered by the SAME base subquery; stitched by owner pk</span>
+<a id="__codelineno-7-5" name="__codelineno-7-5" href="#__codelineno-7-5"></a><span class="k">SELECT</span><span class="w"> </span><span class="n">t2</span><span class="p">.</span><span class="n">Student_id</span><span class="p">,</span><span class="w"> </span><span class="n">t3</span><span class="p">.</span><span class="n">id</span><span class="p">,</span><span class="w"> </span><span class="n">t3</span><span class="p">.</span><span class="n">title</span>
+<a id="__codelineno-7-6" name="__codelineno-7-6" href="#__codelineno-7-6"></a><span class="k">FROM</span><span class="w"> </span><span class="n">Student_Course</span><span class="w"> </span><span class="n">t2</span><span class="w"> </span><span class="k">INNER</span><span class="w"> </span><span class="k">JOIN</span><span class="w"> </span><span class="n">Course</span><span class="w"> </span><span class="n">t3</span><span class="w"> </span><span class="k">ON</span><span class="w"> </span><span class="n">t2</span><span class="p">.</span><span class="n">Course_id</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">t3</span><span class="p">.</span><span class="n">id</span>
+<a id="__codelineno-7-7" name="__codelineno-7-7" href="#__codelineno-7-7"></a><span class="k">WHERE</span><span class="w"> </span><span class="n">t2</span><span class="p">.</span><span class="n">Student_id</span><span class="w"> </span><span class="k">IN</span><span class="w"> </span><span class="p">(</span><span class="k">SELECT</span><span class="w"> </span><span class="n">id</span><span class="w"> </span><span class="k">FROM</span><span class="w"> </span><span class="n">Student</span><span class="p">)</span>
+</code></pre></div></p>
+<p><code>WHERE</code> / <code>ORDER BY</code> / <code>LIMIT</code> / <code>OFFSET</code> are applied to Q1 <strong>and</strong> repeated inside
+Q2's <code>IN (…)</code> subquery, so both pick exactly the same base entities.</p>
+<h3 id="phase-2-explicit-junction-model-metadata">Phase 2: Explicit Junction Model (metadata)<a class="headerlink" href="#phase-2-explicit-junction-model-metadata" title="Permanent link">&para;</a></h3>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-8-1" name="__codelineno-8-1" href="#__codelineno-8-1"></a><span class="k">struct</span><span class="w"> </span><span class="nc">Enrollment</span><span class="w"> </span><span class="p">{</span>
+<a id="__codelineno-8-2" name="__codelineno-8-2" href="#__codelineno-8-2"></a><span class="w">    </span><span class="p">[[</span><span class="err">=</span><span class="w"> </span><span class="na">primary</span><span class="p">]]</span><span class="w"> </span><span class="kt">int</span><span class="w"> </span><span class="n">id</span><span class="p">{};</span>
+<a id="__codelineno-8-3" name="__codelineno-8-3" href="#__codelineno-8-3"></a><span class="w">    </span><span class="p">[[</span><span class="err">=</span><span class="w"> </span><span class="na">fk</span><span class="err">&lt;&gt;</span><span class="p">]]</span><span class="w"> </span><span class="n">Pupil</span><span class="w"> </span><span class="n">pupil</span><span class="p">;</span>
+<a id="__codelineno-8-4" name="__codelineno-8-4" href="#__codelineno-8-4"></a><span class="w">    </span><span class="p">[[</span><span class="err">=</span><span class="w"> </span><span class="na">fk</span><span class="err">&lt;&gt;</span><span class="p">]]</span><span class="w"> </span><span class="n">Course</span><span class="w"> </span><span class="n">course</span><span class="p">;</span>
+<a id="__codelineno-8-5" name="__codelineno-8-5" href="#__codelineno-8-5"></a><span class="w">    </span><span class="n">std</span><span class="o">::</span><span class="n">string</span><span class="w"> </span><span class="n">grade</span><span class="p">;</span><span class="w">  </span><span class="c1">// relationship metadata</span>
+<a id="__codelineno-8-6" name="__codelineno-8-6" href="#__codelineno-8-6"></a><span class="p">};</span>
+<a id="__codelineno-8-7" name="__codelineno-8-7" href="#__codelineno-8-7"></a>
+<a id="__codelineno-8-8" name="__codelineno-8-8" href="#__codelineno-8-8"></a><span class="k">struct</span><span class="w"> </span><span class="nc">Pupil</span><span class="w"> </span><span class="p">{</span>
+<a id="__codelineno-8-9" name="__codelineno-8-9" href="#__codelineno-8-9"></a><span class="w">    </span><span class="p">[[</span><span class="err">=</span><span class="w"> </span><span class="na">primary</span><span class="p">]]</span><span class="w"> </span><span class="kt">int</span><span class="w"> </span><span class="n">id</span><span class="p">{};</span>
+<a id="__codelineno-8-10" name="__codelineno-8-10" href="#__codelineno-8-10"></a><span class="w">    </span><span class="n">std</span><span class="o">::</span><span class="n">string</span><span class="w"> </span><span class="n">name</span><span class="p">;</span>
+<a id="__codelineno-8-11" name="__codelineno-8-11" href="#__codelineno-8-11"></a><span class="w">    </span><span class="p">[[</span><span class="err">=</span><span class="w"> </span><span class="na">many_to_many_through</span><span class="err">&lt;</span><span class="na">Enrollment</span><span class="err">&gt;</span><span class="p">]]</span><span class="w"> </span><span class="n">std</span><span class="o">::</span><span class="n">vector</span><span class="o">&lt;</span><span class="n">Course</span><span class="o">&gt;</span><span class="w"> </span><span class="n">courses</span><span class="p">;</span>
+<a id="__codelineno-8-12" name="__codelineno-8-12" href="#__codelineno-8-12"></a><span class="p">};</span>
+<a id="__codelineno-8-13" name="__codelineno-8-13" href="#__codelineno-8-13"></a>
+<a id="__codelineno-8-14" name="__codelineno-8-14" href="#__codelineno-8-14"></a><span class="c1">// Simple access — metadata ignored, same two-query eager load</span>
+<a id="__codelineno-8-15" name="__codelineno-8-15" href="#__codelineno-8-15"></a><span class="k">auto</span><span class="w"> </span><span class="n">pupils</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">QuerySet</span><span class="o">&lt;</span><span class="n">Pupil</span><span class="o">&gt;</span><span class="p">().</span><span class="n">join</span><span class="o">&lt;</span><span class="n">fields</span><span class="o">::</span><span class="n">Pupil</span><span class="p">.</span><span class="n">courses</span><span class="o">&gt;</span><span class="p">().</span><span class="n">select</span><span class="p">().</span><span class="n">execute</span><span class="p">();</span>
+<a id="__codelineno-8-16" name="__codelineno-8-16" href="#__codelineno-8-16"></a>
+<a id="__codelineno-8-17" name="__codelineno-8-17" href="#__codelineno-8-17"></a><span class="c1">// Metadata access — query the junction model directly (regular FK joins)</span>
+<a id="__codelineno-8-18" name="__codelineno-8-18" href="#__codelineno-8-18"></a><span class="k">auto</span><span class="w"> </span><span class="n">enrollments</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">QuerySet</span><span class="o">&lt;</span><span class="n">Enrollment</span><span class="o">&gt;</span><span class="p">()</span>
+<a id="__codelineno-8-19" name="__codelineno-8-19" href="#__codelineno-8-19"></a><span class="w">        </span><span class="p">.</span><span class="n">join</span><span class="o">&lt;</span><span class="n">fields</span><span class="o">::</span><span class="n">Enrollment</span><span class="p">.</span><span class="n">pupil</span><span class="p">,</span><span class="w"> </span><span class="n">fields</span><span class="o">::</span><span class="n">Enrollment</span><span class="p">.</span><span class="n">course</span><span class="o">&gt;</span><span class="p">()</span>
+<a id="__codelineno-8-20" name="__codelineno-8-20" href="#__codelineno-8-20"></a><span class="w">        </span><span class="p">.</span><span class="n">where</span><span class="p">(</span><span class="n">fields</span><span class="o">::</span><span class="n">Enrollment</span><span class="p">.</span><span class="n">grade</span><span class="w"> </span><span class="o">==</span><span class="w"> </span><span class="s">"A"</span><span class="p">)</span>
+<a id="__codelineno-8-21" name="__codelineno-8-21" href="#__codelineno-8-21"></a><span class="w">        </span><span class="p">.</span><span class="n">select</span><span class="p">().</span><span class="n">execute</span><span class="p">();</span>
+</code></pre></div>
+<p>The junction table is the through model's own table; FK columns come from its
+field names (<code>pupil_id</code>, <code>course_id</code>). The through model must have exactly one
+<code>fk&lt;&gt;</code> field per side (enforced at compile time).</p>
+<h3 id="multiple-m2m-relations-392">Multiple m2m relations (#392)<a class="headerlink" href="#multiple-m2m-relations-392" title="Permanent link">&para;</a></h3>
+<p>A model may carry several m2m fields; one <code>join&lt;&gt;()</code>/<code>left_join&lt;&gt;()</code> call loads
+any subset of them:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-9-1" name="__codelineno-9-1" href="#__codelineno-9-1"></a><span class="k">struct</span><span class="w"> </span><span class="nc">Member</span><span class="w"> </span><span class="p">{</span>
+<a id="__codelineno-9-2" name="__codelineno-9-2" href="#__codelineno-9-2"></a><span class="w">    </span><span class="p">[[</span><span class="err">=</span><span class="w"> </span><span class="na">primary</span><span class="p">]]</span><span class="w"> </span><span class="kt">int</span><span class="w"> </span><span class="n">id</span><span class="p">{};</span>
+<a id="__codelineno-9-3" name="__codelineno-9-3" href="#__codelineno-9-3"></a><span class="w">    </span><span class="n">std</span><span class="o">::</span><span class="n">string</span><span class="w"> </span><span class="n">name</span><span class="p">;</span>
+<a id="__codelineno-9-4" name="__codelineno-9-4" href="#__codelineno-9-4"></a><span class="w">    </span><span class="kt">int</span><span class="w"> </span><span class="n">age</span><span class="p">{};</span>
+<a id="__codelineno-9-5" name="__codelineno-9-5" href="#__codelineno-9-5"></a><span class="w">    </span><span class="p">[[</span><span class="err">=</span><span class="w"> </span><span class="na">many_to_many</span><span class="err">&lt;&gt;</span><span class="p">]]</span><span class="w"> </span><span class="n">std</span><span class="o">::</span><span class="n">vector</span><span class="o">&lt;</span><span class="n">Course</span><span class="o">&gt;</span><span class="w"> </span><span class="n">courses</span><span class="p">;</span>
+<a id="__codelineno-9-6" name="__codelineno-9-6" href="#__codelineno-9-6"></a><span class="w">    </span><span class="p">[[</span><span class="err">=</span><span class="w"> </span><span class="na">many_to_many</span><span class="err">&lt;&gt;</span><span class="p">]]</span><span class="w"> </span><span class="n">std</span><span class="o">::</span><span class="n">vector</span><span class="o">&lt;</span><span class="n">Club</span><span class="o">&gt;</span><span class="w"> </span><span class="n">clubs</span><span class="p">;</span>
+<a id="__codelineno-9-7" name="__codelineno-9-7" href="#__codelineno-9-7"></a><span class="p">};</span>
+<a id="__codelineno-9-8" name="__codelineno-9-8" href="#__codelineno-9-8"></a>
+<a id="__codelineno-9-9" name="__codelineno-9-9" href="#__codelineno-9-9"></a><span class="c1">// One Q1 (base members) + one Q2 PER relation, all in one transaction:</span>
+<a id="__codelineno-9-10" name="__codelineno-9-10" href="#__codelineno-9-10"></a><span class="k">auto</span><span class="w"> </span><span class="n">members</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">QuerySet</span><span class="o">&lt;</span><span class="n">Member</span><span class="o">&gt;</span><span class="p">()</span>
+<a id="__codelineno-9-11" name="__codelineno-9-11" href="#__codelineno-9-11"></a><span class="w">        </span><span class="p">.</span><span class="n">join</span><span class="o">&lt;</span><span class="n">fields</span><span class="o">::</span><span class="n">Member</span><span class="p">.</span><span class="n">courses</span><span class="p">,</span><span class="w"> </span><span class="n">fields</span><span class="o">::</span><span class="n">Member</span><span class="p">.</span><span class="n">clubs</span><span class="o">&gt;</span><span class="p">()</span>
+<a id="__codelineno-9-12" name="__codelineno-9-12" href="#__codelineno-9-12"></a><span class="w">        </span><span class="p">.</span><span class="n">select</span><span class="p">().</span><span class="n">execute</span><span class="p">();</span>
+</code></pre></div>
+<ul>
+<li><strong>Cost is additive</strong> (<code>K1 + K2</code> related rows), never multiplicative — each
+  relation is one extra Q2 keyed off the same Q1 <code>pk → entity</code> map. There is no
+  <code>K1×K2</code> cartesian product anywhere on the eager-load path.</li>
+<li><strong>INNER</strong> (<code>join</code>) drops a base entity if its container is empty in <strong>any</strong>
+  listed relation; <strong>LEFT</strong> (<code>left_join</code>) keeps every base entity and fills each
+  relation's container independently (Django semantics).</li>
+<li><code>create_table_if_not_exists&lt;Member&gt;</code> creates <strong>one junction table per
+  auto-m2m field</strong> (<code>Member_Course</code>, <code>Member_Club</code>).</li>
+<li>Duplicate fields (<code>join&lt;fields::M.courses, fields::M.courses&gt;</code>) and mixing FK fields
+  with m2m fields in one call are rejected at compile time.</li>
+</ul>
+<h3 id="semantics">Semantics<a class="headerlink" href="#semantics" title="Permanent link">&para;</a></h3>
+<table>
+<thead>
+<tr>
+<th>Aspect</th>
+<th>Behavior</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>WHERE</code> / <code>ORDER BY</code> / <code>LIMIT</code> / <code>OFFSET</code></td>
+<td>Apply to <strong>base entities</strong> (Q1 and the Q2 IN-subquery) — <code>limit(1)</code> returns one student with ALL courses</td>
+</tr>
+<tr>
+<td><code>first()</code> / <code>get()</code></td>
+<td>Entity-level: <code>get()</code> errors only on 0 or &gt;1 <em>entities</em>, never on multiple relations</td>
+</tr>
+<tr>
+<td><code>rows()</code></td>
+<td>Yields aggregated entities; <strong>materialized eagerly</strong> (Q2 needs the full base set, so true streaming is not possible)</td>
+</tr>
+<tr>
+<td><code>join</code> (INNER)</td>
+<td>Drops base entities empty in <strong>any</strong> listed relation (a post-stitch filter)</td>
+</tr>
+<tr>
+<td><code>left_join</code></td>
+<td>Keeps them with empty container(s) (the natural case — Q1 already yielded them)</td>
+</tr>
+<tr>
+<td>Aggregates (<code>count()</code> …)</td>
+<td>Count (base, related…) <strong>tuples</strong> over the flat chained join (<code>get_complete_sql</code>) — pairs for one relation, cartesian tuples for several</td>
+</tr>
+<tr>
+<td>Result order</td>
+<td>The order Q1 returns base entities (<code>order_by</code> if given) — no pk tiebreak is needed, since the stitch is a hash map, not row-adjacency</td>
+</tr>
+<tr>
+<td>Consistency</td>
+<td>Q1 + Q2 run inside one transaction (snapshot consistency)</td>
+</tr>
+</tbody>
+</table>
+<h3 id="limitations">Limitations<a class="headerlink" href="#limitations" title="Permanent link">&para;</a></h3>
+<ul>
+<li>Self-referential m2m, duplicate fields in one call, and mixed FK + m2m in one
+  call are rejected at compile time. INNER vs LEFT applies to the whole call —
+  mixing per relation is not expressible (chaining a second <code>join()</code> call
+  replaces the first, as for FK joins).</li>
+<li>Write-side helpers (<code>add()</code>/<code>remove()</code>) are not provided — insert junction
+  rows via the through model (<code>QuerySet&lt;Enrollment&gt;</code>) or raw SQL for Phase 1.</li>
+<li>The annotation spelling differs from issue #203's sketch
+  (<code>many_to_many&lt;&gt;&lt;T&gt;</code> is impossible — the flag annotations are plain tag objects; the FK marker <code>fk&lt;&gt;</code> is likewise a class-template annotation).</li>
+</ul>
+<h3 id="execution-strategy-391">Execution Strategy (#391)<a class="headerlink" href="#execution-strategy-391" title="Permanent link">&para;</a></h3>
+<p>The m2m eager load runs as <strong>two queries inside one transaction</strong>, stitched
+client-side by a <code>pk → entity</code> hash map (<code>SelectStatement::execute_m2m_2query</code>):</p>
+<ol>
+<li><strong>Q1</strong> selects the base entities (<code>build_base_subquery</code>) — a plain <code>SELECT</code>,
+   no join, no sorter. Its results go into a <code>plf::hive&lt;T&gt;</code> (stable pointers),
+   and a <code>std::unordered_map&lt;int64_t, T*&gt;</code> indexes them by primary key.</li>
+<li><strong>Q2</strong> — one per eager-loaded relation (#392) — selects <code>(owner_pk, related.*)</code>
+   from that relation's junction ⋈ related table, filtered by
+   <code>WHERE owner_id IN (&lt;the same base subquery&gt;)</code> (<code>build_q2_sql</code>).
+   Each row is appended to its owner's container via the hash-map lookup.</li>
+<li><strong>INNER</strong> then drops entities whose container stayed empty in any inner
+   relation; <strong>LEFT</strong> keeps them. Every Q2 is the <em>same</em> shape (an INNER
+   junction ⋈ related join) — the INNER/LEFT difference is a post-stitch
+   filter, never an SQL difference.</li>
+</ol>
+<p><strong>Why two queries beat one.</strong> The former single-query plan was a 3-table join over
+a base-table subquery that ended in <code>ORDER BY t1.&lt;pk&gt;</code> so one entity's rows were
+adjacent (the aggregation loop relied on that). SQLite executes that <code>ORDER BY</code>
+with a <code>USE TEMP B-TREE FOR ORDER BY</code> — <em>every</em> one of the <code>N×K</code> result rows,
+including the duplicated base columns, passes through the sorter. The two-query
+plan never sorts (the stitch is a hash map) and reads each base row's columns
+once. Measured in-Storm (Release, fan-out sweep, N=100 base entities):</p>
+<table>
+<thead>
+<tr>
+<th>fan-out</th>
+<th>rows</th>
+<th>1-query</th>
+<th>2-query</th>
+<th>speedup</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>1</td>
+<td>100</td>
+<td>24.0 µs</td>
+<td>26.1 µs</td>
+<td>−8.7% (FK-shaped; least representative)</td>
+</tr>
+<tr>
+<td>10</td>
+<td>1,000</td>
+<td>190 µs</td>
+<td>127 µs</td>
+<td><strong>+33.5%</strong></td>
+</tr>
+<tr>
+<td>50</td>
+<td>5,000</td>
+<td>907 µs</td>
+<td>519 µs</td>
+<td><strong>+42.8%</strong></td>
+</tr>
+<tr>
+<td>200</td>
+<td>20,000</td>
+<td>3.70 ms</td>
+<td>2.01 ms</td>
+<td><strong>+45.6%</strong></td>
+</tr>
+</tbody>
+</table>
+<p>Fan-out 1 (one related row per entity) is FK-shaped, not m2m-shaped, and pays a
+~2 µs constant cost (the extra prepare + transaction); every representative m2m
+fan-out wins by 33–46%. <code>count()</code> and other aggregates still run the modifier-free
+chained join (<code>get_complete_sql</code>) — <code>(base, related)</code> pairs for one relation,
+cartesian tuples when several relations are joined (#392).</p>
+<h2 id="reverse-fk-joins-398">Reverse-FK Joins (#398)<a class="headerlink" href="#reverse-fk-joins-398" title="Permanent link">&para;</a></h2>
+<p>Storm's other join selectors start from the base model: FK fields (<code>fields::Task.assignee</code>)
+or m2m containers (<code>fields::Student.courses</code>). A <strong>reverse-FK join</strong> starts from the
+<em>related</em> side: "all Persons, each with the Tasks that point at them". The SQL
+identity is <code>Task RIGHT JOIN Person ≡ Person LEFT JOIN Task</code> — Storm expresses the
+right-hand side directly, with the base model (<code>Person</code>) on the correct side.</p>
+<h3 id="1-annotated-container-destination-select">1. Annotated container destination (<code>select()</code>)<a class="headerlink" href="#1-annotated-container-destination-select" title="Permanent link">&para;</a></h3>
+<p><code>select()</code> returns <code>hive&lt;Person&gt;</code>, so <code>Person</code> needs a member to receive the tasks.
+Declare a reverse-FK container (not a column — invisible to CRUD, like m2m):</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-10-1" name="__codelineno-10-1" href="#__codelineno-10-1"></a><span class="k">struct</span><span class="w"> </span><span class="nc">Task</span><span class="p">;</span><span class="w"> </span><span class="c1">// forward declaration breaks the Person⟷Task reference cycle</span>
+<a id="__codelineno-10-2" name="__codelineno-10-2" href="#__codelineno-10-2"></a>
+<a id="__codelineno-10-3" name="__codelineno-10-3" href="#__codelineno-10-3"></a><span class="k">struct</span><span class="w"> </span><span class="nc">Person</span><span class="w"> </span><span class="p">{</span>
+<a id="__codelineno-10-4" name="__codelineno-10-4" href="#__codelineno-10-4"></a><span class="w">    </span><span class="p">[[</span><span class="err">=</span><span class="w"> </span><span class="na">primary</span><span class="p">]]</span><span class="w"> </span><span class="kt">int</span><span class="w"> </span><span class="n">id</span><span class="p">{};</span>
+<a id="__codelineno-10-5" name="__codelineno-10-5" href="#__codelineno-10-5"></a><span class="w">    </span><span class="n">std</span><span class="o">::</span><span class="n">string</span><span class="w"> </span><span class="n">name</span><span class="p">;</span>
+<a id="__codelineno-10-6" name="__codelineno-10-6" href="#__codelineno-10-6"></a><span class="w">    </span><span class="kt">int</span><span class="w"> </span><span class="n">age</span><span class="p">{};</span>
+<a id="__codelineno-10-7" name="__codelineno-10-7" href="#__codelineno-10-7"></a><span class="w">    </span><span class="c1">// Filled on eager load. The annotation names the OWNER TYPE; the unique FK</span>
+<a id="__codelineno-10-8" name="__codelineno-10-8" href="#__codelineno-10-8"></a><span class="w">    </span><span class="c1">// back at Person is resolved at instantiation.</span>
+<a id="__codelineno-10-9" name="__codelineno-10-9" href="#__codelineno-10-9"></a><span class="w">    </span><span class="p">[[</span><span class="err">=</span><span class="w"> </span><span class="na">storm</span><span class="p">::</span><span class="na">reverse_fk</span><span class="err">&lt;^^</span><span class="na">Task</span><span class="err">&gt;</span><span class="p">]]</span><span class="w"> </span><span class="n">std</span><span class="o">::</span><span class="n">vector</span><span class="o">&lt;</span><span class="n">Task</span><span class="o">&gt;</span><span class="w"> </span><span class="n">tasks</span><span class="p">;</span>
+<a id="__codelineno-10-10" name="__codelineno-10-10" href="#__codelineno-10-10"></a><span class="p">};</span>
+<a id="__codelineno-10-11" name="__codelineno-10-11" href="#__codelineno-10-11"></a>
+<a id="__codelineno-10-12" name="__codelineno-10-12" href="#__codelineno-10-12"></a><span class="k">struct</span><span class="w"> </span><span class="nc">Task</span><span class="w"> </span><span class="p">{</span>
+<a id="__codelineno-10-13" name="__codelineno-10-13" href="#__codelineno-10-13"></a><span class="w">    </span><span class="p">[[</span><span class="err">=</span><span class="w"> </span><span class="na">primary</span><span class="p">]]</span><span class="w"> </span><span class="kt">int</span><span class="w"> </span><span class="n">id</span><span class="p">{};</span>
+<a id="__codelineno-10-14" name="__codelineno-10-14" href="#__codelineno-10-14"></a><span class="w">    </span><span class="n">std</span><span class="o">::</span><span class="n">string</span><span class="w"> </span><span class="n">title</span><span class="p">;</span>
+<a id="__codelineno-10-15" name="__codelineno-10-15" href="#__codelineno-10-15"></a><span class="w">    </span><span class="p">[[</span><span class="err">=</span><span class="w"> </span><span class="na">fk</span><span class="err">&lt;&gt;</span><span class="p">]]</span><span class="w"> </span><span class="n">Person</span><span class="w"> </span><span class="n">assignee</span><span class="p">;</span><span class="w">   </span><span class="c1">// FK → Person</span>
+<a id="__codelineno-10-16" name="__codelineno-10-16" href="#__codelineno-10-16"></a><span class="p">};</span>
+<a id="__codelineno-10-17" name="__codelineno-10-17" href="#__codelineno-10-17"></a>
+<a id="__codelineno-10-18" name="__codelineno-10-18" href="#__codelineno-10-18"></a><span class="n">person_qs</span><span class="p">.</span><span class="n">left_join</span><span class="o">&lt;</span><span class="n">fields</span><span class="o">::</span><span class="n">Person</span><span class="p">.</span><span class="n">tasks</span><span class="o">&gt;</span><span class="p">().</span><span class="n">select</span><span class="p">();</span><span class="w">   </span><span class="c1">// all Persons; .tasks empty when none</span>
+<a id="__codelineno-10-19" name="__codelineno-10-19" href="#__codelineno-10-19"></a><span class="n">person_qs</span><span class="p">.</span><span class="n">join</span><span class="o">&lt;</span><span class="n">fields</span><span class="o">::</span><span class="n">Person</span><span class="p">.</span><span class="n">tasks</span><span class="o">&gt;</span><span class="p">().</span><span class="n">select</span><span class="p">();</span><span class="w">        </span><span class="c1">// INNER: drops Persons with no Tasks</span>
+</code></pre></div>
+<p>The annotation argument is <strong>the owning model type</strong> (<code>^^Task</code>), resolved to that
+model's unique <code>fk&lt;&gt;</code> member pointing back at <code>Person</code>. The type form (not
+a member splice) is required: <code>Person</code> holds <code>vector&lt;Task&gt;</code> and <code>Task</code> holds <code>Person</code>
+by value, a reference cycle that only compiles when <code>Task</code> is forward-declared at the
+annotation site — which rules out a <code>^^Task::assignee</code> member splice there.
+The container element may be <code>T</code>, <code>plf::hive&lt;T&gt;</code>, or <code>vector&lt;shared_ptr&lt;T&gt;&gt;</code>, as for m2m.</p>
+<h3 id="2-cross-model-fk-selector-aggregate-filter-chains">2. Cross-model FK selector (aggregate / filter chains)<a class="headerlink" href="#2-cross-model-fk-selector-aggregate-filter-chains" title="Permanent link">&para;</a></h3>
+<p><code>join</code>/<code>left_join</code> also accept an FK field <strong>of another model</strong> that points at the
+base. No destination is needed because these chains never materialize base+related
+entities — they absorb the aggregate-over-RIGHT-JOIN capability that <code>right_join</code>
+(removed in #397) pretended to offer:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-11-1" name="__codelineno-11-1" href="#__codelineno-11-1"></a><span class="c1">// Tasks per person, INCLUDING persons with zero tasks (LEFT keeps the NULL row)</span>
+<a id="__codelineno-11-2" name="__codelineno-11-2" href="#__codelineno-11-2"></a><span class="n">QuerySet</span><span class="o">&lt;</span><span class="n">Person</span><span class="o">&gt;</span><span class="p">().</span><span class="n">left_join</span><span class="o">&lt;</span><span class="n">fields</span><span class="o">::</span><span class="n">Task</span><span class="p">.</span><span class="n">assignee</span><span class="o">&gt;</span><span class="p">().</span><span class="n">count</span><span class="p">().</span><span class="n">execute</span><span class="p">();</span>
+<a id="__codelineno-11-3" name="__codelineno-11-3" href="#__codelineno-11-3"></a>
+<a id="__codelineno-11-4" name="__codelineno-11-4" href="#__codelineno-11-4"></a><span class="c1">// Disambiguation: when the owner has several FKs to the base, name the exact field</span>
+<a id="__codelineno-11-5" name="__codelineno-11-5" href="#__codelineno-11-5"></a><span class="n">QuerySet</span><span class="o">&lt;</span><span class="n">Reporter</span><span class="o">&gt;</span><span class="p">().</span><span class="n">join</span><span class="o">&lt;</span><span class="n">fields</span><span class="o">::</span><span class="n">Bug</span><span class="p">.</span><span class="n">author</span><span class="o">&gt;</span><span class="p">().</span><span class="n">count</span><span class="p">().</span><span class="n">execute</span><span class="p">();</span><span class="w">    </span><span class="c1">// ON t2.author_id = t1.id</span>
+<a id="__codelineno-11-6" name="__codelineno-11-6" href="#__codelineno-11-6"></a><span class="n">QuerySet</span><span class="o">&lt;</span><span class="n">Reporter</span><span class="o">&gt;</span><span class="p">().</span><span class="n">join</span><span class="o">&lt;</span><span class="n">fields</span><span class="o">::</span><span class="n">Bug</span><span class="p">.</span><span class="n">reviewer</span><span class="o">&gt;</span><span class="p">().</span><span class="n">count</span><span class="p">().</span><span class="n">execute</span><span class="p">();</span><span class="w">  </span><span class="c1">// ON t2.reviewer_id = t1.id</span>
+</code></pre></div>
+<h3 id="execution-semantics">Execution &amp; semantics<a class="headerlink" href="#execution-semantics" title="Permanent link">&para;</a></h3>
+<p>Identical to m2m (#391): <code>select()</code> runs <strong>two queries in one transaction</strong> stitched
+by a <code>pk → entity</code> hash map. Q1 is the base subquery; Q2 hits the <strong>owning table
+directly</strong> (no junction) —
+<code>SELECT t2.&lt;fk&gt;_id, t2.&lt;owner cols&gt; FROM &lt;Owner&gt; t2 WHERE t2.&lt;fk&gt;_id IN (&lt;base subquery&gt;)</code>.
+WHERE / ORDER BY / LIMIT / OFFSET bound the <strong>base</strong> entities; INNER drops
+zero-relation entities after the stitch, LEFT keeps them. Multi-relation joins
+compose per #392 (one Q2 per relation, additive cost). Aggregates / anti-joins use
+the modifier-free complete SQL <code>Person t1 &lt;KW&gt; Owner t2 ON t2.&lt;fk&gt;_id = t1.&lt;pk&gt;</code>.</p>
+<h3 id="limitations_1">Limitations<a class="headerlink" href="#limitations_1" title="Permanent link">&para;</a></h3>
+<ul>
+<li><strong><code>select()</code> disambiguation</strong> of several owner FKs to the base is not expressible:
+  the destination annotation must use the owner <em>type</em> (the reference cycle forbids a
+  member splice), so the owner must have exactly <strong>one</strong> FK back at the base.
+  Multi-FK disambiguation is available only on the aggregate/filter selector path
+  (<code>fields::Bug.author</code> vs <code>fields::Bug.reviewer</code>), which has no container and no cycle.</li>
+<li>Eager only (no lazy loading), no tuple/pair result shapes, no <code>right_join</code>-style
+  base rows with defaulted fields (removed in #397).</li>
+<li>The annotation spelling carries the owner type, not <code>reverse_fk&lt;&gt;</code> —
+  the flag annotations are plain tag objects, so a templated flag is impossible (as for m2m).</li>
+</ul>
+<h2 id="composite-primary-keys-in-joins-504">Composite Primary Keys in JOINs (#504)<a class="headerlink" href="#composite-primary-keys-in-joins-504" title="Permanent link">&para;</a></h2>
+<p>Every join path above works when a model has a composite primary key
+(two or more <code>[[= primary_part]]</code> members, #500). No API changes — the
+same <code>join&lt;&gt;()</code> / <code>left_join&lt;&gt;()</code> calls apply.</p>
+<h3 id="fk-columns">FK columns<a class="headerlink" href="#fk-columns" title="Permanent link">&para;</a></h3>
+<p>An FK to an N-part target occupies <strong>N columns</strong>, named <code>&lt;member&gt;_&lt;part&gt;</code>:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-12-1" name="__codelineno-12-1" href="#__codelineno-12-1"></a><span class="k">struct</span><span class="w"> </span><span class="nc">OrderLine</span><span class="w"> </span><span class="p">{</span>
+<a id="__codelineno-12-2" name="__codelineno-12-2" href="#__codelineno-12-2"></a><span class="w">    </span><span class="p">[[</span><span class="err">=</span><span class="w"> </span><span class="na">primary_part</span><span class="p">]]</span><span class="w"> </span><span class="kt">int</span><span class="w"> </span><span class="n">order_id</span><span class="p">{};</span>
+<a id="__codelineno-12-3" name="__codelineno-12-3" href="#__codelineno-12-3"></a><span class="w">    </span><span class="p">[[</span><span class="err">=</span><span class="w"> </span><span class="na">primary_part</span><span class="p">]]</span><span class="w"> </span><span class="kt">int</span><span class="w"> </span><span class="n">product_id</span><span class="p">{};</span>
+<a id="__codelineno-12-4" name="__codelineno-12-4" href="#__codelineno-12-4"></a><span class="w">    </span><span class="kt">int</span><span class="w"> </span><span class="n">quantity</span><span class="p">{};</span>
+<a id="__codelineno-12-5" name="__codelineno-12-5" href="#__codelineno-12-5"></a><span class="p">};</span>
+<a id="__codelineno-12-6" name="__codelineno-12-6" href="#__codelineno-12-6"></a>
+<a id="__codelineno-12-7" name="__codelineno-12-7" href="#__codelineno-12-7"></a><span class="k">struct</span><span class="w"> </span><span class="nc">Shipment</span><span class="w"> </span><span class="p">{</span>
+<a id="__codelineno-12-8" name="__codelineno-12-8" href="#__codelineno-12-8"></a><span class="w">    </span><span class="p">[[</span><span class="err">=</span><span class="w"> </span><span class="na">primary_autoincrement</span><span class="p">]]</span><span class="w"> </span><span class="kt">int</span><span class="w"> </span><span class="n">id</span><span class="p">{};</span>
+<a id="__codelineno-12-9" name="__codelineno-12-9" href="#__codelineno-12-9"></a><span class="w">    </span><span class="p">[[</span><span class="err">=</span><span class="w"> </span><span class="na">fk</span><span class="err">&lt;&gt;</span><span class="p">]]</span><span class="w"> </span><span class="n">OrderLine</span><span class="w"> </span><span class="n">line</span><span class="p">;</span><span class="w">   </span><span class="c1">// → line_order_id, line_product_id</span>
+<a id="__codelineno-12-10" name="__codelineno-12-10" href="#__codelineno-12-10"></a><span class="p">};</span>
+</code></pre></div>
+<p>A single-PK target keeps the exact <code>&lt;member&gt;_id</code> spelling it always had, so
+pre-#504 schemas and SQL are byte-identical. <code>std::optional&lt;OrderLine&gt;</code> makes
+all N columns nullable together.</p>
+<h3 id="on-clauses">ON clauses<a class="headerlink" href="#on-clauses" title="Permanent link">&para;</a></h3>
+<p>Joins AND-join one equality per key part, in declaration order:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-13-1" name="__codelineno-13-1" href="#__codelineno-13-1"></a><span class="k">INNER</span><span class="w"> </span><span class="k">JOIN</span><span class="w"> </span><span class="n">OrderLine</span><span class="w"> </span><span class="n">t2</span>
+<a id="__codelineno-13-2" name="__codelineno-13-2" href="#__codelineno-13-2"></a><span class="w">        </span><span class="k">ON</span><span class="w"> </span><span class="n">t2</span><span class="p">.</span><span class="n">order_id</span><span class="w">   </span><span class="o">=</span><span class="w"> </span><span class="n">t1</span><span class="p">.</span><span class="n">line_order_id</span>
+<a id="__codelineno-13-3" name="__codelineno-13-3" href="#__codelineno-13-3"></a><span class="w">       </span><span class="k">AND</span><span class="w"> </span><span class="n">t2</span><span class="p">.</span><span class="n">product_id</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">t1</span><span class="p">.</span><span class="n">line_product_id</span>
+</code></pre></div>
+<p>Matching only the first part would silently join rows that share it but differ
+later, so all parts are always compared.</p>
+<h3 id="junction-tables-m2m">Junction tables (m2m)<a class="headerlink" href="#junction-tables-m2m" title="Permanent link">&para;</a></h3>
+<p>A composite side contributes one junction column per PK part, <code>&lt;Side&gt;_&lt;part&gt;</code>.
+Composite PK is supported on <strong>either or both</strong> sides:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-14-1" name="__codelineno-14-1" href="#__codelineno-14-1"></a><span class="k">CREATE</span><span class="w"> </span><span class="k">TABLE</span><span class="w"> </span><span class="n">ShelfAssignment_StorageBin</span><span class="w"> </span><span class="p">(</span>
+<a id="__codelineno-14-2" name="__codelineno-14-2" href="#__codelineno-14-2"></a><span class="w">    </span><span class="n">ShelfAssignment_warehouse_no</span><span class="w"> </span><span class="nb">INTEGER</span><span class="w"> </span><span class="k">NOT</span><span class="w"> </span><span class="k">NULL</span><span class="p">,</span>
+<a id="__codelineno-14-3" name="__codelineno-14-3" href="#__codelineno-14-3"></a><span class="w">    </span><span class="n">ShelfAssignment_shelf_code</span><span class="w"> </span><span class="nb">TEXT</span><span class="w"> </span><span class="k">NOT</span><span class="w"> </span><span class="k">NULL</span><span class="p">,</span>
+<a id="__codelineno-14-4" name="__codelineno-14-4" href="#__codelineno-14-4"></a><span class="w">    </span><span class="n">StorageBin_aisle</span><span class="w"> </span><span class="nb">INTEGER</span><span class="w"> </span><span class="k">NOT</span><span class="w"> </span><span class="k">NULL</span><span class="p">,</span>
+<a id="__codelineno-14-5" name="__codelineno-14-5" href="#__codelineno-14-5"></a><span class="w">    </span><span class="n">StorageBin_bin_code</span><span class="w"> </span><span class="nb">TEXT</span><span class="w"> </span><span class="k">NOT</span><span class="w"> </span><span class="k">NULL</span><span class="p">,</span>
+<a id="__codelineno-14-6" name="__codelineno-14-6" href="#__codelineno-14-6"></a><span class="w">    </span><span class="n">StorageBin_revision</span><span class="w"> </span><span class="nb">INTEGER</span><span class="w"> </span><span class="k">NOT</span><span class="w"> </span><span class="k">NULL</span><span class="p">,</span>
+<a id="__codelineno-14-7" name="__codelineno-14-7" href="#__codelineno-14-7"></a><span class="w">    </span><span class="k">PRIMARY</span><span class="w"> </span><span class="k">KEY</span><span class="w"> </span><span class="p">(</span><span class="n">ShelfAssignment_warehouse_no</span><span class="p">,</span><span class="w"> </span><span class="n">ShelfAssignment_shelf_code</span><span class="p">,</span>
+<a id="__codelineno-14-8" name="__codelineno-14-8" href="#__codelineno-14-8"></a><span class="w">                 </span><span class="n">StorageBin_aisle</span><span class="p">,</span><span class="w"> </span><span class="n">StorageBin_bin_code</span><span class="p">,</span><span class="w"> </span><span class="n">StorageBin_revision</span><span class="p">),</span>
+<a id="__codelineno-14-9" name="__codelineno-14-9" href="#__codelineno-14-9"></a><span class="w">    </span><span class="k">FOREIGN</span><span class="w"> </span><span class="k">KEY</span><span class="w"> </span><span class="p">(</span><span class="n">ShelfAssignment_warehouse_no</span><span class="p">,</span><span class="w"> </span><span class="n">ShelfAssignment_shelf_code</span><span class="p">)</span>
+<a id="__codelineno-14-10" name="__codelineno-14-10" href="#__codelineno-14-10"></a><span class="w">        </span><span class="k">REFERENCES</span><span class="w"> </span><span class="n">ShelfAssignment</span><span class="p">(</span><span class="n">warehouse_no</span><span class="p">,</span><span class="w"> </span><span class="n">shelf_code</span><span class="p">)</span><span class="w"> </span><span class="k">ON</span><span class="w"> </span><span class="k">DELETE</span><span class="w"> </span><span class="k">CASCADE</span><span class="p">,</span>
+<a id="__codelineno-14-11" name="__codelineno-14-11" href="#__codelineno-14-11"></a><span class="w">    </span><span class="k">FOREIGN</span><span class="w"> </span><span class="k">KEY</span><span class="w"> </span><span class="p">(</span><span class="n">StorageBin_aisle</span><span class="p">,</span><span class="w"> </span><span class="n">StorageBin_bin_code</span><span class="p">,</span><span class="w"> </span><span class="n">StorageBin_revision</span><span class="p">)</span>
+<a id="__codelineno-14-12" name="__codelineno-14-12" href="#__codelineno-14-12"></a><span class="w">        </span><span class="k">REFERENCES</span><span class="w"> </span><span class="n">StorageBin</span><span class="p">(</span><span class="n">aisle</span><span class="p">,</span><span class="w"> </span><span class="n">bin_code</span><span class="p">,</span><span class="w"> </span><span class="n">revision</span><span class="p">)</span><span class="w"> </span><span class="k">ON</span><span class="w"> </span><span class="k">DELETE</span><span class="w"> </span><span class="k">CASCADE</span>
+<a id="__codelineno-14-13" name="__codelineno-14-13" href="#__codelineno-14-13"></a><span class="p">)</span>
+</code></pre></div>
+<p>(The real DDL puts each <code>PRIMARY KEY</code> / <code>FOREIGN KEY</code> clause on one line; wrapped
+here for readability.)</p>
+<p>Each <code>FOREIGN KEY</code> names the target's real key columns. This also fixed a latent
+bug: the old DDL emitted <code>REFERENCES &lt;Side&gt;(id)</code>, naming a column a composite-PK
+model does not have. SQLite does not validate FK targets at <code>CREATE TABLE</code> time
+so it accepted this silently, but PostgreSQL rejects it — composite-PK junction
+tables could not be created on PG at all.</p>
+<p>A single-PK junction on both sides is unchanged, byte for byte.</p>
+<h3 id="through-models-many_to_many_through-536">Through models (<code>many_to_many_through&lt;&gt;</code>, #536)<a class="headerlink" href="#through-models-many_to_many_through-536" title="Permanent link">&para;</a></h3>
+<p>An explicit junction model works over composite keys too, but its columns follow
+a <strong>different naming rule</strong> from the auto-junction above, because it is a
+different kind of table. The auto-junction is Storm's own synthetic table, so
+Storm names its columns (<code>&lt;Side&gt;_&lt;part&gt;</code>, an FK part gaining <code>_id</code>). A through
+model is a <strong>real model you declared</strong>, so its junction columns are ordinary
+composite-FK columns, named by the FK rule at the top of this section —
+<code>&lt;member&gt;_&lt;part&gt;</code>, always the target part's <strong>bare</strong> identifier:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-15-1" name="__codelineno-15-1" href="#__codelineno-15-1"></a><span class="k">struct</span><span class="w"> </span><span class="nc">Entry</span><span class="w"> </span><span class="p">{</span>
+<a id="__codelineno-15-2" name="__codelineno-15-2" href="#__codelineno-15-2"></a><span class="w">    </span><span class="p">[[</span><span class="err">=</span><span class="w"> </span><span class="na">primary_part</span><span class="p">]][[</span><span class="err">=</span><span class="w"> </span><span class="na">fk</span><span class="err">&lt;&gt;</span><span class="p">]]</span><span class="w"> </span><span class="n">Warehouse</span><span class="w"> </span><span class="n">warehouse</span><span class="p">;</span>
+<a id="__codelineno-15-3" name="__codelineno-15-3" href="#__codelineno-15-3"></a><span class="w">    </span><span class="p">[[</span><span class="err">=</span><span class="w"> </span><span class="na">primary_part</span><span class="p">]]</span><span class="w"> </span><span class="kt">int</span><span class="w"> </span><span class="n">sku</span><span class="p">{};</span>
+<a id="__codelineno-15-4" name="__codelineno-15-4" href="#__codelineno-15-4"></a><span class="w">    </span><span class="p">[[</span><span class="err">=</span><span class="w"> </span><span class="na">many_to_many_through</span><span class="err">&lt;</span><span class="na">EntryLink</span><span class="err">&gt;</span><span class="p">]]</span><span class="w"> </span><span class="n">std</span><span class="o">::</span><span class="n">vector</span><span class="o">&lt;</span><span class="n">Topic</span><span class="o">&gt;</span><span class="w"> </span><span class="n">topics</span><span class="p">;</span>
+<a id="__codelineno-15-5" name="__codelineno-15-5" href="#__codelineno-15-5"></a><span class="p">};</span>
+<a id="__codelineno-15-6" name="__codelineno-15-6" href="#__codelineno-15-6"></a>
+<a id="__codelineno-15-7" name="__codelineno-15-7" href="#__codelineno-15-7"></a><span class="k">struct</span><span class="w"> </span><span class="nc">EntryLink</span><span class="w"> </span><span class="p">{</span>
+<a id="__codelineno-15-8" name="__codelineno-15-8" href="#__codelineno-15-8"></a><span class="w">    </span><span class="p">[[</span><span class="err">=</span><span class="w"> </span><span class="na">primary_autoincrement</span><span class="p">]]</span><span class="w"> </span><span class="kt">int</span><span class="w"> </span><span class="n">id</span><span class="p">{};</span>
+<a id="__codelineno-15-9" name="__codelineno-15-9" href="#__codelineno-15-9"></a><span class="w">    </span><span class="p">[[</span><span class="err">=</span><span class="w"> </span><span class="na">fk</span><span class="err">&lt;&gt;</span><span class="p">]]</span><span class="w"> </span><span class="n">Entry</span><span class="w"> </span><span class="n">entry</span><span class="p">;</span><span class="w">   </span><span class="c1">// → entry_warehouse, entry_sku</span>
+<a id="__codelineno-15-10" name="__codelineno-15-10" href="#__codelineno-15-10"></a><span class="w">    </span><span class="p">[[</span><span class="err">=</span><span class="w"> </span><span class="na">fk</span><span class="err">&lt;&gt;</span><span class="p">]]</span><span class="w"> </span><span class="n">Topic</span><span class="w"> </span><span class="n">topic</span><span class="p">;</span><span class="w">   </span><span class="c1">// → topic_id</span>
+<a id="__codelineno-15-11" name="__codelineno-15-11" href="#__codelineno-15-11"></a><span class="p">};</span>
+</code></pre></div>
+<p>Note <code>entry_warehouse</code>, <strong>not</strong> <code>entry_warehouse_id</code>, even though <code>warehouse</code> is
+itself an FK — the <code>_id</code> suffix belongs to the auto-junction rule, not this one.
+The two rules agree for a single-column PK and for a composite key of plain
+columns; they diverge exactly here, which is why the query path selects between
+them rather than sharing one.</p>
+<p>Because the junction is a model, you write its rows with an ordinary <code>insert()</code>
+and can query it directly for its own metadata — no raw SQL, unlike the
+auto-junction.</p>
+<p>The FK-part shape above also needs the part's <strong>storage type</strong> resolved: the
+column holds the referenced row's key (<code>BIGINT</code>), not the whole struct. Getting
+that wrong typed the column as <code>TEXT</code>, which SQLite accepted and silently never
+matched, while PostgreSQL rejected the <code>CREATE TABLE</code> outright — the same
+SQLite-accepts/PG-rejects asymmetry as the junction <code>REFERENCES</code> bug above.</p>
+<h3 id="stitching">Stitching<a class="headerlink" href="#stitching" title="Permanent link">&para;</a></h3>
+<p>The two-query strategy (#391) stitches Q2 rows onto Q1 entities by owner key.
+A composite owner key is not one integer and may mix <code>int</code>, <code>std::string</code>, and
+<code>int64_t</code> parts, so those models key the stitch map on a <code>StitchKey</code> — a fixed
+32-byte inline buffer holding every part.</p>
+<p>A <strong>single-column PK keeps the plain <code>int64_t</code> key</strong> it always had, chosen at
+compile time. This is a deliberate performance split, not an implementation
+detail: <code>std::hash&lt;long&gt;</code> is the identity function and comparing two <code>long</code>s is
+one inlined instruction, whereas both operations on a 33-byte key become
+out-of-line calls made once per result row. Routing single-PK models through
+<code>StitchKey</code> measured ~4% slower on the m2m eager-load benchmarks.</p>
+<p>The Q2 <code>IN</code> subquery uses the row-value form:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-16-1" name="__codelineno-16-1" href="#__codelineno-16-1"></a><span class="c1">-- reverse-FK Q2 over a 2-part owner key</span>
+<a id="__codelineno-16-2" name="__codelineno-16-2" href="#__codelineno-16-2"></a><span class="k">WHERE</span><span class="w"> </span><span class="p">(</span><span class="n">t2</span><span class="p">.</span><span class="n">line_order_id</span><span class="p">,</span><span class="w"> </span><span class="n">t2</span><span class="p">.</span><span class="n">line_product_id</span><span class="p">)</span>
+<a id="__codelineno-16-3" name="__codelineno-16-3" href="#__codelineno-16-3"></a><span class="w">   </span><span class="k">IN</span><span class="w"> </span><span class="p">(</span><span class="k">SELECT</span><span class="w"> </span><span class="n">order_id</span><span class="p">,</span><span class="w"> </span><span class="n">product_id</span><span class="w"> </span><span class="k">FROM</span><span class="w"> </span><span class="n">OrderLine</span><span class="p">)</span>
+</code></pre></div>
+<p>Note the inner <code>SELECT</code> list is deliberately <strong>not</strong> parenthesized — wrapping it
+makes SQLite parse it as a single scalar expression instead of N columns.</p>
+<h3 id="notes">Notes<a class="headerlink" href="#notes" title="Permanent link">&para;</a></h3>
+<ul>
+<li>An FK member may itself be a <code>primary_part</code>; it stores the referenced key's
+  type, so a composite key over FKs (the usual association-table shape) works.</li>
+<li>A key part that is an FK emits its <code>_id</code> column name, e.g. <code>warehouse_id</code>.</li>
+<li>Composite keys are never DB-generated, so every part is caller data on INSERT
+  (#502).</li>
+</ul>
+<h2 id="architecture">Architecture<a class="headerlink" href="#architecture" title="Permanent link">&para;</a></h2>
+<h3 id="type-erased-sql-builder-pattern">Type-Erased SQL Builder Pattern<a class="headerlink" href="#type-erased-sql-builder-pattern" title="Permanent link">&para;</a></h3>
+<p>Storm uses an abstract base class for type erasure without <code>std::function</code> (which causes linker issues with custom libc++):</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-17-1" name="__codelineno-17-1" href="#__codelineno-17-1"></a><span class="c1">// Abstract base for type erasure</span>
+<a id="__codelineno-17-2" name="__codelineno-17-2" href="#__codelineno-17-2"></a><span class="k">class</span><span class="w"> </span><span class="nc">IJoinStatement</span><span class="w"> </span><span class="p">{</span>
+<a id="__codelineno-17-3" name="__codelineno-17-3" href="#__codelineno-17-3"></a><span class="w">    </span><span class="k">virtual</span><span class="w"> </span><span class="n">std</span><span class="o">::</span><span class="n">string</span><span class="w"> </span><span class="nf">to_sql</span><span class="p">()</span><span class="w"> </span><span class="k">const</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">0</span><span class="p">;</span>
+<a id="__codelineno-17-4" name="__codelineno-17-4" href="#__codelineno-17-4"></a><span class="w">    </span><span class="k">virtual</span><span class="w"> </span><span class="n">std</span><span class="o">::</span><span class="n">string</span><span class="w"> </span><span class="nf">build_qualified_select_fields</span><span class="p">()</span><span class="w"> </span><span class="k">const</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">0</span><span class="p">;</span>
+<a id="__codelineno-17-5" name="__codelineno-17-5" href="#__codelineno-17-5"></a><span class="w">    </span><span class="k">virtual</span><span class="w"> </span><span class="kt">void</span><span class="w"> </span><span class="nf">extract_row</span><span class="p">(</span><span class="kt">void</span><span class="o">*</span><span class="w"> </span><span class="n">stmt</span><span class="p">,</span><span class="w"> </span><span class="kt">void</span><span class="o">*</span><span class="w"> </span><span class="n">obj</span><span class="p">)</span><span class="w"> </span><span class="k">const</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">0</span><span class="p">;</span>
+<a id="__codelineno-17-6" name="__codelineno-17-6" href="#__codelineno-17-6"></a><span class="p">};</span>
+<a id="__codelineno-17-7" name="__codelineno-17-7" href="#__codelineno-17-7"></a>
+<a id="__codelineno-17-8" name="__codelineno-17-8" href="#__codelineno-17-8"></a><span class="c1">// Unified variadic template (handles single + multi FK)</span>
+<a id="__codelineno-17-9" name="__codelineno-17-9" href="#__codelineno-17-9"></a><span class="k">template</span><span class="w"> </span><span class="o">&lt;</span><span class="k">typename</span><span class="w"> </span><span class="nc">T</span><span class="p">,</span><span class="w"> </span><span class="n">ConnType</span><span class="p">,</span><span class="w"> </span><span class="n">std</span><span class="o">::</span><span class="n">meta</span><span class="o">::</span><span class="n">info</span><span class="p">...</span><span class="w"> </span><span class="n">FKFields</span><span class="o">&gt;</span>
+<a id="__codelineno-17-10" name="__codelineno-17-10" href="#__codelineno-17-10"></a><span class="k">class</span><span class="w"> </span><span class="nc">JoinStatement</span><span class="w"> </span><span class="o">:</span><span class="w"> </span><span class="k">public</span><span class="w"> </span><span class="n">IJoinStatement</span><span class="w"> </span><span class="p">{</span>
+<a id="__codelineno-17-11" name="__codelineno-17-11" href="#__codelineno-17-11"></a><span class="w">    </span><span class="c1">// Pure SQL builder - no execute(), no caching</span>
+<a id="__codelineno-17-12" name="__codelineno-17-12" href="#__codelineno-17-12"></a>
+<a id="__codelineno-17-13" name="__codelineno-17-13" href="#__codelineno-17-13"></a><span class="w">    </span><span class="n">std</span><span class="o">::</span><span class="n">string</span><span class="w"> </span><span class="nf">to_sql</span><span class="p">()</span><span class="w"> </span><span class="k">const</span><span class="w"> </span><span class="k">override</span><span class="w"> </span><span class="p">{</span>
+<a id="__codelineno-17-14" name="__codelineno-17-14" href="#__codelineno-17-14"></a><span class="w">        </span><span class="c1">// Generate: " INNER JOIN table t2 ON t2.id = t1.fk_id"</span>
+<a id="__codelineno-17-15" name="__codelineno-17-15" href="#__codelineno-17-15"></a><span class="w">        </span><span class="c1">// Uses fold expressions for variadic FKFields</span>
+<a id="__codelineno-17-16" name="__codelineno-17-16" href="#__codelineno-17-16"></a><span class="w">    </span><span class="p">}</span>
+<a id="__codelineno-17-17" name="__codelineno-17-17" href="#__codelineno-17-17"></a>
+<a id="__codelineno-17-18" name="__codelineno-17-18" href="#__codelineno-17-18"></a><span class="w">    </span><span class="kt">void</span><span class="w"> </span><span class="nf">extract_row</span><span class="p">(</span><span class="kt">void</span><span class="o">*</span><span class="w"> </span><span class="n">stmt</span><span class="p">,</span><span class="w"> </span><span class="kt">void</span><span class="o">*</span><span class="w"> </span><span class="n">obj</span><span class="p">)</span><span class="w"> </span><span class="k">const</span><span class="w"> </span><span class="k">override</span><span class="w"> </span><span class="p">{</span>
+<a id="__codelineno-17-19" name="__codelineno-17-19" href="#__codelineno-17-19"></a><span class="w">        </span><span class="c1">// Extract FK fields using compile-time type information</span>
+<a id="__codelineno-17-20" name="__codelineno-17-20" href="#__codelineno-17-20"></a><span class="w">    </span><span class="p">}</span>
+<a id="__codelineno-17-21" name="__codelineno-17-21" href="#__codelineno-17-21"></a><span class="p">};</span>
+</code></pre></div>
+<h3 id="queryset-integration">QuerySet Integration<a class="headerlink" href="#queryset-integration" title="Permanent link">&para;</a></h3>
+<p>QuerySet stores the JOIN statement using type erasure:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-18-1" name="__codelineno-18-1" href="#__codelineno-18-1"></a><span class="k">template</span><span class="w"> </span><span class="o">&lt;</span><span class="k">class</span><span class="w"> </span><span class="nc">T</span><span class="o">&gt;</span><span class="w"> </span><span class="k">class</span><span class="w"> </span><span class="nc">QuerySet</span><span class="w"> </span><span class="p">{</span>
+<a id="__codelineno-18-2" name="__codelineno-18-2" href="#__codelineno-18-2"></a><span class="w">    </span><span class="k">mutable</span><span class="w"> </span><span class="n">std</span><span class="o">::</span><span class="n">unique_ptr</span><span class="o">&lt;</span><span class="n">IJoinStatement</span><span class="o">&gt;</span><span class="w"> </span><span class="n">join_stmt_</span><span class="p">;</span>
+<a id="__codelineno-18-3" name="__codelineno-18-3" href="#__codelineno-18-3"></a>
+<a id="__codelineno-18-4" name="__codelineno-18-4" href="#__codelineno-18-4"></a><span class="w">    </span><span class="k">template</span><span class="w"> </span><span class="o">&lt;</span><span class="n">std</span><span class="o">::</span><span class="n">meta</span><span class="o">::</span><span class="n">info</span><span class="p">...</span><span class="w"> </span><span class="n">FKFields</span><span class="o">&gt;</span>
+<a id="__codelineno-18-5" name="__codelineno-18-5" href="#__codelineno-18-5"></a><span class="w">    </span><span class="k">auto</span><span class="o">&amp;&amp;</span><span class="w"> </span><span class="n">join</span><span class="p">(</span><span class="k">this</span><span class="w"> </span><span class="k">auto</span><span class="o">&amp;&amp;</span><span class="w"> </span><span class="n">self</span><span class="p">)</span><span class="w"> </span><span class="p">{</span>
+<a id="__codelineno-18-6" name="__codelineno-18-6" href="#__codelineno-18-6"></a><span class="w">        </span><span class="n">self</span><span class="p">.</span><span class="n">join_stmt_</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">std</span><span class="o">::</span><span class="n">make_unique</span><span class="o">&lt;</span><span class="n">JoinStatement</span><span class="o">&lt;</span><span class="n">T</span><span class="p">,</span><span class="w"> </span><span class="n">ConnType</span><span class="p">,</span><span class="w"> </span><span class="n">FKFields</span><span class="p">...</span><span class="o">&gt;&gt;</span><span class="p">();</span>
+<a id="__codelineno-18-7" name="__codelineno-18-7" href="#__codelineno-18-7"></a><span class="w">        </span><span class="k">return</span><span class="w"> </span><span class="n">self</span><span class="p">;</span><span class="w">  </span><span class="c1">// Chainable</span>
+<a id="__codelineno-18-8" name="__codelineno-18-8" href="#__codelineno-18-8"></a><span class="w">    </span><span class="p">}</span>
+<a id="__codelineno-18-9" name="__codelineno-18-9" href="#__codelineno-18-9"></a>
+<a id="__codelineno-18-10" name="__codelineno-18-10" href="#__codelineno-18-10"></a><span class="w">    </span><span class="k">auto</span><span class="w"> </span><span class="n">select</span><span class="p">()</span><span class="w"> </span><span class="p">{</span>
+<a id="__codelineno-18-11" name="__codelineno-18-11" href="#__codelineno-18-11"></a><span class="w">        </span><span class="c1">// Builds SELECT t1.*, t2.* FROM table t1 + join_stmt_-&gt;to_sql() when a</span>
+<a id="__codelineno-18-12" name="__codelineno-18-12" href="#__codelineno-18-12"></a><span class="w">        </span><span class="c1">// JOIN is attached, plain SELECT otherwise.</span>
+<a id="__codelineno-18-13" name="__codelineno-18-13" href="#__codelineno-18-13"></a><span class="w">    </span><span class="p">}</span>
+<a id="__codelineno-18-14" name="__codelineno-18-14" href="#__codelineno-18-14"></a><span class="p">};</span>
+</code></pre></div>
+<h3 id="selectstatement-integration">SelectStatement Integration<a class="headerlink" href="#selectstatement-integration" title="Permanent link">&para;</a></h3>
+<p>There is no per-Statement or per-QuerySet JOIN cache. SELECT (with or without a
+JOIN) goes through the single Connection-level prepared-statement cache, keyed
+by SQL text; the L1/L2 layers were removed in #214. See
+<a href="../../../internals/architecture/STATEMENT_CACHING/">STATEMENT_CACHING.md</a>.</p>
+<h2 id="performance-analysis">Performance Analysis<a class="headerlink" href="#performance-analysis" title="Permanent link">&para;</a></h2>
+<h3 id="benchmark-results-10000-rows-100-iterations-release-build">Benchmark Results (10,000 rows, 100 iterations, Release build)<a class="headerlink" href="#benchmark-results-10000-rows-100-iterations-release-build" title="Permanent link">&para;</a></h3>
+<table>
+<thead>
+<tr>
+<th>JOIN Operation</th>
+<th>Storm ORM</th>
+<th>Raw SQLite</th>
+<th>Efficiency</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Simple SELECT (no JOIN)</td>
+<td>8.4M rows/sec</td>
+<td>-</td>
+<td>-</td>
+</tr>
+<tr>
+<td>LEFT JOIN (single FK)</td>
+<td>6.1M rows/sec</td>
+<td>6.8M rows/sec</td>
+<td>90%</td>
+</tr>
+<tr>
+<td>LEFT JOIN (multi FK)</td>
+<td>3.9M rows/sec</td>
+<td>5.2M rows/sec</td>
+<td>75%</td>
+</tr>
+<tr>
+<td>INNER JOIN (single FK)</td>
+<td>4.4M rows/sec</td>
+<td>7.4M rows/sec</td>
+<td>59%</td>
+</tr>
+<tr>
+<td>INNER JOIN (multi FK)</td>
+<td>3.7M rows/sec</td>
+<td>6.0M rows/sec</td>
+<td>62%</td>
+</tr>
+</tbody>
+</table>
+<p><strong>Average Efficiency</strong>: ~77% of raw SQLite performance</p>
+<h3 id="performance-characteristics">Performance Characteristics<a class="headerlink" href="#performance-characteristics" title="Permanent link">&para;</a></h3>
+<p><strong>LEFT JOINs</strong>: 75-90% efficiency (excellent)
+- Less object construction complexity
+- Simpler NULL handling</p>
+<p><strong>INNER JOINs</strong>: 59-62% efficiency (good)
+- More complex object construction
+- Higher allocation overhead</p>
+<h3 id="performance-bottlenecks">Performance Bottlenecks<a class="headerlink" href="#performance-bottlenecks" title="Permanent link">&para;</a></h3>
+<p>The real performance bottlenecks are <strong>NOT function pointers</strong> (we tested this):</p>
+<ol>
+<li><strong>String allocations</strong> (30-40% of runtime)</li>
+<li>Each <code>std::string</code> field requires heap allocation</li>
+<li>
+<p>Multiple string fields per joined object</p>
+</li>
+<li>
+<p><strong>Object construction</strong> (~10%)</p>
+</li>
+<li>Creating and populating complex objects</li>
+<li>
+<p>Multiple fields per object</p>
+</li>
+<li>
+<p><strong>Vector management</strong></p>
+</li>
+<li>
+<p>Resizing, copying, moving objects in result vectors</p>
+</li>
+<li>
+<p><strong>Multi-column extraction</strong> (~35%)</p>
+</li>
+<li>5-8 columns for JOIN vs 2-3 for simple SELECT</li>
+<li>
+<p>Type dispatch overhead for each field</p>
+</li>
+<li>
+<p><strong>SQL execution</strong> (~20%)</p>
+</li>
+<li>Unavoidable, same as raw SQLite</li>
+</ol>
+<h3 id="template-vs-function-pointer-experiment">Template vs Function Pointer Experiment<a class="headerlink" href="#template-vs-function-pointer-experiment" title="Permanent link">&para;</a></h3>
+<p>We attempted to eliminate function pointer overhead using templates to preserve FK information at compile-time:</p>
+<p><strong>Results: Templates Made It WORSE</strong>
+- <strong>Function pointer approach</strong> (current): 6.9M rows/sec (70% of raw) ✅ <strong>BEST</strong>
+- <strong>Template approach</strong> (attempted): 4.9M rows/sec (49% of raw) ❌ <strong>28% SLOWER</strong></p>
+<p><strong>Why templates failed:</strong>
+1. <strong>Code bloat</strong> - More template instantiations → worse instruction cache locality
+2. <strong>Compiler optimization</strong> - Modern compilers optimize indirect calls well with PGO
+3. <strong>Inlining limits</strong> - Deep call chains hit compiler inlining budget
+4. <strong>Register pressure</strong> - Fully inlined code increased register spilling</p>
+<p><strong>Key lesson</strong>: Don't assume eliminating indirect calls improves performance. Profile first, optimize second.</p>
+<h2 id="optimization-recommendations">Optimization Recommendations<a class="headerlink" href="#optimization-recommendations" title="Permanent link">&para;</a></h2>
+<p>Current 50-70% efficiency is <strong>respectable for a full ORM</strong> with reflection-based mapping. Further gains require architectural changes:</p>
+<h3 id="1-string-handling-biggest-potential-win">1. String Handling (Biggest Potential Win)<a class="headerlink" href="#1-string-handling-biggest-potential-win" title="Permanent link">&para;</a></h3>
+<ul>
+<li>Use <code>std::string_view</code> for read-only operations</li>
+<li>Implement move semantics throughout extraction chain</li>
+<li>Consider string interning for repeated values</li>
+<li>Arena allocator for temporary strings</li>
+</ul>
+<h3 id="2-memory-management">2. Memory Management<a class="headerlink" href="#2-memory-management" title="Permanent link">&para;</a></h3>
+<ul>
+<li>Object pooling to reuse allocated objects</li>
+<li>Custom allocator optimized for ORM access patterns</li>
+<li>Better size estimation (currently pre-allocates 10K)</li>
+</ul>
+<h3 id="3-column-extraction">3. Column Extraction<a class="headerlink" href="#3-column-extraction" title="Permanent link">&para;</a></h3>
+<ul>
+<li>Batch extraction by type (all ints, then all strings)</li>
+<li>SIMD for type checking and conversion</li>
+<li>Specialized fast paths for common type combinations</li>
+</ul>
+<h3 id="4-caching-improvements">4. Caching Improvements<a class="headerlink" href="#4-caching-improvements" title="Permanent link">&para;</a></h3>
+<ul>
+<li>Cache field offset calculations</li>
+<li>Reuse extraction buffers across queries</li>
+<li>Pre-build type dispatch tables at compile-time</li>
+</ul>
+<h2 id="chaining-with-where">Chaining with WHERE<a class="headerlink" href="#chaining-with-where" title="Permanent link">&para;</a></h2>
+<p>JOIN operations can be combined with WHERE clauses:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-19-1" name="__codelineno-19-1" href="#__codelineno-19-1"></a><span class="c1">// Filter on both base table and joined table</span>
+<a id="__codelineno-19-2" name="__codelineno-19-2" href="#__codelineno-19-2"></a><span class="k">auto</span><span class="w"> </span><span class="n">result</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">message_qs</span><span class="p">.</span><span class="n">join</span><span class="o">&lt;</span><span class="n">fields</span><span class="o">::</span><span class="n">Message</span><span class="p">.</span><span class="n">sender</span><span class="o">&gt;</span><span class="p">()</span>
+<a id="__codelineno-19-3" name="__codelineno-19-3" href="#__codelineno-19-3"></a><span class="w">                        </span><span class="p">.</span><span class="n">where</span><span class="p">(</span><span class="n">fields</span><span class="o">::</span><span class="n">User</span><span class="p">.</span><span class="n">level</span><span class="w"> </span><span class="o">&gt;</span><span class="w"> </span><span class="mi">5</span><span class="w"> </span><span class="k">and</span>
+<a id="__codelineno-19-4" name="__codelineno-19-4" href="#__codelineno-19-4"></a><span class="w">                               </span><span class="n">fields</span><span class="o">::</span><span class="n">Message</span><span class="p">.</span><span class="n">content</span><span class="p">.</span><span class="n">like</span><span class="p">(</span><span class="s">"%urgent%"</span><span class="p">))</span>
+<a id="__codelineno-19-5" name="__codelineno-19-5" href="#__codelineno-19-5"></a><span class="w">                        </span><span class="p">.</span><span class="n">select</span><span class="p">();</span>
+</code></pre></div>
+<p><strong>SQL Generated</strong>:
+<div class="highlight"><pre><span></span><code><a id="__codelineno-20-1" name="__codelineno-20-1" href="#__codelineno-20-1"></a><span class="k">SELECT</span><span class="w"> </span><span class="n">t1</span><span class="p">.</span><span class="n">id</span><span class="p">,</span><span class="w"> </span><span class="n">t1</span><span class="p">.</span><span class="n">content</span><span class="p">,</span><span class="w"> </span><span class="n">t1</span><span class="p">.</span><span class="n">sender_id</span><span class="p">,</span><span class="w"> </span><span class="n">t2</span><span class="p">.</span><span class="n">id</span><span class="p">,</span><span class="w"> </span><span class="n">t2</span><span class="p">.</span><span class="n">username</span><span class="p">,</span><span class="w"> </span><span class="n">t2</span><span class="p">.</span><span class="k">level</span>
+<a id="__codelineno-20-2" name="__codelineno-20-2" href="#__codelineno-20-2"></a><span class="k">FROM</span><span class="w"> </span><span class="n">Message</span><span class="w"> </span><span class="n">t1</span>
+<a id="__codelineno-20-3" name="__codelineno-20-3" href="#__codelineno-20-3"></a><span class="k">INNER</span><span class="w"> </span><span class="k">JOIN</span><span class="w"> </span><span class="k">User</span><span class="w"> </span><span class="n">t2</span><span class="w"> </span><span class="k">ON</span><span class="w"> </span><span class="n">t2</span><span class="p">.</span><span class="n">id</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">t1</span><span class="p">.</span><span class="n">sender_id</span>
+<a id="__codelineno-20-4" name="__codelineno-20-4" href="#__codelineno-20-4"></a><span class="k">WHERE</span><span class="w"> </span><span class="n">t2</span><span class="p">.</span><span class="k">level</span><span class="w"> </span><span class="o">&gt;</span><span class="w"> </span><span class="mi">5</span><span class="w"> </span><span class="k">AND</span><span class="w"> </span><span class="n">t1</span><span class="p">.</span><span class="n">content</span><span class="w"> </span><span class="k">LIKE</span><span class="w"> </span><span class="s1">'%urgent%'</span>
+</code></pre></div></p>
+<p>See <a href="../WHERE_CLAUSES/">WHERE Clauses</a> for more details.</p>
+<h2 id="testing">Testing<a class="headerlink" href="#testing" title="Permanent link">&para;</a></h2>
+<p>Comprehensive JOIN tests in <code>tests/schema/test_fk_fields.cpp</code>:
+- Single FK JOINs
+- Multi-FK JOINs
+- Full object population verification
+- INSERT/UPDATE/DELETE with FK fields
+- Batch operations with FK fields</p>
+<h2 id="benchmarking">Benchmarking<a class="headerlink" href="#benchmarking" title="Permanent link">&para;</a></h2>
+<p>Run JOIN performance benchmarks:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-21-1" name="__codelineno-21-1" href="#__codelineno-21-1"></a>cmake<span class="w"> </span>--preset<span class="w"> </span>ninja-release<span class="w"> </span>-DENABLE_BENCH<span class="o">=</span>ON
+<a id="__codelineno-21-2" name="__codelineno-21-2" href="#__codelineno-21-2"></a>cmake<span class="w"> </span>--build<span class="w"> </span>--preset<span class="w"> </span>ninja-release
+<a id="__codelineno-21-3" name="__codelineno-21-3" href="#__codelineno-21-3"></a>
+<a id="__codelineno-21-4" name="__codelineno-21-4" href="#__codelineno-21-4"></a><span class="c1"># Run all JOIN benchmarks (dataset sizes are configured in benchmarks/tests/benchmark_tests.yaml)</span>
+<a id="__codelineno-21-5" name="__codelineno-21-5" href="#__codelineno-21-5"></a>./build/release/benchmarks/storm_bench<span class="w"> </span>--benchmark_filter<span class="o">=</span><span class="s1">'Storm/.*JOIN.*'</span>
+<a id="__codelineno-21-6" name="__codelineno-21-6" href="#__codelineno-21-6"></a>
+<a id="__codelineno-21-7" name="__codelineno-21-7" href="#__codelineno-21-7"></a><span class="c1"># Repeated runs for stats (median/mean/stddev)</span>
+<a id="__codelineno-21-8" name="__codelineno-21-8" href="#__codelineno-21-8"></a>./build/release/benchmarks/storm_bench<span class="w"> </span>--benchmark_filter<span class="o">=</span><span class="s1">'Storm/.*JOIN.*'</span><span class="w"> </span>--benchmark_repetitions<span class="o">=</span><span class="m">10</span>
+</code></pre></div>
+<p>See <code>benchmarks/query_benchmark.cppm</code> and <code>benchmarks/tests/benchmark_tests.yaml</code> for the JOIN benchmark definition.</p>
+<h2 id="key-benefits">Key Benefits<a class="headerlink" href="#key-benefits" title="Permanent link">&para;</a></h2>
+<p>✅ <strong>No std::function</strong> - Avoids custom libc++ linker errors
+✅ <strong>Single variadic template</strong> - Not separate Single/Multi classes
+✅ <strong>Abstract base class</strong> - Clean type erasure pattern
+✅ <strong>Compile-time SQL generation</strong> - Zero runtime overhead
+✅ <strong>Zero runtime overhead</strong> - Uses <code>if constexpr</code> dispatch
+✅ <strong>Single Connection-level cache</strong> - JOIN and simple SELECT share one cache (#214)
+✅ <strong>77% average efficiency</strong> - Respectable ORM performance</p>
+<h2 id="see-also">See Also<a class="headerlink" href="#see-also" title="Permanent link">&para;</a></h2>
+<ul>
+<li><a href="../WHERE_CLAUSES/">WHERE Clauses</a> - Combine JOINs with filtering</li>
+<li><a href="../SELECT_QUERIES/">SELECT Queries</a> - Statement caching details</li>
+<li><a href="../../../internals/architecture/STATEMENT_CACHING/">Statement Caching</a> - Caching architecture</li>
+<li><a href="../../../internals/architecture/SQL_GENERATION/">SQL Generation</a> - Compile-time SQL generation</li>
+</ul>
+
+
+
+
+
+
+
+
+
+
+
+
+                
+              </article>
+            </div>
+          
+          
+<script>var target=document.getElementById(location.hash.slice(1));target&&target.name&&(target.checked=target.name.startsWith("__tabbed_"))</script>
+        </div>
+        
+          <button type="button" class="md-top md-icon" data-md-component="top" hidden>
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M13 20h-2V8l-5.5 5.5-1.42-1.42L12 4.16l7.92 7.92-1.42 1.42L13 8z"/></svg>
+  Back to top
+</button>
+        
+      </main>
+      
+        <footer class="md-footer">
+  
+  <div class="md-footer-meta md-typeset">
+    <div class="md-footer-meta__inner md-grid">
+      <div class="md-copyright">
+  
+  
+    Made with
+    <a href="https://squidfunk.github.io/mkdocs-material/" target="_blank" rel="noopener">
+      Material for MkDocs
+    </a>
+  
+</div>
+      
+    </div>
+  </div>
+</footer>
+      
+    </div>
+    <div class="md-dialog" data-md-component="dialog">
+      <div class="md-dialog__inner md-typeset"></div>
+    </div>
+    
+    
+    
+      
+      
+      <script id="__config" type="application/json">{"annotate": null, "base": "../../..", "features": ["navigation.sections", "navigation.expand", "navigation.top", "search.suggest", "search.highlight", "content.code.copy"], "search": "../../../assets/javascripts/workers/search.a7633da7.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
+    
+    
+      <script src="../../../assets/javascripts/bundle.c21346df.min.js"></script>
+      
+    
+  </body>
+</html>

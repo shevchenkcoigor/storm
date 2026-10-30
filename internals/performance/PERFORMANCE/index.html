@@ -1,0 +1,4258 @@
+
+<!doctype html>
+<html lang="en" class="no-js">
+  <head>
+    
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width,initial-scale=1">
+      
+        <meta name="description" content="C++26 ORM with compile-time reflection for SQLite">
+      
+      
+      
+        <link rel="canonical" href="https://spiritecosse.github.io/storm/internals/performance/PERFORMANCE/">
+      
+      
+        <link rel="prev" href="../../testing/MSAN_LIBC_FIX/">
+      
+      
+        <link rel="next" href="../BENCHMARK_DASHBOARD/">
+      
+      
+        
+      
+      
+      <link rel="icon" href="../../../assets/images/favicon.png">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.8.0">
+    
+    
+      
+        <title>Performance - Storm ORM</title>
+      
+    
+    
+      <link rel="stylesheet" href="../../../assets/stylesheets/main.57a0d79d.min.css">
+      
+        
+        <link rel="stylesheet" href="../../../assets/stylesheets/palette.fb2fffe2.min.css">
+      
+      
+
+
+    
+    
+      
+    
+    
+      
+        
+        
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+        <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Roboto:300,300i,400,400i,700,700i%7CRoboto+Mono:400,400i,700,700i&display=fallback">
+        <style>:root{--md-text-font:"Roboto";--md-code-font:"Roboto Mono"}</style>
+      
+    
+    
+    <script>__md_scope=new URL("../../..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
+    
+      
+
+    
+    
+  </head>
+  
+  
+    
+    
+      
+    
+    
+    
+    
+    <body dir="ltr" data-md-color-scheme="default" data-md-color-primary="indigo" data-md-color-accent="indigo">
+  
+    
+    <input class="md-toggle" data-md-toggle="drawer" type="checkbox" id="__drawer" autocomplete="off">
+    <input class="md-toggle" data-md-toggle="search" type="checkbox" id="__search" autocomplete="off">
+    <label class="md-overlay" for="__drawer"></label>
+    <div data-md-component="skip">
+      
+        
+        <a href="#performance" class="md-skip">
+          Skip to content
+        </a>
+      
+    </div>
+    <div data-md-component="announce">
+      
+    </div>
+    
+    
+      
+
+  
+
+<header class="md-header md-header--shadow" data-md-component="header">
+  <nav class="md-header__inner md-grid" aria-label="Header">
+    <a href="../../.." title="Storm ORM" class="md-header__button md-logo" aria-label="Storm ORM" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    <label class="md-header__button md-icon" for="__drawer">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M3 6h18v2H3zm0 5h18v2H3zm0 5h18v2H3z"/></svg>
+    </label>
+    <div class="md-header__title" data-md-component="header-title">
+      <div class="md-header__ellipsis">
+        <div class="md-header__topic">
+          <span class="md-ellipsis">
+            Storm ORM
+          </span>
+        </div>
+        <div class="md-header__topic" data-md-component="header-topic">
+          <span class="md-ellipsis">
+            
+              Performance
+            
+          </span>
+        </div>
+      </div>
+    </div>
+    
+      
+        <form class="md-header__option" data-md-component="palette">
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="" data-md-color-scheme="default" data-md-color-primary="indigo" data-md-color-accent="indigo"  aria-label="Switch to dark mode"  type="radio" name="__palette" id="__palette_0">
+    
+      <label class="md-header__button md-icon" title="Switch to dark mode" for="__palette_1" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a4 4 0 0 0-4 4 4 4 0 0 0 4 4 4 4 0 0 0 4-4 4 4 0 0 0-4-4m0 10a6 6 0 0 1-6-6 6 6 0 0 1 6-6 6 6 0 0 1 6 6 6 6 0 0 1-6 6m8-9.31V4h-4.69L12 .69 8.69 4H4v4.69L.69 12 4 15.31V20h4.69L12 23.31 15.31 20H20v-4.69L23.31 12z"/></svg>
+      </label>
+    
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="" data-md-color-scheme="slate" data-md-color-primary="indigo" data-md-color-accent="indigo"  aria-label="Switch to light mode"  type="radio" name="__palette" id="__palette_1">
+    
+      <label class="md-header__button md-icon" title="Switch to light mode" for="__palette_0" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 18c-.89 0-1.74-.2-2.5-.55C11.56 16.5 13 14.42 13 12s-1.44-4.5-3.5-5.45C10.26 6.2 11.11 6 12 6a6 6 0 0 1 6 6 6 6 0 0 1-6 6m8-9.31V4h-4.69L12 .69 8.69 4H4v4.69L.69 12 4 15.31V20h4.69L12 23.31 15.31 20H20v-4.69L23.31 12z"/></svg>
+      </label>
+    
+  
+</form>
+      
+    
+    
+      <script>var palette=__md_get("__palette");if(palette&&palette.color){if("(prefers-color-scheme)"===palette.color.media){var media=matchMedia("(prefers-color-scheme: light)"),input=document.querySelector(media.matches?"[data-md-color-media='(prefers-color-scheme: light)']":"[data-md-color-media='(prefers-color-scheme: dark)']");palette.color.media=input.getAttribute("data-md-color-media"),palette.color.scheme=input.getAttribute("data-md-color-scheme"),palette.color.primary=input.getAttribute("data-md-color-primary"),palette.color.accent=input.getAttribute("data-md-color-accent")}for(var[key,value]of Object.entries(palette.color))document.body.setAttribute("data-md-color-"+key,value)}</script>
+    
+    
+    
+      
+      
+        <label class="md-header__button md-icon" for="__search">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        </label>
+        <div class="md-search" data-md-component="search" role="dialog">
+  <label class="md-search__overlay" for="__search"></label>
+  <div class="md-search__inner" role="search">
+    <form class="md-search__form" name="search">
+      <input type="text" class="md-search__input" name="query" aria-label="Search" placeholder="Search" autocapitalize="off" autocorrect="off" autocomplete="off" spellcheck="false" data-md-component="search-query" required>
+      <label class="md-search__icon md-icon" for="__search">
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
+      </label>
+      <nav class="md-search__options" aria-label="Search">
+        
+        <button type="reset" class="md-search__icon md-icon" title="Clear" aria-label="Clear" tabindex="-1">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+        </button>
+      </nav>
+      
+        <div class="md-search__suggest" data-md-component="search-suggest"></div>
+      
+    </form>
+    <div class="md-search__output">
+      <div class="md-search__scrollwrap" tabindex="0" data-md-scrollfix>
+        <div class="md-search-result" data-md-component="search-result">
+          <div class="md-search-result__meta">
+            Initializing search
+          </div>
+          <ol class="md-search-result__list" role="presentation"></ol>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+      
+    
+    
+      <div class="md-header__source">
+        <a href="https://github.com/spiritEcosse/storm" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    spiritEcosse/storm
+  </div>
+</a>
+      </div>
+    
+  </nav>
+  
+</header>
+    
+    <div class="md-container" data-md-component="container">
+      
+      
+        
+          
+        
+      
+      <main class="md-main" data-md-component="main">
+        <div class="md-main__inner md-grid">
+          
+            
+              
+              <div class="md-sidebar md-sidebar--primary" data-md-component="sidebar" data-md-type="navigation" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+
+
+<nav class="md-nav md-nav--primary" aria-label="Navigation" data-md-level="0">
+  <label class="md-nav__title" for="__drawer">
+    <a href="../../.." title="Storm ORM" class="md-nav__button md-logo" aria-label="Storm ORM" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    Storm ORM
+  </label>
+  
+    <div class="md-nav__source">
+      <a href="https://github.com/spiritEcosse/storm" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    spiritEcosse/storm
+  </div>
+</a>
+    </div>
+  
+  <ul class="md-nav__list" data-md-scrollfix>
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../.." class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Home
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_2" >
+        
+          
+          <label class="md-nav__link" for="__nav_2" id="__nav_2_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Guide
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_2_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_2">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Guide
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../guide/COOKBOOK/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Cookbook
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    
+    
+    
+    
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_2_2" >
+        
+          
+          <label class="md-nav__link" for="__nav_2_2" id="__nav_2_2_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Features
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_2_2_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_2_2">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Features
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../guide/features/CRUD_OPERATIONS/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    CRUD Operations
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../guide/features/SELECT_QUERIES/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    SELECT Queries
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../guide/features/WHERE_CLAUSES/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    WHERE Clauses
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../guide/features/JOIN_OPERATIONS/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    JOIN Operations
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../guide/features/BATCH_OPERATIONS/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Batch Operations
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../guide/features/REFERENTIAL_INTEGRITY/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Referential Integrity
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../guide/features/CONNECTION_TUNING/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Connection Tuning
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    
+    
+    
+    
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_2_3" >
+        
+          
+          <label class="md-nav__link" for="__nav_2_3" id="__nav_2_3_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Reference
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_2_3_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_2_3">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Reference
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../guide/reference/FIELD_TYPES/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Field Types
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../guide/reference/MIGRATIONS/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Migrations
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+    
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--active md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_3" checked>
+        
+          
+          <label class="md-nav__link" for="__nav_3" id="__nav_3_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Internals
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_3_label" aria-expanded="true">
+          <label class="md-nav__title" for="__nav_3">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Internals
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    
+    
+    
+    
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_3_1" >
+        
+          
+          <label class="md-nav__link" for="__nav_3_1" id="__nav_3_1_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Architecture
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_3_1_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_3_1">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Architecture
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../architecture/OVERVIEW/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Overview
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../architecture/DESIGN_DECISIONS/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Design Decisions
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../architecture/REFLECTION/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Reflection
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../architecture/SQL_GENERATION/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    SQL Generation
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../architecture/MODULE_SYSTEM/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Module System
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../architecture/STATEMENT_CACHING/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Statement Caching
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../architecture/COMPILE_TIME_VS_RUNTIME/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Compile-Time vs Runtime
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    
+    
+    
+    
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_3_2" >
+        
+          
+          <label class="md-nav__link" for="__nav_3_2" id="__nav_3_2_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Building
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_3_2_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_3_2">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Building
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../building/GETTING_STARTED/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Getting Started
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../building/COMMON_TASKS/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Common Tasks
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../building/ADDING_FEATURES/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Adding Features
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../building/PRE_COMMIT/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Pre-Commit
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../building/FORMATTING/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Formatting
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    
+    
+    
+    
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_3_3" >
+        
+          
+          <label class="md-nav__link" for="__nav_3_3" id="__nav_3_3_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Testing
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_3_3_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_3_3">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Testing
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../testing/TESTING/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Testing
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../testing/CODE_COVERAGE/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Code Coverage
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../testing/SANITIZERS/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Sanitizers
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../testing/FUZZING/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Fuzzing
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../testing/MSAN_LIBC_FIX/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    MSAN libc Fix
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+    
+  
+  
+  
+    
+    
+    
+    
+      
+    
+    
+    <li class="md-nav__item md-nav__item--active md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_3_4" checked>
+        
+          
+          <label class="md-nav__link" for="__nav_3_4" id="__nav_3_4_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Performance
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_3_4_label" aria-expanded="true">
+          <label class="md-nav__title" for="__nav_3_4">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Performance
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+    
+  
+  
+  
+    <li class="md-nav__item md-nav__item--active">
+      
+      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
+      
+      
+        
+      
+      
+        <label class="md-nav__link md-nav__link--active" for="__toc">
+          
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Performance
+  
+
+    
+  </span>
+  
+  
+
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
+      <a href="./" class="md-nav__link md-nav__link--active">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Performance
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+      
+        
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#guidelines" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Guidelines
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Guidelines">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#core-philosophy" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Core Philosophy
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#performance-evaluation-requirements" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Performance Evaluation Requirements
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Performance Evaluation Requirements">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#1-benchmark-before-accepting" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        1. Benchmark Before Accepting
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#2-add-a-benchmark-via-yaml" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        2. Add a Benchmark via YAML
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#3-raw-sql-comparison-is-required" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        3. Raw SQL Comparison is Required
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#design-principles-balance" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Design Principles Balance
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Design Principles Balance">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#dry-principle" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        DRY Principle
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#kiss-principle" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        KISS Principle
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#decision-matrix" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Decision Matrix
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#performance-testing-workflow" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Performance Testing Workflow
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#mandatory-performance-documentation" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Mandatory Performance Documentation
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#feature-implementation-checklist" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Feature Implementation Checklist
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#performance-regression-prevention" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Performance Regression Prevention
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#profiling-tips" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Profiling Tips
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#performance-goals" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Performance Goals
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#tips" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Tips
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Tips">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#transaction-wrapping-for-loop-inserts" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Transaction Wrapping for Loop Inserts
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Transaction Wrapping for Loop Inserts">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#the-problem" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        The Problem
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#the-solution" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        The Solution
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#benchmark-results-10000-inserts-in-memory-sqlite" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Benchmark Results (10,000 inserts, in-memory SQLite)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#why-this-matters" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Why This Matters
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#applies-to-all-databases" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Applies to All Databases
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#when-to-use-each-approach" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        When to Use Each Approach
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#error-handling-with-manual-transactions" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Error Handling with Manual Transactions
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#flat-code-vs-nested-lambdas" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Flat Code vs Nested Lambdas
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Flat Code vs Nested Lambdas">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#the-problem_1" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        The Problem
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#the-solution_1" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        The Solution
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#why-lambdas-are-slower" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Why Lambdas Are Slower
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#when-to-use-each" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        When to Use Each
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#raw-pointer-caching-in-hot-loops" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Raw Pointer Caching in Hot Loops
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Raw Pointer Caching in Hot Loops">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#the-problem_2" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        The Problem
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#the-solution_2" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        The Solution
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#why-this-matters_1" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Why This Matters
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#benchmark-evidence-select-where-with-10k-rows" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Benchmark Evidence (SELECT WHERE with 10K rows)
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#testing-benchmarking" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Testing &amp; Benchmarking
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Testing &amp; Benchmarking">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#quick-start" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Quick Start
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#performance-requirements" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Performance Requirements
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#design-principles" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Design Principles
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Design Principles">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#drykiss-vs-performance" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        DRY/KISS vs Performance
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#decision-matrix_1" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Decision Matrix
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#benchmark-workflow" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Benchmark Workflow
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Benchmark Workflow">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#1-implement-feature" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        1. Implement Feature
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#2-add-a-benchmark-yaml-entry" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        2. Add a Benchmark YAML Entry
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#3-run-benchmark" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        3. Run Benchmark
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#4-calculate-efficiency" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        4. Calculate Efficiency
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#5-document-results" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        5. Document Results
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#6-commit-with-metrics" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        6. Commit with Metrics
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#example-benchmarks" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Example Benchmarks
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Example Benchmarks">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#select-benchmark" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        SELECT Benchmark
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#where-benchmark" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        WHERE Benchmark
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#writing-fair-benchmarks" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Writing Fair Benchmarks
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Writing Fair Benchmarks">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#1-setup-outside-loop-execute-inside" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        1. Setup Outside Loop, Execute Inside
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#2-same-algorithm-for-both" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        2. Same Algorithm for Both
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#3-same-container-types" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        3. Same Container Types
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#4-measure-same-work" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        4. Measure Same Work
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#5-runtime-vs-compile-time-fairness" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        5. Runtime vs Compile-Time Fairness
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#benchmark-checklist" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Benchmark Checklist
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#performance-regression-prevention_1" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Performance Regression Prevention
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#see-also" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        See Also
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#postgresql-binary-result-format-600-phase-1" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        PostgreSQL Binary Result Format (#600 Phase 1)
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#local-test-postgresql-tuning" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Local Test PostgreSQL Tuning
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../BENCHMARK_DASHBOARD/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Benchmark Dashboard
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../JOIN_ANALYSIS/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    JOIN Analysis
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../DISTINCT_ANALYSIS/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    DISTINCT Analysis
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    
+    
+    
+    
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_3_5" >
+        
+          
+          <label class="md-nav__link" for="__nav_3_5" id="__nav_3_5_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Compiler
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_3_5_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_3_5">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Compiler
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../compiler/COMPILER_ISSUES/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Compiler Issues
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../compiler/COMPILER_ATTRIBUTES/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Compiler Attributes
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../compiler/CPP26_CODING_STANDARDS/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    C++26 Coding Standards
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../compiler/CODE_QUALITY/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Code Quality
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_4" >
+        
+          
+          <label class="md-nav__link" for="__nav_4" id="__nav_4_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Archive
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_4_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_4">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Archive
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../archive/SELECT_OPTIMIZATION_REPORT/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    SELECT Optimization Report
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../archive/SELECT_PERFORMANCE_ANALYSIS/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    SELECT Performance Analysis
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../archive/UPDATE_OPTIMIZATION_REPORT/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    UPDATE Optimization Report
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+  </ul>
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+            
+              
+              <div class="md-sidebar md-sidebar--secondary" data-md-component="sidebar" data-md-type="toc" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#guidelines" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Guidelines
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Guidelines">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#core-philosophy" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Core Philosophy
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#performance-evaluation-requirements" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Performance Evaluation Requirements
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Performance Evaluation Requirements">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#1-benchmark-before-accepting" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        1. Benchmark Before Accepting
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#2-add-a-benchmark-via-yaml" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        2. Add a Benchmark via YAML
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#3-raw-sql-comparison-is-required" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        3. Raw SQL Comparison is Required
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#design-principles-balance" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Design Principles Balance
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Design Principles Balance">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#dry-principle" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        DRY Principle
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#kiss-principle" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        KISS Principle
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#decision-matrix" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Decision Matrix
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#performance-testing-workflow" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Performance Testing Workflow
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#mandatory-performance-documentation" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Mandatory Performance Documentation
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#feature-implementation-checklist" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Feature Implementation Checklist
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#performance-regression-prevention" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Performance Regression Prevention
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#profiling-tips" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Profiling Tips
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#performance-goals" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Performance Goals
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#tips" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Tips
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Tips">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#transaction-wrapping-for-loop-inserts" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Transaction Wrapping for Loop Inserts
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Transaction Wrapping for Loop Inserts">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#the-problem" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        The Problem
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#the-solution" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        The Solution
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#benchmark-results-10000-inserts-in-memory-sqlite" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Benchmark Results (10,000 inserts, in-memory SQLite)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#why-this-matters" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Why This Matters
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#applies-to-all-databases" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Applies to All Databases
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#when-to-use-each-approach" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        When to Use Each Approach
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#error-handling-with-manual-transactions" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Error Handling with Manual Transactions
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#flat-code-vs-nested-lambdas" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Flat Code vs Nested Lambdas
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Flat Code vs Nested Lambdas">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#the-problem_1" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        The Problem
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#the-solution_1" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        The Solution
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#why-lambdas-are-slower" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Why Lambdas Are Slower
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#when-to-use-each" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        When to Use Each
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#raw-pointer-caching-in-hot-loops" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Raw Pointer Caching in Hot Loops
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Raw Pointer Caching in Hot Loops">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#the-problem_2" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        The Problem
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#the-solution_2" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        The Solution
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#why-this-matters_1" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Why This Matters
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#benchmark-evidence-select-where-with-10k-rows" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Benchmark Evidence (SELECT WHERE with 10K rows)
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#testing-benchmarking" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Testing &amp; Benchmarking
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Testing &amp; Benchmarking">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#quick-start" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Quick Start
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#performance-requirements" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Performance Requirements
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#design-principles" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Design Principles
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Design Principles">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#drykiss-vs-performance" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        DRY/KISS vs Performance
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#decision-matrix_1" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Decision Matrix
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#benchmark-workflow" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Benchmark Workflow
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Benchmark Workflow">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#1-implement-feature" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        1. Implement Feature
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#2-add-a-benchmark-yaml-entry" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        2. Add a Benchmark YAML Entry
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#3-run-benchmark" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        3. Run Benchmark
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#4-calculate-efficiency" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        4. Calculate Efficiency
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#5-document-results" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        5. Document Results
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#6-commit-with-metrics" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        6. Commit with Metrics
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#example-benchmarks" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Example Benchmarks
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Example Benchmarks">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#select-benchmark" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        SELECT Benchmark
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#where-benchmark" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        WHERE Benchmark
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#writing-fair-benchmarks" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Writing Fair Benchmarks
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Writing Fair Benchmarks">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#1-setup-outside-loop-execute-inside" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        1. Setup Outside Loop, Execute Inside
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#2-same-algorithm-for-both" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        2. Same Algorithm for Both
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#3-same-container-types" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        3. Same Container Types
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#4-measure-same-work" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        4. Measure Same Work
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#5-runtime-vs-compile-time-fairness" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        5. Runtime vs Compile-Time Fairness
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#benchmark-checklist" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Benchmark Checklist
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#performance-regression-prevention_1" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Performance Regression Prevention
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#see-also" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        See Also
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#postgresql-binary-result-format-600-phase-1" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        PostgreSQL Binary Result Format (#600 Phase 1)
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#local-test-postgresql-tuning" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Local Test PostgreSQL Tuning
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+          
+          
+            <div class="md-content" data-md-component="content">
+              
+              <article class="md-content__inner md-typeset">
+                
+                  
+
+
+  
+  
+
+
+<h1 id="performance">Performance<a class="headerlink" href="#performance" title="Permanent link">&para;</a></h1>
+<p>Storm targets ≥95% of raw SQLite efficiency. This page collects the
+performance guidelines, hot-path tips, and the benchmarking/testing workflow.</p>
+<blockquote>
+<p><strong>Note</strong>: this page is about ORM/query performance (the SQL Storm generates
+and executes). For local <em>test-suite</em> run speed (how fast <code>ctest</code>/the gtest
+binaries finish), see
+<a href="../../testing/TESTING/#local-test-suite-speed">TESTING.md#local-test-suite-speed</a>.</p>
+</blockquote>
+<h2 id="guidelines">Guidelines<a class="headerlink" href="#guidelines" title="Permanent link">&para;</a></h2>
+<h3 id="core-philosophy">Core Philosophy<a class="headerlink" href="#core-philosophy" title="Permanent link">&para;</a></h3>
+<p>When deciding which implementation approach is "good", <strong>performance testing is mandatory</strong>. Storm ORM's primary goal is achieving near-raw SQLite performance, so all implementation decisions must be validated with benchmarks.</p>
+<h3 id="performance-evaluation-requirements">Performance Evaluation Requirements<a class="headerlink" href="#performance-evaluation-requirements" title="Permanent link">&para;</a></h3>
+<h4 id="1-benchmark-before-accepting">1. Benchmark Before Accepting<a class="headerlink" href="#1-benchmark-before-accepting" title="Permanent link">&para;</a></h4>
+<ul>
+<li>Every new feature (WHERE clauses, LIMIT, ORDER BY, etc.) <strong>requires</strong> performance testing</li>
+<li>Compare Storm ORM against raw SQLite to measure efficiency percentage</li>
+<li><strong>Target</strong>: ≥95% of raw SQLite performance for acceptable implementations</li>
+<li>Document results in docs with operation details and efficiency metrics</li>
+</ul>
+<h4 id="2-add-a-benchmark-via-yaml">2. Add a Benchmark via YAML<a class="headerlink" href="#2-add-a-benchmark-via-yaml" title="Permanent link">&para;</a></h4>
+<ul>
+<li>Storm benchmarks are declared as YAML entries in <code>benchmarks/tests/benchmark_tests.yaml</code>;
+  <code>benchmarks/register.cpp</code> walks <code>BENCHMARK_TESTS</code> and registers each one as a Google
+  Benchmark automatically — there is no per-feature <code>.cpp</code> benchmark file to write.</li>
+<li>The reusable fixtures live in <code>benchmarks/query_benchmark.cppm</code> and
+  <code>benchmarks/crud_benchmark.cppm</code>; a YAML entry routes a test to the right fixture.</li>
+<li>Run a category with <code>./build/release/benchmarks/storm_bench --benchmark_filter='Storm/&lt;CATEGORY&gt;/.*'</code>
+  and compare against the raw baseline binary <code>./build/release/benchmarks/storm_anchors</code>.</li>
+</ul>
+<h4 id="3-raw-sql-comparison-is-required">3. Raw SQL Comparison is Required<a class="headerlink" href="#3-raw-sql-comparison-is-required" title="Permanent link">&para;</a></h4>
+<ul>
+<li>Every benchmark must include raw SQLite baseline for efficiency calculation</li>
+<li>Report efficiency percentage: <code>(Storm_ORM_performance / Raw_SQLite_performance) * 100</code></li>
+<li>Include in commit message: "feat: add LIMIT support (85% of raw SQLite efficiency)"</li>
+</ul>
+<h3 id="design-principles-balance">Design Principles Balance<a class="headerlink" href="#design-principles-balance" title="Permanent link">&para;</a></h3>
+<p>Storm ORM follows <strong>DRY (Don't Repeat Yourself)</strong> and <strong>KISS (Keep It Simple, Stupid)</strong> principles, but <strong>performance takes precedence</strong> when there's a conflict.</p>
+<h4 id="dry-principle">DRY Principle<a class="headerlink" href="#dry-principle" title="Permanent link">&para;</a></h4>
+<ul>
+<li>✅ <strong>Apply DRY</strong>: Extract common patterns into BaseStatement utilities, use templates for reusable code</li>
+<li>✅ <strong>Apply DRY</strong>: Compile-time SQL generation with ConstexprString (eliminates runtime duplication)</li>
+<li>❌ <strong>Break DRY if needed</strong>: If abstraction costs &gt;10% performance, duplicate code instead</li>
+<li><strong>Example</strong>: Statement-level caching duplicates caching logic across Update/Delete/Select, but achieves 20x+ speedup</li>
+</ul>
+<h4 id="kiss-principle">KISS Principle<a class="headerlink" href="#kiss-principle" title="Permanent link">&para;</a></h4>
+<ul>
+<li>✅ <strong>Apply KISS</strong>: Prefer simple, readable implementations when performance is equivalent</li>
+<li>✅ <strong>Apply KISS</strong>: Use standard library features (<code>std::index_sequence</code>) over complex custom solutions</li>
+<li>❌ <strong>Break KISS if needed</strong>: Complex optimizations justified if they improve performance significantly</li>
+<li><strong>Example</strong>: Thread-local SQL caching adds complexity but provides 94% performance improvement</li>
+</ul>
+<h3 id="decision-matrix">Decision Matrix<a class="headerlink" href="#decision-matrix" title="Permanent link">&para;</a></h3>
+<table>
+<thead>
+<tr>
+<th>Scenario</th>
+<th>DRY/KISS Compliant?</th>
+<th>Performance Impact</th>
+<th>Decision</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Clean abstraction, no perf cost</td>
+<td>✅ Yes</td>
+<td>None</td>
+<td>Use abstraction (follow DRY/KISS)</td>
+</tr>
+<tr>
+<td>Clean abstraction, &lt;5% perf cost</td>
+<td>✅ Yes</td>
+<td>Minimal</td>
+<td>Use abstraction (follow DRY/KISS)</td>
+</tr>
+<tr>
+<td>Clean abstraction, 5-10% perf cost</td>
+<td>⚠️ Maybe</td>
+<td>Moderate</td>
+<td>Profile carefully, document tradeoff</td>
+</tr>
+<tr>
+<td>Clean abstraction, &gt;10% perf cost</td>
+<td>❌ No</td>
+<td>Significant</td>
+<td>Duplicate code, prioritize performance</td>
+</tr>
+<tr>
+<td>Complex optimization, &gt;20% perf gain</td>
+<td>❌ No</td>
+<td>Major improvement</td>
+<td>Accept complexity, document thoroughly</td>
+</tr>
+</tbody>
+</table>
+<h3 id="performance-testing-workflow">Performance Testing Workflow<a class="headerlink" href="#performance-testing-workflow" title="Permanent link">&para;</a></h3>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="c1"># 1. Implement feature (e.g., LIMIT support)</span>
+<a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a><span class="c1"># 2. Add a YAML entry under benchmarks/tests/benchmark_tests.yaml describing the test</span>
+<a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a><span class="c1">#    — register.cpp will pick it up automatically and route to the right fixture.</span>
+<a id="__codelineno-0-4" name="__codelineno-0-4" href="#__codelineno-0-4"></a>
+<a id="__codelineno-0-5" name="__codelineno-0-5" href="#__codelineno-0-5"></a><span class="c1"># 3. Build and run performance tests (Google Benchmark CLI)</span>
+<a id="__codelineno-0-6" name="__codelineno-0-6" href="#__codelineno-0-6"></a>cmake<span class="w"> </span>--preset<span class="w"> </span>ninja-release<span class="w"> </span><span class="o">&amp;&amp;</span><span class="w"> </span>cmake<span class="w"> </span>--build<span class="w"> </span>--preset<span class="w"> </span>ninja-release
+<a id="__codelineno-0-7" name="__codelineno-0-7" href="#__codelineno-0-7"></a>./build/release/benchmarks/storm_bench<span class="w"> </span>--benchmark_filter<span class="o">=</span><span class="s1">'Storm/.*LIMIT.*'</span><span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-0-8" name="__codelineno-0-8" href="#__codelineno-0-8"></a><span class="w">    </span>--benchmark_repetitions<span class="o">=</span><span class="m">10</span><span class="w"> </span>--benchmark_report_aggregates_only<span class="o">=</span><span class="nb">true</span>
+<a id="__codelineno-0-9" name="__codelineno-0-9" href="#__codelineno-0-9"></a>
+<a id="__codelineno-0-10" name="__codelineno-0-10" href="#__codelineno-0-10"></a><span class="c1"># 4. Compare with raw SQLite via the separate anchors binary (release-time only)</span>
+<a id="__codelineno-0-11" name="__codelineno-0-11" href="#__codelineno-0-11"></a>./build/release/benchmarks/storm_anchors
+<a id="__codelineno-0-12" name="__codelineno-0-12" href="#__codelineno-0-12"></a>
+<a id="__codelineno-0-13" name="__codelineno-0-13" href="#__codelineno-0-13"></a><span class="c1"># 5. Document in benchmarks/README.md</span>
+<a id="__codelineno-0-14" name="__codelineno-0-14" href="#__codelineno-0-14"></a><span class="c1"># Add to performance results table with efficiency percentage</span>
+<a id="__codelineno-0-15" name="__codelineno-0-15" href="#__codelineno-0-15"></a>
+<a id="__codelineno-0-16" name="__codelineno-0-16" href="#__codelineno-0-16"></a><span class="c1"># 6. Commit with performance metrics</span>
+<a id="__codelineno-0-17" name="__codelineno-0-17" href="#__codelineno-0-17"></a>git<span class="w"> </span>add<span class="w"> </span>.<span class="w"> </span><span class="o">&amp;&amp;</span><span class="w"> </span>git<span class="w"> </span>commit<span class="w"> </span>-m<span class="w"> </span><span class="s2">"feat: add LIMIT support (85% of raw SQLite)"</span>
+</code></pre></div>
+<h3 id="mandatory-performance-documentation">Mandatory Performance Documentation<a class="headerlink" href="#mandatory-performance-documentation" title="Permanent link">&para;</a></h3>
+<p>When adding new features, update documentation with:</p>
+<ol>
+<li><strong>Performance Results Table</strong>: Add row with Storm vs Raw SQLite comparison</li>
+<li><strong>Key Design Decisions</strong>: Document optimization techniques used</li>
+<li><strong>Benchmark Commands</strong>: Show how to run performance tests for this feature</li>
+</ol>
+<h3 id="feature-implementation-checklist">Feature Implementation Checklist<a class="headerlink" href="#feature-implementation-checklist" title="Permanent link">&para;</a></h3>
+<ul>
+<li>[ ] Implement feature in <code>src/orm/statements/</code></li>
+<li>[ ] Add comprehensive tests in <code>tests/&lt;category&gt;/test_&lt;feature&gt;.cpp</code></li>
+<li>[ ] Add a benchmark YAML entry in <code>benchmarks/tests/benchmark_tests.yaml</code></li>
+<li>[ ] Run benchmark and measure efficiency vs raw SQLite</li>
+<li>[ ] If efficiency &lt;95%, optimize or document reasons</li>
+<li>[ ] Update <code>benchmarks/README.md</code> with performance tables</li>
+<li>[ ] Document any DRY/KISS tradeoffs made for performance</li>
+<li>[ ] Commit with performance metrics in message</li>
+</ul>
+<h3 id="performance-regression-prevention">Performance Regression Prevention<a class="headerlink" href="#performance-regression-prevention" title="Permanent link">&para;</a></h3>
+<ul>
+<li>All PRs with ORM changes must include benchmark results</li>
+<li>CI should fail if performance drops &gt;5% without justification</li>
+<li>Run <code>./build/release/benchmarks/storm_bench</code> and <code>./build/release/benchmarks/storm_anchors</code> and compare efficiency before committing to catch regressions</li>
+</ul>
+<h3 id="profiling-tips">Profiling Tips<a class="headerlink" href="#profiling-tips" title="Permanent link">&para;</a></h3>
+<ol>
+<li><strong>Always use Release builds</strong> for accurate profiling</li>
+<li><strong>Use perf/valgrind</strong> for hotspot analysis</li>
+<li><strong>Profile with realistic data</strong> (10K+ rows)</li>
+<li><strong>Measure multiple iterations</strong> for statistical significance</li>
+<li><strong>Compare against raw SQLite</strong> as baseline</li>
+<li><strong>Document bottlenecks</strong> in design decision docs</li>
+</ol>
+<h3 id="performance-goals">Performance Goals<a class="headerlink" href="#performance-goals" title="Permanent link">&para;</a></h3>
+<ul>
+<li><strong>CRUD Operations</strong>: ≥95% of raw SQLite efficiency</li>
+<li><strong>JOIN Operations</strong>: ≥95% of raw SQLite efficiency</li>
+<li><strong>DISTINCT Operations</strong>: ≥95% of raw SQLite efficiency</li>
+<li><strong>Batch Operations</strong>: Match or exceed sqlite_orm by 2x+</li>
+<li><strong>Statement Caching</strong>: 20x+ speedup for repeated operations</li>
+</ul>
+<h2 id="tips">Tips<a class="headerlink" href="#tips" title="Permanent link">&para;</a></h2>
+<p>Practical optimization techniques for Storm ORM.</p>
+<h3 id="transaction-wrapping-for-loop-inserts">Transaction Wrapping for Loop Inserts<a class="headerlink" href="#transaction-wrapping-for-loop-inserts" title="Permanent link">&para;</a></h3>
+<h4 id="the-problem">The Problem<a class="headerlink" href="#the-problem" title="Permanent link">&para;</a></h4>
+<p>When inserting objects in a loop without explicit transaction, each insert auto-commits:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a><span class="c1">// SLOW: ~1.0M ops/sec - each insert triggers auto-commit</span>
+<a id="__codelineno-1-2" name="__codelineno-1-2" href="#__codelineno-1-2"></a><span class="k">for</span><span class="w"> </span><span class="p">(</span><span class="k">auto</span><span class="o">&amp;</span><span class="w"> </span><span class="n">obj</span><span class="w"> </span><span class="o">:</span><span class="w"> </span><span class="n">objects</span><span class="p">)</span><span class="w"> </span><span class="p">{</span>
+<a id="__codelineno-1-3" name="__codelineno-1-3" href="#__codelineno-1-3"></a><span class="w">    </span><span class="n">qs</span><span class="p">.</span><span class="n">insert</span><span class="p">(</span><span class="n">obj</span><span class="p">).</span><span class="n">execute</span><span class="p">();</span>
+<a id="__codelineno-1-4" name="__codelineno-1-4" href="#__codelineno-1-4"></a><span class="p">}</span>
+</code></pre></div>
+<h4 id="the-solution">The Solution<a class="headerlink" href="#the-solution" title="Permanent link">&para;</a></h4>
+<p><strong>Option 1: Use batch insert (recommended)</strong></p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a><span class="c1">// FAST: ~1.9M ops/sec - handles transaction internally</span>
+<a id="__codelineno-2-2" name="__codelineno-2-2" href="#__codelineno-2-2"></a><span class="n">qs</span><span class="p">.</span><span class="n">insert</span><span class="p">(</span><span class="n">objects</span><span class="p">).</span><span class="n">execute</span><span class="p">();</span>
+</code></pre></div>
+<p><strong>Option 2: Manual transaction wrapping</strong></p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a><span class="c1">// FAST: ~1.7M ops/sec - single commit at end</span>
+<a id="__codelineno-3-2" name="__codelineno-3-2" href="#__codelineno-3-2"></a><span class="k">auto</span><span class="w"> </span><span class="n">conn</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">DefaultConnection</span><span class="o">&lt;&gt;::</span><span class="n">get</span><span class="p">();</span><span class="w">   </span><span class="c1">// storm_defaults alias → BasicDefaultConnection&lt;sqlite::Connection&gt;</span>
+<a id="__codelineno-3-3" name="__codelineno-3-3" href="#__codelineno-3-3"></a><span class="k">auto</span><span class="w"> </span><span class="n">txn</span><span class="w">  </span><span class="o">=</span><span class="w"> </span><span class="n">storm</span><span class="o">::</span><span class="n">begin</span><span class="p">(</span><span class="n">conn</span><span class="p">);</span><span class="w">          </span><span class="c1">// RAII guard (#415)</span>
+<a id="__codelineno-3-4" name="__codelineno-3-4" href="#__codelineno-3-4"></a><span class="k">for</span><span class="w"> </span><span class="p">(</span><span class="k">auto</span><span class="o">&amp;</span><span class="w"> </span><span class="n">obj</span><span class="w"> </span><span class="o">:</span><span class="w"> </span><span class="n">objects</span><span class="p">)</span><span class="w"> </span><span class="p">{</span>
+<a id="__codelineno-3-5" name="__codelineno-3-5" href="#__codelineno-3-5"></a><span class="w">    </span><span class="n">qs</span><span class="p">.</span><span class="n">insert</span><span class="p">(</span><span class="n">obj</span><span class="p">).</span><span class="n">execute</span><span class="p">();</span>
+<a id="__codelineno-3-6" name="__codelineno-3-6" href="#__codelineno-3-6"></a><span class="p">}</span>
+<a id="__codelineno-3-7" name="__codelineno-3-7" href="#__codelineno-3-7"></a><span class="p">(</span><span class="kt">void</span><span class="p">)</span><span class="n">txn</span><span class="o">-&gt;</span><span class="n">commit</span><span class="p">();</span><span class="w">                       </span><span class="c1">// single COMMIT; auto-ROLLBACK on early exit</span>
+</code></pre></div>
+<p>Prefer <code>storm::begin(conn)</code> over raw <code>conn-&gt;execute("BEGIN TRANSACTION")</code>: the
+guard rolls back on failure and cooperates with batch ops' inner transactions
+(no nested-BEGIN collision, #9).</p>
+<h4 id="benchmark-results-10000-inserts-in-memory-sqlite">Benchmark Results (10,000 inserts, in-memory SQLite)<a class="headerlink" href="#benchmark-results-10000-inserts-in-memory-sqlite" title="Permanent link">&para;</a></h4>
+<table>
+<thead>
+<tr>
+<th>Method</th>
+<th>Speed</th>
+<th>Notes</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Loop without transaction</td>
+<td>~1.0 M ops/sec</td>
+<td>Auto-commit overhead</td>
+</tr>
+<tr>
+<td>Loop with transaction</td>
+<td>~1.7 M ops/sec</td>
+<td>Single commit</td>
+</tr>
+<tr>
+<td>Batch insert</td>
+<td>~1.9 M ops/sec</td>
+<td>Optimized bulk SQL</td>
+</tr>
+</tbody>
+</table>
+<h4 id="why-this-matters">Why This Matters<a class="headerlink" href="#why-this-matters" title="Permanent link">&para;</a></h4>
+<p>Each auto-commit triggers expensive operations:</p>
+<table>
+<thead>
+<tr>
+<th>Database</th>
+<th>Auto-commit Overhead</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>SQLite</strong></td>
+<td>Journal write + fsync</td>
+</tr>
+<tr>
+<td><strong>PostgreSQL</strong></td>
+<td>WAL flush + fsync</td>
+</tr>
+<tr>
+<td><strong>MySQL (InnoDB)</strong></td>
+<td>Redo log flush</td>
+</tr>
+<tr>
+<td><strong>All databases</strong></td>
+<td>Lock acquire/release</td>
+</tr>
+</tbody>
+</table>
+<p>Wrapping N inserts in one transaction amortizes this overhead:
+- Without transaction: N x (insert + commit overhead)
+- With transaction: N x insert + 1 x commit overhead</p>
+<h4 id="applies-to-all-databases">Applies to All Databases<a class="headerlink" href="#applies-to-all-databases" title="Permanent link">&para;</a></h4>
+<p>This optimization is <strong>universal</strong> - it works for PostgreSQL, MySQL, SQLite, and any ACID-compliant database. The principle is the same: reduce commit frequency to reduce I/O overhead.</p>
+<h4 id="when-to-use-each-approach">When to Use Each Approach<a class="headerlink" href="#when-to-use-each-approach" title="Permanent link">&para;</a></h4>
+<table>
+<thead>
+<tr>
+<th>Scenario</th>
+<th>Recommendation</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Insert many objects at once</td>
+<td><code>qs.insert(objects)</code> - batch insert</td>
+</tr>
+<tr>
+<td>Insert objects one at a time from stream</td>
+<td>Manual transaction wrapping</td>
+</tr>
+<tr>
+<td>Single insert per request (web app)</td>
+<td>No transaction needed - auto-commit is fine</td>
+</tr>
+<tr>
+<td>Mixed operations (insert + update + delete)</td>
+<td>Manual transaction wrapping</td>
+</tr>
+</tbody>
+</table>
+<h4 id="error-handling-with-manual-transactions">Error Handling with Manual Transactions<a class="headerlink" href="#error-handling-with-manual-transactions" title="Permanent link">&para;</a></h4>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a><span class="k">const</span><span class="w"> </span><span class="k">auto</span><span class="o">&amp;</span><span class="w"> </span><span class="n">conn</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">DefaultConnection</span><span class="o">&lt;&gt;::</span><span class="n">get</span><span class="p">();</span>
+<a id="__codelineno-4-2" name="__codelineno-4-2" href="#__codelineno-4-2"></a>
+<a id="__codelineno-4-3" name="__codelineno-4-3" href="#__codelineno-4-3"></a><span class="k">if</span><span class="w"> </span><span class="p">(</span><span class="k">auto</span><span class="w"> </span><span class="n">result</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">conn</span><span class="o">-&gt;</span><span class="n">execute</span><span class="p">(</span><span class="s">"BEGIN TRANSACTION"</span><span class="p">);</span><span class="w"> </span><span class="o">!</span><span class="n">result</span><span class="p">)</span><span class="w"> </span><span class="p">{</span>
+<a id="__codelineno-4-4" name="__codelineno-4-4" href="#__codelineno-4-4"></a><span class="w">    </span><span class="c1">// Handle error</span>
+<a id="__codelineno-4-5" name="__codelineno-4-5" href="#__codelineno-4-5"></a><span class="w">    </span><span class="k">return</span><span class="p">;</span>
+<a id="__codelineno-4-6" name="__codelineno-4-6" href="#__codelineno-4-6"></a><span class="p">}</span>
+<a id="__codelineno-4-7" name="__codelineno-4-7" href="#__codelineno-4-7"></a>
+<a id="__codelineno-4-8" name="__codelineno-4-8" href="#__codelineno-4-8"></a><span class="kt">bool</span><span class="w"> </span><span class="n">success</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="nb">true</span><span class="p">;</span>
+<a id="__codelineno-4-9" name="__codelineno-4-9" href="#__codelineno-4-9"></a><span class="k">for</span><span class="w"> </span><span class="p">(</span><span class="k">auto</span><span class="o">&amp;</span><span class="w"> </span><span class="n">obj</span><span class="w"> </span><span class="o">:</span><span class="w"> </span><span class="n">objects</span><span class="p">)</span><span class="w"> </span><span class="p">{</span>
+<a id="__codelineno-4-10" name="__codelineno-4-10" href="#__codelineno-4-10"></a><span class="w">    </span><span class="k">if</span><span class="w"> </span><span class="p">(</span><span class="k">auto</span><span class="w"> </span><span class="n">result</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">qs</span><span class="p">.</span><span class="n">insert</span><span class="p">(</span><span class="n">obj</span><span class="p">);</span><span class="w"> </span><span class="o">!</span><span class="n">result</span><span class="p">)</span><span class="w"> </span><span class="p">{</span>
+<a id="__codelineno-4-11" name="__codelineno-4-11" href="#__codelineno-4-11"></a><span class="w">        </span><span class="n">success</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="nb">false</span><span class="p">;</span>
+<a id="__codelineno-4-12" name="__codelineno-4-12" href="#__codelineno-4-12"></a><span class="w">        </span><span class="k">break</span><span class="p">;</span>
+<a id="__codelineno-4-13" name="__codelineno-4-13" href="#__codelineno-4-13"></a><span class="w">    </span><span class="p">}</span>
+<a id="__codelineno-4-14" name="__codelineno-4-14" href="#__codelineno-4-14"></a><span class="p">}</span>
+<a id="__codelineno-4-15" name="__codelineno-4-15" href="#__codelineno-4-15"></a>
+<a id="__codelineno-4-16" name="__codelineno-4-16" href="#__codelineno-4-16"></a><span class="k">if</span><span class="w"> </span><span class="p">(</span><span class="n">success</span><span class="p">)</span><span class="w"> </span><span class="p">{</span>
+<a id="__codelineno-4-17" name="__codelineno-4-17" href="#__codelineno-4-17"></a><span class="w">    </span><span class="n">conn</span><span class="o">-&gt;</span><span class="n">execute</span><span class="p">(</span><span class="s">"COMMIT"</span><span class="p">);</span>
+<a id="__codelineno-4-18" name="__codelineno-4-18" href="#__codelineno-4-18"></a><span class="p">}</span><span class="w"> </span><span class="k">else</span><span class="w"> </span><span class="p">{</span>
+<a id="__codelineno-4-19" name="__codelineno-4-19" href="#__codelineno-4-19"></a><span class="w">    </span><span class="n">conn</span><span class="o">-&gt;</span><span class="n">execute</span><span class="p">(</span><span class="s">"ROLLBACK"</span><span class="p">);</span>
+<a id="__codelineno-4-20" name="__codelineno-4-20" href="#__codelineno-4-20"></a><span class="p">}</span>
+</code></pre></div>
+<h3 id="flat-code-vs-nested-lambdas">Flat Code vs Nested Lambdas<a class="headerlink" href="#flat-code-vs-nested-lambdas" title="Permanent link">&para;</a></h3>
+<p><strong>For hot paths, prefer flat code over nested lambdas.</strong> Benchmarks show ~3-4% improvement.</p>
+<h4 id="the-problem_1">The Problem<a class="headerlink" href="#the-problem_1" title="Permanent link">&para;</a></h4>
+<p>Nested lambdas add overhead from captures, indirect calls, and inlining barriers:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-5-1" name="__codelineno-5-1" href="#__codelineno-5-1"></a><span class="c1">// ❌ SLOW: Nested-lambda monadic wrappers (90% efficiency).</span>
+<a id="__codelineno-5-2" name="__codelineno-5-2" href="#__codelineno-5-2"></a><span class="c1">// (The old execute_with_transaction/execute_with_statement helpers that encoded</span>
+<a id="__codelineno-5-3" name="__codelineno-5-3" href="#__codelineno-5-3"></a><span class="c1">//  this shape were removed in #434 once every caller had moved to flat code.)</span>
+<a id="__codelineno-5-4" name="__codelineno-5-4" href="#__codelineno-5-4"></a><span class="n">prepare_and_transact</span><span class="p">(</span><span class="n">conn</span><span class="p">,</span><span class="w"> </span><span class="nb">true</span><span class="p">,</span>
+<a id="__codelineno-5-5" name="__codelineno-5-5" href="#__codelineno-5-5"></a><span class="w">    </span><span class="p">[</span><span class="k">this</span><span class="p">,</span><span class="w"> </span><span class="n">objects</span><span class="p">]()</span><span class="w"> </span><span class="p">{</span><span class="w">                          </span><span class="c1">// Lambda 1: captures</span>
+<a id="__codelineno-5-6" name="__codelineno-5-6" href="#__codelineno-5-6"></a><span class="w">        </span><span class="k">return</span><span class="w"> </span><span class="n">run_with_statement</span><span class="p">(</span><span class="n">conn</span><span class="p">,</span><span class="w"> </span><span class="n">sql</span><span class="p">,</span>
+<a id="__codelineno-5-7" name="__codelineno-5-7" href="#__codelineno-5-7"></a><span class="w">            </span><span class="p">[</span><span class="k">this</span><span class="p">,</span><span class="w"> </span><span class="n">objects</span><span class="p">](</span><span class="k">auto</span><span class="o">&amp;</span><span class="w"> </span><span class="n">stmt</span><span class="p">)</span><span class="w"> </span><span class="p">{</span><span class="w">        </span><span class="c1">// Lambda 2: captures again</span>
+<a id="__codelineno-5-8" name="__codelineno-5-8" href="#__codelineno-5-8"></a><span class="w">                </span><span class="k">for</span><span class="w"> </span><span class="p">(...)</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="p">...</span><span class="w"> </span><span class="p">}</span>
+<a id="__codelineno-5-9" name="__codelineno-5-9" href="#__codelineno-5-9"></a><span class="w">            </span><span class="p">});</span>
+<a id="__codelineno-5-10" name="__codelineno-5-10" href="#__codelineno-5-10"></a><span class="w">    </span><span class="p">});</span>
+</code></pre></div>
+<h4 id="the-solution_1">The Solution<a class="headerlink" href="#the-solution_1" title="Permanent link">&para;</a></h4>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-6-1" name="__codelineno-6-1" href="#__codelineno-6-1"></a><span class="c1">// ✅ FAST: Flat code (93-94% efficiency)</span>
+<a id="__codelineno-6-2" name="__codelineno-6-2" href="#__codelineno-6-2"></a><span class="k">auto</span><span class="o">*</span><span class="w"> </span><span class="n">stmt</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="o">*</span><span class="n">conn_</span><span class="o">-&gt;</span><span class="n">prepare_cached</span><span class="p">(</span><span class="n">sql</span><span class="p">);</span><span class="w">  </span><span class="c1">// Connection cache: one prepare, reused by SQL text</span>
+<a id="__codelineno-6-3" name="__codelineno-6-3" href="#__codelineno-6-3"></a><span class="n">conn_</span><span class="o">-&gt;</span><span class="n">execute</span><span class="p">(</span><span class="s">"BEGIN TRANSACTION"</span><span class="p">);</span>
+<a id="__codelineno-6-4" name="__codelineno-6-4" href="#__codelineno-6-4"></a><span class="k">for</span><span class="w"> </span><span class="p">(</span><span class="k">const</span><span class="w"> </span><span class="k">auto</span><span class="o">&amp;</span><span class="w"> </span><span class="n">obj</span><span class="w"> </span><span class="o">:</span><span class="w"> </span><span class="n">objects</span><span class="p">)</span><span class="w"> </span><span class="p">{</span>
+<a id="__codelineno-6-5" name="__codelineno-6-5" href="#__codelineno-6-5"></a><span class="w">    </span><span class="n">stmt</span><span class="o">-&gt;</span><span class="n">reset</span><span class="p">();</span>
+<a id="__codelineno-6-6" name="__codelineno-6-6" href="#__codelineno-6-6"></a><span class="w">    </span><span class="n">bind</span><span class="p">(...);</span>
+<a id="__codelineno-6-7" name="__codelineno-6-7" href="#__codelineno-6-7"></a><span class="w">    </span><span class="n">stmt</span><span class="o">-&gt;</span><span class="n">execute</span><span class="p">();</span>
+<a id="__codelineno-6-8" name="__codelineno-6-8" href="#__codelineno-6-8"></a><span class="p">}</span>
+<a id="__codelineno-6-9" name="__codelineno-6-9" href="#__codelineno-6-9"></a><span class="n">conn_</span><span class="o">-&gt;</span><span class="n">execute</span><span class="p">(</span><span class="s">"COMMIT"</span><span class="p">);</span>
+</code></pre></div>
+<h4 id="why-lambdas-are-slower">Why Lambdas Are Slower<a class="headerlink" href="#why-lambdas-are-slower" title="Permanent link">&para;</a></h4>
+<ul>
+<li>Capture storage overhead (storing <code>this</code>, spans, etc.)</li>
+<li>Indirect call through function pointer</li>
+<li>Compiler inlining barriers at lambda boundaries</li>
+<li>Extra stack frame creation per lambda</li>
+</ul>
+<h4 id="when-to-use-each">When to Use Each<a class="headerlink" href="#when-to-use-each" title="Permanent link">&para;</a></h4>
+<table>
+<thead>
+<tr>
+<th>Flat Code</th>
+<th>Lambdas</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Hot paths (millions of calls)</td>
+<td>Cold paths (setup, config)</td>
+</tr>
+<tr>
+<td>Inner loops, batch operations</td>
+<td>Callbacks, event handlers</td>
+</tr>
+<tr>
+<td>Performance-critical ORM ops</td>
+<td>Code reuse across callers</td>
+</tr>
+</tbody>
+</table>
+<h3 id="raw-pointer-caching-in-hot-loops">Raw Pointer Caching in Hot Loops<a class="headerlink" href="#raw-pointer-caching-in-hot-loops" title="Permanent link">&para;</a></h3>
+<p><strong>For query loops extracting many rows, cache the raw <code>sqlite3_stmt*</code> pointer.</strong> Benchmarks show ~5-6% improvement.</p>
+<h4 id="the-problem_2">The Problem<a class="headerlink" href="#the-problem_2" title="Permanent link">&para;</a></h4>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-7-1" name="__codelineno-7-1" href="#__codelineno-7-1"></a><span class="c1">// ❌ SLOW: unique_ptr::get() called on every column (90.6% efficiency)</span>
+<a id="__codelineno-7-2" name="__codelineno-7-2" href="#__codelineno-7-2"></a><span class="k">while</span><span class="w"> </span><span class="p">(</span><span class="n">stmt</span><span class="o">-&gt;</span><span class="n">step</span><span class="p">()</span><span class="w"> </span><span class="o">==</span><span class="w"> </span><span class="n">SQLITE_ROW</span><span class="p">)</span><span class="w"> </span><span class="p">{</span>
+<a id="__codelineno-7-3" name="__codelineno-7-3" href="#__codelineno-7-3"></a><span class="w">    </span><span class="n">obj</span><span class="p">.</span><span class="n">id</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">sqlite3_column_int64</span><span class="p">(</span><span class="n">stmt</span><span class="o">-&gt;</span><span class="n">handle</span><span class="p">(),</span><span class="w"> </span><span class="mi">0</span><span class="p">);</span><span class="w">    </span><span class="c1">// handle() = unique_ptr::get()</span>
+<a id="__codelineno-7-4" name="__codelineno-7-4" href="#__codelineno-7-4"></a><span class="w">    </span><span class="n">obj</span><span class="p">.</span><span class="n">name</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">sqlite3_column_text</span><span class="p">(</span><span class="n">stmt</span><span class="o">-&gt;</span><span class="n">handle</span><span class="p">(),</span><span class="w"> </span><span class="mi">1</span><span class="p">);</span><span class="w">   </span><span class="c1">// handle() again</span>
+<a id="__codelineno-7-5" name="__codelineno-7-5" href="#__codelineno-7-5"></a><span class="w">    </span><span class="n">obj</span><span class="p">.</span><span class="n">age</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">sqlite3_column_int</span><span class="p">(</span><span class="n">stmt</span><span class="o">-&gt;</span><span class="n">handle</span><span class="p">(),</span><span class="w"> </span><span class="mi">2</span><span class="p">);</span><span class="w">     </span><span class="c1">// handle() again</span>
+<a id="__codelineno-7-6" name="__codelineno-7-6" href="#__codelineno-7-6"></a><span class="w">    </span><span class="c1">// ... 6+ calls per row × millions of rows</span>
+<a id="__codelineno-7-7" name="__codelineno-7-7" href="#__codelineno-7-7"></a><span class="p">}</span>
+</code></pre></div>
+<h4 id="the-solution_2">The Solution<a class="headerlink" href="#the-solution_2" title="Permanent link">&para;</a></h4>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-8-1" name="__codelineno-8-1" href="#__codelineno-8-1"></a><span class="c1">// ✅ FAST: Cache raw pointer once (96% efficiency)</span>
+<a id="__codelineno-8-2" name="__codelineno-8-2" href="#__codelineno-8-2"></a><span class="n">sqlite3_stmt</span><span class="o">*</span><span class="w"> </span><span class="n">raw_stmt</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">stmt</span><span class="o">-&gt;</span><span class="n">handle</span><span class="p">();</span><span class="w">  </span><span class="c1">// Cache ONCE before loop</span>
+<a id="__codelineno-8-3" name="__codelineno-8-3" href="#__codelineno-8-3"></a><span class="k">while</span><span class="w"> </span><span class="p">(</span><span class="n">sqlite3_step</span><span class="p">(</span><span class="n">raw_stmt</span><span class="p">)</span><span class="w"> </span><span class="o">==</span><span class="w"> </span><span class="n">SQLITE_ROW</span><span class="p">)</span><span class="w"> </span><span class="p">{</span>
+<a id="__codelineno-8-4" name="__codelineno-8-4" href="#__codelineno-8-4"></a><span class="w">    </span><span class="n">obj</span><span class="p">.</span><span class="n">id</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">sqlite3_column_int64</span><span class="p">(</span><span class="n">raw_stmt</span><span class="p">,</span><span class="w"> </span><span class="mi">0</span><span class="p">);</span><span class="w">    </span><span class="c1">// Direct pointer</span>
+<a id="__codelineno-8-5" name="__codelineno-8-5" href="#__codelineno-8-5"></a><span class="w">    </span><span class="n">obj</span><span class="p">.</span><span class="n">name</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">sqlite3_column_text</span><span class="p">(</span><span class="n">raw_stmt</span><span class="p">,</span><span class="w"> </span><span class="mi">1</span><span class="p">);</span><span class="w">   </span><span class="c1">// No indirection</span>
+<a id="__codelineno-8-6" name="__codelineno-8-6" href="#__codelineno-8-6"></a><span class="w">    </span><span class="n">obj</span><span class="p">.</span><span class="n">age</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">sqlite3_column_int</span><span class="p">(</span><span class="n">raw_stmt</span><span class="p">,</span><span class="w"> </span><span class="mi">2</span><span class="p">);</span><span class="w">     </span><span class="c1">// Maximum speed</span>
+<a id="__codelineno-8-7" name="__codelineno-8-7" href="#__codelineno-8-7"></a><span class="p">}</span>
+</code></pre></div>
+<h4 id="why-this-matters_1">Why This Matters<a class="headerlink" href="#why-this-matters_1" title="Permanent link">&para;</a></h4>
+<ul>
+<li><code>unique_ptr::get()</code> is not free - it's a function call with pointer dereference</li>
+<li>Called 6+ times per row (once per column)</li>
+<li>For 10,000 rows: 60,000+ unnecessary function calls</li>
+<li>Compiler may not inline across translation units</li>
+</ul>
+<h4 id="benchmark-evidence-select-where-with-10k-rows">Benchmark Evidence (SELECT WHERE with 10K rows)<a class="headerlink" href="#benchmark-evidence-select-where-with-10k-rows" title="Permanent link">&para;</a></h4>
+<table>
+<thead>
+<tr>
+<th>Pattern</th>
+<th>Efficiency</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Without raw pointer cache</td>
+<td>90.6%</td>
+</tr>
+<tr>
+<td>With raw pointer cache</td>
+<td>96%</td>
+</tr>
+</tbody>
+</table>
+<h2 id="testing-benchmarking">Testing &amp; Benchmarking<a class="headerlink" href="#testing-benchmarking" title="Permanent link">&para;</a></h2>
+<p>Performance testing is <strong>mandatory</strong> for all new Storm ORM features. Target: ≥95% of raw SQLite efficiency.</p>
+<h3 id="quick-start">Quick Start<a class="headerlink" href="#quick-start" title="Permanent link">&para;</a></h3>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-9-1" name="__codelineno-9-1" href="#__codelineno-9-1"></a>cmake<span class="w"> </span>--preset<span class="w"> </span>ninja-release<span class="w"> </span>-DENABLE_BENCH<span class="o">=</span>ON
+<a id="__codelineno-9-2" name="__codelineno-9-2" href="#__codelineno-9-2"></a>cmake<span class="w"> </span>--build<span class="w"> </span>--preset<span class="w"> </span>ninja-release
+<a id="__codelineno-9-3" name="__codelineno-9-3" href="#__codelineno-9-3"></a>
+<a id="__codelineno-9-4" name="__codelineno-9-4" href="#__codelineno-9-4"></a>./build/release/benchmarks/storm_bench<span class="w">                                       </span><span class="c1"># All microbenchmarks</span>
+<a id="__codelineno-9-5" name="__codelineno-9-5" href="#__codelineno-9-5"></a>./build/release/benchmarks/storm_bench<span class="w"> </span>--benchmark_filter<span class="o">=</span><span class="s1">'Storm/.*JOIN.*'</span><span class="w">    </span><span class="c1"># JOIN performance</span>
+<a id="__codelineno-9-6" name="__codelineno-9-6" href="#__codelineno-9-6"></a>./build/release/benchmarks/storm_anchors<span class="w">                                     </span><span class="c1"># Raw SQLite baseline (full comparison)</span>
+</code></pre></div>
+<h3 id="performance-requirements">Performance Requirements<a class="headerlink" href="#performance-requirements" title="Permanent link">&para;</a></h3>
+<p>Every new feature requires:</p>
+<ol>
+<li><strong>Benchmark</strong>: a YAML entry in <code>benchmarks/tests/benchmark_tests.yaml</code></li>
+<li><strong>Raw SQLite comparison</strong>: Calculate efficiency percentage</li>
+<li><strong>Documentation</strong>: Add results to relevant docs</li>
+<li><strong>Commit message</strong>: Include performance metrics</li>
+</ol>
+<p><strong>Example</strong>: <code>feat: add LIMIT support (85% of raw SQLite)</code></p>
+<h3 id="design-principles">Design Principles<a class="headerlink" href="#design-principles" title="Permanent link">&para;</a></h3>
+<h4 id="drykiss-vs-performance">DRY/KISS vs Performance<a class="headerlink" href="#drykiss-vs-performance" title="Permanent link">&para;</a></h4>
+<p>Storm follows DRY/KISS principles <strong>unless</strong> they cost &gt;10% performance:</p>
+<table>
+<thead>
+<tr>
+<th>Scenario</th>
+<th>DRY/KISS</th>
+<th>Performance</th>
+<th>Decision</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Clean abstraction, &lt;5% cost</td>
+<td>✅ Yes</td>
+<td>Minimal</td>
+<td>Follow DRY/KISS</td>
+</tr>
+<tr>
+<td>Clean abstraction, &gt;10% cost</td>
+<td>❌ No</td>
+<td>Significant</td>
+<td>Prioritize performance</td>
+</tr>
+<tr>
+<td>Complex optimization, &gt;20% gain</td>
+<td>❌ No</td>
+<td>Major</td>
+<td>Accept complexity</td>
+</tr>
+</tbody>
+</table>
+<h4 id="decision-matrix_1">Decision Matrix<a class="headerlink" href="#decision-matrix_1" title="Permanent link">&para;</a></h4>
+<ol>
+<li><strong>&lt;5% performance impact</strong>: Use abstraction (follow DRY/KISS)</li>
+<li><strong>5-10% performance impact</strong>: Profile carefully, document tradeoff</li>
+<li><strong>&gt;10% performance impact</strong>: Duplicate code if needed</li>
+<li><strong>&gt;20% performance gain</strong>: Accept complexity, document thoroughly</li>
+</ol>
+<h3 id="benchmark-workflow">Benchmark Workflow<a class="headerlink" href="#benchmark-workflow" title="Permanent link">&para;</a></h3>
+<h4 id="1-implement-feature">1. Implement Feature<a class="headerlink" href="#1-implement-feature" title="Permanent link">&para;</a></h4>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-10-1" name="__codelineno-10-1" href="#__codelineno-10-1"></a><span class="c1"># Example: Add LIMIT support</span>
+<a id="__codelineno-10-2" name="__codelineno-10-2" href="#__codelineno-10-2"></a>src/orm/statements/select.cppm
+</code></pre></div>
+<h4 id="2-add-a-benchmark-yaml-entry">2. Add a Benchmark YAML Entry<a class="headerlink" href="#2-add-a-benchmark-yaml-entry" title="Permanent link">&para;</a></h4>
+<p>Add an entry to <code>benchmarks/tests/benchmark_tests.yaml</code> describing the test
+(category, fixture, dataset size). <code>benchmarks/register.cpp</code> walks
+<code>BENCHMARK_TESTS</code> and registers it automatically — no <code>.cpp</code> file to write.</p>
+<h4 id="3-run-benchmark">3. Run Benchmark<a class="headerlink" href="#3-run-benchmark" title="Permanent link">&para;</a></h4>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-11-1" name="__codelineno-11-1" href="#__codelineno-11-1"></a>cmake<span class="w"> </span>--preset<span class="w"> </span>ninja-release<span class="w"> </span>-DENABLE_BENCH<span class="o">=</span>ON
+<a id="__codelineno-11-2" name="__codelineno-11-2" href="#__codelineno-11-2"></a>cmake<span class="w"> </span>--build<span class="w"> </span>--preset<span class="w"> </span>ninja-release
+<a id="__codelineno-11-3" name="__codelineno-11-3" href="#__codelineno-11-3"></a>./build/release/benchmarks/storm_bench<span class="w"> </span>--benchmark_filter<span class="o">=</span><span class="s1">'Storm/.*LIMIT.*'</span>
+</code></pre></div>
+<h4 id="4-calculate-efficiency">4. Calculate Efficiency<a class="headerlink" href="#4-calculate-efficiency" title="Permanent link">&para;</a></h4>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-12-1" name="__codelineno-12-1" href="#__codelineno-12-1"></a>Efficiency = (Storm_ORM_performance / Raw_SQLite_performance) * 100%
+</code></pre></div>
+<p><strong>Example</strong>:
+- Storm: 8.5M rows/sec
+- Raw: 10M rows/sec
+- Efficiency: 85% ⚠️ NEEDS WORK (target: ≥95%)</p>
+<h4 id="5-document-results">5. Document Results<a class="headerlink" href="#5-document-results" title="Permanent link">&para;</a></h4>
+<p>Update relevant documentation:
+- Performance tables
+- Optimization techniques
+- Benchmark commands</p>
+<h4 id="6-commit-with-metrics">6. Commit with Metrics<a class="headerlink" href="#6-commit-with-metrics" title="Permanent link">&para;</a></h4>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-13-1" name="__codelineno-13-1" href="#__codelineno-13-1"></a>git<span class="w"> </span>add<span class="w"> </span>.<span class="w"> </span><span class="o">&amp;&amp;</span><span class="w"> </span>git<span class="w"> </span>commit<span class="w"> </span>-m<span class="w"> </span><span class="s2">"feat: add LIMIT support (85% of raw SQLite)"</span>
+</code></pre></div>
+<h3 id="example-benchmarks">Example Benchmarks<a class="headerlink" href="#example-benchmarks" title="Permanent link">&para;</a></h3>
+<h4 id="select-benchmark">SELECT Benchmark<a class="headerlink" href="#select-benchmark" title="Permanent link">&para;</a></h4>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-14-1" name="__codelineno-14-1" href="#__codelineno-14-1"></a><span class="kt">void</span><span class="w"> </span><span class="nf">benchmark_storm_select</span><span class="p">()</span><span class="w"> </span><span class="p">{</span>
+<a id="__codelineno-14-2" name="__codelineno-14-2" href="#__codelineno-14-2"></a><span class="w">    </span><span class="n">QuerySet</span><span class="o">&lt;</span><span class="n">Person</span><span class="o">&gt;</span><span class="w"> </span><span class="n">qs</span><span class="p">(</span><span class="n">conn</span><span class="p">);</span>
+<a id="__codelineno-14-3" name="__codelineno-14-3" href="#__codelineno-14-3"></a><span class="w">    </span><span class="k">for</span><span class="w"> </span><span class="p">(</span><span class="kt">int</span><span class="w"> </span><span class="n">i</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">0</span><span class="p">;</span><span class="w"> </span><span class="n">i</span><span class="w"> </span><span class="o">&lt;</span><span class="w"> </span><span class="n">iterations</span><span class="p">;</span><span class="w"> </span><span class="o">++</span><span class="n">i</span><span class="p">)</span><span class="w"> </span><span class="p">{</span>
+<a id="__codelineno-14-4" name="__codelineno-14-4" href="#__codelineno-14-4"></a><span class="w">        </span><span class="k">auto</span><span class="w"> </span><span class="n">result</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">qs</span><span class="p">.</span><span class="n">select</span><span class="p">().</span><span class="n">execute</span><span class="p">();</span>
+<a id="__codelineno-14-5" name="__codelineno-14-5" href="#__codelineno-14-5"></a><span class="w">    </span><span class="p">}</span>
+<a id="__codelineno-14-6" name="__codelineno-14-6" href="#__codelineno-14-6"></a><span class="p">}</span>
+<a id="__codelineno-14-7" name="__codelineno-14-7" href="#__codelineno-14-7"></a>
+<a id="__codelineno-14-8" name="__codelineno-14-8" href="#__codelineno-14-8"></a><span class="kt">void</span><span class="w"> </span><span class="nf">benchmark_raw_select</span><span class="p">()</span><span class="w"> </span><span class="p">{</span>
+<a id="__codelineno-14-9" name="__codelineno-14-9" href="#__codelineno-14-9"></a><span class="w">    </span><span class="k">auto</span><span class="w"> </span><span class="n">stmt</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">conn</span><span class="p">.</span><span class="n">prepare</span><span class="p">(</span><span class="s">"SELECT id, name, age FROM Person"</span><span class="p">);</span>
+<a id="__codelineno-14-10" name="__codelineno-14-10" href="#__codelineno-14-10"></a><span class="w">    </span><span class="k">for</span><span class="w"> </span><span class="p">(</span><span class="kt">int</span><span class="w"> </span><span class="n">i</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">0</span><span class="p">;</span><span class="w"> </span><span class="n">i</span><span class="w"> </span><span class="o">&lt;</span><span class="w"> </span><span class="n">iterations</span><span class="p">;</span><span class="w"> </span><span class="o">++</span><span class="n">i</span><span class="p">)</span><span class="w"> </span><span class="p">{</span>
+<a id="__codelineno-14-11" name="__codelineno-14-11" href="#__codelineno-14-11"></a><span class="w">        </span><span class="k">while</span><span class="w"> </span><span class="p">(</span><span class="n">stmt</span><span class="o">-&gt;</span><span class="n">step</span><span class="p">())</span><span class="w"> </span><span class="p">{</span>
+<a id="__codelineno-14-12" name="__codelineno-14-12" href="#__codelineno-14-12"></a><span class="w">            </span><span class="c1">// Extract manually</span>
+<a id="__codelineno-14-13" name="__codelineno-14-13" href="#__codelineno-14-13"></a><span class="w">        </span><span class="p">}</span>
+<a id="__codelineno-14-14" name="__codelineno-14-14" href="#__codelineno-14-14"></a><span class="w">        </span><span class="n">stmt</span><span class="o">-&gt;</span><span class="n">reset</span><span class="p">();</span>
+<a id="__codelineno-14-15" name="__codelineno-14-15" href="#__codelineno-14-15"></a><span class="w">    </span><span class="p">}</span>
+<a id="__codelineno-14-16" name="__codelineno-14-16" href="#__codelineno-14-16"></a><span class="p">}</span>
+</code></pre></div>
+<h4 id="where-benchmark">WHERE Benchmark<a class="headerlink" href="#where-benchmark" title="Permanent link">&para;</a></h4>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-15-1" name="__codelineno-15-1" href="#__codelineno-15-1"></a><span class="kt">void</span><span class="w"> </span><span class="nf">benchmark_storm_where</span><span class="p">()</span><span class="w"> </span><span class="p">{</span>
+<a id="__codelineno-15-2" name="__codelineno-15-2" href="#__codelineno-15-2"></a><span class="w">    </span><span class="n">QuerySet</span><span class="o">&lt;</span><span class="n">Person</span><span class="o">&gt;</span><span class="w"> </span><span class="n">qs</span><span class="p">(</span><span class="n">conn</span><span class="p">);</span>
+<a id="__codelineno-15-3" name="__codelineno-15-3" href="#__codelineno-15-3"></a><span class="w">    </span><span class="k">for</span><span class="w"> </span><span class="p">(</span><span class="kt">int</span><span class="w"> </span><span class="n">i</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">0</span><span class="p">;</span><span class="w"> </span><span class="n">i</span><span class="w"> </span><span class="o">&lt;</span><span class="w"> </span><span class="n">iterations</span><span class="p">;</span><span class="w"> </span><span class="o">++</span><span class="n">i</span><span class="p">)</span><span class="w"> </span><span class="p">{</span>
+<a id="__codelineno-15-4" name="__codelineno-15-4" href="#__codelineno-15-4"></a><span class="w">        </span><span class="k">auto</span><span class="w"> </span><span class="n">result</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">qs</span><span class="p">.</span><span class="n">where</span><span class="p">(</span><span class="n">fields</span><span class="o">::</span><span class="n">Person</span><span class="p">.</span><span class="n">age</span><span class="w"> </span><span class="o">&gt;</span><span class="w"> </span><span class="mi">25</span><span class="p">).</span><span class="n">select</span><span class="p">().</span><span class="n">execute</span><span class="p">();</span>
+<a id="__codelineno-15-5" name="__codelineno-15-5" href="#__codelineno-15-5"></a><span class="w">    </span><span class="p">}</span>
+<a id="__codelineno-15-6" name="__codelineno-15-6" href="#__codelineno-15-6"></a><span class="p">}</span>
+</code></pre></div>
+<h3 id="writing-fair-benchmarks">Writing Fair Benchmarks<a class="headerlink" href="#writing-fair-benchmarks" title="Permanent link">&para;</a></h3>
+<p><strong>⚠️ CRITICAL: Unfair benchmarks lead to wrong optimization decisions.</strong></p>
+<h4 id="1-setup-outside-loop-execute-inside">1. Setup Outside Loop, Execute Inside<a class="headerlink" href="#1-setup-outside-loop-execute-inside" title="Permanent link">&para;</a></h4>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-16-1" name="__codelineno-16-1" href="#__codelineno-16-1"></a><span class="c1">// ❌ UNFAIR: Storm does setup inside, raw SQLite does setup outside</span>
+<a id="__codelineno-16-2" name="__codelineno-16-2" href="#__codelineno-16-2"></a><span class="kt">int</span><span class="w"> </span><span class="nf">storm_benchmark</span><span class="p">(</span><span class="kt">int</span><span class="w"> </span><span class="n">iterations</span><span class="p">)</span><span class="w"> </span><span class="p">{</span>
+<a id="__codelineno-16-3" name="__codelineno-16-3" href="#__codelineno-16-3"></a><span class="w">    </span><span class="k">for</span><span class="w"> </span><span class="p">(</span><span class="kt">int</span><span class="w"> </span><span class="n">i</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">0</span><span class="p">;</span><span class="w"> </span><span class="n">i</span><span class="w"> </span><span class="o">&lt;</span><span class="w"> </span><span class="n">iterations</span><span class="p">;</span><span class="w"> </span><span class="n">i</span><span class="o">++</span><span class="p">)</span><span class="w"> </span><span class="p">{</span>
+<a id="__codelineno-16-4" name="__codelineno-16-4" href="#__codelineno-16-4"></a><span class="w">        </span><span class="n">qs</span><span class="p">.</span><span class="n">where</span><span class="p">(</span><span class="n">age</span><span class="w"> </span><span class="o">&gt;</span><span class="w"> </span><span class="mi">30</span><span class="p">).</span><span class="n">select</span><span class="p">();</span><span class="w">  </span><span class="c1">// WHERE built every iteration</span>
+<a id="__codelineno-16-5" name="__codelineno-16-5" href="#__codelineno-16-5"></a><span class="w">    </span><span class="p">}</span>
+<a id="__codelineno-16-6" name="__codelineno-16-6" href="#__codelineno-16-6"></a><span class="p">}</span>
+<a id="__codelineno-16-7" name="__codelineno-16-7" href="#__codelineno-16-7"></a>
+<a id="__codelineno-16-8" name="__codelineno-16-8" href="#__codelineno-16-8"></a><span class="kt">int</span><span class="w"> </span><span class="nf">raw_benchmark</span><span class="p">(</span><span class="kt">int</span><span class="w"> </span><span class="n">iterations</span><span class="p">)</span><span class="w"> </span><span class="p">{</span>
+<a id="__codelineno-16-9" name="__codelineno-16-9" href="#__codelineno-16-9"></a><span class="w">    </span><span class="n">sqlite3_prepare_v2</span><span class="p">(</span><span class="n">db</span><span class="p">,</span><span class="w"> </span><span class="n">sql</span><span class="p">,</span><span class="w"> </span><span class="mi">-1</span><span class="p">,</span><span class="w"> </span><span class="o">&amp;</span><span class="n">stmt</span><span class="p">,</span><span class="w"> </span><span class="nb">nullptr</span><span class="p">);</span><span class="w">  </span><span class="c1">// Prepared ONCE</span>
+<a id="__codelineno-16-10" name="__codelineno-16-10" href="#__codelineno-16-10"></a><span class="w">    </span><span class="k">for</span><span class="w"> </span><span class="p">(</span><span class="kt">int</span><span class="w"> </span><span class="n">i</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">0</span><span class="p">;</span><span class="w"> </span><span class="n">i</span><span class="w"> </span><span class="o">&lt;</span><span class="w"> </span><span class="n">iterations</span><span class="p">;</span><span class="w"> </span><span class="n">i</span><span class="o">++</span><span class="p">)</span><span class="w"> </span><span class="p">{</span>
+<a id="__codelineno-16-11" name="__codelineno-16-11" href="#__codelineno-16-11"></a><span class="w">        </span><span class="n">sqlite3_reset</span><span class="p">(</span><span class="n">stmt</span><span class="p">);</span>
+<a id="__codelineno-16-12" name="__codelineno-16-12" href="#__codelineno-16-12"></a><span class="w">        </span><span class="n">sqlite3_step</span><span class="p">(</span><span class="n">stmt</span><span class="p">);</span>
+<a id="__codelineno-16-13" name="__codelineno-16-13" href="#__codelineno-16-13"></a><span class="w">    </span><span class="p">}</span>
+<a id="__codelineno-16-14" name="__codelineno-16-14" href="#__codelineno-16-14"></a><span class="p">}</span>
+<a id="__codelineno-16-15" name="__codelineno-16-15" href="#__codelineno-16-15"></a>
+<a id="__codelineno-16-16" name="__codelineno-16-16" href="#__codelineno-16-16"></a><span class="c1">// ✅ FAIR: Both do setup once, execute in loop</span>
+<a id="__codelineno-16-17" name="__codelineno-16-17" href="#__codelineno-16-17"></a><span class="kt">int</span><span class="w"> </span><span class="nf">storm_benchmark</span><span class="p">(</span><span class="kt">int</span><span class="w"> </span><span class="n">iterations</span><span class="p">)</span><span class="w"> </span><span class="p">{</span>
+<a id="__codelineno-16-18" name="__codelineno-16-18" href="#__codelineno-16-18"></a><span class="w">    </span><span class="k">auto</span><span class="w"> </span><span class="n">where_clause</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">build_where</span><span class="p">();</span>
+<a id="__codelineno-16-19" name="__codelineno-16-19" href="#__codelineno-16-19"></a><span class="w">    </span><span class="n">qs</span><span class="p">.</span><span class="n">where</span><span class="p">(</span><span class="n">where_clause</span><span class="p">);</span><span class="w">           </span><span class="c1">// Set WHERE once</span>
+<a id="__codelineno-16-20" name="__codelineno-16-20" href="#__codelineno-16-20"></a><span class="w">    </span><span class="k">for</span><span class="w"> </span><span class="p">(</span><span class="kt">int</span><span class="w"> </span><span class="n">i</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">0</span><span class="p">;</span><span class="w"> </span><span class="n">i</span><span class="w"> </span><span class="o">&lt;</span><span class="w"> </span><span class="n">iterations</span><span class="p">;</span><span class="w"> </span><span class="n">i</span><span class="o">++</span><span class="p">)</span><span class="w"> </span><span class="p">{</span>
+<a id="__codelineno-16-21" name="__codelineno-16-21" href="#__codelineno-16-21"></a><span class="w">        </span><span class="n">qs</span><span class="p">.</span><span class="n">select</span><span class="p">();</span><span class="w">                  </span><span class="c1">// Only execute in loop</span>
+<a id="__codelineno-16-22" name="__codelineno-16-22" href="#__codelineno-16-22"></a><span class="w">    </span><span class="p">}</span>
+<a id="__codelineno-16-23" name="__codelineno-16-23" href="#__codelineno-16-23"></a><span class="w">    </span><span class="n">qs</span><span class="p">.</span><span class="n">reset</span><span class="p">();</span><span class="w">                       </span><span class="c1">// Cleanup after</span>
+<a id="__codelineno-16-24" name="__codelineno-16-24" href="#__codelineno-16-24"></a><span class="p">}</span>
+<a id="__codelineno-16-25" name="__codelineno-16-25" href="#__codelineno-16-25"></a>
+<a id="__codelineno-16-26" name="__codelineno-16-26" href="#__codelineno-16-26"></a><span class="kt">int</span><span class="w"> </span><span class="nf">raw_benchmark</span><span class="p">(</span><span class="kt">int</span><span class="w"> </span><span class="n">iterations</span><span class="p">)</span><span class="w"> </span><span class="p">{</span>
+<a id="__codelineno-16-27" name="__codelineno-16-27" href="#__codelineno-16-27"></a><span class="w">    </span><span class="n">sqlite3_prepare_v2</span><span class="p">(</span><span class="n">db</span><span class="p">,</span><span class="w"> </span><span class="n">sql</span><span class="p">,</span><span class="w"> </span><span class="mi">-1</span><span class="p">,</span><span class="w"> </span><span class="o">&amp;</span><span class="n">stmt</span><span class="p">,</span><span class="w"> </span><span class="nb">nullptr</span><span class="p">);</span>
+<a id="__codelineno-16-28" name="__codelineno-16-28" href="#__codelineno-16-28"></a><span class="w">    </span><span class="n">sqlite3_bind_int</span><span class="p">(</span><span class="n">stmt</span><span class="p">,</span><span class="w"> </span><span class="mi">1</span><span class="p">,</span><span class="w"> </span><span class="n">value</span><span class="p">);</span><span class="w"> </span><span class="c1">// Bind once</span>
+<a id="__codelineno-16-29" name="__codelineno-16-29" href="#__codelineno-16-29"></a><span class="w">    </span><span class="k">for</span><span class="w"> </span><span class="p">(</span><span class="kt">int</span><span class="w"> </span><span class="n">i</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">0</span><span class="p">;</span><span class="w"> </span><span class="n">i</span><span class="w"> </span><span class="o">&lt;</span><span class="w"> </span><span class="n">iterations</span><span class="p">;</span><span class="w"> </span><span class="n">i</span><span class="o">++</span><span class="p">)</span><span class="w"> </span><span class="p">{</span>
+<a id="__codelineno-16-30" name="__codelineno-16-30" href="#__codelineno-16-30"></a><span class="w">        </span><span class="n">sqlite3_reset</span><span class="p">(</span><span class="n">stmt</span><span class="p">);</span><span class="w">          </span><span class="c1">// Reset required for re-execution</span>
+<a id="__codelineno-16-31" name="__codelineno-16-31" href="#__codelineno-16-31"></a><span class="w">        </span><span class="k">while</span><span class="w"> </span><span class="p">(</span><span class="n">sqlite3_step</span><span class="p">(</span><span class="n">stmt</span><span class="p">)</span><span class="w"> </span><span class="o">==</span><span class="w"> </span><span class="n">SQLITE_ROW</span><span class="p">)</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="p">...</span><span class="w"> </span><span class="p">}</span>
+<a id="__codelineno-16-32" name="__codelineno-16-32" href="#__codelineno-16-32"></a><span class="w">    </span><span class="p">}</span>
+<a id="__codelineno-16-33" name="__codelineno-16-33" href="#__codelineno-16-33"></a><span class="p">}</span>
+</code></pre></div>
+<h4 id="2-same-algorithm-for-both">2. Same Algorithm for Both<a class="headerlink" href="#2-same-algorithm-for-both" title="Permanent link">&para;</a></h4>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-17-1" name="__codelineno-17-1" href="#__codelineno-17-1"></a><span class="c1">// ❌ UNFAIR: Storm uses chunked bulk SQL, raw uses single inserts</span>
+<a id="__codelineno-17-2" name="__codelineno-17-2" href="#__codelineno-17-2"></a><span class="c1">// Storm: INSERT INTO t VALUES (?,?),(?,?),(?,?)  -- 3 rows at once</span>
+<a id="__codelineno-17-3" name="__codelineno-17-3" href="#__codelineno-17-3"></a><span class="c1">// Raw:   INSERT INTO t VALUES (?,?) × 3          -- 3 separate statements</span>
+<a id="__codelineno-17-4" name="__codelineno-17-4" href="#__codelineno-17-4"></a>
+<a id="__codelineno-17-5" name="__codelineno-17-5" href="#__codelineno-17-5"></a><span class="c1">// ✅ FAIR: Both use same strategy</span>
+<a id="__codelineno-17-6" name="__codelineno-17-6" href="#__codelineno-17-6"></a><span class="c1">// Storm: INSERT INTO t VALUES (?,?),(?,?),(?,?)</span>
+<a id="__codelineno-17-7" name="__codelineno-17-7" href="#__codelineno-17-7"></a><span class="c1">// Raw:   INSERT INTO t VALUES (?,?),(?,?),(?,?)</span>
+</code></pre></div>
+<h4 id="3-same-container-types">3. Same Container Types<a class="headerlink" href="#3-same-container-types" title="Permanent link">&para;</a></h4>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-18-1" name="__codelineno-18-1" href="#__codelineno-18-1"></a><span class="c1">// ❌ UNFAIR: Storm uses plf::hive, raw uses std::vector</span>
+<a id="__codelineno-18-2" name="__codelineno-18-2" href="#__codelineno-18-2"></a><span class="n">plf</span><span class="o">::</span><span class="n">hive</span><span class="o">&lt;</span><span class="n">Model</span><span class="o">&gt;</span><span class="w"> </span><span class="n">storm_results</span><span class="p">;</span><span class="w">  </span><span class="c1">// O(1) insert, stable iterators</span>
+<a id="__codelineno-18-3" name="__codelineno-18-3" href="#__codelineno-18-3"></a><span class="n">std</span><span class="o">::</span><span class="n">vector</span><span class="o">&lt;</span><span class="n">Model</span><span class="o">&gt;</span><span class="w"> </span><span class="n">raw_results</span><span class="p">;</span><span class="w">  </span><span class="c1">// O(1) amortized, may reallocate</span>
+<a id="__codelineno-18-4" name="__codelineno-18-4" href="#__codelineno-18-4"></a>
+<a id="__codelineno-18-5" name="__codelineno-18-5" href="#__codelineno-18-5"></a><span class="c1">// ✅ FAIR: Both use same container</span>
+<a id="__codelineno-18-6" name="__codelineno-18-6" href="#__codelineno-18-6"></a><span class="n">plf</span><span class="o">::</span><span class="n">hive</span><span class="o">&lt;</span><span class="n">Model</span><span class="o">&gt;</span><span class="w"> </span><span class="n">storm_results</span><span class="p">;</span>
+<a id="__codelineno-18-7" name="__codelineno-18-7" href="#__codelineno-18-7"></a><span class="n">plf</span><span class="o">::</span><span class="n">hive</span><span class="o">&lt;</span><span class="n">Model</span><span class="o">&gt;</span><span class="w"> </span><span class="n">raw_results</span><span class="p">;</span>
+</code></pre></div>
+<h4 id="4-measure-same-work">4. Measure Same Work<a class="headerlink" href="#4-measure-same-work" title="Permanent link">&para;</a></h4>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-19-1" name="__codelineno-19-1" href="#__codelineno-19-1"></a><span class="c1">// ❌ MISLEADING: Comparing throughput with different result sizes</span>
+<a id="__codelineno-19-2" name="__codelineno-19-2" href="#__codelineno-19-2"></a><span class="c1">// DISTINCT + WHERE: 78 rows → 0.13M rows/sec (looks slow)</span>
+<a id="__codelineno-19-3" name="__codelineno-19-3" href="#__codelineno-19-3"></a><span class="c1">// DISTINCT + JOIN:  10K rows → 8.75M rows/sec (looks fast)</span>
+<a id="__codelineno-19-4" name="__codelineno-19-4" href="#__codelineno-19-4"></a>
+<a id="__codelineno-19-5" name="__codelineno-19-5" href="#__codelineno-19-5"></a><span class="c1">// ✅ CORRECT: Use latency (ms/query) for queries with different result sizes</span>
+<a id="__codelineno-19-6" name="__codelineno-19-6" href="#__codelineno-19-6"></a><span class="c1">// DISTINCT + WHERE: 0.588ms/query (actually FASTEST)</span>
+<a id="__codelineno-19-7" name="__codelineno-19-7" href="#__codelineno-19-7"></a><span class="c1">// DISTINCT + JOIN:  1.143ms/query (actually slower)</span>
+</code></pre></div>
+<h4 id="5-runtime-vs-compile-time-fairness">5. Runtime vs Compile-Time Fairness<a class="headerlink" href="#5-runtime-vs-compile-time-fairness" title="Permanent link">&para;</a></h4>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-20-1" name="__codelineno-20-1" href="#__codelineno-20-1"></a><span class="c1">// ❌ UNFAIR: Storm uses runtime batch_size, raw uses compile-time</span>
+<a id="__codelineno-20-2" name="__codelineno-20-2" href="#__codelineno-20-2"></a><span class="k">template</span><span class="w"> </span><span class="o">&lt;</span><span class="kt">int</span><span class="w"> </span><span class="n">BatchSize</span><span class="o">&gt;</span><span class="w">  </span><span class="c1">// Raw gets free compile-time optimization</span>
+<a id="__codelineno-20-3" name="__codelineno-20-3" href="#__codelineno-20-3"></a><span class="kt">void</span><span class="w"> </span><span class="n">raw_benchmark</span><span class="p">()</span><span class="w"> </span><span class="p">{</span>
+<a id="__codelineno-20-4" name="__codelineno-20-4" href="#__codelineno-20-4"></a><span class="w">    </span><span class="k">if</span><span class="w"> </span><span class="k">constexpr</span><span class="w"> </span><span class="p">(</span><span class="n">BatchSize</span><span class="w"> </span><span class="o">&lt;</span><span class="w"> </span><span class="mi">100</span><span class="p">)</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="p">...</span><span class="w"> </span><span class="p">}</span><span class="w">  </span><span class="c1">// Compiled away</span>
+<a id="__codelineno-20-5" name="__codelineno-20-5" href="#__codelineno-20-5"></a><span class="p">}</span>
+<a id="__codelineno-20-6" name="__codelineno-20-6" href="#__codelineno-20-6"></a>
+<a id="__codelineno-20-7" name="__codelineno-20-7" href="#__codelineno-20-7"></a><span class="kt">void</span><span class="w"> </span><span class="n">storm_benchmark</span><span class="p">(</span><span class="kt">int</span><span class="w"> </span><span class="n">batch_size</span><span class="p">)</span><span class="w"> </span><span class="p">{</span><span class="w">  </span><span class="c1">// Runtime check every call</span>
+<a id="__codelineno-20-8" name="__codelineno-20-8" href="#__codelineno-20-8"></a><span class="w">    </span><span class="k">if</span><span class="w"> </span><span class="p">(</span><span class="n">batch_size</span><span class="w"> </span><span class="o">&lt;</span><span class="w"> </span><span class="mi">100</span><span class="p">)</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="p">...</span><span class="w"> </span><span class="p">}</span>
+<a id="__codelineno-20-9" name="__codelineno-20-9" href="#__codelineno-20-9"></a><span class="p">}</span>
+<a id="__codelineno-20-10" name="__codelineno-20-10" href="#__codelineno-20-10"></a>
+<a id="__codelineno-20-11" name="__codelineno-20-11" href="#__codelineno-20-11"></a><span class="c1">// ✅ FAIR: Both use runtime values</span>
+<a id="__codelineno-20-12" name="__codelineno-20-12" href="#__codelineno-20-12"></a><span class="kt">void</span><span class="w"> </span><span class="n">storm_benchmark</span><span class="p">(</span><span class="kt">int</span><span class="w"> </span><span class="n">batch_size</span><span class="p">)</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="p">...</span><span class="w"> </span><span class="p">}</span>
+<a id="__codelineno-20-13" name="__codelineno-20-13" href="#__codelineno-20-13"></a><span class="kt">void</span><span class="w"> </span><span class="n">raw_benchmark</span><span class="p">(</span><span class="kt">int</span><span class="w"> </span><span class="n">batch_size</span><span class="p">)</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="p">...</span><span class="w"> </span><span class="p">}</span><span class="w">  </span><span class="c1">// Same decision logic</span>
+</code></pre></div>
+<h4 id="benchmark-checklist">Benchmark Checklist<a class="headerlink" href="#benchmark-checklist" title="Permanent link">&para;</a></h4>
+<ul>
+<li>[ ] <strong>Setup outside loop</strong>: WHERE clauses, statement preparation, parameter binding</li>
+<li>[ ] <strong>Same algorithm</strong>: Both use identical strategies (chunked bulk, single row, etc.)</li>
+<li>[ ] <strong>Same containers</strong>: plf::hive vs plf::hive, not plf::hive vs std::vector</li>
+<li>[ ] <strong>Same decision logic</strong>: Runtime vs runtime, not runtime vs compile-time</li>
+<li>[ ] <strong>Correct metric</strong>: Latency for different result sizes, throughput for same sizes</li>
+<li>[ ] <strong>Multiple runs</strong>: 5+ runs to establish variance, report median not just mean</li>
+</ul>
+<h3 id="performance-regression-prevention_1">Performance Regression Prevention<a class="headerlink" href="#performance-regression-prevention_1" title="Permanent link">&para;</a></h3>
+<ul>
+<li><strong>CI integration</strong>: Run benchmarks on every PR</li>
+<li><strong>Threshold checks</strong>: Fail if performance drops &gt;5%</li>
+<li><strong>Before commit</strong>: run <code>./build/release/benchmarks/storm_bench</code> and <code>./build/release/benchmarks/storm_anchors</code> and compare efficiency</li>
+</ul>
+<h3 id="see-also">See Also<a class="headerlink" href="#see-also" title="Permanent link">&para;</a></h3>
+<ul>
+<li><a href="../../building/ADDING_FEATURES/">Adding Features</a> - Development workflow</li>
+<li><a href="https://github.com/spiritEcosse/storm/blob/develop/benchmarks/README.md">Benchmarks</a> - Current benchmark results</li>
+</ul>
+<h2 id="postgresql-binary-result-format-600-phase-1">PostgreSQL Binary Result Format (#600 Phase 1)<a class="headerlink" href="#postgresql-binary-result-format-600-phase-1" title="Permanent link">&para;</a></h2>
+<p>The PostgreSQL backend requests libpq <strong>binary result format</strong> for SELECT-shaped queries
+when every selected column is a plain byte reinterpretation (bool/int/int64/double/float/
+text/blob) — decoding network-byte-order bytes (<code>memcpy</code> + <code>std::byteswap</code> + <code>bit_cast</code>)
+instead of paying the <code>strtol</code>/<code>strtoll</code>/<code>strtod</code>/<code>val[0]=='t'</code> ASCII-parse cost text
+format pays on every column of every row. Classification is a compile-time whole-statement
+AND, since libpq's format flag is per-statement, not per-column — one unsafe column
+(<code>DATE</code>/<code>TIMESTAMP</code>/<code>UUID</code>/<code>storm::full_unsigned</code>/an FK member) keeps the entire statement
+on the text path, unchanged from before this feature existed. SQLite is untouched (it
+already extracts binary natively via <code>sqlite3_column_*</code>) — confirmed via an interleaved
+A/B benchmark showing zero measurable delta (max 0.38%, inside a ~2.8% noise floor).</p>
+<p><strong>Measured performance</strong>: the original issue's own standalone raw-libpq microbenchmark
+(isolated from Storm's build, not exercising the real extraction path) measured ~34%
+faster bulk SELECT extraction (66.4% of text's time, 50k rows × 3 numeric columns).
+<strong><code>storm_bench</code> currently has no PostgreSQL benchmark coverage at all</strong> — every one of
+its 184 benchmarks runs against a hardcoded SQLite <code>:memory:</code> connection — so the exact
+speedup inside Storm's real Release-build extraction path is unverified; see
+<a href="https://github.com/spiritEcosse/storm/issues/601">issue #601</a> for the follow-up to add a
+PG dimension to the bench harness. Until that lands, treat the 34% figure as a
+mechanism-level estimate, not a measured Storm result.</p>
+<p>Aggregates (<code>sum()</code>/<code>avg()</code>/<code>min()</code>/<code>max()</code>) and the RETURNING-id paths on <code>insert()</code>/
+<code>update()</code>/<code>erase()</code> are deliberately <strong>not</strong> wired to binary format — verified against a
+live PG server that their wire types don't match what the ORM extracts as (e.g.
+<code>SUM(int_col)</code> returns PG <code>numeric</code>, not <code>bigint</code>), so wiring them naively would silently
+corrupt results. See
+<a href="../../architecture/POSTGRESQL_BINARY_RESULTS/">docs/internals/architecture/POSTGRESQL_BINARY_RESULTS.md</a>
+for the full design (safe/unsafe type table, classification logic, why each exclusion
+exists).</p>
+<h2 id="local-test-postgresql-tuning">Local Test PostgreSQL Tuning<a class="headerlink" href="#local-test-postgresql-tuning" title="Permanent link">&para;</a></h2>
+<p>Not query performance — this is durability tuning for the <strong>local dev
+PostgreSQL instance used to run the test suite</strong> (see
+<a href="../../testing/TESTING/#local-test-suite-speed">TESTING.md#local-test-suite-speed</a>
+for the full before/after numbers). On a Postgres that holds only throwaway
+test schemas, set in <code>postgresql.conf</code>:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-21-1" name="__codelineno-21-1" href="#__codelineno-21-1"></a>fsync = off
+<a id="__codelineno-21-2" name="__codelineno-21-2" href="#__codelineno-21-2"></a>synchronous_commit = off
+</code></pre></div>
+<p>Then <code>brew services restart postgresql@16</code> (or the equivalent for your install).
+Measured 2026-08-27: cut the PG portion of the test suite from ~30.2s to ~25.7s
+(−15%), full suite from ~38s to ~33s wall (−12%).</p>
+<p><strong>⚠️ Never do this on an instance holding real data</strong> — <code>fsync = off</code> means a
+power loss or crash can corrupt or lose committed transactions. Fine for a
+disposable test DB; not fine for anything else.</p>
+
+
+
+
+
+
+
+
+
+
+
+
+                
+              </article>
+            </div>
+          
+          
+<script>var target=document.getElementById(location.hash.slice(1));target&&target.name&&(target.checked=target.name.startsWith("__tabbed_"))</script>
+        </div>
+        
+          <button type="button" class="md-top md-icon" data-md-component="top" hidden>
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M13 20h-2V8l-5.5 5.5-1.42-1.42L12 4.16l7.92 7.92-1.42 1.42L13 8z"/></svg>
+  Back to top
+</button>
+        
+      </main>
+      
+        <footer class="md-footer">
+  
+  <div class="md-footer-meta md-typeset">
+    <div class="md-footer-meta__inner md-grid">
+      <div class="md-copyright">
+  
+  
+    Made with
+    <a href="https://squidfunk.github.io/mkdocs-material/" target="_blank" rel="noopener">
+      Material for MkDocs
+    </a>
+  
+</div>
+      
+    </div>
+  </div>
+</footer>
+      
+    </div>
+    <div class="md-dialog" data-md-component="dialog">
+      <div class="md-dialog__inner md-typeset"></div>
+    </div>
+    
+    
+    
+      
+      
+      <script id="__config" type="application/json">{"annotate": null, "base": "../../..", "features": ["navigation.sections", "navigation.expand", "navigation.top", "search.suggest", "search.highlight", "content.code.copy"], "search": "../../../assets/javascripts/workers/search.a7633da7.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
+    
+    
+      <script src="../../../assets/javascripts/bundle.c21346df.min.js"></script>
+      
+    
+  </body>
+</html>
