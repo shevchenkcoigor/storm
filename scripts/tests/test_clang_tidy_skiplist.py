@@ -21,6 +21,7 @@ Stdlib unittest only, no syntax newer than Python 3.9.
     python3 scripts/tests/test_clang_tidy_skiplist.py
 """
 import pathlib
+import re
 import subprocess
 import sys
 import unittest
@@ -152,6 +153,39 @@ class FilterDiffTest(unittest.TestCase):
         self.assertEqual(skiplist.diff_path("diff --git a/d b/e b/f.h b/d b/e b/f.h"), "f.h")
 
 
+class FragmentParentsTest(unittest.TestCase):
+    """#671: src/ #include fragments are skip-listed standalone but linted via their parent."""
+
+    def test_every_src_skiplist_entry_is_a_mapped_fragment(self):
+        src_entries = {p for p in skiplist.KNOWN_UNPARSEABLE if p.startswith("src/")}
+        self.assertTrue(src_entries)
+        self.assertEqual(src_entries, set(skiplist.FRAGMENT_PARENTS))
+
+    def test_every_src_header_on_disk_is_a_mapped_fragment(self):
+        on_disk = {p.relative_to(REPO_ROOT).as_posix() for ext in ("*.h", "*.hpp")
+                   for p in (REPO_ROOT / "src").rglob(ext)}
+        self.assertEqual(on_disk, set(skiplist.FRAGMENT_PARENTS))
+
+    def test_each_parent_exists_and_includes_its_fragment(self):
+        for fragment, parent in skiplist.FRAGMENT_PARENTS.items():
+            with self.subTest(fragment=fragment):
+                text = (REPO_ROOT / parent).read_text()
+                name = pathlib.PurePosixPath(fragment).name
+                self.assertRegex(text, r'(?m)^\s*#include "%s"' % re.escape(name))
+
+    def test_line_filters_map_fragment_hunks_onto_the_parent(self):
+        fragment = "src/orm/statements/select_stitch.hpp"
+        diff = ("diff --git a/%s b/%s\n--- a/%s\n+++ b/%s\n"
+                "@@ -10,0 +11,3 @@ ctx\n+a\n+b\n+c\n@@ -40 +44 @@ ctx\n-x\n+y\n@@ -50,2 +53,0 @@\n-d\n-e\n"
+                % (fragment, fragment, fragment, fragment))
+        diff += diff_section(REAL_STORM_FILE, "unrelated")
+        self.assertEqual(skiplist.fragment_line_filters(diff.splitlines(keepends=True)),
+                         {"src/orm/statements/select.cppm": [{"name": fragment, "lines": [[11, 13], [44, 44]]}]})
+
+    def test_no_fragment_hunks_means_no_parent_runs(self):
+        self.assertEqual(skiplist.fragment_line_filters(diff_section(REAL_STORM_FILE, "x").splitlines(True)), {})
+
+
 class KeepCommandTest(unittest.TestCase):
     """`--keep` is how commit.sh drops skipped files from its BMI probe."""
 
@@ -170,6 +204,11 @@ class KeepCommandTest(unittest.TestCase):
 
     def test_blank_lines_are_ignored(self):
         self.assertEqual(self.keep("\n%s\n\n" % REAL_STORM_FILE).stdout.splitlines(), [REAL_STORM_FILE])
+
+    def test_a_fragment_is_replaced_by_its_parent(self):
+        # commit.sh's BMI probe must check the TU clang-tidy actually opens for a fragment.
+        proc = self.keep("src/orm/statements/aggregate_grammar.hpp\n")
+        self.assertEqual(proc.stdout.splitlines(), ["src/orm/statements/aggregate.cppm"])
 
     def test_unknown_option_fails(self):
         proc = subprocess.run([sys.executable, str(SKIPLIST), "--nope"], capture_output=True, text=True)

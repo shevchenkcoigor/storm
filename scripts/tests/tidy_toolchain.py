@@ -29,7 +29,7 @@ for last; do :; done
 printf '%s\\n' "$*" >> "$FAKE_LOG/tidy_calls"
 out="$FAKE_TIDY_OUT/$(printf '%s' "$last" | tr / _)"
 [ -f "$out" ] && cat "$out"
-exit 0
+exit "${FAKE_TIDY_EXIT:-0}"
 """
 
 FAKE_CLANG_TIDY_DIFF = """import os, pathlib, shutil, sys

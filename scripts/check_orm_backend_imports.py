@@ -51,6 +51,11 @@ PATTERN = re.compile(
 )
 
 
+# Module units, plus the textual fragments a module #includes into its purview (#671):
+# a split file that kept half its code in a .hpp must not drop out of the scan.
+SCANNED_SUFFIXES = (".cppm", ".hpp", ".h")
+
+
 class Violation(NamedTuple):
     path: str       # relative to the repo root, forward slashes
     line_number: int
@@ -62,7 +67,7 @@ class CheckError(Exception):
 
 
 def neutral_sources(root: pathlib.Path) -> list[pathlib.Path]:
-    """Every .cppm under the neutral paths, in a stable order.
+    """Every .cppm, and every #include fragment (.hpp/.h, #671), under the neutral paths.
 
     Every listed path must exist: a renamed or split file would otherwise drop out of
     the scan silently and the guard would pass while checking nothing.
@@ -72,8 +77,8 @@ def neutral_sources(root: pathlib.Path) -> list[pathlib.Path]:
         path = root / relative
         if not path.exists():
             raise CheckError("listed path missing: %s — update NEUTRAL_PATHS" % relative)
-        candidates = path.rglob("*.cppm") if path.is_dir() else [path]
-        sources.extend(sorted(p for p in candidates if p.suffix == ".cppm"))
+        candidates = path.rglob("*") if path.is_dir() else [path]
+        sources.extend(sorted(p for p in candidates if p.suffix in SCANNED_SUFFIXES))
     return sources
 
 

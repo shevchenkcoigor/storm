@@ -179,6 +179,44 @@ class DiffModeTest(ToolchainTest):
         self.assertNotIn("unstaged", (self.log / "diff_stdin.1").read_text())
 
 
+class FragmentDiffTest(ToolchainTest):
+    """A staged #include fragment (#671) is linted through its parent TU."""
+
+    FRAGMENT = "src/orm/statements/select_query.hpp"
+    PARENT = "src/orm/statements/select.cppm"
+    FILTER = ("-header-filter=.*/(src/orm/statements/select_query\\.hpp)$ "
+              '-line-filter=[{"name": "src/orm/statements/select_query.hpp", "lines": [[1, 1]]}]')
+
+    def setUp(self):
+        super().setUp()
+        self.stage(self.FRAGMENT)
+        self.canned_diff(1, "No relevant changes found.\n")  # the fragment section was dropped
+
+    def test_the_parent_is_linted_with_the_fragment_lines_only(self):
+        self.run_script("--diff")
+        self.assertEqual(self.calls("tidy_calls"), ["-p build/release -quiet %s %s" % (self.FILTER, self.PARENT)])
+
+    def test_a_warning_in_a_fragment_blocks(self):
+        self.canned_tidy(self.PARENT, WARNING.replace("src/orm/fields.cppm", self.FRAGMENT) + "\n")
+        proc = self.run_script("--diff")
+        self.assert_fails(proc, "❌ clang-tidy --diff: new warnings/errors on staged lines")
+        self.assertIn("Warnings on staged lines: 1", proc.stdout)
+
+    def test_a_clean_fragment_is_not_reported_as_nothing_to_check(self):
+        proc = self.run_script("--diff")
+        self.assert_passes(proc, "✅ clang-tidy --diff: staged lines are clean")
+        self.assertNotIn("no staged C++ lines to check", proc.stdout)
+
+    def test_a_silent_nonzero_exit_blocks(self):
+        proc = self.run_script("--diff", extra_env={"FAKE_TIDY_EXIT": "3"})
+        self.assert_fails(proc, "Errors in staged files:   1")
+        self.assertIn("clang-tidy exited 3 with no diagnostic", proc.stdout)
+
+    def test_fix_reaches_the_parent_run(self):
+        self.run_script("--diff", "--fix")
+        self.assertIn("-quiet %s -fix %s" % (self.FILTER, self.PARENT), self.calls("tidy_calls")[0])
+
+
 class DiffFixTest(ToolchainTest):
     def setUp(self):
         super().setUp()

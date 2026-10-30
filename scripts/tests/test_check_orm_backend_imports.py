@@ -73,6 +73,13 @@ class ScenarioTest(FakeRepoTest):
         self.append("src/orm/statements/select.cppm", SQLITE_IMPORT)
         self.assert_fails("src/orm/statements/select.cppm:2")
 
+    def test_include_fragment_under_orm_is_scanned(self):
+        # #671: a statement module split by `#include "x.hpp"` keeps half its code in a
+        # .hpp; a .cppm-only scan would let a backend import there pass silently.
+        self.write("src/orm/statements/select_query.hpp", "namespace storm::orm::statements {}\n")
+        self.append("src/orm/statements/select_query.hpp", SQLITE_IMPORT)
+        self.assert_fails("src/orm/statements/select_query.hpp:2")
+
     def test_qualified_default_is_flagged(self):
         self.append("src/orm/queryset.cppm", "template <class C = storm::db::sqlite::Connection> class X;")
         self.assert_fails("src/orm/queryset.cppm:3")

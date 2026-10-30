@@ -360,7 +360,7 @@ TYPED_TEST(FkColumnNameTest, CountDistinctFkMemberSqlNamesFkColumn) {
     EXPECT_TRUE(sql.contains("COUNT(DISTINCT sender_id)")) << "Emitted SQL: " << sql;
 }
 
-// ── GROUP BY over an FK member (aggregate.cppm:172 — the third writer) ──────
+// ── GROUP BY over an FK member (aggregate_grammar.hpp build_group_fields_sql — the third writer) ───
 
 // GROUP BY's column list shares the same writer bug. It is reachable when the
 // GROUP BY key is a plain column and the FK appears only as the COUNT(DISTINCT)
