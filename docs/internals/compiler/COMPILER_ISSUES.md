@@ -189,6 +189,23 @@ the annotations-lost-across-BMI issue). **Any TU using `std::meta::` MUST still
 textually `#include <meta>`.** `import std;` alone is insufficient for reflection
 code.
 
+*Resolution for `src/` modules (#756):* the textual include lives in ONE module,
+`storm_std_meta` (`src/storm_std_meta.cppm`), which re-exports the `std::meta` names
+the tree uses via `export namespace std::meta { using std::meta::X; }`. Every other
+module writes `import storm_std_meta;` instead of `#include <meta>` — a textual
+`<meta>` in each module's global fragment made each BMI carry its own copy of the
+declarations (~10.7 MB floor per module). Two consequences: (1) the BARE template name
+`^^std::optional` (likewise `basic_string`, `unique_ptr`) fails through `import std;`
+("cannot take the reflection of a using-declarator"); reflecting a concrete specialization
+works, so derive the template from one: `template_of(dealias(^^std::optional<int>))`
+(`field_attr`, `model_concepts`) — a textual include of the std header would put its
+declarations back into that BMI (3.6 MB vs 0.4 MB for `field_attr`); (2) clang-tidy segfaults
+walking some module TUs that have no textual `<meta>`, whatever the check set, and which ones
+follows the import graph rather than whether the module names `std::meta` (20 modules today),
+so a module it crashes on carries `#ifdef STORM_CLANG_TIDY` / `#include <meta>` in the GMF and
+`scripts/run_clang_tidy.py` defines the macro for every lint pass.
+Non-module TUs (tests, benchmarks, fuzz, Python bindings) are unchanged.
+
 **Finding B — `#include <meta>` (and any textual std header) must come BEFORE the
 imports in a non-module TU.** `<meta>` transitively pulls textual libc++ headers
 (`<optional>` → `<compare>` → … → `promote.h`). If `import std;` (or `import

@@ -1,15 +1,17 @@
 module;
+#ifdef STORM_CLANG_TIDY
+#include <meta> // clang-tidy segfaults on a TU without a textual <meta> (#756); the real build never defines this
+#endif
 
 // Compile-time UPDATE SQL grammar (#434): the consteval "how UPDATE SQL is spelled" helpers,
 // split out of UpdateStatement so that class stays cohesive and under the method threshold
 // (cpp:S1448). Stateless and connection-free — every member derives purely from reflection
 // over the model type T (via Base = BaseStatement<T>).
 
-#include <meta>
-
 export module storm_orm_statements_update_grammar;
 
 import std;
+import storm_std_meta;
 
 import storm_orm_statements_base;
 import storm_orm_statements_field_names; // pk_where_clause_size / append_pk_where_clause (#501)

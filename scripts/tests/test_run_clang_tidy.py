@@ -147,7 +147,7 @@ class DiffModeTest(ToolchainTest):
         self.run_script("--diff", "-j", "5")
         (call,) = self.calls("diff_calls")
         self.assertEqual(call, "-clang-tidy-binary ../clang-p2996/build/bin/clang-tidy -p1 -path build/release "
-                               "-iregex .*\\.(cpp|cppm|h|hpp) -j 5 -timeout 240 -quiet")
+                               "-iregex .*\\.(cpp|cppm|h|hpp) -j 5 -timeout 240 -extra-arg=-DSTORM_CLANG_TIDY -quiet")
 
     def test_fix_adds_the_fix_flag(self):
         self.run_script("--diff", "--fix")
@@ -194,7 +194,7 @@ class FragmentDiffTest(ToolchainTest):
 
     def test_the_parent_is_linted_with_the_fragment_lines_only(self):
         self.run_script("--diff")
-        self.assertEqual(self.calls("tidy_calls"), ["-p build/release -quiet %s %s" % (self.FILTER, self.PARENT)])
+        self.assertEqual(self.calls("tidy_calls"), ["-p build/release -quiet -extra-arg=-DSTORM_CLANG_TIDY %s %s" % (self.FILTER, self.PARENT)])
 
     def test_a_warning_in_a_fragment_blocks(self):
         self.canned_tidy(self.PARENT, WARNING.replace("src/orm/fields.cppm", self.FRAGMENT) + "\n")
@@ -214,7 +214,7 @@ class FragmentDiffTest(ToolchainTest):
 
     def test_fix_reaches_the_parent_run(self):
         self.run_script("--diff", "--fix")
-        self.assertIn("-quiet %s -fix %s" % (self.FILTER, self.PARENT), self.calls("tidy_calls")[0])
+        self.assertIn("-quiet -extra-arg=-DSTORM_CLANG_TIDY %s -fix %s" % (self.FILTER, self.PARENT), self.calls("tidy_calls")[0])
 
 
 class DiffFixTest(ToolchainTest):

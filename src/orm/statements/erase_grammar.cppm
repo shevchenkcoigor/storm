@@ -1,4 +1,7 @@
 module;
+#ifdef STORM_CLANG_TIDY
+#include <meta> // clang-tidy segfaults on a TU without a textual <meta> (#756); the real build never defines this
+#endif
 
 // Compile-time DELETE SQL grammar (#501): the consteval "how DELETE SQL is spelled"
 // helpers, split out of EraseStatement so that class stays cohesive and the file stays
@@ -20,11 +23,10 @@ module;
 // 3.35 floor. The per-column alternative "a IN (...) AND b IN (...)" is WRONG: it
 // matches the cross product of the parts, so it would delete keys never listed.
 
-#include <meta>
-
 export module storm_orm_statements_erase_grammar;
 
 import std;
+import storm_std_meta;
 
 import storm_orm_field_attr; // column_name_size / append_column_name (#422)
 import storm_orm_statements_base;

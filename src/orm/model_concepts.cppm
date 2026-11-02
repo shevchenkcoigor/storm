@@ -6,11 +6,14 @@ module;
 // the dependency-free leaves (field_attr, relation_meta, utilities); base.cppm
 // re-exports this module, so every statement module keeps seeing these names unchanged.
 
-#include <meta>
+#ifdef STORM_CLANG_TIDY
+#include <meta> // clang-tidy segfaults on a TU without a textual <meta> (#756); the real build never defines this
+#endif
 
 export module storm_orm_model_concepts;
 
 import std;
+import storm_std_meta;
 
 import storm_orm_field_attr;
 import storm_orm_relation_meta;

@@ -1,4 +1,7 @@
 module;
+#ifdef STORM_CLANG_TIDY
+#include <meta> // clang-tidy segfaults on a TU without a textual <meta> (#756); the real build never defines this
+#endif
 
 // Compile-time field-name SQL grammar (#434): builds the comma-separated column lists that
 // INSERT and SELECT splice into their statements ("col1, col2, fk_id, ..."). Split out of
@@ -6,11 +9,10 @@ module;
 // from the persisted-field reflection BaseStatement already computed (all_members_,
 // primary_key_, field_count_), passed in as the Base template parameter.
 
-#include <meta>
-
 export module storm_orm_statements_field_names;
 
 import std;
+import storm_std_meta;
 
 import storm_orm_field_attr;
 import storm_orm_utilities;

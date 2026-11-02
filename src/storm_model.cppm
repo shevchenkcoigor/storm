@@ -1,4 +1,7 @@
 module;
+#ifdef STORM_CLANG_TIDY
+#include <meta> // clang-tidy segfaults on a TU without a textual <meta> (#756); the real build never defines this
+#endif
 
 // Model-declaration vocabulary (#671): the annotations a model struct is declared with
 // (primary, fk<>, many_to_many<>, max_length<N>, ...) under their short storm:: spellings,
@@ -7,9 +10,9 @@ module;
 // storm::meta namespace it also populates is the long back-compat spelling (#442), not a
 // low-level layer.
 
-#include <meta>
-
 export module storm_model;
+
+import storm_std_meta;
 
 // storm::meta flag objects, RefAction, is_primary_member: re-exported to users
 export import storm_orm_field_attr;

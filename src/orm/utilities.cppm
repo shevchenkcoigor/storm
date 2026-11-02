@@ -1,10 +1,9 @@
 module;
+#ifdef STORM_CLANG_TIDY
+#include <meta> // clang-tidy segfaults on a TU without a textual <meta> (#756); the real build never defines this
+#endif
 
 // Boilerplate-pattern duplicates accepted (see #264 finding).
-
-// Unused, but load-bearing: without a non-empty global module fragment clang-tidy
-// segfaults on this re-export module (same crash as storm.cppm, #665/#671).
-#include <meta>
 
 export module storm_orm_utilities;
 

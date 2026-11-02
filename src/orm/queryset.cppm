@@ -1,12 +1,12 @@
 module;
 
 #include <cassert>
-#include <meta>
 #include <plf_hive/plf_hive.h>
 
 export module storm_orm_queryset;
 
 import std;
+import storm_std_meta;
 
 import storm_db_concept;
 import storm_orm_field_attr;

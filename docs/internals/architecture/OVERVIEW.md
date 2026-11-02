@@ -74,6 +74,7 @@ Extensive use of compile-time features:
 ```
 src/
 ├── storm.cppm                      # Main module
+├── storm_std_meta.cppm             # The one textual <meta> include; re-exports the std::meta names modules use (#756)
 ├── db/
 │   ├── concept.cppm                # Database concepts (incl. dialect-support concepts, #477)
 │   ├── pool.cppm                   # PoolConfig, connection pooling
@@ -125,6 +126,7 @@ src/
 
 ```
 storm (main module)
+├── storm_std_meta                    (the one textual <meta>; every module that uses std::meta imports it, #756)
 ├── storm_db_concept
 ├── storm_db_pool
 ├── storm_db_sqlite

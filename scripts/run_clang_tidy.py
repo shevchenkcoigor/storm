@@ -51,6 +51,15 @@ BUILD_DIR = "build/release"
 COMPILE_COMMANDS = BUILD_DIR + "/compile_commands.json"
 CLANG_TIDY_CONFIG = ".clang-tidy"
 
+# Every lint pass parses with STORM_CLANG_TIDY defined. The modules that reach std::meta
+# through `import storm_std_meta;` (#756) include <meta> textually under this macro only:
+# without a textual <meta> in the TU this clang-tidy fork segfaults while walking the AST
+# (any Renamer-based or whole-TU check, e.g. bugprone-reserved-identifier, misc-no-recursion),
+# and no other small header avoids it. The real build never defines it, so the BMIs stay lean.
+# A module needs the `#ifdef STORM_CLANG_TIDY` block only if it crashes without it; the others
+# (field_attr, indexes, select, ...) lint fine, and a future crash fails loudly, never as clean.
+TIDY_DEFINE_ARG = "-extra-arg=-DSTORM_CLANG_TIDY"
+
 # Timeout 240s (issue #326): some TUs run a heavy consteval pass under `import std;`
 # - e.g. each tests/yaml/test_unified_yaml_*.cpp #embeds and consteval-parses its
 # slice of the unified test-case corpus. 60s was too short even before #561 split
@@ -251,7 +260,7 @@ def tee_clang_tidy_diff(opts: Options, db_path: str, staged_diff: pathlib.Path) 
     # edit touched a line inside them (issue #326).
     command = [sys.executable, CLANG_TIDY_DIFF, "-clang-tidy-binary", CLANG_TIDY, "-p1", "-path", db_path,
                "-iregex", r".*\.(cpp|cppm|h|hpp)", "-j", str(opts.jobs), "-timeout", str(TIDY_TIMEOUT_SECONDS),
-               "-quiet"] + (["-fix"] if opts.fix else [])
+               TIDY_DEFINE_ARG, "-quiet"] + (["-fix"] if opts.fix else [])
     with open(str(staged_diff), "rb") as stdin:
         return tee_command(command, stdin)[0]  # exit code unreliable across versions
 
@@ -281,7 +290,7 @@ def tee_fragment_parents(opts: Options, db_path: str, fragment_filters: dict) ->
     captured = []
     for parent, filters in sorted(fragment_filters.items()):
         header_filter = ".*/(%s)$" % "|".join(re.escape(entry["name"]) for entry in filters)
-        command = [CLANG_TIDY, "-p", db_path, "-quiet", "-header-filter=" + header_filter,
+        command = [CLANG_TIDY, "-p", db_path, "-quiet", TIDY_DEFINE_ARG, "-header-filter=" + header_filter,
                    "-line-filter=" + json.dumps(filters)]
         lines, code = tee_command(command + (["-fix"] if opts.fix else []) + [parent])
         if code and not any(": error:" in line or ": warning:" in line for line in lines):
@@ -390,7 +399,7 @@ def lint_file(path: str, db_path: str, fix: bool, clang_tidy: str = CLANG_TIDY,
     # Output is captured and failures ignored (`|| true` in the shell script): a
     # crash or a timeout is judged from what was printed. A TU that exceeds the
     # timeout therefore reads as "ok" - the silent gap #556 tracks, carried over.
-    command = [clang_tidy, "-p", db_path] + (["-fix"] if fix else []) + [path]
+    command = [clang_tidy, "-p", db_path, TIDY_DEFINE_ARG] + (["-fix"] if fix else []) + [path]
     try:
         raw = subprocess.run(command, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, timeout=timeout,
                              env=env).stdout

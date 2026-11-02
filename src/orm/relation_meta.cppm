@@ -1,10 +1,9 @@
 module;
 
-#include <meta>
-
 export module storm_orm_relation_meta;
 
 import std;
+import storm_std_meta;
 
 import storm_orm_reflection_cache; // memoised (#694)
 import storm_orm_ref_action;       // RefAction (junction ON DELETE policy) — #562

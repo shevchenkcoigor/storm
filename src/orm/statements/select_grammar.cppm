@@ -1,4 +1,7 @@
 module;
+#ifdef STORM_CLANG_TIDY
+#include <meta> // clang-tidy segfaults on a TU without a textual <meta> (#756); the real build never defines this
+#endif
 
 // Compile-time SELECT SQL grammar (#671): the consteval "how the base SELECT is
 // spelled" helpers — the full-column SELECT ... FROM <table> text and its LIMIT 1 /
@@ -7,11 +10,10 @@ module;
 // connection-free: every member derives purely from reflection over the model type T
 // (via Base = BaseStatement<T>).
 
-#include <meta>
-
 export module storm_orm_statements_select_grammar;
 
 import std;
+import storm_std_meta;
 
 import storm_orm_statements_base;
 import storm_orm_statements_field_names;

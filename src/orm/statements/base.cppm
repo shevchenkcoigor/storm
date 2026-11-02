@@ -1,14 +1,16 @@
 module;
+#ifdef STORM_CLANG_TIDY
+#include <meta> // clang-tidy segfaults on a TU without a textual <meta> (#756); the real build never defines this
+#endif
 
 // Single cohesive class template; thresholds intentionally relaxed (see #264 finding).
 // `duplicate` removed in #277 Phase 3 (bind_bulk_objects_impl + bind_expr_or_reset helpers; the
 // for_each_field_name dedup now lives in storm_orm_statements_field_names, #434).
 
-#include <meta>
-
 export module storm_orm_statements_base;
 
 import std;
+import storm_std_meta;
 
 import storm_db_concept;
 import storm_orm_field_attr;

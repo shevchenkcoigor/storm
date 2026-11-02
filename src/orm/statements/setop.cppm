@@ -3,12 +3,12 @@ module;
 // `duplicate` removed in #277 Phase 3 (add_operand helper folds union_/union_all/except_/intersect_ bodies;
 // ready_statement shared by execute() and to_sql()).
 
-#include <meta>
 #include <plf_hive/plf_hive.h>
 
 export module storm_orm_statements_setop;
 
 import std;
+import storm_std_meta;
 
 import storm_orm_statements_base;
 import storm_orm_statements_join;

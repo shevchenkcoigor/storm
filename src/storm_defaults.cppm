@@ -1,6 +1,7 @@
 module;
-
-#include <meta>
+#ifdef STORM_CLANG_TIDY
+#include <meta> // clang-tidy segfaults on a TU without a textual <meta> (#756); the real build never defines this
+#endif
 
 // Default-backend aliases. The ORM templates (`Basic*`) are written against the
 // DatabaseConnection concept and name no backend; this module is the ONE place
@@ -11,6 +12,8 @@ module;
 // `QuerySet<Person, postgresql::Connection>` read exactly as before.
 // scripts/check_orm_backend_imports.py keeps the generic modules backend-free.
 export module storm_defaults;
+
+import storm_std_meta;
 
 import storm_db_concept;
 import storm_db_default_connection;

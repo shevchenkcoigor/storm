@@ -1,11 +1,14 @@
 module;
+#ifdef STORM_CLANG_TIDY
+#include <meta> // clang-tidy segfaults on a TU without a textual <meta> (#756); the real build never defines this
+#endif
 
-#include <meta>
 #include <cassert>
 
 export module storm_orm_statements_join;
 
 import std;
+import storm_std_meta;
 
 import storm_orm_field_attr;
 import storm_orm_statements_base;

@@ -1,4 +1,7 @@
 module;
+#ifdef STORM_CLANG_TIDY
+#include <meta> // clang-tidy segfaults on a TU without a textual <meta> (#756); the real build never defines this
+#endif
 
 // Column-type-aware operand normalization for WHERE/HAVING (#622): normalize_operand only ever
 // saw the OPERAND's type, so a string-spelled filter (`== ""`, or the YAML/JSON
@@ -7,11 +10,10 @@ module;
 // module (mirrors field_attr.cppm) purely to keep where.cppm under its line budget — no
 // dependency reason; everything here stays in the storm::orm::where namespace.
 
-#include <meta>
-
 export module storm_orm_where_operand;
 
 import std;
+import storm_std_meta;
 
 import storm_orm_utilities;
 import storm_orm_field_attr; // is_fk_field/is_primary_member — FK-target PK resolution

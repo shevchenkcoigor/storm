@@ -1,10 +1,9 @@
 module;
 
-#include <meta>
-
 export module storm_orm_transaction;
 
 import std;
+import storm_std_meta;
 import storm_db_concept;
 
 export namespace storm::orm::utilities {
