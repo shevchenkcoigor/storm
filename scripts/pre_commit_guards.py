@@ -313,15 +313,6 @@ TIME_TRACE = Guard(
     "time-trace capture self-test passed",
 )
 
-# Its self-test also parses every tests/**/*.cpp, but staging one does not trigger
-# it: that would run it on nearly every test commit. CI's --all is the backstop.
-TU_ABLATION = Guard(
-    "TU ablation transforms",
-    r"^scripts/(tu_ablation\.py|tests/test_tu_ablation\.sh)$",
-    (Step(None, script("scripts/tests/test_tu_ablation.sh"), "TU ablation transforms self-test failed"),),
-    "TU ablation transforms self-test passed",
-)
-
 # --- SonarCloud gate (#711) ---
 # ci.yml's sonar-gate job; `CI gate` requires it, so a bug that reads a pending
 # or stale Sonar run as green lets a red quality gate merge.
@@ -336,7 +327,7 @@ GUARDS = (
     AGENT_FRONTMATTER, TIDY_SKIPLIST, SWEEP_WORKFLOW, SESSION_START_HOOK, SELF_HEAL, CMAKE_FORMAT_TARGET, PYYAML_CHECK,
     CPM_CACHE_CHECK, CPM_COLD_CACHE, PG_SOCKET_DEFAULT,
     LINE_COVERAGE, UNCOVERED_LINES, SMART_SKIP, TIDY_PREREQS, ORM_BACKEND_IMPORTS, PRE_COMMIT_GUARDS,
-    CI_DIGESTS, COVERAGE_PARALLEL, NINJALOG_STATS, TIME_TRACE, TU_ABLATION, SONAR_GATE,
+    CI_DIGESTS, COVERAGE_PARALLEL, NINJALOG_STATS, TIME_TRACE, SONAR_GATE,
 )
 
 # scripts/tests/ self-tests deliberately run by no guard, with where they DO run.

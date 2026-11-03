@@ -1,12 +1,13 @@
 #!/usr/bin/env python3
 """Shared harness for the compile-time measurement scripts in scripts/.
 
-`compile_time_probe.py`, `typed_test_cost.py` and `tu_ablation.py` all do the
-same three things before they can measure anything: confine a CLI-derived path
-to this repository, read `compile_commands.json` and rebuild one entry's command
-without its output operands, and time that command serially taking the best of N
-runs. Those live here so the three agree by construction — and so SonarCloud's
-duplication gate, which does not exclude `scripts/**`, has nothing to report.
+`compile_time_probe.py` and `time_trace.py` both do the same things before they
+can measure anything: confine a CLI-derived path to this repository, read
+`compile_commands.json` and rebuild one entry's command without its output
+operands — and `compile_time_probe.py` times that command serially taking the
+best of N runs. Those live here so the two agree by construction — and so
+SonarCloud's duplication gate, which does not exclude `scripts/**`, has nothing
+to report.
 
 Not a CLI: import it from a script in scripts/.
 """
@@ -96,20 +97,3 @@ def time_compile(cmd, cwd, source, obj, runs, extra=()):
         best = elapsed if best is None else min(best, elapsed)
     return best, None
 
-
-def measure(db, source_file, obj, runs, extra=()):
-    """Compile one file from the compile database, best of `runs`.
-
-    The allow-list test and the command construction it guards live in this one
-    frame, and the value tested is the value used: `source_file` is checked
-    against the database's own file set, and only then is the command for that
-    exact entry assembled and run. Splitting the two — checking in the caller,
-    building here — is what S6350 keeps objecting to, and it is a fair objection:
-    from any other frame you cannot tell what constrains the argv being executed.
-    """
-    if source_file not in {e["file"] for e in db}:
-        return None, f"{source_file}: not in the compile database"
-
-    entry = next(e for e in db if e["file"] == source_file)
-    cmd, cwd = command_for(entry)
-    return time_compile(cmd, cwd, source_file, obj, runs, extra)
