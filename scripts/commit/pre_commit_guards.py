@@ -179,11 +179,11 @@ CPM_CACHE_CHECK = Guard(
 # --- CPM cold-cache fetch (#709) ---
 # A CPM/FetchContent pin without a final GIT_SHALLOW FALSE gets CPM's depth-1 clone,
 # which cannot reach a non-branch-tip tag: a fresh worktree fails to configure while
-# every warm cache stays green. Pure bash + perl + git; broad trigger, runs in ms.
+# every warm cache stays green. Pure Python + git; broad trigger, runs in ms.
 CPM_COLD_CACHE = Guard(
     "CPM cold-cache fetch",
-    r"^(cmake/.*\.cmake|(.+/)?CMakeLists\.txt|scripts/ci/tests/test_cpm_cold_cache\.sh)$",
-    (Step(None, script("scripts/ci/tests/test_cpm_cold_cache.sh"),
+    r"^(cmake/.*\.cmake|(.+/)?CMakeLists\.txt|scripts/ci/tests/test_cpm_cold_cache\.py)$",
+    (Step(None, script("scripts/ci/tests/test_cpm_cold_cache.py"),
           "CPM cold-cache fetch policy self-test failed"),),
     "CPM cold-cache fetch policy self-test passed",
 )
@@ -229,11 +229,11 @@ UNCOVERED_LINES = Guard(
 SMART_SKIP = Guard(
     "smart-skip table",
     r"^(commit\.sh|scripts/ci/detect-changes\.sh|scripts/commit/smart_skip\.py"
-    r"|scripts/commit/tests/test_smart_skip\.py|scripts/ci/tests/test_detect_changes\.sh)$",
+    r"|scripts/commit/tests/test_smart_skip\.py|scripts/ci/tests/test_detect_changes\.py)$",
     (
         Step(None, script("scripts/commit/tests/test_smart_skip.py"), "smart-skip table self-test failed"),
-        Step(r"^scripts/ci/(detect-changes\.sh|tests/test_detect_changes\.sh)$",
-             script("scripts/ci/tests/test_detect_changes.sh"), "change-detection self-test failed"),
+        Step(r"^scripts/ci/(detect-changes\.sh|tests/test_detect_changes\.py)$",
+             script("scripts/ci/tests/test_detect_changes.py"), "change-detection self-test failed"),
     ),
     "smart-skip table self-test passed",
 )

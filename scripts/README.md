@@ -228,7 +228,7 @@ git diff --cached --name-only | ./scripts/ci/detect-changes.sh
 # HAS_CMAKE_CHANGES=false
 # HAS_BENCH_CHANGES=false
 
-./scripts/ci/tests/test_detect_changes.sh   # self-test
+./scripts/ci/tests/test_detect_changes.py   # self-test
 ```
 
 Output is `KEY=true|false` lines meant to be `eval`'d into shell variables:
@@ -247,7 +247,7 @@ eval "$(git diff --cached --name-only | ./scripts/ci/detect-changes.sh)"
 
 ## Script Self-Tests (scripts/*/tests/)
 
-Thirteen scripts have a `test_<name>.sh` self-test under a group's `tests/` folder — including three whose
+Nine scripts have a `test_<name>.sh` self-test under a group's `tests/` folder — including three whose
 subjects are not documented above (`coverage-run-batched.sh`, `ninjalog_stats.py`,
 `time_trace.py`), `test_pg_default_connstr.sh`, which covers the sourced helper
 `pg-default-connstr.sh` (the per-OS default `STORM_PG_CONNSTR` socket: Linux
@@ -277,7 +277,7 @@ for t in scripts/*/tests/test_*.sh; do "$t" || echo "FAILED: $t"; done
 
 The agent-frontmatter checker and the helpers `commit.sh` delegates to (#688) are Python, so their
 self-tests are too: `test_check_agent_frontmatter.py`, `test_check_ci_digests.py`,
-`test_check_orm_backend_imports.py`, `test_clang_tidy_skiplist.py`, `test_run_clang_tidy.py`,
+`test_check_orm_backend_imports.py`, `test_cpm_cold_cache.py` (needs `git` too: a static policy check that every pinned CPM/FetchContent call ends with `GIT_SHALLOW FALSE`, #709), `test_detect_changes.py`, `test_clang_tidy_skiplist.py`, `test_run_clang_tidy.py`,
 `test_run_clang_tidy_full.py` (the last two need `git` and `/bin/sh` as well), `test_sweep_workflow.py` (runs the sweep workflow step's script under `bash`), `test_uncovered_lines.py`,
 `test_pre_commit_guards.py`, `test_smart_skip.py`, `test_sonar_gate.py` and `test_tidy_prereqs.py` (stdlib `unittest`, need
 only `python3`, no syntax newer than 3.9) are not matched by the `*.sh` loop above — run them on their
@@ -302,13 +302,12 @@ failure so one run reports them all (#708). So a new self-test reaches CI by bec
 
 ### Prerequisites
 
-All but seven need nothing beyond bash and coreutils:
+All but six need nothing beyond bash and coreutils:
 
 | Test | Needs |
 |---|---|
 | `test_libcxx_modules_symlink.sh` | **cmake at the project's own `cmake_minimum_required`** (read from `CMakeLists.txt`, today 3.30) **and ninja** — its harness declares that same floor and configures with `-G Ninja`, so either one missing aborts every configure before `cmake/libcxx.cmake` is read |
 | `test_cmake_format_target.sh` | **cmake ≥ 3.16 and ninja** — its harness configures with `-G Ninja` (the docker/ci image has no `make`); no compiler (`LANGUAGES NONE`) |
-| `test_cpm_cold_cache.sh` | `git` and `perl` — a static policy check that every pinned CPM/FetchContent call ends with `GIT_SHALLOW FALSE` (#709); no network, no cmake |
 | `test_ninjalog_stats.sh` | `python3` (the script under test is Python) |
 | `test_session_start_hook.sh` | **`git`** — its subject is git behavior, so it `git init`s a throwaway repo and makes a real commit through the wired hook (`python3` optional: without it the `settings.json` JSON-validity assertion is reported as unchecked, the grep assertions still run) |
 | `test_time_trace.sh` | `python3`; no compiler — it pins the replay argv (a `.cppm` traced via `--precompile`, the modmap's `-fmodule-output` dropped) and the trace parsing, the two places a wrong answer is a plausible number rather than a crash |
