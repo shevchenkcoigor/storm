@@ -203,7 +203,7 @@ The generated schema binary supports direct use:
 Storm dogfoods `storm_enable_migrations()` in `tests/tools/storm_schema/`. Run the test suite:
 
 ```bash
-./scripts/test-atlas-migration.sh
+./scripts/ci/test-atlas-migration.sh
 ```
 
 ## Supported Backends

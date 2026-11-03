@@ -203,7 +203,7 @@ declarations back into that BMI (3.6 MB vs 0.4 MB for `field_attr`); (2) clang-t
 walking some module TUs that have no textual `<meta>`, whatever the check set, and which ones
 follows the import graph rather than whether the module names `std::meta` (20 modules today),
 so a module it crashes on carries `#ifdef STORM_CLANG_TIDY` / `#include <meta>` in the GMF and
-`scripts/run_clang_tidy.py` defines the macro for every lint pass.
+`scripts/tidy/run_clang_tidy.py` defines the macro for every lint pass.
 Non-module TUs (tests, benchmarks, fuzz, Python bindings) are unchanged — with one trap, which is
 Finding B below breached by a header: `benchmarks/models.hpp` does `import storm;` and only then
 includes `person.h`, whose std headers would be parsed AFTER the BMI is loaded. The trigger is a
@@ -433,14 +433,14 @@ their `module;` declaration and bake that into the BMIs every consumer imports.
 
 **(b) clang-tidy SIGSEGVs on a TU compiled with the PCH flags**, once any check
 is enabled. Same crash signature as the `benchmarks/schema.cppm` entry in
-`scripts/clang_tidy_skiplist.py`. The crash prints no `: error:` or
+`scripts/tidy/clang_tidy_skiplist.py`. The crash prints no `: error:` or
 `: warning:` line, so a checker counting only those reads it as a clean pass.
 
 This is currently **unreachable**: the PCH is applied only to `storm_tests`, and
 `tests/.clang-tidy` disables every check (`Checks: '-*'`, issue #590), so
 clang-tidy exits before building an AST. Verified that no `src/` entry carries
 the flags (74 files, 0 with PCH). The guards below exist so that re-enabling
-checks for `tests/**` cannot silently un-lint the tree. `scripts/run_clang_tidy.py` therefore strips
+checks for `tests/**` cannot silently un-lint the tree. `scripts/tidy/run_clang_tidy.py` therefore strips
 `-Xclang -include-pch` / `-include` / `-Winvalid-pch` from a temp copy of
 `compile_commands.json` before replaying commands (semantically identical: the
 PCH holds only `<gtest/gtest.h>`, which the TU includes textually anyway), and

@@ -57,7 +57,7 @@ LOCK_FILE="/tmp/storm-dev-container.lock"
 
 # The connstr for commands run INSIDE the container. The container is always
 # Linux, so this socket path is fixed — unlike the host default, which is per-OS
-# (scripts/pg-default-connstr.sh). Deliberately NOT exported: `exec` falls through
+# (scripts/coverage/pg-default-connstr.sh). Deliberately NOT exported: `exec` falls through
 # to a native run when ../clang-p2996 exists, and exporting a Linux path there
 # overwrote the caller's own value, so on macOS the coverage gate saw
 # /var/run/postgresql and every PG test skipped.

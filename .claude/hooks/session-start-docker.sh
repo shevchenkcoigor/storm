@@ -11,7 +11,7 @@
 #    otherwise no-op commit — #543, #550) never firing, and with nothing in the
 #    output to say so. Doing this after any of the three provisioning bail-outs
 #    reintroduces that silent gap, which is why each bail-out has its own
-#    scenario in scripts/tests/test_session_start_hook.sh.
+#    scenario in scripts/commit/tests/test_session_start_hook.sh.
 #
 # 2. Provision scripts/dev-container.sh's Docker build environment (issue
 #    #628): Claude Code's remote/sandboxed sessions start with no local

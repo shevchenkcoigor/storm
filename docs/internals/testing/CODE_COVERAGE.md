@@ -95,8 +95,8 @@ connection. `tests/mock_libpq/` does not reach them. With PG absent the tree
 measures **~99.8-99.9%**, and function coverage drops from **80.6% to 48.7%** —
 that second number is the quickest way to recognize this situation.
 
-`scripts/coverage-run-batched.sh` (and `commit.sh`) default `STORM_PG_CONNSTR` to the
-local unix socket, chosen per host OS by `scripts/pg-default-connstr.sh`:
+`scripts/coverage/coverage-run-batched.sh` (and `commit.sh`) default `STORM_PG_CONNSTR` to the
+local unix socket, chosen per host OS by `scripts/coverage/pg-default-connstr.sh`:
 `host=/var/run/postgresql` on Linux, `host=/tmp` on macOS (Homebrew PostgreSQL). Any
 other OS fails with a message naming it. An already-exported value wins. That is how
 the CI coverage job points the tests at its `postgres` service container.
@@ -111,7 +111,7 @@ invoke the script directly:
 
 ```bash
 STORM_PG_CONNSTR="host=localhost port=5433 dbname=storm_db user=storm_db" \
-  ./scripts/coverage-run-batched.sh build/debug
+  ./scripts/coverage/coverage-run-batched.sh build/debug
 ```
 
 In CI the preset's null does *not* strip the step-level value — it only clears an
@@ -213,7 +213,7 @@ cmake --build --preset ninja-debug --target coverage-run-mock
 
 ## Batched Test Execution
 
-Coverage tests run via `scripts/coverage-run-batched.sh`, which executes each GTest suite
+Coverage tests run via `scripts/coverage/coverage-run-batched.sh`, which executes each GTest suite
 in a separate process. This works around a Clang C++26 coverage segfault that occurs when
 running all ~1700 tests in a single process.
 

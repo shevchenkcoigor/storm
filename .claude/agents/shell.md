@@ -80,7 +80,7 @@ These scripts have project-specific conventions — understand them before modif
 - Pipeline: clang-format → cmake-format → clang-tidy → tests → coverage
 - Smart skips based on staged file types (no C++/cmake → skip all; cmake-only → skip format/tidy; bench-only → skip tests/coverage; nothing staged → skip all under the git hook, which exports `STORM_PRE_COMMIT_HOOK=1`, full suite on a manual run, #706)
 - No manual skip flags — skipping is automatic based on what's staged
-- Thin orchestrator (#688): logic lives in tested stdlib-Python helpers — `scripts/pre_commit_guards.py` (staged-file guards table, run before the `TOTAL_STEPS==0` exit), `scripts/smart_skip.py` (skip rules), `scripts/tidy_prereqs.py` (clang-tidy BMI verdict, fails closed), `scripts/uncovered_lines.py` (coverage gap report), `scripts/run_clang_tidy.py` + `scripts/clang_tidy_skiplist.py` (the clang-tidy runner and its skip lists, #692). Keep them free of syntax newer than Python 3.9 (macOS system python3)
+- Thin orchestrator (#688): logic lives in tested stdlib-Python helpers — `scripts/commit/pre_commit_guards.py` (staged-file guards table, run before the `TOTAL_STEPS==0` exit), `scripts/commit/smart_skip.py` (skip rules), `scripts/tidy/tidy_prereqs.py` (clang-tidy BMI verdict, fails closed), `scripts/coverage/uncovered_lines.py` (coverage gap report), `scripts/tidy/run_clang_tidy.py` + `scripts/tidy/clang_tidy_skiplist.py` (the clang-tidy runner and its skip lists, #692). Keep them free of syntax newer than Python 3.9 (macOS system python3)
 
 **`.githooks/pre-commit`** — Thin wrapper: exports `STORM_PRE_COMMIT_HOOK=1` (empty index then skips all checks, #706), then `exec ./commit.sh`
 
@@ -89,13 +89,13 @@ These scripts have project-specific conventions — understand them before modif
 - When re-enabled: detects C++ changes → builds with build-wrapper → runs sonar-scanner → polls CE task → checks quality gate
 - Currently just prints a notice and exits 0
 
-**`scripts/run_clang_tidy.py`** — stdlib Python (#692; was bash). Three modes (default `--diff`):
+**`scripts/tidy/run_clang_tidy.py`** — stdlib Python (#692; was bash). Three modes (default `--diff`):
 - `--diff` (default) — warns only on lines staged in `git diff --cached`. Uses clang-tidy-diff.py.
 - `--full` — whole-file scan, staged files only (pre-#262 default; opt-in via `STORM_TIDY_FULL=1`).
 - `--all` — full-tree sweep, used by the weekly `clang-tidy-sweep` CI workflow (report-only).
 - Options: `--fix` (auto-apply fixes), `-j N` (parallel jobs, default: min(cores, MemAvailable GB / 2), #555)
 - Requires release build (`cmake --preset ninja-release`) for `compile_commands.json`
-- Files clang-tidy cannot parse are listed by exact path in `scripts/clang_tidy_skiplist.py` (`--diff` drops them up front; `--full`/`--all` forgive a parse failure or crash on them) (`KNOWN_UNPARSEABLE`, plus the vendored `src/orm/generator.cppm`); `commit.sh` asks the same module via `--keep`. `src/*.cppm` parse cleanly since 2026-05-11 — a parse failure there now fails loudly.
+- Files clang-tidy cannot parse are listed by exact path in `scripts/tidy/clang_tidy_skiplist.py` (`--diff` drops them up front; `--full`/`--all` forgive a parse failure or crash on them) (`KNOWN_UNPARSEABLE`, plus the vendored `src/orm/generator.cppm`); `commit.sh` asks the same module via `--keep`. `src/*.cppm` parse cleanly since 2026-05-11 — a parse failure there now fails loudly.
 - A TU that exceeds the 240 s timeout reads as passed (#556, carried over from the shell version).
 - Exits non-zero on warnings/errors that affect the current mode's scope.
 
@@ -106,13 +106,13 @@ These scripts have project-specific conventions — understand them before modif
 - Auth stored in OS keychain via `sonar auth login`
 - Used by the `/sonarcloud-status` skill
 
-**`scripts/coverage-run-batched.sh`** — Batched coverage report generation
+**`scripts/coverage/coverage-run-batched.sh`** — Batched coverage report generation
 - **Requires a running PostgreSQL** to reach 100%: the PG `Connection`'s `constexpr`
   transaction methods and part of `pool.cppm` are instantiated only by a live connection
   (the libpq mock does not reach them). Without one the tree measures ~99.8-99.9% and
   function coverage drops 80.6% → 48.7%; the script prints a `WARN: PostgreSQL unreachable`
   line so the failure is self-diagnosing.
-- Defaults `STORM_PG_CONNSTR` per host OS via `scripts/pg-default-connstr.sh` (Linux
+- Defaults `STORM_PG_CONNSTR` per host OS via `scripts/coverage/pg-default-connstr.sh` (Linux
   `host=/var/run/postgresql`, macOS `host=/tmp`; `commit.sh` uses the same helper); an exported value wins — that
   is how CI targets its `postgres` service container. But the `ninja-debug-coverage` **build
   preset** nulls the variable, so `cmake --build --preset ninja-debug-coverage --target

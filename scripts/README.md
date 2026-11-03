@@ -1,6 +1,18 @@
 # Storm Scripts
 
-Utility scripts for the Storm ORM project.
+Utility scripts for the Storm ORM project, grouped by what they serve. Each group keeps its
+self-tests in its own `tests/` folder, so a script and its test sit one `cd` apart.
+
+| Folder | What lives there |
+|---|---|
+| `tidy/` | clang-tidy runner (`run_clang_tidy.py`), its skip-list and the prerequisite verdict `commit.sh` asks for |
+| `coverage/` | `coverage-run-batched.sh`, the per-OS PostgreSQL socket default, the lcov line-coverage parser and the uncovered-lines helper |
+| `commit/` | the pre-commit guard table (`pre_commit_guards.py`) and the staged-file skip planner (`smart_skip.py`) |
+| `ci/` | CI helpers and checkers: change classification, digest pins, agent frontmatter, ORM backend imports, SonarCloud gate, build retry, Atlas migration test |
+| `compile_time/` | compile-time measurement: `time_trace.py`, `ninjalog_stats.py`, `compile_time_probe.py` and their shared replay harness |
+
+`dev-container.sh` and `split_unified_cases.py` stay at the top level: the first is a standalone
+entry point, the second is invoked by `tests/CMakeLists.txt` at build time.
 
 ## Docker Dev Container (dev-container.sh)
 
@@ -48,17 +60,17 @@ Storm codebase with the root `.clang-tidy` configuration. Run it from the repo r
 
 ```bash
 # Staged lines only (default, = --diff): what the pre-commit hook runs
-./scripts/run_clang_tidy.py
+./scripts/tidy/run_clang_tidy.py
 
 # Whole-file scan of the staged files / of the whole tree
-./scripts/run_clang_tidy.py --full
-./scripts/run_clang_tidy.py --all
+./scripts/tidy/run_clang_tidy.py --full
+./scripts/tidy/run_clang_tidy.py --all
 
 # Auto-apply fixes, then re-check
-./scripts/run_clang_tidy.py --fix
+./scripts/tidy/run_clang_tidy.py --fix
 
 # Limit parallel jobs
-./scripts/run_clang_tidy.py -j 4
+./scripts/tidy/run_clang_tidy.py -j 4
 ```
 
 ### Options
@@ -83,9 +95,9 @@ Unrecognised arguments are ignored, as they were in the shell version.
 - A crash or an unexpected parse failure fails the run rather than reading as clean.
 - A TU that exceeds the 240 s timeout still reads as passed (#556), and the default job count
   still follows `MemAvailable` (#555); both were carried over unchanged by the port.
-- Tested by `tests/test_clang_tidy_skiplist.py`, `tests/test_run_clang_tidy.py` and
-  `tests/test_run_clang_tidy_full.py`, which run the real script against a fake clang-tidy and
-  clang-tidy-diff.py built by `tests/tidy_toolchain.py` (a fixture, not a test).
+- Tested by `tidy/tests/test_clang_tidy_skiplist.py`, `tidy/tests/test_run_clang_tidy.py` and
+  `tidy/tests/test_run_clang_tidy_full.py`, which run the real script against a fake clang-tidy and
+  clang-tidy-diff.py built by `tidy/tests/tidy_toolchain.py` (a fixture, not a test).
 
 ---
 
@@ -208,9 +220,9 @@ newlines as literal `\n` escapes — the form used by every agent file that load
 ### Usage
 
 ```bash
-./scripts/check_agent_frontmatter.py              # defaults to .claude/agents
-./scripts/check_agent_frontmatter.py some/dir     # validate another directory
-./scripts/tests/test_check_agent_frontmatter.py   # self-test (stdlib unittest)
+./scripts/ci/check_agent_frontmatter.py              # defaults to .claude/agents
+./scripts/ci/check_agent_frontmatter.py some/dir     # validate another directory
+./scripts/ci/tests/test_check_agent_frontmatter.py   # self-test (stdlib unittest)
 ```
 
 Exit code `0` = all agent files valid, `1` = at least one invalid.
@@ -243,19 +255,19 @@ differently.
 ### Usage
 
 ```bash
-git diff --cached --name-only | ./scripts/detect-changes.sh
+git diff --cached --name-only | ./scripts/ci/detect-changes.sh
 # HAS_SRC_CHANGES=true
 # HAS_TEST_CHANGES=false
 # HAS_CPP_CHANGES=true
 # HAS_CMAKE_CHANGES=false
 # HAS_BENCH_CHANGES=false
 
-./scripts/tests/test_detect_changes.sh   # self-test
+./scripts/ci/tests/test_detect_changes.sh   # self-test
 ```
 
 Output is `KEY=true|false` lines meant to be `eval`'d into shell variables:
 ```bash
-eval "$(git diff --cached --name-only | ./scripts/detect-changes.sh)"
+eval "$(git diff --cached --name-only | ./scripts/ci/detect-changes.sh)"
 ```
 
 ### Where it runs
@@ -267,15 +279,15 @@ eval "$(git diff --cached --name-only | ./scripts/detect-changes.sh)"
   full run whenever the diff touches CI plumbing itself (`.github/workflows/`, `scripts/`,
   `.githooks/`, `CMakePresets.json`, `commit.sh`), regardless of the flags above.
 
-## Script Self-Tests (scripts/tests/)
+## Script Self-Tests (scripts/*/tests/)
 
-Thirteen scripts have a `test_<name>.sh` self-test under `scripts/tests/` — including three whose
+Thirteen scripts have a `test_<name>.sh` self-test under a group's `tests/` folder — including three whose
 subjects are not documented above (`coverage-run-batched.sh`, `ninjalog_stats.py`,
 `time_trace.py`), `test_pg_default_connstr.sh`, which covers the sourced helper
 `pg-default-connstr.sh` (the per-OS default `STORM_PG_CONNSTR` socket: Linux
 `/var/run/postgresql`, macOS `/tmp`) plus its callers `commit.sh`, `coverage-run-batched.sh`
 and `dev-container.sh`, `test_line_coverage.sh`, which covers the sourced helper
-`lib/line_coverage.sh` (the BSD/GNU-portable lcov line-coverage parser shared by `commit.sh`'s
+`coverage/line_coverage.sh` (the BSD/GNU-portable lcov line-coverage parser shared by `commit.sh`'s
 gate and CI's `coverage` job, #680) plus `commit.sh`'s
 `run_coverage_check()` and `show_uncovered_lines()` — the latter under `/bin/bash` too, which is
 bash 3.2 on macOS — and a scan of `commit.sh` and the scripts it sources or runs for bash-4-only constructs (#689),
@@ -295,7 +307,7 @@ full-build fallback (#689).
 They are plain bash and run individually or as a suite:
 
 ```bash
-for t in scripts/tests/test_*.sh; do "$t" || echo "FAILED: $t"; done
+for t in scripts/*/tests/test_*.sh; do "$t" || echo "FAILED: $t"; done
 ```
 
 The agent-frontmatter checker and the helpers `commit.sh` delegates to (#688) are Python, so their
@@ -346,6 +358,6 @@ the digest-pinned `storm-ci` image, so a missing prerequisite means a broken ima
 older machine, and a skip would report green for a test that never ran.
 
 To run it elsewhere, upgrade the tool or use `scripts/dev-container.sh exec
-scripts/tests/test_libcxx_modules_symlink.sh` — noting that `exec` runs **natively**, with
+scripts/ci/tests/test_libcxx_modules_symlink.sh` — noting that `exec` runs **natively**, with
 the same tools, whenever `../clang-p2996` is checked out beside the repo, so on such a host
 the container is not a way around an old cmake.
