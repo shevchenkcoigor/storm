@@ -77,7 +77,7 @@ class TriggerTest(unittest.TestCase):
 
     def test_cmake_files_trigger_the_cpm_cold_cache_scan(self):
         for staged in ("cmake/uuid.cmake", "python/CMakeLists.txt", "tools/CMakeLists.txt",
-                       "scripts/ci/tests/test_cpm_cold_cache.sh"):
+                       "scripts/ci/tests/test_cpm_cold_cache.py"):
             self.assertIn("CPM cold-cache fetch", names(pcg.triggered_guards([staged])), staged)
 
     def test_pyyaml_check_files_trigger_their_self_test(self):

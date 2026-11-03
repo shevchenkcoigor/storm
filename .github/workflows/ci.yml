@@ -105,7 +105,7 @@ jobs:
           fetch-depth: 0
 
       - name: Self-test detect-changes.sh
-        run: ./scripts/ci/tests/test_detect_changes.sh
+        run: ./scripts/ci/tests/test_detect_changes.py
 
       - name: Detect changed files
         id: detect

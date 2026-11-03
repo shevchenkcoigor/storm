@@ -155,7 +155,7 @@ make_repo() {
     # script and one compliant pin in the tree, or it fails before the step
     # under test is reached.
     mkdir -p "$REPO/cmake"
-    cp "$REPO_ROOT/scripts/ci/tests/test_cpm_cold_cache.sh" "$REPO/scripts/ci/tests/"
+    cp "$REPO_ROOT/scripts/ci/tests/test_cpm_cold_cache.py" "$REPO/scripts/ci/tests/"
     printf 'cpmaddpackage(NAME pinned GITHUB_REPOSITORY a/b GIT_TAG v1 GIT_SHALLOW FALSE)\n' \
         > "$REPO/cmake/pinned.cmake"
     printf '#!/bin/sh\nexit 0\n' > "$REPO/scripts/tidy/run_clang_tidy.py"
