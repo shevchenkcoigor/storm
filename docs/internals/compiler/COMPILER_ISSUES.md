@@ -204,7 +204,16 @@ walking some module TUs that have no textual `<meta>`, whatever the check set, a
 follows the import graph rather than whether the module names `std::meta` (20 modules today),
 so a module it crashes on carries `#ifdef STORM_CLANG_TIDY` / `#include <meta>` in the GMF and
 `scripts/run_clang_tidy.py` defines the macro for every lint pass.
-Non-module TUs (tests, benchmarks, fuzz, Python bindings) are unchanged.
+Non-module TUs (tests, benchmarks, fuzz, Python bindings) are unchanged — with one trap, which is
+Finding B below breached by a header: `benchmarks/models.hpp` does `import storm;` and only then
+includes `person.h`, whose std headers would be parsed AFTER the BMI is loaded. The trigger is a
+libc++ header first parsed after the BMI: it re-declares entities the BMI already holds, and Linux
+fails with "cannot add 'abi_tag' attribute in a redeclaration" (`__copy_aligned`, `copy.h:42`);
+macOS does not, so only CI or the CI image shows it. `models.hpp` therefore includes the std
+headers `person.h` uses itself, above its `import storm;`. The tests are safe today only because
+gtest has already parsed the libc++ internals (`<__algorithm/copy.h>` etc.) those headers pull
+in — by include order, not by design; `<meta>` itself still lands after the BMI there, and a test
+TU that skips gtest would hit the failure.
 
 **Finding B — `#include <meta>` (and any textual std header) must come BEFORE the
 imports in a non-module TU.** `<meta>` transitively pulls textual libc++ headers
