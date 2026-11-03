@@ -403,7 +403,7 @@ jobs:
 
       - name: Build
         if: env.RUN_HEAVY != 'false'
-        run: ./scripts/ci/build-with-retry.sh ${{ matrix.preset }}
+        run: cmake --build --preset ${{ matrix.preset }}
 
       - name: Test
         if: env.RUN_HEAVY != 'false'
@@ -549,10 +549,9 @@ jobs:
 
       - name: Build
         if: env.RUN_HEAVY != 'false'
-        # Build the test binaries through the retry wrapper first, so a
-        # clang-scan-deps segfault (the known C++26 module flake) is retried here
-        # rather than failing the coverage step and reading as a coverage drop.
-        run: ./scripts/ci/build-with-retry.sh ninja-debug
+        # Build the test binaries first, so a compile failure fails here
+        # rather than inside the coverage step, where it would read as a coverage drop.
+        run: cmake --build --preset ninja-debug
 
       - name: Run coverage and enforce 100% line threshold
         if: env.RUN_HEAVY != 'false'

@@ -37,7 +37,7 @@ jobs:
       - name: Build (release)
         # Sweep needs compile_commands.json from the release build. We build
         # the library + tests targets so all TUs end up in compile_commands.json.
-        run: ./scripts/ci/build-with-retry.sh ninja-release
+        run: cmake --build --preset ninja-release
 
       - name: Run clang-tidy --all (report-only)
         id: sweep
