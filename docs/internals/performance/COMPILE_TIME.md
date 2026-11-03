@@ -44,11 +44,11 @@ machine, and the doc's own rule applies (read the deltas within a section, not
 absolute seconds across sections).
 
 Method exactly as in [Method](#method), and reproducible with
-`scripts/ninjalog_stats.py`: `rm -rf build/debug`, configure + build
+`scripts/compile_time/ninjalog_stats.py`: `rm -rf build/debug`, configure + build
 `ninja-debug` to completion, then
 
 ```
-scripts/ninjalog_stats.py build/debug/.ninja_log
+scripts/compile_time/ninjalog_stats.py build/debug/.ninja_log
 ```
 
 which deduplicates on `(start, end, cmdhash)` and counts object compiles only —
@@ -79,7 +79,7 @@ absolute seconds mean nothing without it:
 | RAM | 16 GB |
 | kernel / host OS | Linux 6.18.44-fc-v24, Ubuntu 24.04.4 LTS (sandboxed microVM) |
 | disk | virtio `/dev/vda`, ext4 |
-| container | `docker/ci/Dockerfile` (Manjaro base) via `scripts/dev-container.sh` |
+| container | `docker/ci/Dockerfile` (Manjaro base) |
 | compiler | clang-p2996 21.0.0git, commit `9ffb96e3` |
 | cmake / ninja | 4.4.3 / 1.13.2 (default `-j`, i.e. 6 jobs on 4 cores) |
 | preset | `ninja-debug` (coverage instrumentation on) |
@@ -282,7 +282,7 @@ nobody re-runs the audit expecting more.
 [The decomposition above](#what-one-average-tu-is-made-of) leaves the fixture and typed-test
 registration as ~37-41% of a TU, its largest unexplored layer. A ladder of hand-written probe TUs
 splits it — each rung adds exactly one thing over the previous, and each is compiled by replaying a
-real TU's command, the same method as `scripts/compile_time_probe.py`. The rungs are minimal TUs, so
+real TU's command, the same method as `scripts/compile_time/compile_time_probe.py`. The rungs are minimal TUs, so
 read the deltas and not the totals; the ladder itself was ad-hoc and is not shipped, since the table
 below says exactly what each rung contains:
 
@@ -769,7 +769,7 @@ as the `create_table_sql` removal already in [What was fixed](#what-was-fixed).
 
 ### The schema module under `-ftime-trace` (#670)
 
-Captured with `scripts/time_trace.py` (see [Method](#method)) at granularity 0,
+Captured with `scripts/compile_time/time_trace.py` (see [Method](#method)) at granularity 0,
 baseline develop `b199413`. **Different host from the rest of this document**:
 native macOS arm64, 8 cores, `ninja-debug` (coverage flags included), and
 another worktree's build shared the machine for part of the session (load
@@ -987,7 +987,7 @@ instantiates a statement. Both concepts now read
 per `T`, on first use, so it stays lazy (it is a namespace-scope variable template, not
 the class-scope static of #670).
 
-Deterministic `-ftime-trace` event counts (`scripts/time_trace.py`, one run each):
+Deterministic `-ftime-trace` event counts (`scripts/compile_time/time_trace.py`, one run each):
 
 | TU | `EvaluateAsConstantExpr` | `EvaluateAsInitializer` |
 |---|---:|---:|
@@ -1097,21 +1097,21 @@ Three scripts implement the measurements below, so a later investigation re-runs
 them rather than rebuilding the harness (and rediscovering the mistakes in the
 bullets that follow). Two of them answer "what does one TU pay" from different
 angles; `ninjalog_stats.py` answers "where does the whole build's time go". They
-share one replay harness, `scripts/lib/compile_replay.py`, so they agree on what
+share one replay harness, `scripts/compile_time/compile_replay.py`, so they agree on what
 a timed compile is:
 
 | script | answers |
 |---|---|
-| `scripts/compile_time_probe.py` | what a TU pays before its first assertion — generates probes carrying N models from `shared/models/`, replays a real TU's command against each, reports deltas |
-| `scripts/ninjalog_stats.py` | where the whole build's time goes — parses `.ninja_log` into the bucket table above, deduplicating module edges and excluding scan edges |
-| `scripts/time_trace.py` | where ONE TU's (or one module's) time goes inside the compiler — replays it with `-ftime-trace -ftime-trace-granularity=0`, best of N, and prints clang's `Total <event>` aggregates plus the longest `InstantiateFunction`/`InstantiateClass`/`ParseClass`/constant-evaluation events, optionally `--filter`ed by detail |
+| `scripts/compile_time/compile_time_probe.py` | what a TU pays before its first assertion — generates probes carrying N models from `shared/models/`, replays a real TU's command against each, reports deltas |
+| `scripts/compile_time/ninjalog_stats.py` | where the whole build's time goes — parses `.ninja_log` into the bucket table above, deduplicating module edges and excluding scan edges |
+| `scripts/compile_time/time_trace.py` | where ONE TU's (or one module's) time goes inside the compiler — replays it with `-ftime-trace -ftime-trace-granularity=0`, best of N, and prints clang's `Total <event>` aggregates plus the longest `InstantiateFunction`/`InstantiateClass`/`ParseClass`/constant-evaluation events, optionally `--filter`ed by detail |
 
 ```bash
-scripts/dev-container.sh exec python3 scripts/compile_time_probe.py
-scripts/dev-container.sh exec python3 scripts/compile_time_probe.py --body real
-scripts/ninjalog_stats.py build/debug/.ninja_log     # after a build from scratch
-scripts/dev-container.sh exec python3 scripts/time_trace.py src/orm/schema.cppm
-scripts/dev-container.sh exec python3 scripts/time_trace.py \
+python3 scripts/compile_time/compile_time_probe.py
+python3 scripts/compile_time/compile_time_probe.py --body real
+scripts/compile_time/ninjalog_stats.py build/debug/.ninja_log     # after a build from scratch
+python3 scripts/compile_time/time_trace.py src/orm/schema.cppm
+python3 scripts/compile_time/time_trace.py \
     tests/schema/test_orm_schema.cpp --filter SchemaStatement --top 15
 ```
 
@@ -1146,10 +1146,10 @@ To redo the second-backend measurement by hand, narrow `DatabaseTypes` in
 - **Whole-build breakdown**: parse `.ninja_log`, deduplicating on
   `(start, end, cmdhash)` — one module compile emits both a `.pcm` and a `.o`
   and logs a line per output, so the raw log double-counts every module edge.
-  `scripts/ninjalog_stats.py` implements this; measure a build from scratch, as
+  `scripts/compile_time/ninjalog_stats.py` implements this; measure a build from scratch, as
   the log accumulates across runs.
 - **Inside one TU**: `-ftime-trace`, then aggregate `InstantiateFunction` /
-  `InstantiateClass` / `Source` events by `args.detail` — `scripts/time_trace.py`.
+  `InstantiateClass` / `Source` events by `args.detail` — `scripts/compile_time/time_trace.py`.
   It needs no extra preset or build tree: it replays from an existing build's
   `compile_commands.json` and writes the trace to `build/time-trace/`, so default
   builds are untouched. Prefer its event **counts** for an A/B — they are

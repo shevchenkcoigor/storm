@@ -48,7 +48,7 @@ jobs:
   # event; merge_group: against the queue's base, develop's tip the group was
   # built on (#711); push: against the pre-push SHA, computed but unread since #700 skips
   # the heavy jobs on push; schedule/workflow_dispatch carry no `before`, so
-  # they run everything) via scripts/detect-changes.sh —
+  # they run everything) via scripts/ci/detect-changes.sh —
   # the same script commit.sh uses for its staged-file smart skips, so both
   # places agree on what counts as "src/tests/cmake changed". `run_heavy`
   # gates the expensive STEPS of the `test` / `coverage` /
@@ -105,7 +105,7 @@ jobs:
           fetch-depth: 0
 
       - name: Self-test detect-changes.sh
-        run: ./scripts/tests/test_detect_changes.sh
+        run: ./scripts/ci/tests/test_detect_changes.sh
 
       - name: Detect changed files
         id: detect
@@ -143,7 +143,7 @@ jobs:
           echo "Changed files:"
           echo "$files"
 
-          detected=$(printf '%s\n' "$files" | ./scripts/detect-changes.sh)
+          detected=$(printf '%s\n' "$files" | ./scripts/ci/detect-changes.sh)
           eval "$detected"
           : "${HAS_SRC_CHANGES:?detect-changes.sh produced no output}"
 
@@ -184,13 +184,13 @@ jobs:
   # skip-list (#550), SessionStart hook wiring (#651), the per-OS PG socket
   # default, the line-coverage parser (#680), the commit.sh helpers (#688), the
   # storm-ci digest pins (#530) and the rest — are rows of ONE table,
-  # scripts/pre_commit_guards.py's GUARDS, which commit.sh also runs. This job
+  # scripts/commit/pre_commit_guards.py's GUARDS, which commit.sh also runs. This job
   # used to be seven hand-written jobs that had drifted from that table: some
   # guards ran only pre-commit, four self-tests ran nowhere. `--all` runs every
   # row regardless of what changed, because the hook is bypassable (an unwired
   # clone, a web edit, a merge) and only runs the guards a commit's files
   # trigger. A new guard is covered here by adding its row, with no edit to this
-  # file; scripts/tests/test_pre_commit_guards.py fails if a self-test is in
+  # file; scripts/commit/tests/test_pre_commit_guards.py fails if a self-test is in
   # neither the table nor its NOT_GUARDED list. Pure bash/python/perl plus cmake >=
   # 3.16 and ninja for test_cmake_format_target.sh (scripts/README.md lists each
   # self-test's prerequisites); no compiler, so it runs on every PR.
@@ -206,13 +206,13 @@ jobs:
       - name: Ensure ninja
         run: command -v ninja || { sudo apt-get update -qq && sudo apt-get install -y -qq ninja-build; }
 
-      - name: Run every guard in scripts/pre_commit_guards.py
-        run: ./scripts/pre_commit_guards.py --all
+      - name: Run every guard in scripts/commit/pre_commit_guards.py
+        run: ./scripts/commit/pre_commit_guards.py --all
 
   # The SonarCloud quality gate as a job of this workflow (#711), so `CI gate`
   # can require it. The SonarCloud app posts `SonarCloud Code Analysis` on PRs
   # only, never on the merge queue's merge-group commits; required directly, it
-  # would leave every queued PR waiting out the timeout. scripts/sonar_gate.py
+  # would leave every queued PR waiting out the timeout. scripts/ci/sonar_gate.py
   # polls that check run on the PR head and fails unless it concluded
   # `success`; on any other event (merge_group, push, schedule) it passes at
   # once — a queued PR was already gated on its own PR run. GITHUB_TOKEN with
@@ -234,7 +234,7 @@ jobs:
           EVENT_NAME: ${{ github.event_name }}
           HEAD_SHA: ${{ github.event.pull_request.head.sha }}
           GITHUB_TOKEN: ${{ github.token }}
-        run: ./scripts/sonar_gate.py
+        run: ./scripts/ci/sonar_gate.py
 
   # cmake/clang_p2996_host.cmake resolves clang-p2996's on-disk layout
   # (Linux/amd64 Docker vs. native macOS/arm64) for CMAKE_CXX_STDLIB_MODULES_JSON
@@ -271,7 +271,7 @@ jobs:
 
       - name: Test host-layout resolution + import-std symlink behavior
         if: env.RUN_HEAVY != 'false'
-        run: ./scripts/tests/test_libcxx_modules_symlink.sh
+        run: ./scripts/ci/tests/test_libcxx_modules_symlink.sh
 
   test:
     name: "${{ matrix.preset }} / PG ${{ matrix.postgres }}"
@@ -403,7 +403,7 @@ jobs:
 
       - name: Build
         if: env.RUN_HEAVY != 'false'
-        run: ./scripts/build-with-retry.sh ${{ matrix.preset }}
+        run: cmake --build --preset ${{ matrix.preset }}
 
       - name: Test
         if: env.RUN_HEAVY != 'false'
@@ -417,7 +417,7 @@ jobs:
           && matrix.preset == 'ninja-debug' && matrix.postgres == 17
         run: |
           curl -sSf https://atlasgo.sh | sh
-          ./scripts/test-atlas-migration.sh
+          ./scripts/ci/test-atlas-migration.sh
 
       # Full-tree clang-tidy sweep — tracked by issue #262.
       # Enable once the pre-existing drift across src/ and tests/ is cleaned up.
@@ -425,11 +425,11 @@ jobs:
       # src/orm/statements/*.cppm + src/db/postgresql.cppm, which are addressed
       # in this PR — but other source files almost certainly carry similar
       # accumulated violations that were masked by the same `.cppm` parse-failure
-      # auto-skip in scripts/run_clang_tidy.py. Enabling --all in CI now would
+      # auto-skip in scripts/tidy/run_clang_tidy.py. Enabling --all in CI now would
       # fail every PR. Uncomment after issue #262's cleanup pass lands.
       # - name: clang-tidy full sweep
       #   if: matrix.preset == 'ninja-release' && matrix.postgres == 17
-      #   run: ./scripts/run_clang_tidy.py --all
+      #   run: ./scripts/tidy/run_clang_tidy.py --all
 
   # Reproduces commit.sh step 5 (the 100%-line-coverage gate) in CI, so the gate
   # stops being self-reported from one developer's machine. Deliberately NOT a
@@ -448,7 +448,7 @@ jobs:
   # the local 100% did not depend on a live server. That premise was wrong: the
   # local number was measured on a machine running PG at /var/run/postgresql,
   # which is exactly the socket coverage-run-batched.sh defaults to on Linux (macOS
-  # defaults to /tmp, see scripts/pg-default-connstr.sh), so PG tests
+  # defaults to /tmp, see scripts/coverage/pg-default-connstr.sh), so PG tests
   # were quietly running and their lines were quietly counted. With PG genuinely
   # absent the same tree measures ~99.8-99.9% (functions drop 80.6% -> 48.7%),
   # because the PG Connection's constexpr transaction-nesting methods and part of
@@ -479,7 +479,7 @@ jobs:
       RUN_HEAVY: ${{ needs.changes.outputs.run_heavy }}
     runs-on: ubuntu-24.04
     container:
-      # Keep in sync with the `test` job's pin — scripts/check_ci_digests.py asserts they agree.
+      # Keep in sync with the `test` job's pin — scripts/ci/check_ci_digests.py asserts they agree.
       # lcov/genhtml ship in the image already (docker/ci/Dockerfile), so this
       # job needs no image change.
       image: ghcr.io/spiritecosse/storm-ci@sha256:ae4f62771d7611c663ccb8e0061af9acc8a8a3fe604eabde4285d11a77d37a61
@@ -549,10 +549,9 @@ jobs:
 
       - name: Build
         if: env.RUN_HEAVY != 'false'
-        # Build the test binaries through the retry wrapper first, so a
-        # clang-scan-deps segfault (the known C++26 module flake) is retried here
-        # rather than failing the coverage step and reading as a coverage drop.
-        run: ./scripts/build-with-retry.sh ninja-debug
+        # Build the test binaries first, so a compile failure fails here
+        # rather than inside the coverage step, where it would read as a coverage drop.
+        run: cmake --build --preset ninja-debug
 
       - name: Run coverage and enforce 100% line threshold
         if: env.RUN_HEAVY != 'false'
@@ -582,7 +581,7 @@ jobs:
           # "lines.......: 100.0% (8613 of 8613 lines)" alongside functions/branches
           # rows; anchoring on the wrong one would gate against ~81% or ~92% and
           # look like a broken job. Same helper commit.sh's run_coverage_check() uses.
-          source scripts/lib/line_coverage.sh
+          source scripts/coverage/line_coverage.sh
           line_cov=$(storm_parse_line_coverage < "$summary")
 
           # An unparseable summary must fail loudly, not silently pass — a missing
@@ -682,7 +681,7 @@ jobs:
     # A network clone that hangs must not hold the gate for the 6-hour default.
     timeout-minutes: 20
     container:
-      # Keep in sync with the `test` job's pin — scripts/check_ci_digests.py asserts they agree.
+      # Keep in sync with the `test` job's pin — scripts/ci/check_ci_digests.py asserts they agree.
       image: ghcr.io/spiritecosse/storm-ci@sha256:ae4f62771d7611c663ccb8e0061af9acc8a8a3fe604eabde4285d11a77d37a61
     steps:
       - name: No CMake changes — cold configure skipped

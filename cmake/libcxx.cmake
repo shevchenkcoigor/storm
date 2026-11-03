@@ -1,6 +1,6 @@
 # CMAKE_CURRENT_LIST_DIR (not a plain relative path) so this resolves correctly
 # regardless of the including project's source dir — e.g. when
-# scripts/tests/test_libcxx_modules_symlink.sh's harness include()s this file
+# scripts/ci/tests/test_libcxx_modules_symlink.sh's harness include()s this file
 # directly from a throwaway project elsewhere.
 include("${CMAKE_CURRENT_LIST_DIR}/clang_p2996_host.cmake")
 

@@ -5,7 +5,7 @@
 # All checks are mandatory. No skip flags available.
 #
 # Smart skips (automatic, based on staged files; classified by
-# scripts/detect-changes.sh, shared with .github/workflows/ci.yml):
+# scripts/ci/detect-changes.sh, shared with .github/workflows/ci.yml):
 #   No C++ or cmake files         → skip format, tidy, tests, coverage
 #   cmake-only changes            → skip clang-format, clang-tidy; run tests + coverage + cmake-format
 #   C++ but no src/tests/cmake    → skip tests, coverage
@@ -31,7 +31,7 @@ FAILED=false
 TOTAL_START=$SECONDS
 
 # Fixed log files — one per step, stable paths for easy inspection after failure.
-# STORM_COMMIT_LOG_DIR relocates them; only scripts/tests/ sets it, so a self-test
+# STORM_COMMIT_LOG_DIR relocates them; only the scripts/*/tests/ self-tests set it, so a self-test
 # never overwrites the logs of a real run.
 LOG_DIR="${STORM_COMMIT_LOG_DIR:-/tmp}"
 mkdir -p "$LOG_DIR"
@@ -146,7 +146,7 @@ configure_and_build() {
 # instead of 1 on src/orm/utilities.cppm, verified), and the hook runs
 # clang-tidy with --fix.
 # Answers "does clang-tidy have everything it needs to parse the staged files?"
-# via scripts/tidy_prereqs.py (#688), which prints exactly `complete` when it
+# via scripts/tidy/tidy_prereqs.py (#688), which prints exactly `complete` when it
 # does. EVERY other outcome — `incomplete`, a crash, a missing python3, a staged
 # file with no compile_commands entry — is read as incomplete by the caller, so
 # an unanticipated failure rebuilds rather than silently skips. That direction is
@@ -157,7 +157,7 @@ tidy_prereqs_verdict() {
     local build_dir="$1"
     shift
     [[ $# -eq 0 ]] && { echo "incomplete"; return; }
-    "$(dirname "${BASH_SOURCE[0]}")/scripts/tidy_prereqs.py" "$build_dir" "$@" 2>/dev/null \
+    "$(dirname "${BASH_SOURCE[0]}")/scripts/tidy/tidy_prereqs.py" "$build_dir" "$@" 2>/dev/null \
         || echo "incomplete"
 }
 
@@ -244,11 +244,11 @@ build_tidy_prereqs() {
     # Files run_clang_tidy.py refuses to parse are not evidence of anything —
     # dropping them keeps a staged benchmarks/schema.cppm from forcing a full
     # build for a file clang-tidy never opens. Same source of truth both consult
-    # (#550, scripts/clang_tidy_skiplist.py); if it is unavailable, keep every
+    # (#550, scripts/tidy/clang_tidy_skiplist.py); if it is unavailable, keep every
     # input, which can only over-trigger the fallback.
     local -a probe_inputs=()
     local skiplist f
-    skiplist="$(dirname "${BASH_SOURCE[0]}")/scripts/clang_tidy_skiplist.py"
+    skiplist="$(dirname "${BASH_SOURCE[0]}")/scripts/tidy/clang_tidy_skiplist.py"
     if [[ ${#tidy_inputs[@]} -gt 0 ]]; then
         while IFS= read -r f; do probe_inputs+=("$f"); done < <(
             printf '%s\n' "${tidy_inputs[@]}" | python3 "$skiplist" --keep 2>/dev/null \
@@ -307,10 +307,10 @@ print_summary() {
 }
 
 # --- Smart skip: detect staged file changes ---
-# Classification (HAS_SRC_CHANGES etc.) lives in scripts/detect-changes.sh, shared
+# Classification (HAS_SRC_CHANGES etc.) lives in scripts/ci/detect-changes.sh, shared
 # with .github/workflows/ci.yml so both places skip on the same rules; the
 # decision table (which RUN_* steps a classification needs) is
-# scripts/smart_skip.py (#688). With nothing staged there is nothing to classify.
+# scripts/commit/smart_skip.py (#688). With nothing staged there is nothing to classify.
 # Under the git hook (STORM_PRE_COMMIT_HOOK=1, set by .githooks/pre-commit) an
 # empty index is a commit that changes nothing, so it needs no checks (#706).
 # A manual `./commit.sh` with nothing staged keeps the full suite. smart_skip.py
@@ -326,11 +326,11 @@ RUN_SWITCHES=(RUN_FORMAT RUN_CMAKE_FORMAT RUN_TIDY RUN_TESTS RUN_COVERAGE RUN_BE
 unset "${RUN_SWITCHES[@]}" SKIP_NOTE
 if [[ -n "$STAGED_FILES" ]]; then
     PLAN=$(set -o pipefail
-           printf '%s\n' "$STAGED_FILES" | "$SCRIPTS_DIR/detect-changes.sh" | "$SCRIPTS_DIR/smart_skip.py") || PLAN=""
+           printf '%s\n' "$STAGED_FILES" | "$SCRIPTS_DIR/ci/detect-changes.sh" | "$SCRIPTS_DIR/commit/smart_skip.py") || PLAN=""
 else
     EMPTY_INDEX_ARGS=()
     [[ "${STORM_PRE_COMMIT_HOOK:-}" == 1 ]] && EMPTY_INDEX_ARGS=(--empty-index-skips)
-    PLAN=$("$SCRIPTS_DIR/smart_skip.py" ${EMPTY_INDEX_ARGS[@]+"${EMPTY_INDEX_ARGS[@]}"} < /dev/null) || PLAN=""
+    PLAN=$("$SCRIPTS_DIR/commit/smart_skip.py" ${EMPTY_INDEX_ARGS[@]+"${EMPTY_INDEX_ARGS[@]}"} < /dev/null) || PLAN=""
 fi
 eval "$PLAN"
 for switch in "${RUN_SWITCHES[@]}"; do
@@ -344,12 +344,12 @@ done
 
 # --- Staged-file guards (issues #543, #550, #651, #674, #680, #688) ---
 # The table of guards (trigger regex -> self-test/checker -> BLOCK message) lives
-# in scripts/pre_commit_guards.py. They run BEFORE the TOTAL_STEPS==0 early exit
+# in scripts/commit/pre_commit_guards.py. They run BEFORE the TOTAL_STEPS==0 early exit
 # below on purpose: a commit touching only a guard's files skips every other
 # step, so gating them on the step count would miss their own failure case.
 if [[ -n "$STAGED_FILES" ]]; then
     printf '%s\n' "$STAGED_FILES" \
-        | "$(dirname "${BASH_SOURCE[0]}")/scripts/pre_commit_guards.py" \
+        | "$(dirname "${BASH_SOURCE[0]}")/scripts/commit/pre_commit_guards.py" \
             --log-file "$LOG_SELF_HEAL" 3> "$LOG_SELF_HEAL" || exit 1
 fi
 
@@ -431,9 +431,9 @@ if [[ "$RUN_TIDY" == true ]]; then
     fi
 
     if [[ -n "$STORM_TIDY_FULL" ]]; then
-        run_step "clang-tidy --full --fix" "$LOG_TIDY" ./scripts/run_clang_tidy.py --full --fix || true
+        run_step "clang-tidy --full --fix" "$LOG_TIDY" ./scripts/tidy/run_clang_tidy.py --full --fix || true
     else
-        run_step "clang-tidy --diff --fix" "$LOG_TIDY" ./scripts/run_clang_tidy.py --diff --fix || true
+        run_step "clang-tidy --diff --fix" "$LOG_TIDY" ./scripts/tidy/run_clang_tidy.py --diff --fix || true
     fi
 fi
 
@@ -470,16 +470,16 @@ if [[ "$RUN_TESTS" == true ]]; then
         configure_and_build ninja-debug build/debug/build.ninja || return 1
 
         # Soft default (not an override): an already-exported STORM_PG_CONNSTR
-        # wins, as in scripts/coverage-run-batched.sh — a hard override here would
+        # wins, as in scripts/coverage/coverage-run-batched.sh — a hard override here would
         # silently point tests at a different DB than coverage uses in the same
         # commit.sh run. The two share the DEFAULT (per-OS socket directory, from
-        # scripts/pg-default-connstr.sh) but not the empty-value rule: this treats
+        # scripts/coverage/pg-default-connstr.sh) but not the empty-value rule: this treats
         # a set-but-empty value as unset, the coverage script passes it through.
         # CMakePresets.json's testPresets still carry the Linux path (`ctest
         # --preset` only).
         if [[ -z "${STORM_PG_CONNSTR:-}" ]]; then
-            # shellcheck source=scripts/pg-default-connstr.sh
-            source "$(dirname "${BASH_SOURCE[0]}")/scripts/pg-default-connstr.sh"
+            # shellcheck source=scripts/coverage/pg-default-connstr.sh
+            source "$(dirname "${BASH_SOURCE[0]}")/scripts/coverage/pg-default-connstr.sh"
             STORM_PG_CONNSTR="$(storm_pg_default_connstr)" || return 1
         fi
         export STORM_PG_CONNSTR
@@ -488,7 +488,7 @@ if [[ "$RUN_TESTS" == true ]]; then
         # exits 0), so the gate would otherwise report PASS having silently run
         # only the SQLite half. Warn loudly rather than fail: CLAUDE.md
         # documents PG-skip-if-not-running as accepted behavior, so this
-        # matches scripts/coverage-run-batched.sh's WARN (not fail) policy.
+        # matches scripts/coverage/coverage-run-batched.sh's WARN (not fail) policy.
         if command -v pg_isready > /dev/null 2>&1 \
            && ! pg_isready -d "$STORM_PG_CONNSTR" > /dev/null 2>&1; then
             echo -e "${RED}  WARN: PostgreSQL unreachable at [$STORM_PG_CONNSTR] — PG tests will SKIP${RESET}"
@@ -535,7 +535,7 @@ if [[ "$RUN_COVERAGE" == true ]]; then
         # Plain text when this script's own colours are blank (as in its self-test).
         local no_color=""
         [[ -z "$RED" ]] && no_color=1
-        NO_COLOR="$no_color" "$(dirname "${BASH_SOURCE[0]}")/scripts/uncovered_lines.py"
+        NO_COLOR="$no_color" "$(dirname "${BASH_SOURCE[0]}")/scripts/coverage/uncovered_lines.py"
     }
 
     # Run coverage as a compound check: clean + build + parse + threshold
@@ -558,8 +558,8 @@ if [[ "$RUN_COVERAGE" == true ]]; then
         fi
 
         # Extract line coverage percentage (portable across BSD/GNU grep, #680)
-        # shellcheck source=scripts/lib/line_coverage.sh
-        source "$(dirname "${BASH_SOURCE[0]}")/scripts/lib/line_coverage.sh"
+        # shellcheck source=scripts/coverage/line_coverage.sh
+        source "$(dirname "${BASH_SOURCE[0]}")/scripts/coverage/line_coverage.sh"
         local line_cov
         line_cov=$(storm_parse_line_coverage <<< "$output")
 

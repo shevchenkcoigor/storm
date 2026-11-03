@@ -36,7 +36,7 @@ if(ENABLE_COVERAGE AND ENABLE_TESTS)
   # it a build-time decision.
   add_custom_target(
     coverage-run-main
-    COMMAND ${CMAKE_SOURCE_DIR}/scripts/coverage-run-batched.sh
+    COMMAND ${CMAKE_SOURCE_DIR}/scripts/coverage/coverage-run-batched.sh
             ${CMAKE_BINARY_DIR}
     DEPENDS storm_tests
     WORKING_DIRECTORY ${CMAKE_BINARY_DIR}

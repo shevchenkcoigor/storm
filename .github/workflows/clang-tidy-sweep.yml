@@ -3,7 +3,7 @@ name: clang-tidy weekly sweep
 # Scheduled full-tree clang-tidy sweep — report-only.
 # See Issue #262 for rationale.
 #
-# Runs ./scripts/run_clang_tidy.py --all and writes the result to the workflow
+# Runs ./scripts/tidy/run_clang_tidy.py --all and writes the result to the workflow
 # run's Summary tab. Does NOT gate develop merges (yet) — opt-in gating is
 # deferred. The point is to surface accumulated drift within a week instead
 # of within months, which is what triggered Issue #262 in the first place.
@@ -21,7 +21,7 @@ jobs:
     runs-on: ubuntu-24.04
     container:
       # Same pinned storm-ci image as ci.yml — keep digests in sync when bumping.
-      # Enforced by scripts/check_ci_digests.py (pre-commit + ci.yml's script-guards job).
+      # Enforced by scripts/ci/check_ci_digests.py (pre-commit + ci.yml's script-guards job).
       image: ghcr.io/spiritecosse/storm-ci@sha256:ae4f62771d7611c663ccb8e0061af9acc8a8a3fe604eabde4285d11a77d37a61
 
     steps:
@@ -37,14 +37,14 @@ jobs:
       - name: Build (release)
         # Sweep needs compile_commands.json from the release build. We build
         # the library + tests targets so all TUs end up in compile_commands.json.
-        run: ./scripts/build-with-retry.sh ninja-release
+        run: cmake --build --preset ninja-release
 
       - name: Run clang-tidy --all (report-only)
         id: sweep
         continue-on-error: true
         run: |
           set +e
-          ./scripts/run_clang_tidy.py --all 2>&1 | tee /tmp/sweep.log
+          ./scripts/tidy/run_clang_tidy.py --all 2>&1 | tee /tmp/sweep.log
           # PIPESTATUS[0] is the sweep's own status; a bare $? here is tee's (#725).
           echo "exit_code=${PIPESTATUS[0]}" >> "$GITHUB_OUTPUT"
 

@@ -90,9 +90,9 @@ Strong success criteria let you loop independently. Weak criteria ("make it work
 4. **NEVER work directly on `develop` for issue-linked tasks** - Always create `feature/<N>-<description>` branch first (see [Branching Rules](#branching-rules))
 5. **ALWAYS show files before commit** - Run `git status --short`, get user approval, then commit
 6. **ALWAYS benchmark after code changes** - Use Release builds; revert if ANY slowdown
-7. **NEVER run sanitizer builds locally — CI runs them** - `ninja-asan-ubsan` (memory + UB) and `ninja-tsan` (data races) run in CI on every PR that touches `src/`, `tests/`, or cmake files — **and** on any PR touching CI's own plumbing (`.github/workflows/`, `scripts/`, `.githooks/`, `CMakePresets.json`, `commit.sh`), which forces a full run so that plumbing cannot skip the very jobs it configures. Only a PR touching none of those (docs-only, say) skips them — the jobs still RUN and report green, with their build/test **steps** skipped, because a matrix job skipped by a job-level `if:` never reports its per-matrix check names and leaves branch protection waiting forever (#638). The gate fails closed — a broken `changes` job runs everything rather than silently skipping. The `ci-gate` job (branch-protection context exactly **`CI gate`**, NOT `CI / CI gate` as the PR checks list renders it) is **intended to become** the single always-running required check — it passes when every other job is success-or-skipped, so branch protection never has to name a context a skipped job cannot report. **Until develop's required-checks list actually names it, the per-matrix contexts are still what gates the merge**, which is why the heavy jobs currently run-and-skip-steps rather than skipping outright. `ci.yml`'s `ci-gate` comment carries the migration order; performing it out of order strands either every open PR or every docs-only one. `scripts/detect-changes.sh` does the path/extension classification, the `changes` job in `ci.yml` adds the plumbing rule; check results with `gh pr checks <PR#>`. The heavy jobs do NOT run on the post-merge **push to `develop`** (#700): `develop` merges through a **merge queue** (#711), whose `merge_group` run already tested the exact merged tree (before the queue, `strict` branch protection did the same via the PR's merge ref), so a nightly `schedule` run (03:00 UTC, also `workflow_dispatch`-able) is develop's net instead — keep the queue (or `strict`) on, it is what makes that skip safe. A new push to a PR cancels that PR's previous run (`concurrency`, one group per PR; develop/nightly runs are never cancelled). Nothing alerts on a red nightly — check `gh run list --workflow ci.yml --event schedule`. Every job above restores `.cache/CPM` with a `cpm-` restore-key fallback, so none of them ever fetches a pinned dependency from the network (how #697's deleted upstream tag stayed green); the `cold CPM configure (#702)` job is the one that does — `ninja-release` + `ninja-python` configured with no CPM cache, covering all five pins, on the nightly and on PRs touching any `CMakeLists.txt` / `*.cmake` or the plumbing above (`run_cold_cpm`, step-gated like the heavy jobs). A red nightly there with no in-repo change means an upstream ref moved or vanished. Fix or revert if CI reports new violations. Do NOT build or run sanitizer presets locally.
+7. **NEVER run sanitizer builds locally — CI runs them** - `ninja-asan-ubsan` (memory + UB) and `ninja-tsan` (data races) run in CI on every PR that touches `src/`, `tests/`, or cmake files — **and** on any PR touching CI's own plumbing (`.github/workflows/`, `scripts/`, `.githooks/`, `CMakePresets.json`, `commit.sh`), which forces a full run so that plumbing cannot skip the very jobs it configures. Only a PR touching none of those (docs-only, say) skips them — the jobs still RUN and report green, with their build/test **steps** skipped, because a matrix job skipped by a job-level `if:` never reports its per-matrix check names and leaves branch protection waiting forever (#638). The gate fails closed — a broken `changes` job runs everything rather than silently skipping. The `ci-gate` job (branch-protection context exactly **`CI gate`**, NOT `CI / CI gate` as the PR checks list renders it) is **intended to become** the single always-running required check — it passes when every other job is success-or-skipped, so branch protection never has to name a context a skipped job cannot report. **Until develop's required-checks list actually names it, the per-matrix contexts are still what gates the merge**, which is why the heavy jobs currently run-and-skip-steps rather than skipping outright. `ci.yml`'s `ci-gate` comment carries the migration order; performing it out of order strands either every open PR or every docs-only one. `scripts/ci/detect-changes.sh` does the path/extension classification, the `changes` job in `ci.yml` adds the plumbing rule; check results with `gh pr checks <PR#>`. The heavy jobs do NOT run on the post-merge **push to `develop`** (#700): `develop` merges through a **merge queue** (#711), whose `merge_group` run already tested the exact merged tree (before the queue, `strict` branch protection did the same via the PR's merge ref), so a nightly `schedule` run (03:00 UTC, also `workflow_dispatch`-able) is develop's net instead — keep the queue (or `strict`) on, it is what makes that skip safe. A new push to a PR cancels that PR's previous run (`concurrency`, one group per PR; develop/nightly runs are never cancelled). Nothing alerts on a red nightly — check `gh run list --workflow ci.yml --event schedule`. Every job above restores `.cache/CPM` with a `cpm-` restore-key fallback, so none of them ever fetches a pinned dependency from the network (how #697's deleted upstream tag stayed green); the `cold CPM configure (#702)` job is the one that does — `ninja-release` + `ninja-python` configured with no CPM cache, covering all five pins, on the nightly and on PRs touching any `CMakeLists.txt` / `*.cmake` or the plumbing above (`run_cold_cpm`, step-gated like the heavy jobs). A red nightly there with no in-repo change means an upstream ref moved or vanished. Fix or revert if CI reports new violations. Do NOT build or run sanitizer presets locally.
 8. **ALWAYS update docs AND agent files after changes** - Code + docs + `.claude/agents/*.md` commit together. If you change a feature, preset, command, or pattern described in any agent file, update that agent file too.
-   - **Agent `description:` MUST stay on ONE physical line** — write newlines as literal `\n` escapes (see `reviewer.md`). A description spanning real lines breaks the YAML frontmatter parse and Claude Code drops the agent **silently**: it never appears in the available-agents list and cannot be dispatched, with no warning. This shipped twice (#543 — `storm-sql-reviewer`, `storm-buildsystem-reviewer`, both undispatchable from merge). Enforced by `scripts/check_agent_frontmatter.py`, run by `commit.sh` on any staged agent file and by CI's `script-guards` job (#708).
+   - **Agent `description:` MUST stay on ONE physical line** — write newlines as literal `\n` escapes (see `reviewer.md`). A description spanning real lines breaks the YAML frontmatter parse and Claude Code drops the agent **silently**: it never appears in the available-agents list and cannot be dispatched, with no warning. This shipped twice (#543 — `storm-sql-reviewer`, `storm-buildsystem-reviewer`, both undispatchable from merge). Enforced by `scripts/ci/check_agent_frontmatter.py`, run by `commit.sh` on any staged agent file and by CI's `script-guards` job (#708).
 9. **ALWAYS write thorough unit tests BEFORE implementing** - Every feature or fix needs comprehensive tests first (see [Testing Checklist](#thorough-testing-checklist)). Workflow: (1) write tests → (2) run — new tests MUST fail (proves they test real behavior) → (3) implement → (4) run again — ALL tests must pass
 10. **SonarCloud gate MUST pass before merging** - Zero issues on new code; no exceptions, even for minor issues (see [SonarCloud Gate](#sonarcloud-gate-mandatory-before-merge))
 11. **NEVER use `throw` for compile-time errors in `consteval` functions** - Use `requires` constraints instead. Define a concept that checks the condition and constrain the template. The `throw "string literal"` trick works but fires late with a poor error message. `requires` fires at the call site with a clear constraint violation. Use `std::unreachable()` after the loop body if needed to satisfy the return type.
@@ -180,7 +180,7 @@ The `/sonarcloud-status` skill (uses `sonar` CLI) is **branch-aware**:
 - `new_duplicated_lines_density > 0` → FAIL (zero code duplication on new lines)
 - `new_security_hotspots_reviewed < 100%` → FAIL
 
-**GitHub branch protection**: the intended end state (#711) is a **ruleset** on `develop` that requires a **merge queue** (squash) and exactly one status check, **`CI gate`** — which depends on every job in `ci.yml`, including `sonar-gate` (`SonarCloud gate`). That job enforces the SonarCloud quality gate: `scripts/sonar_gate.py` waits for the SonarCloud app's `SonarCloud Code Analysis` check on the PR head and fails unless it is `success`; on a `merge_group` run it passes at once, because the app never reports on merge-group commits (requiring the app's check directly would hang the queue). Until that ruleset is live, the classic protection's list applies — `SonarCloud Code Analysis` plus the individual CI contexts (the matrix legs, `coverage (100% lines, filtered)`), the per-name list that made a skipped matrix unmergeable in #638; see the `ci-gate` job in `ci.yml` for the migration order. With the queue on, `gh pr merge --squash` queues the PR instead of merging it, and there is no "Update branch" step. Enforced at the repository level, cannot be bypassed.
+**GitHub branch protection**: the intended end state (#711) is a **ruleset** on `develop` that requires a **merge queue** (squash) and exactly one status check, **`CI gate`** — which depends on every job in `ci.yml`, including `sonar-gate` (`SonarCloud gate`). That job enforces the SonarCloud quality gate: `scripts/ci/sonar_gate.py` waits for the SonarCloud app's `SonarCloud Code Analysis` check on the PR head and fails unless it is `success`; on a `merge_group` run it passes at once, because the app never reports on merge-group commits (requiring the app's check directly would hang the queue). Until that ruleset is live, the classic protection's list applies — `SonarCloud Code Analysis` plus the individual CI contexts (the matrix legs, `coverage (100% lines, filtered)`), the per-name list that made a skipped matrix unmergeable in #638; see the `ci-gate` job in `ci.yml` for the migration order. With the queue on, `gh pr merge --squash` queues the PR instead of merging it, and there is no "Update branch" step. Enforced at the repository level, cannot be bypassed.
 
 **Before merging a PR (run from the feature branch):**
 1. Run `/sonarcloud-status` — it auto-detects the PR and **waits** for SonarCloud analysis to finish.
@@ -300,8 +300,8 @@ denominator — not of every line in the tree.
 methods and part of `pool.cppm` are instantiated only by a live connection (the libpq mock does not
 reach them). Without a server the tree measures **~99.8-99.9%** and the gate fails; function coverage
 dropping from 80.6% to **48.7%** is the tell, and the run prints a `WARN: PostgreSQL unreachable`
-line. `scripts/coverage-run-batched.sh` (and `commit.sh`) default `STORM_PG_CONNSTR` per host OS via
-`scripts/pg-default-connstr.sh` — `host=/var/run/postgresql` on Linux, `host=/tmp` on macOS (Homebrew),
+line. `scripts/coverage/coverage-run-batched.sh` (and `commit.sh`) default `STORM_PG_CONNSTR` per host OS via
+`scripts/coverage/pg-default-connstr.sh` — `host=/var/run/postgresql` on Linux, `host=/tmp` on macOS (Homebrew),
 anything else fails loudly; an exported value wins, which is how CI targets its `postgres` service container. Note the
 `ninja-debug-coverage` **build preset** nulls the variable, so the documented local command always
 uses the script's default — invoke the script directly to point elsewhere. If coverage fails just
@@ -310,59 +310,28 @@ under 100%, check PG is up before suspecting your code.
 See [docs/internals/testing/CODE_COVERAGE.md](docs/internals/testing/CODE_COVERAGE.md) for details.
 
 ### Prerequisites
-- Custom Clang with C++26 reflection (`../clang-p2996/`)
+- Custom Clang with C++26 reflection (`../clang-p2996/`). Without it you can still build and test in the prebuilt `storm-ci` image ([GETTING_STARTED.md](docs/internals/building/GETTING_STARTED.md), Option 1), but committing C++ or cmake changes needs the native toolchain: `commit.sh` runs the compiler (rule 3)
 - SQLite3, CMake 3.30+, Ninja, Python 3 with PyYAML (tests/benchmarks convert YAML→JSON at build time; configure fails with a fix-it message if the found Python lacks it; it never installs anything — point CMake at another with `-DPython3_EXECUTABLE=<path>`)
 
-**No `../clang-p2996` locally? (issue #628)** — Claude Code remote/sandboxed sessions start
-with no compiler and can't configure, build, run tests, or run clang-format/clang-tidy without
-one. `scripts/dev-container.sh` wraps `docker/ci/Dockerfile` into a long-lived build container
-plus a PostgreSQL sidecar (connected over a shared unix-socket volume, matching
-`CMakePresets.json`'s own `STORM_PG_CONNSTR` exactly — no override needed), so build commands
-run via `exec` instead of natively. In a sandbox whose outbound HTTPS is TLS-intercepted, the
-same Dockerfile is built with an extra `cacerts` build context that trusts the proxy's CA before
-`pacman -Syu`; real CI builds the same file with no such context, so nothing changes for it:
-```bash
-scripts/dev-container.sh up                    # builds/starts the containers (idempotent)
-scripts/dev-container.sh exec cmake --preset ninja-debug
-scripts/dev-container.sh exec cmake --build --preset ninja-debug
-scripts/dev-container.sh exec ./build/debug/tests/storm_tests
-scripts/dev-container.sh exec ./commit.sh       # or `exec git commit -m ...` — see below
-scripts/dev-container.sh status                 # show container state
-scripts/dev-container.sh rebuild                # drop image + containers, rebuild from scratch
-scripts/dev-container.sh down                   # stop and remove the containers
-```
-`exec` falls through to running the command natively when `../clang-p2996` is already present,
-so build commands can be prefixed with it unconditionally in either kind of session. `up` (and
-therefore `exec`, which calls it) serializes on a flock, so calling it before every command — or
-concurrently from more than one shell — is safe. The repo is bind-mounted at the same absolute
-path inside the container as on the host, so `CMakeCache.txt` and git's `core.hooksPath` never
-disagree between a host shell and an `exec` one — which means `git commit`/`./commit.sh` work
-correctly via `exec`, but a container-only session (no native toolchain) must run them that way:
-a plain host-side `git commit` still fires the pre-commit hook, which needs the compiler rule 3
-says not to skip.
-
-A `SessionStart` hook (`.claude/hooks/session-start-docker.sh`) provisions this automatically in
-the background on a remote session with no native toolchain. It is **wired** in
-`.claude/settings.json`'s `hooks.SessionStart` (#651 — before that it existed but was declared
-nowhere, so it never ran):
+**Pre-commit hook wiring (#651)**: a `SessionStart` hook (`.claude/hooks/session-start.sh`) runs
+`git config core.hooksPath .githooks` at the start of every session, because that wiring is what makes
+`commit.sh` run at all and the only other writer (`CMakeLists.txt`) needs a successful configure — which a
+fresh clone or worktree has not done. It is **declared** in `.claude/settings.json`'s `hooks.SessionStart`
+(before #651 it existed but was declared nowhere, so it never ran):
 ```json
 "SessionStart": [
-  { "hooks": [ { "type": "command", "command": "bash $CLAUDE_PROJECT_DIR/.claude/hooks/session-start-docker.sh" } ] }
+  { "hooks": [ { "type": "command", "command": "bash $CLAUDE_PROJECT_DIR/.claude/hooks/session-start.sh" } ] }
 ]
 ```
-That same hook also runs `git config core.hooksPath .githooks` **unconditionally** — first, before
-each of its three provisioning early-exits — because that wiring is what makes `commit.sh` run at
-all, and it is missing in exactly the sessions those exits return from (#651; see rule 3).
-`scripts/tests/test_session_start_hook.sh` covers each exit path — plus the `settings.json`
-declaration the hook is inert without — so a reordering or a deleted entry cannot silently unwire
-it again. It runs in CI (the `script-guards` job) and, like the #543
+`scripts/commit/tests/test_session_start_hook.sh` covers the wiring — plus the `settings.json`
+declaration the hook is inert without — so a deleted entry cannot silently unwire it again. It runs in CI (the `script-guards` job) and, like the #543
 and #550 guards, in `commit.sh` ABOVE its `TOTAL_STEPS==0` early exit, since a commit touching
 only the hook, `settings.json` or the test itself skips every other step. Those guards are rows
-of one table in `scripts/pre_commit_guards.py` (#688), not bash blocks — add a guard there; CI's
+of one table in `scripts/commit/pre_commit_guards.py` (#688), not bash blocks — add a guard there; CI's
 `script-guards` job runs every row with `--all` (#708), so a new row needs no workflow edit. `commit.sh`
 itself stays a thin orchestrator: its skip rules, clang-tidy prerequisite verdict and coverage-gap
-report are tested stdlib-Python helpers (`scripts/smart_skip.py`, `tidy_prereqs.py`,
-`uncovered_lines.py`; see `scripts/README.md`), written for Python 3.9+ so macOS system `python3` runs them.
+report are tested stdlib-Python helpers (`scripts/commit/smart_skip.py`, `scripts/tidy/tidy_prereqs.py`,
+`scripts/coverage/uncovered_lines.py`; see `scripts/README.md`), written for Python 3.9+ so macOS system `python3` runs them.
 
 ## Architecture
 
@@ -858,7 +827,7 @@ namespaces) that default `ConnType = sqlite::Connection`; `import storm;` re-exp
 importing individual modules must add `import storm_defaults;` to use the short names. Aliases cannot
 be specialised/forward-declared under the old name, and diagnostics/traits see `Basic*`. `SchemaStatement::create_table_if_not_exists()`
 / `create_indexes_if_not_exist()` no longer default `ConnType` — pass a connection or name it
-(`create_table_if_not_exists<sqlite::Connection>()`). Enforced by `scripts/check_orm_backend_imports.py`
+(`create_table_if_not_exists<sqlite::Connection>()`). Enforced by `scripts/ci/check_orm_backend_imports.py`
 (commit.sh + CI's `script-guards` job) and `tests/db/test_backend_layering.cpp`. See
 [MODULE_SYSTEM.md](docs/internals/architecture/MODULE_SYSTEM.md#step-4-the-default-backend-lives-in-one-module-storm_defaults). `SelectStatement::Query` carries the full QuerySet chain (`where`, `limit`,
 `offset`, `order_by`, `join`, `left_join`, `distinct`, `values`, `group_by`, aggregates, `first`, `get`,

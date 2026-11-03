@@ -8,8 +8,7 @@
 #   docker run --rm -v "$(pwd):/storm" -w /storm storm-ci:dev \
 #       cmake --preset ninja-release && cmake --build --preset ninja-release
 #
-# A sandbox whose outbound HTTPS is TLS-intercepted (e.g. Claude Code's
-# remote/sandboxed sessions — see issue #628) can't `pacman -Syu` against that
+# A sandbox whose outbound HTTPS is TLS-intercepted can't `pacman -Syu` against that
 # proxy's default-untrusted CA. Supply it as an ADDITIONAL BUILD CONTEXT named
 # `cacerts` (any directory containing *.crt files) and it's trusted before
 # pacman touches the network; real CI never passes this build context, so
@@ -18,9 +17,7 @@
 #   docker build --build-context cacerts=/root/.ccr \
 #       -t storm-ci:sandbox -f docker/ci/Dockerfile .
 #
-# scripts/dev-container.sh passes this flag automatically when it detects a
-# sandbox proxy CA, and is the documented way to get a working build/test
-# environment in such a sandbox — see CLAUDE.md's Prerequisites section.
+# Pass it by hand when building in a sandbox whose proxy intercepts TLS.
 ARG CACERTS=scratch
 FROM ${CACERTS} AS cacerts
 

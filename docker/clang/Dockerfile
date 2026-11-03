@@ -13,7 +13,7 @@
 #   1. rebuild + `docker push` storm-clang:latest from the clang-p2996 checkout
 #   2. dispatch .github/workflows/docker-ci-image.yml (republishes storm-ci)
 #   3. bump the storm-ci@sha256 digest pins — ci.yml, clang-tidy-sweep.yml and
-#      bench-ratio-spike.yml; scripts/check_ci_digests.py asserts they AGREE
+#      bench-ratio-spike.yml; scripts/ci/check_ci_digests.py asserts they AGREE
 #      with each other, but cannot tell you they are stale
 #
 # Skipping step 1 is the silent failure: storm-ci rebuilds fine against the old
@@ -27,7 +27,7 @@ COPY build/bin/clang-scan-deps /opt/clang-p2996/build/bin/clang-scan-deps
 COPY build/bin/clang-format    /opt/clang-p2996/build/bin/clang-format
 COPY build/bin/clang-tidy      /opt/clang-p2996/build/bin/clang-tidy
 
-# clang-tidy-diff.py drives scripts/run_clang_tidy.py --diff, and therefore the
+# clang-tidy-diff.py drives scripts/tidy/run_clang_tidy.py --diff, and therefore the
 # whole local pre-commit clang-tidy gate (#643). It is not a
 # build artifact — it is checked into the clang-p2996 source tree, and THIS
 # image's build context is that tree's root, so copying it here ships it
