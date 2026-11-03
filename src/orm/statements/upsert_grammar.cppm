@@ -1,15 +1,17 @@
 module;
+#ifdef STORM_CLANG_TIDY
+#include <meta> // clang-tidy segfaults on a TU without a textual <meta> (#756); the real build never defines this
+#endif
 
 // Compile-time UPSERT (ON CONFLICT) SQL grammar (#205): the consteval helpers
 // that spell the conflict-target list and the `excluded.col` DO UPDATE SET
 // clause, split out of InsertStatement to keep that class cohesive. Stateless
 // and connection-free — every member derives purely from reflection over T.
 
-#include <meta>
-
 export module storm_orm_statements_upsert_grammar;
 
 import std;
+import storm_std_meta;
 
 import storm_orm_statements_base;
 import storm_orm_statements_insert_grammar;

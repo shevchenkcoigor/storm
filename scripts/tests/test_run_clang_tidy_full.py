@@ -51,12 +51,12 @@ class FullModeTest(ToolchainTest):
     def test_clang_tidy_gets_the_database_and_the_file(self):
         self.stage("src/orm/fields.cppm")
         self.run_script("--full")
-        self.assertEqual(self.calls("tidy_calls"), ["-p build/release src/orm/fields.cppm"])
+        self.assertEqual(self.calls("tidy_calls"), ["-p build/release -extra-arg=-DSTORM_CLANG_TIDY src/orm/fields.cppm"])
 
     def test_fix_is_passed_through(self):
         self.stage("src/orm/fields.cppm")
         self.run_script("--full", "--fix")
-        self.assertEqual(self.calls("tidy_calls")[0], "-p build/release -fix src/orm/fields.cppm")
+        self.assertEqual(self.calls("tidy_calls")[0], "-p build/release -extra-arg=-DSTORM_CLANG_TIDY -fix src/orm/fields.cppm")
 
     def test_a_warning_blocks_and_is_listed(self):
         self.stage("src/orm/fields.cppm")

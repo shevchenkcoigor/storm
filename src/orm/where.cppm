@@ -1,14 +1,16 @@
 module;
+#ifdef STORM_CLANG_TIDY
+#include <meta> // clang-tidy segfaults on a TU without a textual <meta> (#756); the real build never defines this
+#endif
 
 // Single cohesive class template; thresholds intentionally relaxed (see #264 finding).
 // `duplicate` removed in #277 Phase 3 (BindParamsVisitor casts the type-erased pointer once and calls each Expr's
 // bind_impl; make_null_check_expr shared by CollatedField/Field).
 
-#include <meta>
-
 export module storm_orm_where;
 
 import std;
+import storm_std_meta;
 
 import storm_orm_utilities;     // For ConstexprString
 import storm_orm_field_attr;    // ValidFieldInfo — gate the field-selector NTTP (#478)

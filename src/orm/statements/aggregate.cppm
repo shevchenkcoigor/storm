@@ -4,12 +4,12 @@ module;
 // `duplicate` removed in #277 Phase 3 (append_group_by_tail helper folds the HAVING + ORDER/LIMIT/OFFSET tail repeated
 // across execute_where / execute_join / execute_where_join).
 
-#include <meta>
 #include <plf_hive/plf_hive.h>
 
 export module storm_orm_statements_aggregate;
 
 import std;
+import storm_std_meta;
 
 import storm_db_concept;
 import storm_orm_statements_base;

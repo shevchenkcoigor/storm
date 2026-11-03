@@ -1043,6 +1043,38 @@ incremental behaviour (verified: the next build was `no work to do`, 0 s).
 
 ---
 
+### One shared `<meta>` module (#756)
+
+A textual `#include <meta>` in a module's global fragment makes that module's BMI carry its own
+copy of the `<meta>` declarations. 32 of 45 modules did, and the size gives it away: those BMIs
+were 10.7 MB at the very least (a 35-line module included), median 12.9 MB, against a median
+0.4 MB for the 13 modules without it. Every TU that imports them loads and merges all those copies.
+
+`src/storm_std_meta.cppm` now holds the one textual include and re-exports the ~20 `std::meta` names
+the tree uses; the other modules `import storm_std_meta;`. `compile_time_probe.py --body real`,
+`--counts 1,11 --runs 5`, develop and the branch interleaved, two rounds each, debug preset:
+
+| Probe | develop | #756 |
+|---|---|---|
+| 1 model + `fields::` proxies | 3.35 / 3.34 s | 1.61 / 1.61 s |
+| 11 models + `fields::` proxies | 3.62 / 3.63 s | 1.84 / 1.84 s |
+| full `test_models.h` | 3.78 / 3.77 s | 1.93 / 1.92 s |
+| `.pcm` total under `CMakeFiles/storm.dir` | 475 MB | 127 MB |
+
+About −52% per TU, repeatable to 0.01 s. The per-model increments (+0.23 s for 11 models, +0.31 s for
+the full header, against +0.27 and +0.43 on develop) barely moved, so the saving is the fixed
+import cost, not the model cost. Debug only; release and the Python build compile and pass but
+were not timed. The probe's two "structs only" rows report FAILED on develop and on the branch alike.
+
+Side effects worth knowing: the bare `^^std::optional` does not reflect through `import std;` (a
+using-declarator), so such reflections go through a concrete specialization instead of a textual
+include of the std header, which would put its declarations back into the BMI; and clang-tidy
+needs `STORM_CLANG_TIDY` to include `<meta>` textually in the modules it crashes on (see
+COMPILER_ISSUES.md, Finding A). `-fmodules-reduced-bmi`,
+tried separately on develop, took the full-header TU from 2.49 to 2.16 s (its own same-session baseline, a faster
+machine state than the table above), but only with the `std` module built without it; it was not
+combined with this change.
+
 ## Remaining levers
 
 | lever | ceiling | note |

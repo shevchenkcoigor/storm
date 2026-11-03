@@ -1,13 +1,15 @@
 module;
+#ifdef STORM_CLANG_TIDY
+#include <meta> // clang-tidy segfaults on a TU without a textual <meta> (#756); the real build never defines this
+#endif
 
 // `duplicate` removed in #277 Phase 3 (delete_prefix_size + append_delete_prefix helpers shared by single-row and bulk
 // DELETE SQL builders).
 
-#include <meta>
-
 export module storm_orm_statements_erase;
 
 import std;
+import storm_std_meta;
 
 import storm_orm_statements_base;
 import storm_orm_statements_erase_grammar;

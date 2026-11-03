@@ -1,4 +1,7 @@
 module;
+#ifdef STORM_CLANG_TIDY
+#include <meta> // clang-tidy segfaults on a TU without a textual <meta> (#756); the real build never defines this
+#endif
 
 // Compile-time JOIN SQL grammar (#671): the consteval helpers that spell the shared pieces
 // of the two-query eager-load SQL (m2m #391/#392, reverse-FK #398) — the PK part list and
@@ -8,11 +11,10 @@ module;
 // building. Stateless and connection-free: each helper derives purely from reflection over
 // the BaseStatement<T> metadata it is handed.
 
-#include <meta>
-
 export module storm_orm_statements_join_grammar;
 
 import std;
+import storm_std_meta;
 
 import storm_orm_field_attr;
 import storm_orm_model_concepts;

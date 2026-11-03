@@ -375,6 +375,7 @@ report are tested stdlib-Python helpers (`scripts/smart_skip.py`, `tidy_prereqs.
 src/
 ├── storm.cppm                  # Umbrella: export-imports the public surface only; internals are plain imports (MODULE_SYSTEM.md Step 5)
 ├── storm_defaults.cppm         # The ONLY default-backend binding: QuerySet<T>/…Statement<T>/DefaultConnection<> aliases
+├── storm_std_meta.cppm         # The ONE textual <meta> include; re-exports the std::meta names modules use (#756)
 ├── storm_model.cppm            # Model-declaration vocabulary: annotations (primary, fk<>, …) + selector machinery (#671)
 ├── db/
 │   ├── concept.cppm            # Database concepts
@@ -682,7 +683,7 @@ measured Storm result. See
 ## Known Compiler Issues
 
 - **Module cache corruption**: Run build twice
-- **`import std;` not header units**: the tree uses a single `import std;` (issue #326), NOT per-header `import <header>;`. Reflection code still needs textual `#include <meta>` (`import std;` doesn't export `std::meta::`), placed BEFORE the imports in non-module TUs. See [COMPILER_ISSUES.md §9](docs/internals/compiler/COMPILER_ISSUES.md) Findings A–D.
+- **`import std;` not header units**: the tree uses a single `import std;` (issue #326), NOT per-header `import <header>;`. `import std;` doesn't export `std::meta::`, so reflection code needs `<meta>`: **modules `import storm_std_meta;`** (#756 — the one module that owns the textual include and re-exports the ~20 `std::meta` names the tree uses; a new name is a "no member named … in namespace 'std::meta'" error until added to `src/storm_std_meta.cppm`; do NOT `#include <meta>` in a `src/` module, it puts a ~10.7 MB copy in that BMI). Non-module TUs (tests, benchmarks) still `#include <meta>` BEFORE the imports. clang-tidy segfaults on some module TUs that have no textual `<meta>` (which ones follows the import graph, not whether the module names `std::meta`): a module it crashes on carries `#ifdef STORM_CLANG_TIDY / #include <meta> / #endif` in the GMF, and `run_clang_tidy.py` defines the macro. A new or changed module that crashes under `run_clang_tidy.py --diff` gets the same block; a crash fails the run, it never passes as clean. To reflect a std template, reflect a concrete specialization (`template_of(dealias(^^std::optional<int>))`), not the bare `^^std::optional`. See [COMPILER_ISSUES.md §9](docs/internals/compiler/COMPILER_ISSUES.md) Findings A–D.
 - **std::mutex in modules**: works via `import std;` (validated under TSAN). Per-thread connections are still the recommended concurrency model for QuerySet/Connection.
 - **std::function errors**: Use abstract base classes
 - **C headers / macros**: `<cassert>` (the `assert` macro) and POSIX headers (`<csignal>`, `<sys/*.h>`) must stay textual `#include` — `import std;` cannot deliver macros or POSIX extensions

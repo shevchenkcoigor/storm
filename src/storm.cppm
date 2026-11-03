@@ -1,10 +1,12 @@
 module;
-
-#include <meta>
+#ifdef STORM_CLANG_TIDY
+#include <meta> // clang-tidy segfaults on a TU without a textual <meta> (#756); the real build never defines this
+#endif
 
 export module storm;
 
 import std;
+import storm_std_meta;
 
 // Public surface: every name these modules export is part of `import storm;`.
 export import storm_model;                 // annotations, fields:: selector machinery

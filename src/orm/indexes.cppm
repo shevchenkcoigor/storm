@@ -1,10 +1,9 @@
 module;
 
-#include <meta>
-
 export module storm_orm_indexes;
 
 import std;
+import storm_std_meta;
 
 export namespace storm {
 

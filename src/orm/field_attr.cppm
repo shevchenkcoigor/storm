@@ -1,10 +1,12 @@
 module;
-
-#include <meta>
+#ifdef STORM_CLANG_TIDY
+#include <meta> // clang-tidy segfaults on a TU without a textual <meta> (#756); the real build never defines this
+#endif
 
 export module storm_orm_field_attr;
 
 import std;
+import storm_std_meta;
 
 import storm_orm_reflection_cache; // memoised (#694) — imported, not re-exported
 
@@ -227,7 +229,10 @@ export namespace storm::meta {
     // has_template_arguments is the required guard: template_of is only valid on
     // a specialization, and most types are not one.
     consteval auto is_optional_type(std::meta::info type) -> bool {
-        return std::meta::has_template_arguments(type) && std::meta::template_of(type) == ^^std::optional;
+        // `^^std::optional` names a using-declarator under `import std;` and cannot be reflected
+        // directly: derive the canonical template from a concrete specialization instead.
+        return std::meta::has_template_arguments(type) &&
+               std::meta::template_of(type) == std::meta::template_of(std::meta::dealias(^^std::optional<int>));
     }
 
     // True when the data member `member` has type std::optional<T> (#509).
@@ -369,8 +374,10 @@ export namespace storm::meta {
         if (!std::meta::has_template_arguments(t)) {
             return false;
         }
-        const auto tmpl = std::meta::template_of(t);
-        return (tmpl == ^^std::basic_string || tmpl == ^^std::basic_string_view) &&
+        const auto tmpl             = std::meta::template_of(t);
+        const auto string_tmpl      = std::meta::template_of(std::meta::dealias(^^std::basic_string<char>));
+        const auto string_view_tmpl = std::meta::template_of(std::meta::dealias(^^std::basic_string_view<char>));
+        return (tmpl == string_tmpl || tmpl == string_view_tmpl) &&
                std::meta::dealias(std::meta::template_arguments_of(t)[0]) == ^^char;
     }
 

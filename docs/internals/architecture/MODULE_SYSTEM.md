@@ -125,11 +125,12 @@ public:
 // src/orm/statements/select.cppm
 module;
 
-#include <meta>  // C++26 reflection
 // NOTE: No #include <sqlite3.h> - fully database-agnostic!
 
 export module storm_orm_statements_select;
 
+import std;
+import storm_std_meta;  // C++26 reflection (std::meta), see rule 8
 import storm_db_concept;  // Concepts only — no concrete backend
 
 export template <typename T, storm::db::DatabaseConnection ConnType>
@@ -321,7 +322,7 @@ The ~1% difference from direct calls is acceptable for full database abstraction
    `export namespace … {}` body and is included at namespace scope in the parent's purview right
    after its imports (`aggregate_grammar.hpp`, `select_stitch.hpp`); a class-body fragment holds
    only members (no namespace) and is included inside a class template's body, where those members
-   used to be written (`select_query.hpp`). All imports and `#include <meta>` stay in the parent, with no `#pragma once` and an entry in
+   used to be written (`select_query.hpp`). All imports stay in the parent, with no `#pragma once` and an entry in
    `scripts/clang_tidy_skiplist.py` (it cannot parse standalone). Map it to its parent in
    `FRAGMENT_PARENTS` there too: `run_clang_tidy.py --diff` then lints the fragment's staged lines
    through the parent's compile command, and `check_orm_backend_imports.py` scans `.hpp` under
@@ -329,10 +330,22 @@ The ~1% difference from direct calls is acceptable for full database abstraction
    header would be attached to the named module) and opens with an `#error` guard on a macro the
    parent `#define`s just before including it, so a stray `#include` elsewhere fails with one
    clear message. Fragments of one parent may depend only on what is included before them.
-   Examples: `aggregate_grammar.hpp`, `select_query.hpp`, `select_stitch.hpp`. Every module (a
-   partition too — same BMI) costs ~0.09 s in each TU that does `import storm;`. If the library
+   Examples: `aggregate_grammar.hpp`, `select_query.hpp`, `select_stitch.hpp`. A new module
+   is not free: its BMI is loaded by every TU that does `import storm;` (a partition has the same
+   BMI). Measured before #756, while each BMI still embedded its own `<meta>`: +0.04 to +0.15 s on
+   a ~3.3 s TU per module added; re-measure before quoting a figure. If the library
    is ever `install()`ed, the fragments must ship beside the `.cppm` files (`FILE_SET CXX_MODULES`
    installs only those)
+8. **Reach `std::meta` through `import storm_std_meta;`** (#756), never `#include <meta>` in a
+   `src/` module: a textual `<meta>` in a module's global fragment puts a ~10.7 MB copy of its
+   declarations into that module's BMI. `src/storm_std_meta.cppm` holds the one include and
+   re-exports the `std::meta` names the tree uses; a name it lacks is added to its list. To reflect
+   a std template, reflect a concrete specialization — `template_of(dealias(^^std::optional<int>))` —
+   because the bare `^^std::optional` names a using-declarator under `import std;` and fails. A
+   module that clang-tidy segfaults on carries `#ifdef STORM_CLANG_TIDY` / `#include <meta>` /
+   `#endif` in its global fragment (`run_clang_tidy.py` defines the macro). Which modules crash
+   follows the import graph, not whether they name `std::meta`; add the block when
+   `run_clang_tidy.py --diff` crashes on one — a crash fails the run, it never reads as clean
 
 ### DON'T:
 

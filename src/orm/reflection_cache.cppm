@@ -1,10 +1,9 @@
 module;
 
-#include <meta>
-
 export module storm_orm_reflection_cache;
 
 import std;
+import storm_std_meta;
 
 // Dependency-free leaf module (#694): memoisation for consteval reflection queries.
 //

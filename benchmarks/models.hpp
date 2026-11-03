@@ -6,8 +6,20 @@
  * Person comes from shared/models/person.h (single source of truth).
  * User and FKMessage are benchmark-specific (JOIN benchmarks with 2 FKs).
  *
- * This file must be included after `import storm;` to provide complete types.
+ * Include this BEFORE any `import` in the including TU: it does `import storm;` itself, after
+ * the std headers person.h uses, to provide complete types.
  */
+
+// Every std header person.h uses must be included textually BEFORE `import storm;`: with the
+// storm BMI already loaded, a textual libc++ header re-declares entities the BMI holds and
+// Linux fails with "cannot add 'abi_tag' attribute in a redeclaration" (copy.h:42). macOS does
+// not show it. See COMPILER_ISSUES.md, Finding A (#756).
+#include <cstdint>
+#include <meta>
+#include <optional>
+#include <string>
+#include <tuple>
+#include <vector>
 
 import storm;
 

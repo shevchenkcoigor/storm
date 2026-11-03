@@ -1,4 +1,7 @@
 module;
+#ifdef STORM_CLANG_TIDY
+#include <meta> // clang-tidy segfaults on a TU without a textual <meta> (#756); the real build never defines this
+#endif
 
 // Compile-time INSERT SQL grammar (#671): the consteval/static "how INSERT SQL is
 // spelled" helpers — single-row INSERT [RETURNING], the bulk prefix and VALUES body,
@@ -8,11 +11,10 @@ module;
 // Base = BaseStatement<T>). UpsertGrammar reuses the non-RETURNING INSERT head
 // (insert_sql_array) instead of re-deriving it.
 
-#include <meta>
-
 export module storm_orm_statements_insert_grammar;
 
 import std;
+import storm_std_meta;
 
 import storm_orm_statements_base;
 import storm_orm_statements_field_names;

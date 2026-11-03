@@ -6,11 +6,10 @@ module;
 // so it is a stateless free utility. Keeping it here lets BaseStatement stay cohesive
 // (cpp:S1448) without scattering the dispatch.
 
-#include <meta>
-
 export module storm_orm_statements_extract;
 
 import std;
+import storm_std_meta;
 
 import storm_orm_utilities;
 

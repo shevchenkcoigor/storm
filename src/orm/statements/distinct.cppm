@@ -3,12 +3,12 @@ module;
 // `duplicate` removed in #277 Phase 3 (build_field_list_with_prefix consteval helper shared by JOIN/non-JOIN field-list
 // builders).
 
-#include <meta>
 #include <plf_hive/plf_hive.h>
 
 export module storm_orm_statements_projection;
 
 import std;
+import storm_std_meta;
 
 import storm_db_concept;
 import storm_orm_field_attr; // storm::meta::has_full_unsigned_attr (#600 projection classification)

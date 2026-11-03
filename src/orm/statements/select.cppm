@@ -4,13 +4,13 @@ module;
 // `duplicate` removed in #277 Phase 3 (build_sql() shared by to_sql/prepare_statement/rows_generator + collapsed
 // coroutine step-loop).
 
-#include <meta>
 #include <cassert>
 #include <plf_hive/plf_hive.h>
 
 export module storm_orm_statements_select;
 
 import std;
+import storm_std_meta;
 
 import storm_orm_generator;
 import storm_orm_statements_aggregate;
