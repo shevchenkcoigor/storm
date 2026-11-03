@@ -23,18 +23,17 @@ Needs only Python 3.7+; macOS system python3 runs it.
 """
 import os
 import platform
-import re
 import sys
 
 REQUIRED_LINE_COVERAGE = "100.0"
 LINES_ROW = "lines......."
-PERCENT = re.compile(r"[0-9.]+%")
+DIGITS_AND_DOT = set("0123456789.")
 
 # The socket DIRECTORY libpq connects through. A Linux PostgreSQL package (and the CI
 # service container) uses /var/run/postgresql; a Homebrew PostgreSQL on macOS listens in
 # /tmp. An explicit per-OS table, not a probe of which socket exists: it documents intent,
 # and an unsupported host fails naming itself instead of silently skipping every PG test.
-SOCKET_DIR_BY_OS = {"Linux": "/var/run/postgresql", "Darwin": "/tmp"}
+SOCKET_DIR_BY_OS = {"Linux": "/var/run/postgresql", "Darwin": "/tmp"}  # NOSONAR S5443: Homebrew's PostgreSQL socket directory, not a file we create
 CONNSTR_TEMPLATE = "host=%s dbname=storm_db user=storm_db"
 
 
@@ -43,8 +42,11 @@ def parse_line_coverage(summary_text):
     rows = [line for line in summary_text.splitlines() if LINES_ROW in line]
     if not rows:
         return None
-    match = PERCENT.search(rows[-1])
-    return match.group(0)[:-1] if match else None
+    for token in rows[-1].split():
+        number = token[:-1]
+        if token.endswith("%") and number and set(number) <= DIGITS_AND_DOT:
+            return number
+    return None
 
 
 def default_pg_connstr(os_name=None):
