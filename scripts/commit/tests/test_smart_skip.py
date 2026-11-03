@@ -2,9 +2,9 @@
 """Tests for scripts/commit/smart_skip.py (issue #688).
 
 The smart-skip table decides which pre-commit steps a staged-file set needs. It
-consumes scripts/ci/detect-changes.sh's `HAS_*=true|false` output, so these tests
+consumes scripts/ci/detect_changes.py's `HAS_*=true|false` output, so these tests
 state the commit.sh matrix as (flags -> RUN_* steps) and also run the real
-detect-changes.sh over file lists so the two cannot drift. Stdlib unittest only,
+detect_changes.py over file lists so the two cannot drift. Stdlib unittest only,
 no syntax newer than Python 3.7.
 
     python3 scripts/commit/tests/test_smart_skip.py
@@ -17,7 +17,7 @@ import unittest
 
 REPO_ROOT = pathlib.Path(__file__).resolve().parents[3]
 HELPER = REPO_ROOT / "scripts" / "commit" / "smart_skip.py"
-DETECT = REPO_ROOT / "scripts" / "ci" / "detect-changes.sh"
+DETECT = REPO_ROOT / "scripts" / "ci" / "detect_changes.py"
 
 sys.path.insert(0, str(HELPER.parent))
 from smart_skip import decide, decide_empty  # noqa: E402
@@ -77,7 +77,7 @@ class DecideTest(unittest.TestCase):
 
 
 class MatrixTest(unittest.TestCase):
-    """Staged-file matrix from the issue, through the real detect-changes.sh."""
+    """Staged-file matrix from the issue, through the real detect_changes.py."""
 
     def steps(self, files):
         detected = subprocess.run([str(DETECT)], input="\n".join(files) + "\n",

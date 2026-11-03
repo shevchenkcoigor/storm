@@ -132,10 +132,9 @@ SESSION_START_HOOK = Guard(
 # file it copies in is a trigger too.
 SELF_HEAL = Guard(
     "self-heal configure",
-    r"^(commit\.sh|scripts/ci/detect-changes\.sh|scripts/coverage/pg-default-connstr\.sh"
+    r"^(commit\.sh|scripts/ci/detect_changes\.py|scripts/coverage/coverage_gate\.py"
     r"|scripts/commit/pre_commit_guards\.py|scripts/commit/smart_skip\.py"
     r"|scripts/coverage/uncovered_lines\.py|scripts/tidy/(tidy_prereqs|clang_tidy_skiplist)\.py"
-    r"|scripts/coverage/line_coverage\.sh"
     r"|scripts/commit/tests/test_commit_self_heal_configure\.sh)$",
     (Step(None, script("scripts/commit/tests/test_commit_self_heal_configure.sh"),
           "self-heal configure self-test failed"),),
@@ -188,30 +187,20 @@ CPM_COLD_CACHE = Guard(
     "CPM cold-cache fetch policy self-test passed",
 )
 
-# --- per-OS PostgreSQL socket default ---
-# A wrong branch in scripts/coverage/pg-default-connstr.sh silently skips every PG test and
-# leaves the coverage gate stuck at ~99.8%.
-PG_SOCKET_DEFAULT = Guard(
-    "PostgreSQL socket default",
-    r"^(commit\.sh|scripts/coverage/(pg-default-connstr|coverage-run-batched)\.sh"
-    r"|scripts/coverage/tests/test_pg_default_connstr\.sh)$",
-    (Step(None, script("scripts/coverage/tests/test_pg_default_connstr.sh"),
-          "per-OS PostgreSQL socket default self-test failed"),),
-    "per-OS PostgreSQL socket default self-test passed",
-)
-
-# --- line-coverage parser (#680) ---
-# scripts/coverage/line_coverage.sh reads the percentage the coverage gate compares to
-# 100.0. A GNU-only grep flag there breaks the gate on macOS BSD grep while CI's
-# GNU grep stays green. The self-test also scans commit.sh and the scripts it runs
-# or sources for bash-4-only constructs (#689), so staging any of them triggers it.
-LINE_COVERAGE = Guard(
-    "line-coverage parser",
-    r"^(commit\.sh|scripts/coverage/[^/]+\.sh|scripts/ci/detect-changes\.sh"
-    r"|scripts/coverage/tests/test_line_coverage\.sh)$",
-    (Step(None, script("scripts/coverage/tests/test_line_coverage.sh"),
-          "line-coverage parser self-test failed"),),
-    "line-coverage parser self-test passed",
+# --- coverage gate (#680, #689, #765) ---
+# scripts/coverage/coverage_gate.py reads the percentage the gate compares to 100.0 (a
+# GNU-only grep flag in the old parser broke the gate on macOS BSD grep while CI stayed
+# green) and owns the per-OS PostgreSQL socket default (a wrong branch silently skips every
+# PG test and leaves the gate stuck at ~99.8%). The self-test also runs commit.sh's real
+# gate/default text under /bin/bash and scans commit.sh and coverage-run-batched.sh for
+# bash-4-only constructs (#689), so staging any of them triggers it.
+COVERAGE_GATE = Guard(
+    "coverage gate",
+    r"^(commit\.sh|scripts/coverage/(coverage_gate|uncovered_lines|coverage-run-batched)\.(py|sh)"
+    r"|scripts/coverage/tests/test_coverage_gate\.py|scripts/lib/testing\.py)$",
+    (Step(None, script("scripts/coverage/tests/test_coverage_gate.py"),
+          "coverage gate self-test failed"),),
+    "coverage gate self-test passed",
 )
 
 # --- uncovered-lines helper (#688) ---
@@ -228,11 +217,11 @@ UNCOVERED_LINES = Guard(
 # row skips a gate silently, and the commit still looks green.
 SMART_SKIP = Guard(
     "smart-skip table",
-    r"^(commit\.sh|scripts/ci/detect-changes\.sh|scripts/commit/smart_skip\.py"
+    r"^(commit\.sh|scripts/ci/detect_changes\.py|scripts/commit/smart_skip\.py"
     r"|scripts/commit/tests/test_smart_skip\.py|scripts/ci/tests/test_detect_changes\.py)$",
     (
         Step(None, script("scripts/commit/tests/test_smart_skip.py"), "smart-skip table self-test failed"),
-        Step(r"^scripts/ci/(detect-changes\.sh|tests/test_detect_changes\.py)$",
+        Step(r"^scripts/ci/(detect_changes\.py|tests/test_detect_changes\.py)$",
              script("scripts/ci/tests/test_detect_changes.py"), "change-detection self-test failed"),
     ),
     "smart-skip table self-test passed",
@@ -294,7 +283,7 @@ CI_DIGESTS = Guard(
 # batch (#268), or a plausible-but-wrong compile-time number in COMPILE_TIME.md.
 COVERAGE_PARALLEL = Guard(
     "coverage batch parallelism",
-    r"^scripts/(coverage/(coverage-run-batched\.sh|pg-default-connstr\.sh|tests/test_coverage_parallel\.py)|lib/testing\.py)$",
+    r"^scripts/(coverage/(coverage-run-batched\.sh|coverage_gate\.py|tests/test_coverage_parallel\.py)|lib/testing\.py)$",
     (Step(None, script("scripts/coverage/tests/test_coverage_parallel.py"),
           "coverage batch parallelism self-test failed"),),
     "coverage batch parallelism self-test passed",
@@ -326,8 +315,7 @@ SONAR_GATE = Guard(
 
 GUARDS = (
     AGENT_FRONTMATTER, TIDY_SKIPLIST, SWEEP_WORKFLOW, SESSION_START_HOOK, SELF_HEAL, CMAKE_FORMAT_TARGET, PYYAML_CHECK,
-    CPM_CACHE_CHECK, CPM_COLD_CACHE, PG_SOCKET_DEFAULT,
-    LINE_COVERAGE, UNCOVERED_LINES, SMART_SKIP, TIDY_PREREQS, ORM_BACKEND_IMPORTS, PRE_COMMIT_GUARDS,
+    CPM_CACHE_CHECK, CPM_COLD_CACHE, COVERAGE_GATE, UNCOVERED_LINES, SMART_SKIP, TIDY_PREREQS, ORM_BACKEND_IMPORTS, PRE_COMMIT_GUARDS,
     CI_DIGESTS, COVERAGE_PARALLEL, NINJALOG_STATS, TIME_TRACE, SONAR_GATE,
 )
 

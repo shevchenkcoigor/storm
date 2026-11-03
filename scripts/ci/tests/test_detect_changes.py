@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Tests for scripts/ci/detect-changes.sh.
+"""Tests for scripts/ci/detect_changes.py.
 
 The script classifies a changed-file list into HAS_*_CHANGES flags that both commit.sh
 (pre-commit smart skips) and the `changes` job in .github/workflows/ci.yml (skipping the
@@ -16,7 +16,7 @@ import subprocess
 import unittest
 
 REPO_ROOT = pathlib.Path(__file__).resolve().parents[3]
-DETECTOR = REPO_ROOT / "scripts" / "ci" / "detect-changes.sh"
+DETECTOR = REPO_ROOT / "scripts" / "ci" / "detect_changes.py"
 
 FLAGS = ("SRC", "TEST", "CPP", "CMAKE", "BENCH")
 

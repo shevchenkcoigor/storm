@@ -1,13 +1,13 @@
 #!/usr/bin/env python3
 """Decide which pre-commit steps a staged-file set needs (issue #688).
 
-Reads scripts/ci/detect-changes.sh's `HAS_*_CHANGES=true|false` lines on stdin —
+Reads scripts/ci/detect_changes.py's `HAS_*_CHANGES=true|false` lines on stdin —
 the classification stays in that one script, shared with .github/workflows/ci.yml
 so both skip on the same rules — and prints shell assignments for commit.sh to
 `eval`: the RUN_* switches plus SKIP_NOTE, the one line explaining a skip ("" when
 nothing was skipped).
 
-    printf '%s\\n' "$staged" | scripts/ci/detect-changes.sh | scripts/commit/smart_skip.py
+    printf '%s\\n' "$staged" | scripts/ci/detect_changes.py | scripts/commit/smart_skip.py
 
 Empty stdin (no staged files) keeps every gate on, unless `--empty-index-skips`
 (the git hook, #706) says a commit changing nothing needs no checks and turns them
