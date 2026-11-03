@@ -69,7 +69,7 @@ class TriggerTest(unittest.TestCase):
              "clang-tidy prerequisites"})
 
     def test_cmake_format_files_trigger_their_self_test(self):
-        self.assertEqual(names(pcg.triggered_guards(["scripts/commit/tests/test_cmake_format_target.sh"])),
+        self.assertEqual(names(pcg.triggered_guards(["scripts/commit/tests/test_cmake_format_target.py"])),
                          ["cmake-format target"])
         # Any .cmake file also triggers the CPM cold-cache scan (#709).
         self.assertEqual(set(names(pcg.triggered_guards(["cmake/format.cmake"]))),
@@ -79,6 +79,20 @@ class TriggerTest(unittest.TestCase):
         for staged in ("cmake/uuid.cmake", "python/CMakeLists.txt", "tools/CMakeLists.txt",
                        "scripts/ci/tests/test_cpm_cold_cache.py"):
             self.assertIn("CPM cold-cache fetch", names(pcg.triggered_guards([staged])), staged)
+
+    def test_shared_test_helper_triggers_every_self_test_that_imports_it(self):
+        # scripts/lib/testing.py is imported by these self-tests (#763); editing it must rerun
+        # them, or a helper regression is only found by whichever test someone happens to run.
+        self.assertEqual(set(names(pcg.triggered_guards(["scripts/lib/testing.py"]))),
+                         {"cmake-format target", "coverage batch parallelism", "ninjalog stats",
+                          "time-trace capture"})
+
+    def test_batch_two_self_tests_trigger_their_own_guard(self):
+        for staged, guard in (("scripts/commit/tests/test_cmake_format_target.py", "cmake-format target"),
+                              ("scripts/coverage/tests/test_coverage_parallel.py", "coverage batch parallelism"),
+                              ("scripts/compile_time/tests/test_ninjalog_stats.py", "ninjalog stats"),
+                              ("scripts/compile_time/tests/test_time_trace.py", "time-trace capture")):
+            self.assertIn(guard, names(pcg.triggered_guards([staged])), staged)
 
     def test_pyyaml_check_files_trigger_their_self_test(self):
         self.assertEqual(names(pcg.triggered_guards(["scripts/ci/tests/test_pyyaml_check.py"])),

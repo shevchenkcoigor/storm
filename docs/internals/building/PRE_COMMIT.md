@@ -45,8 +45,8 @@ that then fails. `cmake/format.cmake` closes that gap with a stub `cmake-format`
 target that fails naming the missing tool, so the reason is in the cmake-format
 step's own log whichever step configured the tree (#690; see
 [FORMATTING.md](FORMATTING.md#tool-availability)). Its self-test,
-`scripts/commit/tests/test_cmake_format_target.sh`, runs in `commit.sh` only — it is
-not wired into CI either.
+`scripts/commit/tests/test_cmake_format_target.py`, runs in `commit.sh` when staged and in CI's `script-guards` job on every
+PR (#708).
 
 ### What "prerequisites" means, and why not the full target set (#557)
 

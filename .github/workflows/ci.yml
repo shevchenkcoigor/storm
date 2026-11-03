@@ -192,7 +192,7 @@ jobs:
   # trigger. A new guard is covered here by adding its row, with no edit to this
   # file; scripts/commit/tests/test_pre_commit_guards.py fails if a self-test is in
   # neither the table nor its NOT_GUARDED list. Pure bash/python/perl plus cmake >=
-  # 3.16 and ninja for test_cmake_format_target.sh (scripts/README.md lists each
+  # 3.16 and ninja for test_cmake_format_target.py (scripts/README.md lists each
   # self-test's prerequisites); no compiler, so it runs on every PR.
   script-guards:
     name: pre-commit guards (all, #708)

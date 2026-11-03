@@ -247,9 +247,7 @@ eval "$(git diff --cached --name-only | ./scripts/ci/detect-changes.sh)"
 
 ## Script Self-Tests (scripts/*/tests/)
 
-Nine scripts have a `test_<name>.sh` self-test under a group's `tests/` folder — including three whose
-subjects are not documented above (`coverage-run-batched.sh`, `ninjalog_stats.py`,
-`time_trace.py`), `test_pg_default_connstr.sh`, which covers the sourced helper
+Self-tests live under each group's `tests/` folder. Among them are `test_pg_default_connstr.sh`, which covers the sourced helper
 `pg-default-connstr.sh` (the per-OS default `STORM_PG_CONNSTR` socket: Linux
 `/var/run/postgresql`, macOS `/tmp`) plus its callers `commit.sh` and
 `coverage-run-batched.sh`, `test_line_coverage.sh`, which covers the sourced helper
@@ -258,9 +256,7 @@ gate and CI's `coverage` job, #680) plus `commit.sh`'s
 `run_coverage_check()` and `show_uncovered_lines()` — the latter under `/bin/bash` too, which is
 bash 3.2 on macOS — and a scan of `commit.sh` and the scripts it sources or runs for bash-4-only constructs (#689),
 `test_libcxx_modules_symlink.sh`, which covers `cmake/libcxx.cmake` rather
-than a script, `test_cmake_format_target.sh`, which covers `cmake/format.cmake`'s stub
-`cmake-format` target — it fails naming the missing tool in the cmake-format step's own log (#690),
-`test_pyyaml_check.py` (Python, plain cmake), which covers `cmake/pyyaml.cmake`'s configure-time PyYAML check (#703),
+than a script, `test_pyyaml_check.py` (Python, plain cmake), which covers `cmake/pyyaml.cmake`'s configure-time PyYAML check (#703),
 `test_cpm_cache_check.py` (Python, plain cmake), which covers `cmake/cpm-cache.cmake`'s configure-time check for a CPM checkout left empty by an interrupted clone (#705),
 and `test_session_start_hook.sh`, which covers
 `.claude/hooks/session-start.sh` — the SessionStart hook that wires `core.hooksPath` (and
@@ -278,10 +274,10 @@ for t in scripts/*/tests/test_*.sh; do "$t" || echo "FAILED: $t"; done
 The agent-frontmatter checker and the helpers `commit.sh` delegates to (#688) are Python, so their
 self-tests are too: `test_check_agent_frontmatter.py`, `test_check_ci_digests.py`,
 `test_check_orm_backend_imports.py`, `test_cpm_cold_cache.py` (needs `git` too: a static policy check that every pinned CPM/FetchContent call ends with `GIT_SHALLOW FALSE`, #709), `test_detect_changes.py`, `test_clang_tidy_skiplist.py`, `test_run_clang_tidy.py`,
-`test_run_clang_tidy_full.py` (the last two need `git` and `/bin/sh` as well), `test_sweep_workflow.py` (runs the sweep workflow step's script under `bash`), `test_uncovered_lines.py`,
+`test_run_clang_tidy_full.py` (the last two need `git` and `/bin/sh` as well), `test_cmake_format_target.py` (needs **cmake ≥ 3.16 and ninja**: its harness configures with `-G Ninja`, the docker/ci image has no `make`; covers `cmake/format.cmake`'s stub `cmake-format` target, which fails naming the missing tool in the cmake-format step's own log, #690), `test_ninjalog_stats.py` and `test_time_trace.py` (pin the two compile-time numbers that are plausible when wrong: the module-edge dedup and scan-edge exclusion, and the `--precompile` replay with the modmap's `-fmodule-output` dropped; no compiler), `test_coverage_parallel.py` (drives the real `coverage-run-batched.sh` with a fake gtest binary, #268; needs GNU `nproc` and at least 3 cores), `test_sweep_workflow.py` (runs the sweep workflow step's script under `bash`), `test_uncovered_lines.py`,
 `test_pre_commit_guards.py`, `test_smart_skip.py`, `test_sonar_gate.py` and `test_tidy_prereqs.py` (stdlib `unittest`, need
-only `python3`, no syntax newer than 3.9) are not matched by the `*.sh` loop above — run them on their
-own. Each also runs in `commit.sh` when it is staged.
+only `python3` unless noted, no syntax newer than 3.9) are not matched by the `*.sh` loop above — run them on their
+own. They share `scripts/lib/testing.py` (`run()`, `scratch_dir_in_repo()`); staging it reruns the tests that import it. Each also runs in `commit.sh` when it is staged.
 
 Every self-test here is a row (step) of `pre_commit_guards.py`'s `GUARDS` table, except those in its
 `NOT_GUARDED` map; `test_pre_commit_guards.py` fails on one in neither. CI's `script-guards` job runs
@@ -302,15 +298,12 @@ failure so one run reports them all (#708). So a new self-test reaches CI by bec
 
 ### Prerequisites
 
-All but six need nothing beyond bash and coreutils:
+All but three need nothing beyond bash and coreutils:
 
 | Test | Needs |
 |---|---|
 | `test_libcxx_modules_symlink.sh` | **cmake at the project's own `cmake_minimum_required`** (read from `CMakeLists.txt`, today 3.30) **and ninja** — its harness declares that same floor and configures with `-G Ninja`, so either one missing aborts every configure before `cmake/libcxx.cmake` is read |
-| `test_cmake_format_target.sh` | **cmake ≥ 3.16 and ninja** — its harness configures with `-G Ninja` (the docker/ci image has no `make`); no compiler (`LANGUAGES NONE`) |
-| `test_ninjalog_stats.sh` | `python3` (the script under test is Python) |
 | `test_session_start_hook.sh` | **`git`** — its subject is git behavior, so it `git init`s a throwaway repo and makes a real commit through the wired hook (`python3` optional: without it the `settings.json` JSON-validity assertion is reported as unchecked, the grep assertions still run) |
-| `test_time_trace.sh` | `python3`; no compiler — it pins the replay argv (a `.cppm` traced via `--precompile`, the modmap's `-fmodule-output` dropped) and the trace parsing, the two places a wrong answer is a plausible number rather than a crash |
 | `test_commit_self_heal_configure.sh` | **`git`** — it runs `commit.sh` in a throwaway repo, which reads the staged files from git; `cmake`, `ninja` and `pg_isready` are stubbed, so no toolchain |
 | everything else | pure bash |
 
