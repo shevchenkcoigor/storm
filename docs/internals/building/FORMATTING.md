@@ -27,9 +27,10 @@ when `cmake-format` is absent:
 The stub is what the hook relies on (#690): the configure output lands in the
 log of whichever step configured `build/debug` — clang-format's, when both
 formatters run on a fresh tree — but the build output of the stub always lands
-in the cmake-format step's own log. `scripts/commit/tests/test_cmake_format_target.sh`
+in the cmake-format step's own log. `scripts/commit/tests/test_cmake_format_target.py`
 covers absent (fresh and configured tree) and present; `commit.sh` runs it
-when `cmake/format.cmake` or the test is staged. It is not wired into CI.
+when `cmake/format.cmake` or the test is staged, and CI's `script-guards` job
+runs it on every PR (#708).
 
 | Tool | Where it comes from |
 |---|---|

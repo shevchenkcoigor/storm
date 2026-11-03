@@ -148,8 +148,8 @@ SELF_HEAL = Guard(
 # name a missing tool in its own log. Needs plain cmake only.
 CMAKE_FORMAT_TARGET = Guard(
     "cmake-format target",
-    r"^(cmake/format\.cmake|scripts/commit/tests/test_cmake_format_target\.sh)$",
-    (Step(None, script("scripts/commit/tests/test_cmake_format_target.sh"),
+    r"^(cmake/format\.cmake|scripts/lib/testing\.py|scripts/commit/tests/test_cmake_format_target\.py)$",
+    (Step(None, script("scripts/commit/tests/test_cmake_format_target.py"),
           "cmake-format target self-test failed"),),
     "cmake-format target self-test passed",
 )
@@ -294,23 +294,23 @@ CI_DIGESTS = Guard(
 # batch (#268), or a plausible-but-wrong compile-time number in COMPILE_TIME.md.
 COVERAGE_PARALLEL = Guard(
     "coverage batch parallelism",
-    r"^scripts/coverage/(coverage-run-batched\.sh|pg-default-connstr\.sh|tests/test_coverage_parallel\.sh)$",
-    (Step(None, script("scripts/coverage/tests/test_coverage_parallel.sh"),
+    r"^scripts/(coverage/(coverage-run-batched\.sh|pg-default-connstr\.sh|tests/test_coverage_parallel\.py)|lib/testing\.py)$",
+    (Step(None, script("scripts/coverage/tests/test_coverage_parallel.py"),
           "coverage batch parallelism self-test failed"),),
     "coverage batch parallelism self-test passed",
 )
 
 NINJALOG_STATS = Guard(
     "ninjalog stats",
-    r"^scripts/compile_time/(ninjalog_stats\.py|tests/test_ninjalog_stats\.sh)$",
-    (Step(None, script("scripts/compile_time/tests/test_ninjalog_stats.sh"), "ninjalog stats self-test failed"),),
+    r"^scripts/(compile_time/(ninjalog_stats\.py|tests/test_ninjalog_stats\.py)|lib/testing\.py)$",
+    (Step(None, script("scripts/compile_time/tests/test_ninjalog_stats.py"), "ninjalog stats self-test failed"),),
     "ninjalog stats self-test passed",
 )
 
 TIME_TRACE = Guard(
     "time-trace capture",
-    r"^scripts/compile_time/(time_trace\.py|tests/test_time_trace\.sh)$",
-    (Step(None, script("scripts/compile_time/tests/test_time_trace.sh"), "time-trace capture self-test failed"),),
+    r"^scripts/(compile_time/(time_trace|compile_replay)\.py|compile_time/tests/test_time_trace\.py|lib/testing\.py)$",
+    (Step(None, script("scripts/compile_time/tests/test_time_trace.py"), "time-trace capture self-test failed"),),
     "time-trace capture self-test passed",
 )
 
