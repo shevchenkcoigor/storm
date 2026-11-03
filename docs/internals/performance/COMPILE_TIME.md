@@ -214,8 +214,9 @@ three models, and bodies that are query chains and assertions and nothing else, 
 most of the 110 hand-written test TUs are. It is deliberately NOT picked by comparing its 11.48 s
 against the 13.8 s per-TU mean in [Re-measured after #634](#re-measured-after-634-2026-09-08):
 that mean is of per-edge **wall** times from a `-j6`-on-4-cores build, and this section's seconds
-are serial, uncontended, min-of-3 replays. The two are not the same quantity. Reproducible with
-`scripts/tu_ablation.py`; each column below is internally consistent, so read a column against
+are serial, uncontended, min-of-3 replays. The two are not the same quantity. The run used
+`scripts/tu_ablation.py`, since removed (it is in git history, before the commit that deleted
+it); each column below is internally consistent, so read a column against
 itself and never against another section's seconds.
 
 | step | A: sec | A: Δ | B: sec | B: Δ | what the step adds |
@@ -1092,9 +1093,9 @@ combined with this change.
 
 ## Method
 
-Five scripts implement the measurements below, so a later investigation re-runs
+Three scripts implement the measurements below, so a later investigation re-runs
 them rather than rebuilding the harness (and rediscovering the mistakes in the
-bullets that follow). Four of them answer "what does one TU pay" from different
+bullets that follow). Two of them answer "what does one TU pay" from different
 angles; `ninjalog_stats.py` answers "where does the whole build's time go". They
 share one replay harness, `scripts/lib/compile_replay.py`, so they agree on what
 a timed compile is:
@@ -1102,39 +1103,26 @@ a timed compile is:
 | script | answers |
 |---|---|
 | `scripts/compile_time_probe.py` | what a TU pays before its first assertion — generates probes carrying N models from `shared/models/`, replays a real TU's command against each, reports deltas |
-| `scripts/typed_test_cost.py` | what the second backend costs — compiles real TUs as-is, then with `DatabaseTypes` narrowed to SQLite, bodies untouched |
 | `scripts/ninjalog_stats.py` | where the whole build's time goes — parses `.ninja_log` into the bucket table above, deduplicating module edges and excluding scan edges |
-| `scripts/tu_ablation.py` | what ONE TU's time is made of — ablates a real test file (drop bodies, merge them into one block, neuter the assertions, narrow the fixture) and recompiles each variant |
 | `scripts/time_trace.py` | where ONE TU's (or one module's) time goes inside the compiler — replays it with `-ftime-trace -ftime-trace-granularity=0`, best of N, and prints clang's `Total <event>` aggregates plus the longest `InstantiateFunction`/`InstantiateClass`/`ParseClass`/constant-evaluation events, optionally `--filter`ed by detail |
 
 ```bash
 scripts/dev-container.sh exec python3 scripts/compile_time_probe.py
 scripts/dev-container.sh exec python3 scripts/compile_time_probe.py --body real
-scripts/dev-container.sh exec python3 scripts/typed_test_cost.py
 scripts/ninjalog_stats.py build/debug/.ninja_log     # after a build from scratch
-scripts/dev-container.sh exec python3 scripts/tu_ablation.py \
-    tests/crud/test_conditional_update.cpp --variants full,merge,sink,trivial1,n=0
 scripts/dev-container.sh exec python3 scripts/time_trace.py src/orm/schema.cppm
 scripts/dev-container.sh exec python3 scripts/time_trace.py \
     tests/schema/test_orm_schema.cpp --filter SchemaStatement --top 15
 ```
 
-All four replay scripts refuse to run if `compile_commands.json` shows a
+Both replay scripts refuse to run if `compile_commands.json` shows a
 compiler launcher, since timing through a cache measures nothing.
-`typed_test_cost.py` edits `tests/test_db_helpers.h` in place and restores it in
-a `finally` block — run it on a clean tree, and check `git diff` if it is
-interrupted. `tu_ablation.py` does **not** touch the tree: each variant goes to a
-temporary file compiled with `-iquote <the TU's own directory>` added, so the
-relative includes resolve as they do in the real build while the source stays
-untouched, an interrupted run leaves nothing behind, and two runs cannot clobber
-each other. `-iquote` rather than `-I` because the quoted-include search order is
-*including file's directory, `-iquote`, `-I`, `-isystem`* — an appended `-I` would
-land BEHIND the command's own `-I` list, where an earlier entry could shadow a
-same-named header, and would widen the angle-bracket path the real build never
-puts that directory on. Its ablated variants are compiled with the unused-entity warnings
-suppressed — `full` included, so the rows stay comparable — because deleting
-bodies orphans the file-scope helpers only those bodies used and the tree builds
-with `-Werror`.
+
+`typed_test_cost.py` (second-backend cost: ~13%, not 2x) and `tu_ablation.py`
+(decomposing one TU by dropping bodies, merging blocks and neutering assertions)
+were removed once their findings were recorded here; both are in git history.
+To redo the second-backend measurement by hand, narrow `DatabaseTypes` in
+`tests/test_db_helpers.h` to SQLite alone and compare replayed times.
 
 - **Per-TU timing**: replay a TU's exact command from `compile_commands.json`
   with `-o` stripped, serially, min of 3 runs. Timing through `ninja` instead adds
@@ -1152,7 +1140,7 @@ with `-Werror`.
   and re-measure each side several times, alternating sides, and read the median
   per side, exactly as `/benchmark` requires for runtime. A cross-check that
   costs nothing: a change confined to one code path must leave the variants that
-  never reach it (`n=0`) unmoved — if those shift too, the run is drifting, not
+  never reach it (the `n=0` ablation row) unmoved — if those shift too, the run is drifting, not
   the code. See
   [the std::visit entry](#stdvisit-over-expressionvariant--swapped-for-a-switch-no-reproducible-effect).
 - **Whole-build breakdown**: parse `.ninja_log`, deduplicating on

@@ -217,11 +217,6 @@ These rules are enforced by SonarCloud analysis. Follow them when writing new co
 - `S3776`: consteval JSON parsers and `if constexpr` dispatch have inherent complexity
 - `S1820`: Flat structs for consteval parsing intentionally exceed 20 fields
 - `S6024`: GTest fixture static helpers are idiomatic — no need to extract as free functions
-- `pythonsecurity:S2083` (`scripts/tu_ablation.py`): the flagged write targets a
-  `tempfile.TemporaryDirectory()` path with a hardcoded basename — no argv component. Four
-  attempts to satisfy the rule by construction are recorded in COMPILE_TIME.md, ending with the
-  removal of the in-place source rewrite that was the real sink; what remains tainted is the
-  written CONTENT, which is the tool's whole purpose
 - `S954`: the model headers (`#include "../shared/models/person.h"`, `"test_fixture.h"`, …) MUST come after `import storm;` — can't move to top
 
 ### Commit & Push Workflow

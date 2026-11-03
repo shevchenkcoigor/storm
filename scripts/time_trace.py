@@ -76,8 +76,8 @@ def capture(build_dir, source, trace_path):
     """Compile `source` once with a granularity-0 trace; return an error text or None.
 
     The source is looked up in the database's own file set before its command is
-    assembled, in this one frame — the same allow-list shape as compile_replay's
-    measure(), so what constrains the executed argv is visible here.
+    assembled, in this one frame, so what constrains the executed argv is visible
+    here.
     """
     db = load_compile_db(build_dir)
     source_file = safe_path(pathlib.Path(REPO_ROOT) / source)

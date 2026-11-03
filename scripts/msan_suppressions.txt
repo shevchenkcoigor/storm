@@ -1,6 +1,0 @@
-# GTest CodeLocation MSAN false positive: std::string SSO buffer not considered
-# initialized by MSAN. Fires in GTest static test registration (before main()),
-# via std::string move constructor -> __is_long(), not in Storm code. (#326)
-fun:*basic_string*__is_long*
-fun:*basic_string*basic_string*
-fun:*CodeLocation*CodeLocation*

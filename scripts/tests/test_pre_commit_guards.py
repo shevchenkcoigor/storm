@@ -129,7 +129,6 @@ class TriggerTest(unittest.TestCase):
     def test_orphaned_self_tests_trigger_on_their_scripts(self):
         for staged, guard in (("scripts/ninjalog_stats.py", "ninjalog stats"),
                               ("scripts/time_trace.py", "time-trace capture"),
-                              ("scripts/tu_ablation.py", "TU ablation transforms"),
                               ("scripts/coverage-run-batched.sh", "coverage batch parallelism")):
             self.assertIn(guard, names(pcg.triggered_guards([staged])), staged)
 
