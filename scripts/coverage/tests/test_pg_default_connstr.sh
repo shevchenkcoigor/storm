@@ -1,6 +1,6 @@
 #!/bin/bash
-# Tests for scripts/coverage/pg-default-connstr.sh and the three scripts that depend on it:
-# commit.sh, scripts/coverage/coverage-run-batched.sh and scripts/dev-container.sh.
+# Tests for scripts/coverage/pg-default-connstr.sh and the two scripts that depend on it:
+# commit.sh and scripts/coverage/coverage-run-batched.sh.
 #
 # The default STORM_PG_CONNSTR names a libpq unix-socket directory, and that
 # directory differs by host: CI (Linux) runs PostgreSQL at /var/run/postgresql,
@@ -131,28 +131,6 @@ check "commit.sh: an exported value wins" "$EXPORTED" \
     "$(run_default_block "$COMMIT" "$COMMIT_START" "export STORM_PG_CONNSTR='$EXPORTED'")"
 check "commit.sh: an empty value is treated as unset" "$DARWIN_DEFAULT" \
     "$(run_default_block "$COMMIT" "$COMMIT_START" "$as_darwin; export STORM_PG_CONNSTR=")"
-
-# --- scripts/dev-container.sh ---
-# `exec` runs the command natively when ../clang-p2996 exists (a macOS developer
-# with a local toolchain). It used to export the Linux container's connstr
-# unconditionally, so `dev-container.sh exec ./commit.sh` handed the gate
-# /var/run/postgresql on a Mac and every PG test skipped. On the native path it
-# must leave STORM_PG_CONNSTR exactly as the caller had it. A fake repo with a
-# sibling clang-p2996 directory selects the native path without needing docker.
-DEV_TMP="$(mktemp -d)"
-trap 'rm -rf "$DEV_TMP"' EXIT
-mkdir -p "$DEV_TMP/repo/scripts" "$DEV_TMP/clang-p2996"
-cp "$REPO_ROOT/scripts/dev-container.sh" "$DEV_TMP/repo/scripts/"
-native_exec_connstr() {
-    env "$@" bash "$DEV_TMP/repo/scripts/dev-container.sh" exec \
-        bash -c 'printf %s "${STORM_PG_CONNSTR-<unset>}"'
-    return $?
-}
-
-check "dev-container: native exec leaves an unset value unset" "<unset>" \
-    "$(native_exec_connstr -u STORM_PG_CONNSTR)"
-check "dev-container: native exec passes an exported value through" "$EXPORTED" \
-    "$(native_exec_connstr STORM_PG_CONNSTR="$EXPORTED")"
 
 echo "$PASS passed, $FAIL failed"
 [[ $FAIL -eq 0 ]]

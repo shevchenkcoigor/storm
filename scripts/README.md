@@ -11,41 +11,7 @@ self-tests in its own `tests/` folder, so a script and its test sit one `cd` apa
 | `ci/` | CI helpers and checkers: change classification, digest pins, agent frontmatter, ORM backend imports, SonarCloud gate, build retry, Atlas migration test |
 | `compile_time/` | compile-time measurement: `time_trace.py`, `ninjalog_stats.py`, `compile_time_probe.py` and their shared replay harness |
 
-`dev-container.sh` and `split_unified_cases.py` stay at the top level: the first is a standalone
-entry point, the second is invoked by `tests/CMakeLists.txt` at build time.
-
-## Docker Dev Container (dev-container.sh)
-
-Provides a working `../clang-p2996` build environment via Docker for sessions or
-contributors with no native toolchain — see CLAUDE.md's Prerequisites section
-(issue #628) for the full writeup and `docs/internals/building/GETTING_STARTED.md`
-for the plain one-shot `docker run` alternative.
-
-### Usage
-
-```bash
-scripts/dev-container.sh up                    # builds/starts the containers (idempotent)
-scripts/dev-container.sh exec cmake --preset ninja-debug
-scripts/dev-container.sh exec cmake --build --preset ninja-debug
-scripts/dev-container.sh exec ./build/debug/tests/storm_tests
-scripts/dev-container.sh exec ./commit.sh
-scripts/dev-container.sh status                 # show container state
-scripts/dev-container.sh rebuild                # drop image + containers, rebuild from scratch
-scripts/dev-container.sh down                   # stop and remove the containers
-```
-
-### Notes
-
-- `exec` runs the command natively instead (no Docker) when `../clang-p2996` is
-  already present, so build commands can be prefixed with it unconditionally.
-- Builds `docker/ci/Dockerfile`, adding an extra `cacerts` build context (trusted
-  before `pacman -Syu`) only when a sandbox TLS-intercepting proxy CA is present
-  at `/root/.ccr/ca-bundle.crt` — real CI never supplies that context.
-- The PostgreSQL sidecar shares a unix-socket volume with the build container at
-  `/var/run/postgresql`, matching `CMakePresets.json`'s own `STORM_PG_CONNSTR` —
-  `ctest --preset` and the coverage target need no override.
-- `up` serializes on a flock, so calling it before every `exec`, or from more
-  than one shell concurrently, is safe.
+`split_unified_cases.py` stays at the top level: `tests/CMakeLists.txt` invokes it at build time.
 
 ## Clang-Tidy Script
 
@@ -285,8 +251,8 @@ Thirteen scripts have a `test_<name>.sh` self-test under a group's `tests/` fold
 subjects are not documented above (`coverage-run-batched.sh`, `ninjalog_stats.py`,
 `time_trace.py`), `test_pg_default_connstr.sh`, which covers the sourced helper
 `pg-default-connstr.sh` (the per-OS default `STORM_PG_CONNSTR` socket: Linux
-`/var/run/postgresql`, macOS `/tmp`) plus its callers `commit.sh`, `coverage-run-batched.sh`
-and `dev-container.sh`, `test_line_coverage.sh`, which covers the sourced helper
+`/var/run/postgresql`, macOS `/tmp`) plus its callers `commit.sh` and
+`coverage-run-batched.sh`, `test_line_coverage.sh`, which covers the sourced helper
 `coverage/line_coverage.sh` (the BSD/GNU-portable lcov line-coverage parser shared by `commit.sh`'s
 gate and CI's `coverage` job, #680) plus `commit.sh`'s
 `run_coverage_check()` and `show_uncovered_lines()` — the latter under `/bin/bash` too, which is
@@ -297,9 +263,8 @@ than a script, `test_cmake_format_target.sh`, which covers `cmake/format.cmake`'
 `test_pyyaml_check.py` (Python, plain cmake), which covers `cmake/pyyaml.cmake`'s configure-time PyYAML check (#703),
 `test_cpm_cache_check.py` (Python, plain cmake), which covers `cmake/cpm-cache.cmake`'s configure-time check for a CPM checkout left empty by an interrupted clone (#705),
 and `test_session_start_hook.sh`, which covers
-`.claude/hooks/session-start-docker.sh` — the SessionStart hook that wires `core.hooksPath` (and
-so decides whether `commit.sh` runs at all, #651) before taking any of its Docker-provisioning
-early exits. `test_commit_self_heal_configure.sh` covers `commit.sh` itself: it runs the real
+`.claude/hooks/session-start.sh` — the SessionStart hook that wires `core.hooksPath` (and
+so decides whether `commit.sh` runs at all, #651). `test_commit_self_heal_configure.sh` covers `commit.sh` itself: it runs the real
 script in a throwaway repo against a stub `cmake`, and checks that each self-heal configure fails
 its step with the CMake error in that step's log, and that a configured tree never reconfigures
 (#674), and that a configured tree takes the targeted clang-tidy prereq build rather than the
@@ -357,7 +322,4 @@ cmake 3.28 produced. Under `CI` it fails instead of skipping: there the toolchai
 the digest-pinned `storm-ci` image, so a missing prerequisite means a broken image, not an
 older machine, and a skip would report green for a test that never ran.
 
-To run it elsewhere, upgrade the tool or use `scripts/dev-container.sh exec
-scripts/ci/tests/test_libcxx_modules_symlink.sh` — noting that `exec` runs **natively**, with
-the same tools, whenever `../clang-p2996` is checked out beside the repo, so on such a host
-the container is not a way around an old cmake.
+To run it elsewhere, upgrade the tool.

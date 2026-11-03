@@ -310,52 +310,21 @@ under 100%, check PG is up before suspecting your code.
 See [docs/internals/testing/CODE_COVERAGE.md](docs/internals/testing/CODE_COVERAGE.md) for details.
 
 ### Prerequisites
-- Custom Clang with C++26 reflection (`../clang-p2996/`)
+- Custom Clang with C++26 reflection (`../clang-p2996/`). Without it you can still build and test in the prebuilt `storm-ci` image ([GETTING_STARTED.md](docs/internals/building/GETTING_STARTED.md), Option 1), but committing C++ or cmake changes needs the native toolchain: `commit.sh` runs the compiler (rule 3)
 - SQLite3, CMake 3.30+, Ninja, Python 3 with PyYAML (tests/benchmarks convert YAML→JSON at build time; configure fails with a fix-it message if the found Python lacks it; it never installs anything — point CMake at another with `-DPython3_EXECUTABLE=<path>`)
 
-**No `../clang-p2996` locally? (issue #628)** — Claude Code remote/sandboxed sessions start
-with no compiler and can't configure, build, run tests, or run clang-format/clang-tidy without
-one. `scripts/dev-container.sh` wraps `docker/ci/Dockerfile` into a long-lived build container
-plus a PostgreSQL sidecar (connected over a shared unix-socket volume, matching
-`CMakePresets.json`'s own `STORM_PG_CONNSTR` exactly — no override needed), so build commands
-run via `exec` instead of natively. In a sandbox whose outbound HTTPS is TLS-intercepted, the
-same Dockerfile is built with an extra `cacerts` build context that trusts the proxy's CA before
-`pacman -Syu`; real CI builds the same file with no such context, so nothing changes for it:
-```bash
-scripts/dev-container.sh up                    # builds/starts the containers (idempotent)
-scripts/dev-container.sh exec cmake --preset ninja-debug
-scripts/dev-container.sh exec cmake --build --preset ninja-debug
-scripts/dev-container.sh exec ./build/debug/tests/storm_tests
-scripts/dev-container.sh exec ./commit.sh       # or `exec git commit -m ...` — see below
-scripts/dev-container.sh status                 # show container state
-scripts/dev-container.sh rebuild                # drop image + containers, rebuild from scratch
-scripts/dev-container.sh down                   # stop and remove the containers
-```
-`exec` falls through to running the command natively when `../clang-p2996` is already present,
-so build commands can be prefixed with it unconditionally in either kind of session. `up` (and
-therefore `exec`, which calls it) serializes on a flock, so calling it before every command — or
-concurrently from more than one shell — is safe. The repo is bind-mounted at the same absolute
-path inside the container as on the host, so `CMakeCache.txt` and git's `core.hooksPath` never
-disagree between a host shell and an `exec` one — which means `git commit`/`./commit.sh` work
-correctly via `exec`, but a container-only session (no native toolchain) must run them that way:
-a plain host-side `git commit` still fires the pre-commit hook, which needs the compiler rule 3
-says not to skip.
-
-A `SessionStart` hook (`.claude/hooks/session-start-docker.sh`) provisions this automatically in
-the background on a remote session with no native toolchain. It is **wired** in
-`.claude/settings.json`'s `hooks.SessionStart` (#651 — before that it existed but was declared
-nowhere, so it never ran):
+**Pre-commit hook wiring (#651)**: a `SessionStart` hook (`.claude/hooks/session-start.sh`) runs
+`git config core.hooksPath .githooks` at the start of every session, because that wiring is what makes
+`commit.sh` run at all and the only other writer (`CMakeLists.txt`) needs a successful configure — which a
+fresh clone or worktree has not done. It is **declared** in `.claude/settings.json`'s `hooks.SessionStart`
+(before #651 it existed but was declared nowhere, so it never ran):
 ```json
 "SessionStart": [
-  { "hooks": [ { "type": "command", "command": "bash $CLAUDE_PROJECT_DIR/.claude/hooks/session-start-docker.sh" } ] }
+  { "hooks": [ { "type": "command", "command": "bash $CLAUDE_PROJECT_DIR/.claude/hooks/session-start.sh" } ] }
 ]
 ```
-That same hook also runs `git config core.hooksPath .githooks` **unconditionally** — first, before
-each of its three provisioning early-exits — because that wiring is what makes `commit.sh` run at
-all, and it is missing in exactly the sessions those exits return from (#651; see rule 3).
-`scripts/commit/tests/test_session_start_hook.sh` covers each exit path — plus the `settings.json`
-declaration the hook is inert without — so a reordering or a deleted entry cannot silently unwire
-it again. It runs in CI (the `script-guards` job) and, like the #543
+`scripts/commit/tests/test_session_start_hook.sh` covers the wiring — plus the `settings.json`
+declaration the hook is inert without — so a deleted entry cannot silently unwire it again. It runs in CI (the `script-guards` job) and, like the #543
 and #550 guards, in `commit.sh` ABOVE its `TOTAL_STEPS==0` early exit, since a commit touching
 only the hook, `settings.json` or the test itself skips every other step. Those guards are rows
 of one table in `scripts/commit/pre_commit_guards.py` (#688), not bash blocks — add a guard there; CI's

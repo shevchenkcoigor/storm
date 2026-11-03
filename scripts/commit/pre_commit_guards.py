@@ -114,13 +114,12 @@ SWEEP_WORKFLOW = Guard(
 )
 
 # --- SessionStart hook wiring (#651) ---
-# .claude/hooks/session-start-docker.sh sets core.hooksPath, the only reason
-# commit.sh runs at all in a clone that never configures a build. Its wiring must
-# stay above the hook's Docker bail-outs, or it goes missing in exactly the
-# sessions those bail-outs return from.
+# .claude/hooks/session-start.sh sets core.hooksPath, the only reason commit.sh
+# runs at all in a clone that never configures a build, and .claude/settings.json
+# is what declares it: without that entry the hook never runs.
 SESSION_START_HOOK = Guard(
     "SessionStart hook wiring",
-    r"^(\.claude/(hooks/session-start-docker\.sh|settings\.json)|scripts/commit/tests/test_session_start_hook\.sh)$",
+    r"^(\.claude/(hooks/session-start\.sh|settings\.json)|scripts/commit/tests/test_session_start_hook\.sh)$",
     (Step(None, script("scripts/commit/tests/test_session_start_hook.sh"),
           "SessionStart hook wiring self-test failed"),),
     "SessionStart hook wiring self-test passed",
@@ -194,7 +193,7 @@ CPM_COLD_CACHE = Guard(
 # leaves the coverage gate stuck at ~99.8%.
 PG_SOCKET_DEFAULT = Guard(
     "PostgreSQL socket default",
-    r"^(commit\.sh|scripts/coverage/(pg-default-connstr|coverage-run-batched)\.sh|scripts/dev-container\.sh"
+    r"^(commit\.sh|scripts/coverage/(pg-default-connstr|coverage-run-batched)\.sh"
     r"|scripts/coverage/tests/test_pg_default_connstr\.sh)$",
     (Step(None, script("scripts/coverage/tests/test_pg_default_connstr.sh"),
           "per-OS PostgreSQL socket default self-test failed"),),

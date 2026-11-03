@@ -79,7 +79,7 @@ absolute seconds mean nothing without it:
 | RAM | 16 GB |
 | kernel / host OS | Linux 6.18.44-fc-v24, Ubuntu 24.04.4 LTS (sandboxed microVM) |
 | disk | virtio `/dev/vda`, ext4 |
-| container | `docker/ci/Dockerfile` (Manjaro base) via `scripts/dev-container.sh` |
+| container | `docker/ci/Dockerfile` (Manjaro base) |
 | compiler | clang-p2996 21.0.0git, commit `9ffb96e3` |
 | cmake / ninja | 4.4.3 / 1.13.2 (default `-j`, i.e. 6 jobs on 4 cores) |
 | preset | `ninja-debug` (coverage instrumentation on) |
@@ -1107,11 +1107,11 @@ a timed compile is:
 | `scripts/compile_time/time_trace.py` | where ONE TU's (or one module's) time goes inside the compiler — replays it with `-ftime-trace -ftime-trace-granularity=0`, best of N, and prints clang's `Total <event>` aggregates plus the longest `InstantiateFunction`/`InstantiateClass`/`ParseClass`/constant-evaluation events, optionally `--filter`ed by detail |
 
 ```bash
-scripts/dev-container.sh exec python3 scripts/compile_time/compile_time_probe.py
-scripts/dev-container.sh exec python3 scripts/compile_time/compile_time_probe.py --body real
+python3 scripts/compile_time/compile_time_probe.py
+python3 scripts/compile_time/compile_time_probe.py --body real
 scripts/compile_time/ninjalog_stats.py build/debug/.ninja_log     # after a build from scratch
-scripts/dev-container.sh exec python3 scripts/compile_time/time_trace.py src/orm/schema.cppm
-scripts/dev-container.sh exec python3 scripts/compile_time/time_trace.py \
+python3 scripts/compile_time/time_trace.py src/orm/schema.cppm
+python3 scripts/compile_time/time_trace.py \
     tests/schema/test_orm_schema.cpp --filter SchemaStatement --top 15
 ```
 

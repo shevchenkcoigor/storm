@@ -9,8 +9,8 @@ Probes are generated from the tree's own shared/models/ headers, so they follow
 the models rather than pinning a stale copy of them. Models are included in
 dependency order and counted as models, not as files — see model_headers().
 
-    scripts/dev-container.sh exec python3 scripts/compile_time/compile_time_probe.py
-    scripts/dev-container.sh exec python3 scripts/compile_time/compile_time_probe.py --body real
+    python3 scripts/compile_time/compile_time_probe.py
+    python3 scripts/compile_time/compile_time_probe.py --body real
 """
 import argparse
 import os

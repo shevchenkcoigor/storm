@@ -157,11 +157,7 @@ check_prerequisites() {
     fi
 
     echo "SKIP: $reason; every configure would fail before anything here is exercised."
-    echo "      Upgrade the tool, or run this in the dev container:"
-    echo "        scripts/dev-container.sh exec scripts/ci/tests/test_libcxx_modules_symlink.sh"
-    echo "      (that exec runs NATIVELY, with these same tools, whenever ../clang-p2996 is"
-    echo "       checked out beside the repo — on such a host, upgrade rather than expect a"
-    echo "       container.)"
+    echo "      Upgrade the tool."
     echo
     echo "Results: 0 passed, 0 failed (all scenarios skipped)"
     exit 0

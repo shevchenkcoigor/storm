@@ -3,7 +3,7 @@
 #
 # The connection string names a libpq unix-socket DIRECTORY, and the right one
 # depends on the host: a Linux PostgreSQL package (and the CI service
-# container, and scripts/dev-container.sh's sidecar) uses /var/run/postgresql,
+# container) uses /var/run/postgresql,
 # while a Homebrew PostgreSQL on macOS listens in /tmp. commit.sh and
 # scripts/coverage/coverage-run-batched.sh used to hardcode the Linux path, so on macOS
 # every PG-backed test skipped and the 100% coverage gate failed at ~99.8%.

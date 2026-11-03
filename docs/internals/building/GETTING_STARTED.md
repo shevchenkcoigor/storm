@@ -23,7 +23,7 @@ yourself:
 - a successful `cmake --preset …` (`CMakeLists.txt` sets it as a side effect),
   which is no help before your first configure, or in a clone that has no
   toolchain to configure with;
-- `.claude/hooks/session-start-docker.sh`, for Claude Code sessions only.
+- `.claude/hooks/session-start.sh`, for Claude Code sessions only.
 
 It is idempotent, so re-running it costs nothing. To confirm:
 
@@ -33,8 +33,10 @@ git config --get core.hooksPath   # → .githooks
 
 Note that the hook needs the toolchain to do its work: in a clone without one,
 a commit touching C++ or cmake now **fails** rather than silently skipping the
-checks. That is the intended direction — run the commit through the dev
-container instead (`scripts/dev-container.sh exec git commit …`, see below).
+checks. That is the intended direction. Without a local toolchain you can still
+build and run tests in the `storm-ci` image (Option 1 below), but committing C++
+or cmake changes needs the native toolchain, and the coverage gate also needs a
+running PostgreSQL, which the image does not ship.
 
 ## Option 1 (recommended) — Build via Docker
 
@@ -60,13 +62,6 @@ The image's entrypoint creates the `${sourceDir}/../clang-p2996` symlink Storm's
 
 The same image runs in CI, so a green local build is a strong predictor of
 green CI.
-
-**Need the full test/coverage loop (a live PostgreSQL), or working behind a
-TLS-intercepting proxy?** `scripts/dev-container.sh` wraps the same
-`docker/ci/Dockerfile` into a long-lived container plus a PostgreSQL sidecar
-instead of the one-shot `docker run` above — see CLAUDE.md's Prerequisites
-section (issue #628) for usage. It's what Claude Code sessions use when no
-native toolchain is present.
 
 ## Option 2 — Build clang-p2996 from source
 
