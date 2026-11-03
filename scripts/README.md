@@ -209,7 +209,7 @@ Exit code `0` = all agent files valid, `1` = at least one invalid.
 - A `.md` file with no opening `---` is treated as shared prose, not an agent, and skipped.
 - An agent file with **no** `description:` at all is reported: it cannot be registered either.
 
-## Change Classification (detect-changes.sh)
+## Change Classification (detect_changes.py)
 
 Classifies a list of changed file paths into `HAS_SRC_CHANGES` / `HAS_TEST_CHANGES` /
 `HAS_CPP_CHANGES` / `HAS_CMAKE_CHANGES` / `HAS_BENCH_CHANGES` flags — one place shared by
@@ -221,7 +221,7 @@ differently.
 ### Usage
 
 ```bash
-git diff --cached --name-only | ./scripts/ci/detect-changes.sh
+git diff --cached --name-only | ./scripts/ci/detect_changes.py
 # HAS_SRC_CHANGES=true
 # HAS_TEST_CHANGES=false
 # HAS_CPP_CHANGES=true
@@ -233,7 +233,7 @@ git diff --cached --name-only | ./scripts/ci/detect-changes.sh
 
 Output is `KEY=true|false` lines meant to be `eval`'d into shell variables:
 ```bash
-eval "$(git diff --cached --name-only | ./scripts/ci/detect-changes.sh)"
+eval "$(git diff --cached --name-only | ./scripts/ci/detect_changes.py)"
 ```
 
 ### Where it runs
@@ -247,14 +247,9 @@ eval "$(git diff --cached --name-only | ./scripts/ci/detect-changes.sh)"
 
 ## Script Self-Tests (scripts/*/tests/)
 
-Self-tests live under each group's `tests/` folder. Among them are `test_pg_default_connstr.sh`, which covers the sourced helper
-`pg-default-connstr.sh` (the per-OS default `STORM_PG_CONNSTR` socket: Linux
-`/var/run/postgresql`, macOS `/tmp`) plus its callers `commit.sh` and
-`coverage-run-batched.sh`, `test_line_coverage.sh`, which covers the sourced helper
-`coverage/line_coverage.sh` (the BSD/GNU-portable lcov line-coverage parser shared by `commit.sh`'s
-gate and CI's `coverage` job, #680) plus `commit.sh`'s
-`run_coverage_check()` and `show_uncovered_lines()` — the latter under `/bin/bash` too, which is
-bash 3.2 on macOS — and a scan of `commit.sh` and the scripts it sources or runs for bash-4-only constructs (#689),
+Self-tests live under each group's `tests/` folder. Among them are `test_coverage_gate.py`, which covers `coverage/coverage_gate.py` (the lcov line-coverage parser and 100% gate shared by `commit.sh` and CI's `coverage` job, and the per-OS default `STORM_PG_CONNSTR` socket: Linux
+`/var/run/postgresql`, macOS `/tmp`, #765) plus the real text of its callers — `commit.sh`'s `run_coverage_check()` and the `STORM_PG_CONNSTR` default blocks of `commit.sh` and `coverage-run-batched.sh` — run under `/bin/bash` too, which is
+bash 3.2 on macOS, and a scan of `commit.sh` and `coverage-run-batched.sh` for bash-4-only constructs (#689),
 `test_libcxx_modules_symlink.sh`, which covers `cmake/libcxx.cmake` rather
 than a script, `test_pyyaml_check.py` (Python, plain cmake), which covers `cmake/pyyaml.cmake`'s configure-time PyYAML check (#703),
 `test_cpm_cache_check.py` (Python, plain cmake), which covers `cmake/cpm-cache.cmake`'s configure-time check for a CPM checkout left empty by an interrupted clone (#705),
@@ -274,7 +269,7 @@ for t in scripts/*/tests/test_*.sh; do "$t" || echo "FAILED: $t"; done
 The agent-frontmatter checker and the helpers `commit.sh` delegates to (#688) are Python, so their
 self-tests are too: `test_check_agent_frontmatter.py`, `test_check_ci_digests.py`,
 `test_check_orm_backend_imports.py`, `test_cpm_cold_cache.py` (needs `git` too: a static policy check that every pinned CPM/FetchContent call ends with `GIT_SHALLOW FALSE`, #709), `test_detect_changes.py`, `test_clang_tidy_skiplist.py`, `test_run_clang_tidy.py`,
-`test_run_clang_tidy_full.py` (the last two need `git` and `/bin/sh` as well), `test_cmake_format_target.py` (needs **cmake ≥ 3.16 and ninja**: its harness configures with `-G Ninja`, the docker/ci image has no `make`; covers `cmake/format.cmake`'s stub `cmake-format` target, which fails naming the missing tool in the cmake-format step's own log, #690), `test_ninjalog_stats.py` and `test_time_trace.py` (pin the two compile-time numbers that are plausible when wrong: the module-edge dedup and scan-edge exclusion, and the `--precompile` replay with the modmap's `-fmodule-output` dropped; no compiler), `test_coverage_parallel.py` (drives the real `coverage-run-batched.sh` with a fake gtest binary, #268; needs GNU `nproc` and at least 3 cores), `test_sweep_workflow.py` (runs the sweep workflow step's script under `bash`), `test_uncovered_lines.py`,
+`test_run_clang_tidy_full.py` (the last two need `git` and `/bin/sh` as well), `test_cmake_format_target.py` (needs **cmake ≥ 3.16 and ninja**: its harness configures with `-G Ninja`, the docker/ci image has no `make`; covers `cmake/format.cmake`'s stub `cmake-format` target, which fails naming the missing tool in the cmake-format step's own log, #690), `test_ninjalog_stats.py` and `test_time_trace.py` (pin the two compile-time numbers that are plausible when wrong: the module-edge dedup and scan-edge exclusion, and the `--precompile` replay with the modmap's `-fmodule-output` dropped; no compiler), `test_coverage_parallel.py` (drives the real `coverage-run-batched.sh` with a fake gtest binary, #268; needs GNU `nproc` and at least 3 cores), `test_sweep_workflow.py` (runs the sweep workflow step's script under `bash`), `test_coverage_gate.py`, `test_uncovered_lines.py`,
 `test_pre_commit_guards.py`, `test_smart_skip.py`, `test_sonar_gate.py` and `test_tidy_prereqs.py` (stdlib `unittest`, need
 only `python3` unless noted, no syntax newer than 3.9) are not matched by the `*.sh` loop above — run them on their
 own. They share `scripts/lib/testing.py` (`run()`, `scratch_dir_in_repo()`); staging it reruns the tests that import it. Each also runs in `commit.sh` when it is staged.
@@ -290,10 +285,11 @@ failure so one run reports them all (#708). So a new self-test reaches CI by bec
 |---|---|
 | `pre_commit_guards.py` | The staged-file guards as one table (trigger regex → checker/self-test → BLOCK message). Run **before** `commit.sh`'s `TOTAL_STEPS==0` early exit. Add a guard by adding a `Guard(...)` row to `GUARDS`. `--all` runs every row regardless of staged files and continues past a failure — CI's `script-guards` job (#708). |
 | `sonar_gate.py` | Not a `commit.sh` helper: ci.yml's `sonar-gate` job (#711). Waits for the SonarCloud app's check run on the PR head and fails unless it is `success`; passes at once on `merge_group`/`push`/`schedule`, so the merge queue never waits on a check the app does not post. |
-| `smart_skip.py` | The smart-skip decision table: reads `detect-changes.sh`'s `HAS_*` output, prints the `RUN_*` switches and `SKIP_NOTE` for `commit.sh` to `eval`. |
+| `smart_skip.py` | The smart-skip decision table: reads `detect_changes.py`'s `HAS_*` output, prints the `RUN_*` switches and `SKIP_NOTE` for `commit.sh` to `eval`. |
 | `tidy_prereqs.py` | Whether clang-tidy's module BMIs exist for the staged files (#557). Prints `complete`; anything else — including a crash — is `incomplete`, so the caller rebuilds. |
 | `run_clang_tidy.py` | The clang-tidy runner `commit.sh` calls in `--diff --fix` (or `--full --fix`) mode and the weekly sweep calls with `--all` (#692). |
 | `clang_tidy_skiplist.py` | The files clang-tidy must not open: `KNOWN_UNPARSEABLE`, the vendored file, and the diff filter. Imported by `run_clang_tidy.py`; `commit.sh` pipes staged paths through `--keep` to drop them from its BMI probe (#550). |
+| `coverage_gate.py` | The coverage gate shared by `commit.sh` and CI's `coverage` job (#765): `check` reads the `lcov --summary` text on stdin, compares the line row to 100.0 and lists the uncovered lines on a miss; `line-coverage` prints the bare percentage; `pg-connstr [OS]` prints the default `STORM_PG_CONNSTR` for the host OS. |
 | `uncovered_lines.py` | The uncovered files and line ranges `commit.sh`'s coverage step prints on a sub-100% result. Takes no arguments: it reads `build/debug/coverage/coverage-filtered.lcov` under the cwd. |
 
 ### Prerequisites

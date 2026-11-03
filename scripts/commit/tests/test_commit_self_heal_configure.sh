@@ -144,11 +144,11 @@ make_repo() {
     REPO="$TMP/repo"
     mkdir -p "$REPO/scripts/ci/tests" "$REPO/scripts/commit" "$REPO/scripts/coverage" "$REPO/scripts/tidy"
     cp "$REPO_ROOT/commit.sh" "$REPO/"
-    cp "$REPO_ROOT/scripts/ci/detect-changes.sh" "$REPO/scripts/ci/"
+    cp "$REPO_ROOT/scripts/ci/detect_changes.py" "$REPO/scripts/ci/"
     cp "$REPO_ROOT/scripts/commit/pre_commit_guards.py" "$REPO_ROOT/scripts/commit/smart_skip.py" \
         "$REPO/scripts/commit/"
-    cp "$REPO_ROOT/scripts/coverage/pg-default-connstr.sh" "$REPO_ROOT/scripts/coverage/uncovered_lines.py" \
-        "$REPO_ROOT/scripts/coverage/line_coverage.sh" "$REPO/scripts/coverage/"
+    cp "$REPO_ROOT/scripts/coverage/coverage_gate.py" "$REPO_ROOT/scripts/coverage/uncovered_lines.py" \
+        "$REPO/scripts/coverage/"
     cp "$REPO_ROOT/scripts/tidy/tidy_prereqs.py" "$REPO_ROOT/scripts/tidy/clang_tidy_skiplist.py" \
         "$REPO/scripts/tidy/"
     # A staged cmake file triggers the CPM cold-cache guard (#709); it needs its

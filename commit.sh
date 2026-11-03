@@ -5,7 +5,7 @@
 # All checks are mandatory. No skip flags available.
 #
 # Smart skips (automatic, based on staged files; classified by
-# scripts/ci/detect-changes.sh, shared with .github/workflows/ci.yml):
+# scripts/ci/detect_changes.py, shared with .github/workflows/ci.yml):
 #   No C++ or cmake files         → skip format, tidy, tests, coverage
 #   cmake-only changes            → skip clang-format, clang-tidy; run tests + coverage + cmake-format
 #   C++ but no src/tests/cmake    → skip tests, coverage
@@ -307,7 +307,7 @@ print_summary() {
 }
 
 # --- Smart skip: detect staged file changes ---
-# Classification (HAS_SRC_CHANGES etc.) lives in scripts/ci/detect-changes.sh, shared
+# Classification (HAS_SRC_CHANGES etc.) lives in scripts/ci/detect_changes.py, shared
 # with .github/workflows/ci.yml so both places skip on the same rules; the
 # decision table (which RUN_* steps a classification needs) is
 # scripts/commit/smart_skip.py (#688). With nothing staged there is nothing to classify.
@@ -326,7 +326,7 @@ RUN_SWITCHES=(RUN_FORMAT RUN_CMAKE_FORMAT RUN_TIDY RUN_TESTS RUN_COVERAGE RUN_BE
 unset "${RUN_SWITCHES[@]}" SKIP_NOTE
 if [[ -n "$STAGED_FILES" ]]; then
     PLAN=$(set -o pipefail
-           printf '%s\n' "$STAGED_FILES" | "$SCRIPTS_DIR/ci/detect-changes.sh" | "$SCRIPTS_DIR/commit/smart_skip.py") || PLAN=""
+           printf '%s\n' "$STAGED_FILES" | "$SCRIPTS_DIR/ci/detect_changes.py" | "$SCRIPTS_DIR/commit/smart_skip.py") || PLAN=""
 else
     EMPTY_INDEX_ARGS=()
     [[ "${STORM_PRE_COMMIT_HOOK:-}" == 1 ]] && EMPTY_INDEX_ARGS=(--empty-index-skips)
@@ -473,14 +473,12 @@ if [[ "$RUN_TESTS" == true ]]; then
         # wins, as in scripts/coverage/coverage-run-batched.sh — a hard override here would
         # silently point tests at a different DB than coverage uses in the same
         # commit.sh run. The two share the DEFAULT (per-OS socket directory, from
-        # scripts/coverage/pg-default-connstr.sh) but not the empty-value rule: this treats
+        # scripts/coverage/coverage_gate.py) but not the empty-value rule: this treats
         # a set-but-empty value as unset, the coverage script passes it through.
         # CMakePresets.json's testPresets still carry the Linux path (`ctest
         # --preset` only).
         if [[ -z "${STORM_PG_CONNSTR:-}" ]]; then
-            # shellcheck source=scripts/coverage/pg-default-connstr.sh
-            source "$(dirname "${BASH_SOURCE[0]}")/scripts/coverage/pg-default-connstr.sh"
-            STORM_PG_CONNSTR="$(storm_pg_default_connstr)" || return 1
+            STORM_PG_CONNSTR="$("$(dirname "${BASH_SOURCE[0]}")/scripts/coverage/coverage_gate.py" pg-connstr "$(uname -s)")" || return 1
         fi
         export STORM_PG_CONNSTR
 
@@ -530,15 +528,8 @@ fi
 
 # --- Step 5: coverage ---
 if [[ "$RUN_COVERAGE" == true ]]; then
-    # Parse the filtered lcov file and display uncovered files + line ranges (#688)
-    show_uncovered_lines() {
-        # Plain text when this script's own colours are blank (as in its self-test).
-        local no_color=""
-        [[ -z "$RED" ]] && no_color=1
-        NO_COLOR="$no_color" "$(dirname "${BASH_SOURCE[0]}")/scripts/coverage/uncovered_lines.py"
-    }
-
-    # Run coverage as a compound check: clean + build + parse + threshold
+    # Run coverage as a compound check: clean + build, then the gate (coverage_gate.py check:
+    # parse the line row, compare to 100.0, list the uncovered lines - the same code CI runs, #765)
     run_coverage_check() {
         # Self-heal an absent build/debug inside the step (#674), so a failed
         # configure is reported here rather than as a coverage build error.
@@ -557,26 +548,10 @@ if [[ "$RUN_COVERAGE" == true ]]; then
             return 1
         fi
 
-        # Extract line coverage percentage (portable across BSD/GNU grep, #680)
-        # shellcheck source=scripts/coverage/line_coverage.sh
-        source "$(dirname "${BASH_SOURCE[0]}")/scripts/coverage/line_coverage.sh"
-        local line_cov
-        line_cov=$(storm_parse_line_coverage <<< "$output")
-
-        if [[ -z "$line_cov" ]]; then
-            echo ""
-            echo "Could not parse line coverage from output."
-            return 1
-        fi
-
-        if [[ "$line_cov" != "100.0" ]]; then
-            echo -e "${RED}${BOLD}Line coverage: ${line_cov}% (required: 100.0%)${RESET}"
-            show_uncovered_lines
-            return 1
-        fi
-
-        echo "Line coverage: 100.0%"
-        return 0
+        # Plain text when this script's own colours are blank (as in its self-test).
+        local no_color=""
+        [[ -z "$RED" ]] && no_color=1
+        NO_COLOR="$no_color" "$(dirname "${BASH_SOURCE[0]}")/scripts/coverage/coverage_gate.py" check <<< "$output"
     }
 
     run_step_live "coverage (100% required)" "$LOG_COVERAGE" run_coverage_check || true

@@ -48,7 +48,7 @@ jobs:
   # event; merge_group: against the queue's base, develop's tip the group was
   # built on (#711); push: against the pre-push SHA, computed but unread since #700 skips
   # the heavy jobs on push; schedule/workflow_dispatch carry no `before`, so
-  # they run everything) via scripts/ci/detect-changes.sh —
+  # they run everything) via scripts/ci/detect_changes.py —
   # the same script commit.sh uses for its staged-file smart skips, so both
   # places agree on what counts as "src/tests/cmake changed". `run_heavy`
   # gates the expensive STEPS of the `test` / `coverage` /
@@ -86,7 +86,7 @@ jobs:
   #
   # Fail-closed by design: this job's output defaults every consumer's `if:`
   # to "run" unless it explicitly says `run_heavy == 'false'` (see those
-  # jobs below) — so a failed/erroring changes job, or a detect-changes.sh
+  # jobs below) — so a failed/erroring changes job, or a detect_changes.py
   # that produced no output, runs the full suite instead of silently
   # skipping it. Also always runs heavy jobs when anything CI itself
   # consumes changes (workflows, scripts/, .githooks/, CMakePresets.json,
@@ -104,7 +104,7 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Self-test detect-changes.sh
+      - name: Self-test detect_changes.py
         run: ./scripts/ci/tests/test_detect_changes.py
 
       - name: Detect changed files
@@ -143,9 +143,9 @@ jobs:
           echo "Changed files:"
           echo "$files"
 
-          detected=$(printf '%s\n' "$files" | ./scripts/ci/detect-changes.sh)
+          detected=$(printf '%s\n' "$files" | ./scripts/ci/detect_changes.py)
           eval "$detected"
-          : "${HAS_SRC_CHANGES:?detect-changes.sh produced no output}"
+          : "${HAS_SRC_CHANGES:?detect_changes.py produced no output}"
 
           run_heavy=false
           if [[ "$HAS_SRC_CHANGES" == true || "$HAS_TEST_CHANGES" == true \
@@ -448,7 +448,7 @@ jobs:
   # the local 100% did not depend on a live server. That premise was wrong: the
   # local number was measured on a machine running PG at /var/run/postgresql,
   # which is exactly the socket coverage-run-batched.sh defaults to on Linux (macOS
-  # defaults to /tmp, see scripts/coverage/pg-default-connstr.sh), so PG tests
+  # defaults to /tmp, see scripts/coverage/coverage_gate.py), so PG tests
   # were quietly running and their lines were quietly counted. With PG genuinely
   # absent the same tree measures ~99.8-99.9% (functions drop 80.6% -> 48.7%),
   # because the PG Connection's constexpr transaction-nesting methods and part of
@@ -577,46 +577,11 @@ jobs:
             exit 1
           fi
 
-          # Parse the LINE row specifically. lcov --summary prints
-          # "lines.......: 100.0% (8613 of 8613 lines)" alongside functions/branches
-          # rows; anchoring on the wrong one would gate against ~81% or ~92% and
-          # look like a broken job. Same helper commit.sh's run_coverage_check() uses.
-          source scripts/coverage/line_coverage.sh
-          line_cov=$(storm_parse_line_coverage < "$summary")
-
-          # An unparseable summary must fail loudly, not silently pass — a missing
-          # number here would otherwise be indistinguishable from a clean run.
-          if [ -z "$line_cov" ]; then
-            echo "::error::Could not parse line coverage from the lcov summary."
-            tail -20 "$summary"
-            exit 1
-          fi
-
-          echo "Line coverage: ${line_cov}% (filtered set)"
-          if [ "$line_cov" != "100.0" ]; then
-            echo "::error::Line coverage ${line_cov}% is below the required 100.0%."
-            echo "Uncovered lines (file:line):"
-            # Write to a file first, then truncate for display. Piping awk
-            # straight into `head -100` would SIGPIPE awk once the limit is hit;
-            # under `set -e -o pipefail` that aborts this block at exit 141,
-            # losing both the remaining output and the `exit 1` below — i.e. the
-            # diagnostics vanish exactly when the drop is biggest.
-            #
-            # substr($0, 4) rather than `-F:` + $2: an lcov SF: path may itself
-            # contain a colon, which field-splitting would silently truncate.
-            # `/^DA:/` is anchored, so branch records (BRDA:...) don't match.
-            uncovered=build/debug/coverage/uncovered.txt
-            awk '
-              /^SF:/  { file = substr($0, 4); next }
-              /^DA:/  { split(substr($0, 4), d, ","); if (d[2] == 0) print "  " file ":" d[1] }
-            ' build/debug/coverage/coverage-filtered.lcov > "$uncovered"
-            head -100 "$uncovered"
-            total=$(wc -l < "$uncovered")
-            if [ "$total" -gt 100 ]; then
-              echo "  ... and $((total - 100)) more (see the coverage-html artifact)"
-            fi
-            exit 1
-          fi
+          # The gate is the same code commit.sh runs (#765): it parses the LINE row of the
+          # lcov summary (not the functions/branches rows, which would gate against ~81% or
+          # ~92% and look like a broken job), fails loudly on an unparseable summary, and
+          # on a miss lists the uncovered lines from the filtered lcov file.
+          scripts/coverage/coverage_gate.py check < "$summary"
           echo "OK: 100.0% line coverage on the filtered set."
 
       - name: Generate HTML report

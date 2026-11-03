@@ -79,7 +79,7 @@ missing `python3` included, counts as incomplete).
 `commit.sh` runs under `#!/bin/bash`, which on macOS is **bash 3.2**, so it uses
 no bash-4 constructs (`mapfile`, `local -n`, associative arrays, `${v,,}`). Until
 #689 it probed for `mapfile` and, on every Mac, fell back to the full build here.
-`test_line_coverage.sh` scans `commit.sh` and the scripts it sources or runs for
+`test_coverage_gate.py` scans `commit.sh` and `coverage-run-batched.sh` for
 the common bash-4 constructs, so CI's bash 5 cannot hide a regression.
 
 **Staging a header still triggers the full build.** `compile_commands.json` holds

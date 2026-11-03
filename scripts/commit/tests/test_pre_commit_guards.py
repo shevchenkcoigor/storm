@@ -64,7 +64,7 @@ class TriggerTest(unittest.TestCase):
     def test_commit_sh_triggers_the_script_self_tests(self):
         self.assertEqual(
             set(names(pcg.triggered_guards(["commit.sh"]))),
-            {"self-heal configure", "PostgreSQL socket default", "line-coverage parser",
+            {"self-heal configure", "coverage gate",
              "uncovered-lines helper", "pre-commit guards", "smart-skip table",
              "clang-tidy prerequisites"})
 
@@ -84,8 +84,8 @@ class TriggerTest(unittest.TestCase):
         # scripts/lib/testing.py is imported by these self-tests (#763); editing it must rerun
         # them, or a helper regression is only found by whichever test someone happens to run.
         self.assertEqual(set(names(pcg.triggered_guards(["scripts/lib/testing.py"]))),
-                         {"cmake-format target", "coverage batch parallelism", "ninjalog stats",
-                          "time-trace capture"})
+                         {"cmake-format target", "coverage batch parallelism", "coverage gate",
+                          "ninjalog stats", "time-trace capture"})
 
     def test_batch_two_self_tests_trigger_their_own_guard(self):
         for staged, guard in (("scripts/commit/tests/test_cmake_format_target.py", "cmake-format target"),
@@ -102,9 +102,9 @@ class TriggerTest(unittest.TestCase):
                          {"PyYAML configure check", "CPM cold-cache fetch"})
 
     def test_bash_scripts_commit_sh_runs_trigger_the_bash_3_2_scan(self):
-        # test_line_coverage.sh scans these for bash-4-only constructs (#689).
-        for staged in ("scripts/coverage/line_coverage.sh", "scripts/ci/detect-changes.sh", "scripts/coverage/coverage-run-batched.sh"):
-            self.assertIn("line-coverage parser", names(pcg.triggered_guards([staged])), staged)
+        # test_coverage_gate.py scans these for bash-4-only constructs (#689).
+        for staged in ("commit.sh", "scripts/coverage/coverage_gate.py", "scripts/coverage/coverage-run-batched.sh"):
+            self.assertIn("coverage gate", names(pcg.triggered_guards([staged])), staged)
 
     def test_clang_tidy_runner_guard_triggers_on_every_file_it_runs(self):
         # The runner tests drive the real script through a fake toolchain, so the

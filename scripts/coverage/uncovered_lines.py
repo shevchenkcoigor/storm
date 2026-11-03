@@ -103,16 +103,21 @@ def working_dir():
     return os.getcwd()
 
 
+def report(color):
+    """Print the report for the lcov file under the working directory; nothing if absent."""
+    base_dir = working_dir()
+    lcov_path = os.path.join(base_dir, LCOV_RELATIVE_PATH)
+    if not os.path.isfile(lcov_path):
+        return
+    with open(lcov_path, encoding="utf-8", errors="replace") as lcov:
+        print(render(lcov.read(), base_dir, color=color))
+
+
 def main(argv):
     if len(argv) != 1:
         print(f"usage: {argv[0]}  (run from the repo root; takes no arguments)", file=sys.stderr)
         return 2
-    base_dir = working_dir()
-    lcov_path = os.path.join(base_dir, LCOV_RELATIVE_PATH)
-    if not os.path.isfile(lcov_path):
-        return 0
-    with open(lcov_path, encoding="utf-8", errors="replace") as lcov:
-        print(render(lcov.read(), base_dir, color=not os.environ.get("NO_COLOR")))
+    report(color=not os.environ.get("NO_COLOR"))
     return 0
 
 
