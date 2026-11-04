@@ -252,9 +252,14 @@ jobs:
             --override Storm/INSERT/=80 \
             --override Storm/INSERT_EDGE/=80 \
             --title "storm/raw ratio — run ${GITHUB_RUN_NUMBER} / ${MATRIX_CATEGORY}" \
-            --summary "$GITHUB_STEP_SUMMARY"
+            > ratio_section.md
           status=$?
           set -e
+          # The script prints a markdown section instead of opening an output path
+          # itself; the job summary lives outside the workspace, so append it here.
+          cat ratio_section.md
+          cat ratio_section.md >> "$GITHUB_STEP_SUMMARY"
+          [ -s ratio_section.md ] || echo "## ${MATRIX_CATEGORY}: no ratio table (exit ${status}), see the step log" >> "$GITHUB_STEP_SUMMARY"
           if [ "$status" -eq 1 ]; then
             echo "::warning::${MATRIX_CATEGORY}: a benchmark is below its ratio threshold (informational until #752's threshold decision)"
             exit 0

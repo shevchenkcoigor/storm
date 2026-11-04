@@ -10,18 +10,23 @@ Stdlib unittest only, no syntax newer than Python 3.7.
 
     python3 scripts/ci/tests/test_ratio_gate.py
 """
+import contextlib
 import json
+import math
 import pathlib
 import re
 import subprocess
 import sys
 import tempfile
 import unittest
+import unittest.mock
 
 REPO_ROOT = pathlib.Path(__file__).resolve().parents[3]
 SCRIPT = REPO_ROOT / "benchmarks" / "scripts" / "ratio_gate.py"
 sys.path.insert(0, str(SCRIPT.parent))
+sys.path.insert(0, str(REPO_ROOT / "scripts" / "lib"))
 import ratio_gate  # noqa: E402
+import testing  # noqa: E402
 
 WHERE = "Storm/WHERE/where_bool_equality/N:10000"
 INSERT = "Storm/INSERT/insert/N:1000"
@@ -68,7 +73,7 @@ class ComputeTest(unittest.TestCase):
     def test_single_round_has_no_ratio_cv(self):
         rows = ratio_gate.compute([run_json({WHERE: 100.0})], [run_json({WHERE: 100.0})])
 
-        self.assertNotEqual(rows[0].ratio_cv, rows[0].ratio_cv)  # NaN
+        self.assertTrue(math.isnan(rows[0].ratio_cv))
 
     def test_max_gbench_cv_is_worst_of_either_side_across_rounds(self):
         raw = [run_json({WHERE: 100.0}, cv=0.01), run_json({WHERE: 100.0}, cv=0.02)]
@@ -201,11 +206,53 @@ class OverrideParsingTest(unittest.TestCase):
             ratio_gate.parse_override("Storm/INSERT/=lots")
 
 
+
+class ConfinedPathTest(unittest.TestCase):
+    """confined_path is what keeps argv-supplied JSON inside the repository (S8707)."""
+
+    def setUp(self):
+        stack = contextlib.ExitStack()
+        self.addCleanup(stack.close)
+        base = pathlib.Path(stack.enter_context(tempfile.TemporaryDirectory())).resolve()
+        self.root = base / "repo"
+        self.root.mkdir()
+        self.outside = base / "elsewhere"
+        self.outside.mkdir()
+        patcher = unittest.mock.patch.object(ratio_gate, "REPO_ROOT", str(self.root))
+        patcher.start()
+        self.addCleanup(patcher.stop)
+
+    def test_a_file_inside_the_root_is_accepted(self):
+        inside = self.root / "f.json"
+        inside.write_text("{}")
+
+        self.assertEqual(ratio_gate.confined_path(str(inside)), str(inside))
+
+    def test_a_sibling_directory_sharing_the_root_prefix_is_rejected(self):
+        # "<root>_evil" starts with "<root>" as text; only the os.sep suffix rejects it.
+        evil = pathlib.Path(str(self.root) + "_evil")
+        evil.mkdir()
+
+        with self.assertRaises(ratio_gate.GateError):
+            ratio_gate.confined_path(str(evil / "f.json"))
+
+    def test_a_dotdot_escape_is_rejected(self):
+        with self.assertRaises(ratio_gate.GateError):
+            ratio_gate.confined_path(str(self.root / ".." / "elsewhere" / "f.json"))
+
+    def test_a_symlink_inside_the_root_pointing_outside_is_rejected(self):
+        link = self.root / "link.json"
+        link.symlink_to(self.outside / "f.json")
+
+        with self.assertRaises(ratio_gate.GateError):
+            ratio_gate.confined_path(str(link))
+
 class CliTest(unittest.TestCase):
     def setUp(self):
-        self.tmp = tempfile.TemporaryDirectory()
-        self.addCleanup(self.tmp.cleanup)
-        self.dir = pathlib.Path(self.tmp.name)
+        # The script reads only JSON inside the repository, so fixtures live under build/.
+        stack = contextlib.ExitStack()
+        self.addCleanup(stack.close)
+        self.dir = stack.enter_context(testing.scratch_dir_in_repo("ratio_gate_"))
 
     def write(self, name, payload):
         path = self.dir / name
@@ -270,34 +317,37 @@ class CliTest(unittest.TestCase):
 
         self.assertEqual(result.returncode, 2)
 
-    def test_exit_2_when_the_summary_cannot_be_written(self):
-        missing = self.dir / "no_such_dir" / "summary.md"
+    def test_exit_2_when_an_input_is_outside_the_repository(self):
+        with tempfile.TemporaryDirectory() as elsewhere:
+            raw = pathlib.Path(elsewhere) / "raw_1.json"
+            raw.write_text(json.dumps(run_json({WHERE: 100.0})))
+            storm = self.write("storm_1.json", run_json({WHERE: 100.0}))
 
-        result = self.gate({WHERE: 100.0}, {WHERE: 100.0}, "--summary", str(missing))
+            result = self.invoke(str(raw), storm)
 
         self.assertEqual(result.returncode, 2)
+        self.assertIn("outside the repository", result.stderr)
 
-    def test_summary_file_gets_the_table_appended(self):
-        summary = self.dir / "summary.md"
-        summary.write_text("existing\n")
-
-        result = self.gate({WHERE: 100.0}, {WHERE: 100.0}, "--threshold", "95",
-                           "--summary", str(summary), "--title", "where")
+    def test_stdout_is_a_markdown_section_with_the_title(self):
+        result = self.gate({WHERE: 100.0}, {WHERE: 100.0}, "--threshold", "95", "--title", "where")
 
         self.assertEqual(result.returncode, 0, result.stderr)
-        text = summary.read_text()
-        self.assertTrue(text.startswith("existing\n"))
-        self.assertIn("where", text)
-        self.assertIn(WHERE, text)
+        self.assertTrue(result.stdout.startswith("## where\n"))
+        self.assertIn("1 interleaved rounds", result.stdout)
+        self.assertIn(WHERE, result.stdout)
 
-    def test_summary_is_written_even_when_the_gate_fails(self):
-        summary = self.dir / "summary.md"
-
-        result = self.gate({WHERE: 100.0}, {WHERE: 200.0}, "--threshold", "95",
-                           "--summary", str(summary))
+    def test_the_section_is_printed_even_when_the_gate_fails(self):
+        result = self.gate({WHERE: 100.0}, {WHERE: 200.0}, "--threshold", "95")
 
         self.assertEqual(result.returncode, 1)
-        self.assertIn(WHERE, summary.read_text())
+        self.assertIn(WHERE, result.stdout)
+
+    def test_the_script_takes_no_output_path(self):
+        # Writing a caller-supplied path is what S8707 flagged; the caller redirects stdout.
+        result = self.gate({WHERE: 100.0}, {WHERE: 100.0}, "--summary", str(self.dir / "out.md"))
+
+        self.assertEqual(result.returncode, 2)  # argparse rejects the unknown option
+        self.assertFalse((self.dir / "out.md").exists())
 
 
 WORKFLOW = REPO_ROOT / ".github" / "workflows" / "bench-ratio.yml"
@@ -361,9 +411,9 @@ class WorkflowStepTest(unittest.TestCase):
     would otherwise surface only when someone dispatches the workflow by hand."""
 
     def setUp(self):
-        self.tmp = tempfile.TemporaryDirectory()
-        self.addCleanup(self.tmp.cleanup)
-        self.dir = pathlib.Path(self.tmp.name)
+        stack = contextlib.ExitStack()
+        self.addCleanup(stack.close)
+        self.dir = stack.enter_context(testing.scratch_dir_in_repo("ratio_gate_step_"))
         (self.dir / "benchmarks").symlink_to(REPO_ROOT / "benchmarks")
         self.summary = self.dir / "summary.md"
 

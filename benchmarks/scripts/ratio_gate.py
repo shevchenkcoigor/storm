@@ -17,13 +17,18 @@ Ratios cancel runner noise only because both binaries ran in the same job, inter
 (raw, storm, raw, storm, ...), so this script does not and cannot compare across runs.
 
     ratio_gate.py --raw raw_1.json raw_2.json --storm storm_1.json storm_2.json \\
-        --threshold 95 --override Storm/INSERT/=80 --summary "$GITHUB_STEP_SUMMARY"
+        --threshold 95 --override Storm/INSERT/=80 > section.md
+
+stdout is a markdown section (heading, rounds note, table), so a caller can append it to a
+job summary with plain shell redirection. The script never opens an output path itself, and
+it only reads JSON that lives inside this repository (see confined_path).
 
 Stdlib only, no syntax newer than Python 3.7.
 """
 import argparse
 import collections
 import json
+import os
 import statistics
 import sys
 
@@ -35,13 +40,33 @@ Row = collections.namedtuple(
     "Row", "name raw_time storm_time pct_of_raw ratio_cv max_gbench_cv unit")
 
 
+# The repository this copy of the script belongs to: benchmarks/scripts/ratio_gate.py.
+REPO_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.realpath(__file__))))
+
+
 class GateError(Exception):
     """The inputs cannot be compared, which is a different verdict from 'too slow'."""
 
 
+def confined_path(path):
+    """Resolve an argv-supplied JSON path, confined to this repository (S8707).
+
+    realpath collapses symlinks and `..`; the result must sit inside the repository this
+    copy of the script belongs to. In CI the JSON is written into the workspace by the
+    previous step; locally `gh run download` into the checkout does the same. Called inside
+    the open() it guards, not assigned first: that is the shape the taint analysis behind
+    S8707 recognises as sanitizing the sink (scripts/compile_time/ninjalog_stats.py).
+    """
+    resolved = os.path.realpath(path)
+    if resolved != REPO_ROOT and not resolved.startswith(REPO_ROOT + os.sep):
+        raise GateError("%s: outside the repository (%s); copy the gbench JSON into the "
+                        "checkout the script runs from" % (path, REPO_ROOT))
+    return resolved
+
+
 def load_json(path):
     try:
-        with open(path) as handle:
+        with open(confined_path(path)) as handle:
             return json.load(handle)
     except (OSError, ValueError) as error:
         raise GateError("cannot read %s: %s" % (path, error))
@@ -168,10 +193,8 @@ def build_parser():
     parser.add_argument("--override", action="append", default=[], metavar="PREFIX=PCT",
                         help="threshold for benchmarks whose name starts with PREFIX; "
                              "repeatable, first match wins")
-    parser.add_argument("--summary", metavar="FILE",
-                        help="append the markdown table here (e.g. $GITHUB_STEP_SUMMARY)")
     parser.add_argument("--title", default="storm/raw ratio",
-                        help="heading for the --summary section")
+                        help="heading of the markdown section printed on stdout")
     return parser
 
 
@@ -179,11 +202,8 @@ def run(args):
     overrides = [parse_override(text) for text in args.override]
     rows = compute([load_json(p) for p in args.raw], [load_json(p) for p in args.storm])
     table = format_table(rows, rounds=len(args.raw))
-    print(table)
-    if args.summary:
-        with open(args.summary, "a") as handle:
-            handle.write("## %s\n\n%d interleaved rounds (raw then storm, repeated).\n\n%s\n"
-                         % (args.title, len(args.raw), table))
+    print("## %s\n\n%d interleaved rounds (raw then storm, repeated).\n\n%s"
+          % (args.title, len(args.raw), table))
     failed = evaluate(rows, args.threshold, overrides)
     for r in failed:
         sys.stderr.write("FAIL: %s is %.1f%% of raw, below %.1f%%\n" % (
@@ -198,8 +218,8 @@ def main(argv=None):
         sys.stderr.write("ERROR: %s\n" % error)
         return EXIT_BAD_DATA
     except (KeyError, TypeError, ZeroDivisionError, OSError) as error:
-        # JSON of the wrong shape, a zero storm time, an unwritable --summary: all are
-        # data/environment problems, and must not leak out as exit 1 ("too slow").
+        # JSON of the wrong shape or a zero storm time: data problems, and they must not
+        # leak out as exit 1 ("too slow").
         sys.stderr.write("ERROR: unusable input (%s: %s)\n" % (type(error).__name__, error))
         return EXIT_BAD_DATA
 
