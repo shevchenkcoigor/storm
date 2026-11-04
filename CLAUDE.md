@@ -323,7 +323,7 @@ fresh clone or worktree has not done. It is **declared** in `.claude/settings.js
   { "hooks": [ { "type": "command", "command": "bash $CLAUDE_PROJECT_DIR/.claude/hooks/session-start.sh" } ] }
 ]
 ```
-`scripts/commit/tests/test_session_start_hook.sh` covers the wiring — plus the `settings.json`
+`scripts/commit/tests/test_session_start_hook.py` covers the wiring — plus the `settings.json`
 declaration the hook is inert without — so a deleted entry cannot silently unwire it again. It runs in CI (the `script-guards` job) and, like the #543
 and #550 guards, in `commit.sh` ABOVE its `TOTAL_STEPS==0` early exit, since a commit touching
 only the hook, `settings.json` or the test itself skips every other step. Those guards are rows

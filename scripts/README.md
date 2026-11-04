@@ -253,14 +253,14 @@ bash 3.2 on macOS, and a scan of `commit.sh` and `coverage-run-batched.sh` for b
 `test_libcxx_modules_symlink.sh`, which covers `cmake/libcxx.cmake` rather
 than a script, `test_pyyaml_check.py` (Python, plain cmake), which covers `cmake/pyyaml.cmake`'s configure-time PyYAML check (#703),
 `test_cpm_cache_check.py` (Python, plain cmake), which covers `cmake/cpm-cache.cmake`'s configure-time check for a CPM checkout left empty by an interrupted clone (#705),
-and `test_session_start_hook.sh`, which covers
+and `test_session_start_hook.py` (Python, needs `git`), which covers
 `.claude/hooks/session-start.sh` — the SessionStart hook that wires `core.hooksPath` (and
 so decides whether `commit.sh` runs at all, #651). `test_commit_self_heal_configure.sh` covers `commit.sh` itself: it runs the real
 script in a throwaway repo against a stub `cmake`, and checks that each self-heal configure fails
 its step with the CMake error in that step's log, and that a configured tree never reconfigures
 (#674), and that a configured tree takes the targeted clang-tidy prereq build rather than the
 full-build fallback (#689).
-They are plain bash and run individually or as a suite:
+The `*.sh` ones are plain bash and run individually or as a suite:
 
 ```bash
 for t in scripts/*/tests/test_*.sh; do "$t" || echo "FAILED: $t"; done
@@ -269,7 +269,7 @@ for t in scripts/*/tests/test_*.sh; do "$t" || echo "FAILED: $t"; done
 The agent-frontmatter checker and the helpers `commit.sh` delegates to (#688) are Python, so their
 self-tests are too: `test_check_agent_frontmatter.py`, `test_check_ci_digests.py`,
 `test_check_orm_backend_imports.py`, `test_cpm_cold_cache.py` (needs `git` too: a static policy check that every pinned CPM/FetchContent call ends with `GIT_SHALLOW FALSE`, #709), `test_detect_changes.py`, `test_clang_tidy_skiplist.py`, `test_run_clang_tidy.py`,
-`test_run_clang_tidy_full.py` (the last two need `git` and `/bin/sh` as well), `test_cmake_format_target.py` (needs **cmake ≥ 3.16 and ninja**: its harness configures with `-G Ninja`, the docker/ci image has no `make`; covers `cmake/format.cmake`'s stub `cmake-format` target, which fails naming the missing tool in the cmake-format step's own log, #690), `test_ninjalog_stats.py` and `test_time_trace.py` (pin the two compile-time numbers that are plausible when wrong: the module-edge dedup and scan-edge exclusion, and the `--precompile` replay with the modmap's `-fmodule-output` dropped; no compiler), `test_coverage_parallel.py` (drives the real `coverage-run-batched.sh` with a fake gtest binary, #268; needs GNU `nproc` and at least 3 cores), `test_sweep_workflow.py` (runs the sweep workflow step's script under `bash`), `test_coverage_gate.py`, `test_uncovered_lines.py`,
+`test_run_clang_tidy_full.py` (the last two need `git` and `/bin/sh` as well), `test_session_start_hook.py` (needs `git`: it `git init`s a throwaway repo and makes a real commit through the wired hook), `test_cmake_format_target.py` (needs **cmake ≥ 3.16 and ninja**: its harness configures with `-G Ninja`, the docker/ci image has no `make`; covers `cmake/format.cmake`'s stub `cmake-format` target, which fails naming the missing tool in the cmake-format step's own log, #690), `test_ninjalog_stats.py` and `test_time_trace.py` (pin the two compile-time numbers that are plausible when wrong: the module-edge dedup and scan-edge exclusion, and the `--precompile` replay with the modmap's `-fmodule-output` dropped; no compiler), `test_coverage_parallel.py` (drives the real `coverage-run-batched.sh` with a fake gtest binary, #268; needs GNU `nproc` and at least 3 cores), `test_sweep_workflow.py` (runs the sweep workflow step's script under `bash`), `test_coverage_gate.py`, `test_uncovered_lines.py`,
 `test_pre_commit_guards.py`, `test_smart_skip.py`, `test_sonar_gate.py` and `test_tidy_prereqs.py` (stdlib `unittest`, need
 only `python3` unless noted, no syntax newer than 3.9) are not matched by the `*.sh` loop above — run them on their
 own. They share `scripts/lib/testing.py` (`run()`, `scratch_dir_in_repo()`); staging it reruns the tests that import it. Each also runs in `commit.sh` when it is staged.
@@ -294,14 +294,12 @@ failure so one run reports them all (#708). So a new self-test reaches CI by bec
 
 ### Prerequisites
 
-All but three need nothing beyond bash and coreutils:
+Both remaining bash self-tests need more than bash and coreutils:
 
 | Test | Needs |
 |---|---|
 | `test_libcxx_modules_symlink.sh` | **cmake at the project's own `cmake_minimum_required`** (read from `CMakeLists.txt`, today 3.30) **and ninja** — its harness declares that same floor and configures with `-G Ninja`, so either one missing aborts every configure before `cmake/libcxx.cmake` is read |
-| `test_session_start_hook.sh` | **`git`** — its subject is git behavior, so it `git init`s a throwaway repo and makes a real commit through the wired hook (`python3` optional: without it the `settings.json` JSON-validity assertion is reported as unchecked, the grep assertions still run) |
 | `test_commit_self_heal_configure.sh` | **`git`** — it runs `commit.sh` in a throwaway repo, which reads the staged files from git; `cmake`, `ninja` and `pg_isready` are stubbed, so no toolchain |
-| everything else | pure bash |
 
 `test_libcxx_modules_symlink.sh` reports the tools it is about to use on its first line of
 output, then **skips** with one explanatory line when either is unusable (issue #645) rather

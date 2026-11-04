@@ -10,7 +10,7 @@
 # firing, with nothing in the output to say so. This hook sets it on every
 # session start.
 #
-# Covered by scripts/commit/tests/test_session_start_hook.sh.
+# Covered by scripts/commit/tests/test_session_start_hook.py.
 
 set -euo pipefail
 
