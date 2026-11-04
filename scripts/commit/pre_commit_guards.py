@@ -135,8 +135,9 @@ SELF_HEAL = Guard(
     r"^(commit\.sh|scripts/ci/detect_changes\.py|scripts/coverage/coverage_gate\.py"
     r"|scripts/commit/pre_commit_guards\.py|scripts/commit/smart_skip\.py"
     r"|scripts/coverage/uncovered_lines\.py|scripts/tidy/(tidy_prereqs|clang_tidy_skiplist)\.py"
-    r"|scripts/commit/tests/test_commit_self_heal_configure\.sh)$",
-    (Step(None, script("scripts/commit/tests/test_commit_self_heal_configure.sh"),
+    r"|scripts/ci/tests/test_cpm_cold_cache\.py"
+    r"|scripts/commit/tests/test_commit_self_heal_configure\.py|scripts/lib/testing\.py)$",
+    (Step(None, script("scripts/commit/tests/test_commit_self_heal_configure.py"),
           "self-heal configure self-test failed"),),
     "self-heal configure self-test passed",
     log=True,
