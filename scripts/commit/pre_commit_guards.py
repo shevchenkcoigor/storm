@@ -135,7 +135,7 @@ SELF_HEAL = Guard(
     "self-heal configure",
     r"^(commit\.sh|scripts/ci/detect_changes\.py|scripts/coverage/coverage_gate\.py"
     r"|scripts/commit/pre_commit_guards\.py|scripts/commit/smart_skip\.py"
-    r"|scripts/coverage/uncovered_lines\.py|scripts/tidy/(tidy_prereqs|clang_tidy_skiplist)\.py"
+    r"|scripts/tidy/(tidy_prereqs|clang_tidy_skiplist)\.py"
     r"|scripts/ci/tests/test_cpm_cold_cache\.py"
     r"|scripts/commit/tests/test_commit_self_heal_configure\.py|scripts/lib/testing\.py)$",
     (Step(None, script("scripts/commit/tests/test_commit_self_heal_configure.py"),
@@ -189,7 +189,7 @@ CPM_COLD_CACHE = Guard(
     "CPM cold-cache fetch policy self-test passed",
 )
 
-# --- coverage gate (#680, #689, #765) ---
+# --- coverage gate (#680, #689, #765, #776) ---
 # scripts/coverage/coverage_gate.py reads the percentage the gate compares to 100.0 (a
 # GNU-only grep flag in the old parser broke the gate on macOS BSD grep while CI stayed
 # green) and owns the per-OS PostgreSQL socket default (a wrong branch silently skips every
@@ -198,20 +198,11 @@ CPM_COLD_CACHE = Guard(
 # bash-4-only constructs (#689), so staging any of them triggers it.
 COVERAGE_GATE = Guard(
     "coverage gate",
-    r"^(commit\.sh|scripts/coverage/(coverage_gate|uncovered_lines|coverage-run-batched)\.(py|sh)"
+    r"^(commit\.sh|scripts/coverage/(coverage_gate|coverage-run-batched)\.(py|sh)"
     r"|scripts/coverage/tests/test_coverage_gate\.py|scripts/lib/testing\.py)$",
     (Step(None, script("scripts/coverage/tests/test_coverage_gate.py"),
           "coverage gate self-test failed"),),
     "coverage gate self-test passed",
-)
-
-# --- uncovered-lines helper (#688) ---
-UNCOVERED_LINES = Guard(
-    "uncovered-lines helper",
-    r"^(commit\.sh|scripts/coverage/(tests/test_)?uncovered_lines\.py)$",
-    (Step(None, script("scripts/coverage/tests/test_uncovered_lines.py"),
-          "uncovered-lines helper self-test failed"),),
-    "uncovered-lines helper self-test passed",
 )
 
 # --- smart-skip table (#688) ---
@@ -338,7 +329,7 @@ ATLAS_MIGRATION_CHECK = Guard(
 
 GUARDS = (
     AGENT_FRONTMATTER, TIDY_SKIPLIST, SWEEP_WORKFLOW, SESSION_START_HOOK, SELF_HEAL, CMAKE_FORMAT_TARGET, PYYAML_CHECK,
-    CPM_CACHE_CHECK, CPM_COLD_CACHE, COVERAGE_GATE, UNCOVERED_LINES, SMART_SKIP, TIDY_PREREQS, ORM_BACKEND_IMPORTS, PRE_COMMIT_GUARDS,
+    CPM_CACHE_CHECK, CPM_COLD_CACHE, COVERAGE_GATE, SMART_SKIP, TIDY_PREREQS, ORM_BACKEND_IMPORTS, PRE_COMMIT_GUARDS,
     CI_DIGESTS, COVERAGE_PARALLEL, NINJALOG_STATS, TIME_TRACE, SONAR_GATE, SHARED_TEST_HELPERS, ATLAS_MIGRATION_CHECK,
 )
 

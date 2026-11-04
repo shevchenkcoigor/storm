@@ -50,7 +50,6 @@ FIXTURE_FILES = (
     "scripts/commit/pre_commit_guards.py",
     "scripts/commit/smart_skip.py",
     "scripts/coverage/coverage_gate.py",
-    "scripts/coverage/uncovered_lines.py",
     "scripts/tidy/tidy_prereqs.py",
     "scripts/tidy/clang_tidy_skiplist.py",
     # A staged cmake file triggers the CPM cold-cache guard (#709); it needs its script and
