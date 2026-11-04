@@ -34,9 +34,9 @@ status, so a failed configure surfaced one step later as
 error logged nowhere. `build_tidy_prereqs()` also checks for
 `build/release/build.ninja` before building, so a tree that has
 `compile_commands.json` but no `build.ninja` reports "not configured" instead of
-a ninja error. `scripts/commit/tests/test_commit_self_heal_configure.sh` covers each
+a ninja error. `scripts/commit/tests/test_commit_self_heal_configure.py` covers each
 site with a stub `cmake` and runs locally with no toolchain; `commit.sh` runs it
-when `commit.sh`, the test, or a script the test copies is staged. It is not wired into CI.
+when `commit.sh`, the test, or a script the test copies is staged; CI's `script-guards` job runs it on every PR (`pre_commit_guards.py --all`).
 
 Configure output — WARNINGs included — lands in the log of the step that ran
 the configure. On a fresh tree where both formatters run, that is clang-format's,
