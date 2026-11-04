@@ -331,7 +331,7 @@ of one table in `scripts/commit/pre_commit_guards.py` (#688), not bash blocks â€
 `script-guards` job runs every row with `--all` (#708), so a new row needs no workflow edit. `commit.sh`
 itself stays a thin orchestrator: its skip rules, clang-tidy prerequisite verdict and coverage-gap
 report are tested stdlib-Python helpers (`scripts/commit/smart_skip.py`, `scripts/tidy/tidy_prereqs.py`,
-`scripts/coverage/uncovered_lines.py`; see `scripts/README.md`), written for Python 3.9+ so macOS system `python3` runs them.
+`scripts/coverage/coverage_gate.py`; see `scripts/README.md`), written for Python 3.9+ so macOS system `python3` runs them.
 
 ## Architecture
 
