@@ -4,7 +4,7 @@
 # CMAKE_CXX_STDLIB_MODULES_JSON from _storm_libcxx_modules_json. -
 # cmake/libcxx.cmake (after project()) derives compile/link flags from
 # _storm_libcxx_lib_dir / _storm_libcxx_build_include_dir. -
-# scripts/ci/tests/test_libcxx_modules_symlink.sh's harness include()s this file
+# scripts/ci/tests/test_libcxx_modules_symlink.py's harness include()s this file
 # directly, so its scenarios exercise the real production logic rather than a
 # re-implementation of it.
 #

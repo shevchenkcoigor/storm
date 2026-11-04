@@ -271,7 +271,7 @@ jobs:
 
       - name: Test host-layout resolution + import-std symlink behavior
         if: env.RUN_HEAVY != 'false'
-        run: ./scripts/ci/tests/test_libcxx_modules_symlink.sh
+        run: python3 scripts/ci/tests/test_libcxx_modules_symlink.py
 
   test:
     name: "${{ matrix.preset }} / PG ${{ matrix.postgres }}"
