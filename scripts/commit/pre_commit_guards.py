@@ -324,7 +324,7 @@ GUARDS = (
 # Every other self-test must be a step above (the table test enforces it), since a
 # self-test outside the table is one CI never runs.
 NOT_GUARDED = {
-    "test_libcxx_modules_symlink.sh":
+    "test_libcxx_modules_symlink.py":
         "needs the storm-ci image's clang-p2996 layout and CMake 3.30+; "
         "ci.yml's clang-p2996-host-layout job runs it",
 }
