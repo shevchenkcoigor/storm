@@ -119,8 +119,8 @@ SWEEP_WORKFLOW = Guard(
 # is what declares it: without that entry the hook never runs.
 SESSION_START_HOOK = Guard(
     "SessionStart hook wiring",
-    r"^(\.claude/(hooks/session-start\.sh|settings\.json)|scripts/commit/tests/test_session_start_hook\.sh)$",
-    (Step(None, script("scripts/commit/tests/test_session_start_hook.sh"),
+    r"^(\.claude/(hooks/session-start\.sh|settings\.json)|scripts/commit/tests/test_session_start_hook\.py|scripts/lib/testing\.py)$",
+    (Step(None, script("scripts/commit/tests/test_session_start_hook.py"),
           "SessionStart hook wiring self-test failed"),),
     "SessionStart hook wiring self-test passed",
 )
