@@ -65,7 +65,7 @@ class TriggerTest(unittest.TestCase):
         self.assertEqual(
             set(names(pcg.triggered_guards(["commit.sh"]))),
             {"self-heal configure", "coverage gate",
-             "uncovered-lines helper", "pre-commit guards", "smart-skip table",
+             "pre-commit guards", "smart-skip table",
              "clang-tidy prerequisites"})
 
     def test_cmake_format_files_trigger_their_self_test(self):
