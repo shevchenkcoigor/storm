@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Tests for benchmarks/scripts/ratio_gate.py (issue #752).
 
-The storm/raw ratio gate used to live inline in bench-ratio-spike.yml as a heredoc, where
+The storm/raw ratio gate used to live inline in bench-ratio.yml as a heredoc, where
 nothing could test it and a local run could not reuse it. The computation is plain functions
 tested on fixture gbench JSON; the CLI runs as a subprocess for what only a process shows
 (exit status = the gate verdict: 0 pass, 1 below threshold, 2 unusable data).
@@ -12,6 +12,7 @@ Stdlib unittest only, no syntax newer than Python 3.7.
 """
 import json
 import pathlib
+import re
 import subprocess
 import sys
 import tempfile
@@ -299,7 +300,7 @@ class CliTest(unittest.TestCase):
         self.assertIn(WHERE, summary.read_text())
 
 
-WORKFLOW = REPO_ROOT / ".github" / "workflows" / "bench-ratio-spike.yml"
+WORKFLOW = REPO_ROOT / ".github" / "workflows" / "bench-ratio.yml"
 GATE_STEP_NAME = "- name: Compute storm/raw ratio and apply the gate"
 
 
@@ -319,6 +320,40 @@ def workflow_gate_script():
             break
         body.append(line[body_indent:])
     return "\n".join(body)
+
+
+ANCHOR_SOURCES = ("anchors_raw.cpp", "anchors_raw_insert.hpp", "anchors_raw_crud.hpp")
+
+
+def anchor_sources_text():
+    return "\n".join((REPO_ROOT / "benchmarks" / name).read_text() for name in ANCHOR_SOURCES)
+
+
+def anchor_size_array(source, array_name):
+    match = re.search(r"\b%s\s*=\s*\{([^}]*)\}" % array_name, source)
+    assert match, array_name
+    return [int(x) for x in re.findall(r"\d+", match.group(1).replace("'", ""))]
+
+
+def anchored_benchmark_ids():
+    """Every `Storm/<CAT>/<name>/N:<n>` the raw anchors register, read from their sources."""
+    source = anchor_sources_text()
+    ids = []
+    for name in re.findall(r'register_batch_standard_anchor\("(Storm/[^"]+)"', source):
+        ids += ["%s/N:%d" % (name, n) for n in anchor_size_array(source, "kBatchStandard")]
+    for name, array in re.findall(r'register_sized_anchor\("(Storm/[^"]+)",\s*&\w+,\s*(k\w+)\)', source):
+        ids += ["%s/N:%d" % (name, n) for n in anchor_size_array(source, array)]
+    seed = int(re.search(r"kWhereSeedRows\s*=\s*([\d']+)", source).group(1).replace("'", ""))
+    for name in re.findall(r'->Name\("(Storm/WHERE/[^"]+)"\)->Arg\(kWhereSeedRows\)', source):
+        ids.append("%s/N:%d" % (name, seed))
+    select = re.search(r'Name\("(Storm/SELECT/select)"\)\s*->RangeMultiplier\((\d+)\)\s*->Range\(([\d\']+),\s*([\d\']+)\)', source)
+    assert select, "SELECT anchor registration changed shape - update this test"
+    step, low, high = int(select.group(2)), int(select.group(3).replace("'", "")), int(select.group(4).replace("'", ""))
+    size = low
+    while size <= high:
+        ids.append("%s/N:%d" % (select.group(1), size))
+        size *= step
+    return ids
 
 
 class WorkflowStepTest(unittest.TestCase):
@@ -367,6 +402,79 @@ class WorkflowStepTest(unittest.TestCase):
 
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertNotIn("::warning::", result.stdout)
+
+    def test_runs_nightly_and_only_on_prs_that_can_move_the_ratio(self):
+        text = WORKFLOW.read_text()
+        triggers = text[text.index("\non:\n"):text.index("\nconcurrency:")]
+        pull_request = triggers[triggers.index("  pull_request:"):]
+
+        self.assertIn('    - cron: "30 3 * * *"', triggers)
+        self.assertIn("  workflow_dispatch:", triggers)
+        # A PR trigger without a path filter would cost ~22 min on every PR (#752); the
+        # paths must sit INSIDE the pull_request block, not merely appear in a comment.
+        self.assertIn("    paths:", pull_request)
+        for path in ('"src/db/**"', '"src/orm/**"', '"benchmarks/**"', '"!benchmarks/**/*.md"',
+                     '"shared/models/**"'):
+            self.assertIn("      - " + path, pull_request)
+
+    def test_scheduled_and_manual_runs_never_share_a_concurrency_group(self):
+        # A shared per-ref group lets a third queued run cancel the pending one, and a
+        # cancelled nightly is not failure(), so notify-failure would stay silent.
+        text = WORKFLOW.read_text()
+        group = [line for line in text.split("\n") if line.strip().startswith("group:")]
+
+        self.assertEqual(len(group), 1)
+        self.assertIn("github.run_id", group[0])
+        self.assertNotIn("github.ref", group[0])
+
+    def test_red_nightly_is_reported_but_only_for_scheduled_runs(self):
+        text = WORKFLOW.read_text()
+
+        self.assertIn("notify-failure:", text)
+        self.assertIn("github.event_name == 'schedule'", text)
+        self.assertIn("issues: write", text)
+
+    def test_step_applies_the_insert_edge_override(self):
+        # "Storm/INSERT/" does not prefix "Storm/INSERT_EDGE/", so it needs its own override.
+        edge = "Storm/INSERT_EDGE/insert_edge/N:249"
+
+        result = self.run_step({edge: 100.0}, {edge: 125.0})  # 80%: at the override
+
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertNotIn("::warning::", result.stdout)
+
+    def test_every_raw_anchor_size_is_matched_by_a_matrix_filter(self):
+        # An anchored benchmark that no filter selects is one the gate never looks at (#752).
+        # Names AND sizes are read from the anchor sources and each one is matched by a
+        # real regex search, like gbench's --benchmark_filter.
+        filters = re.findall(r"^\s+filter: '([^']+)'$", WORKFLOW.read_text(), re.MULTILINE)
+        benchmarks = anchored_benchmark_ids()
+
+        self.assertGreaterEqual(len(filters), 6)
+        # 50 today: WHERE 4, SELECT 4, insert 9 + insert_no_return 9, update 9, delete 9,
+        # insert_edge 3, update_pk_edge 3. A floor, so adding anchors never breaks this, but
+        # a parser that silently stops finding them does.
+        self.assertGreaterEqual(len(benchmarks), 50)
+        unmatched = [b for b in benchmarks if not any(re.search(f, b) for f in filters)]
+        self.assertEqual(unmatched, [])
+
+    def test_matrix_filters_select_only_anchored_benchmarks(self):
+        # The converse: a filter alternative for a size that has no anchor makes the Storm
+        # side run it with no raw counterpart, which ratio_gate.py rejects as a partial match.
+        filters = re.findall(r"^\s+filter: '([^']+)'$", WORKFLOW.read_text(), re.MULTILINE)
+        anchored = set(anchored_benchmark_ids())
+        names = {b.split("/N:")[0] for b in anchored}
+        # Candidates: every anchored name at every number a filter mentions (plus the
+        # anchored sizes), so a size added to a filter without an anchor is generated and
+        # selected - and then fails the subset check below.
+        sizes = {int(n) for f in filters for n in re.findall(r"\d+", f)}
+        sizes |= {int(b.split("/N:")[1]) for b in anchored}
+        candidates = {"%s/N:%d" % (n, s) for n in names for s in sizes}
+
+        for pattern in filters:
+            selected = {c for c in candidates if re.search(pattern, c)}
+            self.assertTrue(selected, pattern)
+            self.assertLessEqual(selected, anchored, pattern)
 
     def test_sparse_checkout_fetches_the_script_the_step_runs(self):
         text = WORKFLOW.read_text()

@@ -2,7 +2,7 @@
 """Assert every storm-ci image digest pin in the workflows agrees (#530, #708).
 
 The storm-ci image is pinned by digest in more than one workflow (ci.yml,
-clang-tidy-sweep.yml, bench-ratio-spike.yml). A job's `container.image` is
+clang-tidy-sweep.yml, bench-ratio.yml). A job's `container.image` is
 resolved before any step runs, so it cannot read `env:` or a shared file — the
 pins have to be literal in each file. Deduplicating them would mean a setup job on
 every run or moving the pin into repo variables, which takes it out of git and

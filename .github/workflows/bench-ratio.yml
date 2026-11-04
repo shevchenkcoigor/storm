@@ -1,21 +1,28 @@
-name: Bench Ratio Spike (throwaway — #551)
+name: Bench Ratio
 
-# THROWAWAY — see issue #551 ("Do this first" section).
+# Scheduled in-place storm/raw ratio gate (#752; grown from the #551 spike).
 #
-# The verdict comes from benchmarks/scripts/ratio_gate.py's exit code (#752), but a
+# The verdict comes from benchmarks/scripts/ratio_gate.py's exit code, but a
 # below-threshold result is only a warning until the threshold decision lands.
 # Runs storm_bench + storm_anchors in the same job and prints the
-# per-benchmark storm/raw ratio for the anchored subset, so it can be
-# triggered 8-10x on unchanged code to measure how stable that ratio actually
-# is on a shared ubuntu-24.04 runner before anyone designs a threshold on top
-# of it. #241's ±5% gate on absolute walltime died to exactly that mistake —
-# see #551 for the post-mortem.
+# per-benchmark storm/raw ratio for the anchored subset. Ratios, not absolute
+# time: runner-to-runner drift cancels because raw and storm share a job.
+# #241's ±5% gate on absolute walltime died to exactly that mistake — see #551
+# for the post-mortem.
+#
+# NOT part of ci.yml's `CI gate` required set, deliberately: it runs on PRs only
+# behind a path filter, and a required check that a path filter skips never
+# reports and leaves the PR waiting forever (#638). It takes ~22 min, and its
+# thresholds are not final. A red nightly is surfaced by `notify-failure` below,
+# which opens (or comments on) a tracking issue, since nothing else alerts on a
+# red scheduled run.
 #
 # Two-stage shape: `build` compiles once and uploads storm_bench + storm_anchors
-# as an artifact; `run-category` fans out over WHERE/SELECT/INSERT in parallel,
-# each downloading that same artifact instead of rebuilding. Compilation (this
-# is C++26 reflection — minutes) dominates over actually running this small
-# anchored subset (seconds to low minutes even for the INSERT sweep), so
+# as an artifact; `run-category` fans out over the anchored categories (where,
+# select, insert, update, delete, edge) in parallel, each downloading that same
+# artifact instead of rebuilding. Compilation (this is C++26 reflection —
+# minutes) dominates over actually running the anchored subset (about 1.5 min
+# for where/select, about 9 min for the INSERT sweep in the first CI run), so
 # splitting the categories into parallel jobs only pays off if the build is
 # shared rather than repeated per category.
 #
@@ -26,12 +33,39 @@ name: Bench Ratio Spike (throwaway — #551)
 # rounds (round 1: raw then storm, round 2: raw then storm, ...), not "all
 # raw reps then all storm reps" — see .claude/commands/benchmark.md's Trap 2.
 #
-# Manual dispatch only: this is meant to be fired repeatedly by hand while
-# collecting samples, not to run on every push/PR. Delete this file (or
-# convert it into the real gate) once the measurement is done.
+# Triggers: nightly (staggered from ci.yml's 03:00; the ratio is computed inside
+# one VM, so an overlap with that run cannot bias it), manual dispatch, and PRs
+# that can move the storm side of the ratio — the ORM/DB layers, the benchmarks,
+# the compiler flags — not every PR. Docs-only edits under benchmarks/ are
+# excluded. Anything this filter misses is caught by the nightly.
 
 on:
+  schedule:
+    - cron: "30 3 * * *"
   workflow_dispatch: {}
+  pull_request:
+    branches: [develop]
+    paths:
+      - "src/db/**"
+      - "src/orm/**"
+      - "benchmarks/**"
+      - "!benchmarks/**/*.md"
+      - "shared/models/**"
+      - "src/storm*.cppm"
+      - "cmake/libcxx.cmake"
+      - "CMakePresets.json"
+      - ".github/workflows/bench-ratio.yml"
+
+# A new push to a PR cancels that PR's previous run. Nightly and manual runs get a
+# group of their own (run_id), as ci.yml does: sharing a group per ref would let a
+# third queued run cancel the pending one even with cancel-in-progress off, and a
+# cancelled nightly is not a `failure()`, so notify-failure would stay silent.
+concurrency:
+  group: bench-ratio-${{ github.event.pull_request.number || github.run_id }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+permissions:
+  contents: read
 
 jobs:
   build:
@@ -106,17 +140,28 @@ jobs:
         # Filters are the exact benchmark names benchmarks/README.md documents
         # as having a raw counterpart. Source of truth is
         # benchmarks/anchors_raw.cpp's ->Name(...) registrations +
-        # kBatchStandard — #552 (widening the anchor set to
-        # UPDATE/DELETE/AGGREGATE) will make this list stale; re-check against
-        # anchors_raw.cpp when picking this back up, and add matrix entries
-        # for the new categories rather than folding them into an existing one.
+        # kBatchStandard / kBatchInsertEdge / kBatchUpdateEdge. Every anchored
+        # benchmark has an entry; the remaining categories (JOIN, AGGREGATE,
+        # LIKE/BETWEEN/..., ORDER BY, ...) have no anchor yet and are tracked in
+        # #780. Add one matrix entry per new category rather than folding it
+        # into an existing one, and re-check this list against anchors_raw.cpp
+        # when it changes. A name that one binary registers and the other does
+        # not fails the step as a partial match (exit 2) on purpose.
         include:
           - category: where
-            filter: 'Storm/WHERE/where_int_comparison_gt/N:10000$|Storm/WHERE/where_bool_equality/N:10000$'
+            filter: 'Storm/WHERE/(where_int_comparison_gt|where_bool_equality|where_double_comparison|where_int_less_than)/N:10000$'
           - category: select
-            filter: 'Storm/SELECT/select/N:10000$'
+            filter: 'Storm/SELECT/select/N:(100|1000|10000|100000)$'
           - category: insert
             filter: 'Storm/INSERT/insert/N:(1|10|100|500|1000|5000|10000|50000|100000)$|Storm/INSERT/insert_no_return/N:(1|10|100|500|1000|5000|10000|50000|100000)$'
+          - category: update
+            filter: 'Storm/UPDATE_PK/update_pk/N:(1|10|100|500|1000|5000|10000|50000|100000)$'
+          - category: delete
+            filter: 'Storm/DELETE_PK/delete_pk/N:(1|10|100|500|1000|5000|10000|50000|100000)$'
+          # The *_EDGE sweeps are 3 sizes each around a chunk boundary (248-250
+          # rows / 198-200 rows): two small categories share one job.
+          - category: edge
+            filter: 'Storm/INSERT_EDGE/insert_edge/N:(248|249|250)$|Storm/UPDATE_PK_EDGE/update_pk_edge/N:(198|199|200)$'
     # Must keep `container:` — cmake/libcxx.cmake bakes an absolute,
     # unnormalized rpath ($GITHUB_WORKSPACE/../clang-p2996/build/lib/...) into
     # both binaries at link time. That only resolves here because containerized
@@ -164,12 +209,11 @@ jobs:
       # from .claude/commands/benchmark.md verbatim: running one side's reps
       # entirely before the other's hands thermal/scheduler drift to whichever
       # binary runs second, and only interleaving cancels that common-mode
-      # drift. 3 rounds (the doc's own example uses 5; 3 is the cheaper choice
-      # for a spike, bump it if the first samples look ambiguous) each running
-      # BOTH binaries — the round-level ratio computed per round in the next
-      # step is the direct answer to #551's decision question ("how stable is
-      # the ratio"), separate from and complementary to the 8-10 cross-dispatch
-      # samples the issue also asks for.
+      # drift. 3 rounds (the doc's own example uses 5; 3 keeps the job short,
+      # bump it if the ratio cv below proves too noisy) each running BOTH
+      # binaries — ratio_gate.py computes the ratio per round and reports its
+      # spread ("ratio cv"), which is the direct measure of how stable the
+      # ratio is on this runner.
       - name: Run raw anchors + storm_bench, interleaved (${{ matrix.category }})
         run: |
           for round in 1 2 3; do
@@ -191,8 +235,8 @@ jobs:
       - name: Compute storm/raw ratio and apply the gate
         # The verdict is ratio_gate.py's exit status (0 pass / 1 below threshold /
         # 2 unusable data) — the same script a local run uses, tested by
-        # scripts/ci/tests/test_ratio_gate.py. INSERT's 80% override is temporary:
-        # the bulk path sits at ~85% of raw (#779); raise it when that is closed.
+        # scripts/ci/tests/test_ratio_gate.py. The INSERT / INSERT_EDGE 80% overrides are temporary:
+        # the bulk path sits at ~85–90% of raw (#779); raise it when that is closed.
         #
         # Exit 1 (below threshold) is only a warning for now: the 8-run spike data in
         # #752 has WHERE/SELECT at a minimum of 95.6% and INSERT at 80.5%, so a
@@ -206,6 +250,7 @@ jobs:
             --storm storm_1.json storm_2.json storm_3.json \
             --threshold 95 \
             --override Storm/INSERT/=80 \
+            --override Storm/INSERT_EDGE/=80 \
             --title "storm/raw ratio — run ${GITHUB_RUN_NUMBER} / ${MATRIX_CATEGORY}" \
             --summary "$GITHUB_STEP_SUMMARY"
           status=$?
@@ -226,8 +271,41 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: bench-ratio-spike-${{ matrix.category }}-${{ github.run_id }}-${{ github.run_attempt }}
+          name: bench-ratio-${{ matrix.category }}-${{ github.run_id }}-${{ github.run_attempt }}
           path: |
             raw_*.json
             storm_*.json
           retention-days: 30
+
+  notify-failure:
+    # Nothing alerts on a red scheduled run (see ci.yml's note on nightlies), so a
+    # failed nightly would sit unseen. Open ONE tracking issue and comment on it
+    # for each further failure instead of opening one per night.
+    #
+    # Only a broken measurement or build reaches here: a below-threshold ratio is
+    # a warning, not a failure, until #752's threshold decision makes it fatal.
+    name: report a failed nightly
+    needs: [build, run-category]
+    if: ${{ failure() && github.event_name == 'schedule' }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions:
+      issues: write
+    env:
+      GH_TOKEN: ${{ github.token }}
+      RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+    steps:
+      - name: Open or update the tracking issue
+        run: |
+          title="bench-ratio: scheduled run failed"
+          existing="$(gh issue list --repo "$GITHUB_REPOSITORY" --state open \
+            --search "\"$title\" in:title" --json number --jq '.[0].number // empty')"
+          if [ -n "$existing" ]; then
+            gh issue comment "$existing" --repo "$GITHUB_REPOSITORY" \
+              --body "Failed again: $RUN_URL"
+          else
+            gh issue create --repo "$GITHUB_REPOSITORY" --title "$title" \
+              --body "The scheduled bench-ratio workflow failed: $RUN_URL
+
+          Only a broken build or unusable benchmark data fails the run; a ratio below its threshold is a warning. Close this issue once the nightly is green again."
+          fi

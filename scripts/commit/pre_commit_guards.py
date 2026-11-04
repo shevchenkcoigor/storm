@@ -294,7 +294,7 @@ NINJALOG_STATS = Guard(
 # self-test needs plain python3 only (the gbench JSON is synthesised).
 RATIO_GATE = Guard(
     "bench ratio gate",
-    r"^(benchmarks/scripts/ratio_gate\.py|scripts/ci/tests/test_ratio_gate\.py|\.github/workflows/bench-ratio-spike\.yml)$",
+    r"^(benchmarks/(scripts/ratio_gate\.py|anchors_raw(_[a-z]+)?\.(cpp|hpp)|sizes\.cppm)|scripts/ci/tests/test_ratio_gate\.py|\.github/workflows/bench-ratio\.yml)$",
     (Step(None, script("scripts/ci/tests/test_ratio_gate.py"), "bench ratio gate self-test failed"),),
     "bench ratio gate self-test passed",
 )

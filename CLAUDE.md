@@ -273,6 +273,8 @@ cmake --preset ninja-release && cmake --build --preset ninja-release
 ./build/release/benchmarks/storm_anchors                                        # Raw SQLite anchors (release-time spot check)
 ```
 
+**CI ratio gate (#752)**: `.github/workflows/bench-ratio.yml` runs storm and raw interleaved in one job nightly (03:30 UTC), on dispatch, and on PRs touching `src/db/**`, `src/orm/**`, `src/storm*.cppm`, `shared/models/**`, `benchmarks/**` (not `*.md`), `cmake/libcxx.cmake` or `CMakePresets.json`, and `benchmarks/scripts/ratio_gate.py` turns the `% of raw` ratios into a verdict (exit 0 pass / 1 below threshold / 2 unusable data). Below-threshold is a **warning** until the threshold decision lands; it is deliberately NOT in `CI gate`'s required set (a path-filtered required check never reports when skipped, #638). A failed nightly opens a tracking issue. Bulk INSERT sits at ~85–90% of raw (#779), hence its temporary 80% override (also for `INSERT_EDGE`). Every anchored benchmark is in the matrix; the unanchored categories are tracked in #780. Details: [benchmarks/README.md](benchmarks/README.md).
+
 ### Code Coverage
 ```bash
 # ninja-debug has coverage enabled by default

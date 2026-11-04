@@ -65,7 +65,7 @@ jobs:
           tags: ${{ steps.tags.outputs.tags }}
 
       # Publishing is only half the job: the digest then has to be pinned in
-      # ci.yml, clang-tidy-sweep.yml and bench-ratio-spike.yml, and until #643
+      # ci.yml, clang-tidy-sweep.yml and bench-ratio.yml, and until #643
       # this run surfaced it nowhere — you had to pull the image or dig through
       # the GHCR package page to find out what you had just published. Print it
       # into the job summary so the whole publish flow is doable from a browser.
@@ -86,6 +86,6 @@ jobs:
             echo
             echo "- \`.github/workflows/ci.yml\` (3 occurrences)"
             echo "- \`.github/workflows/clang-tidy-sweep.yml\` (1)"
-            echo "- \`.github/workflows/bench-ratio-spike.yml\` (2)"
+            echo "- \`.github/workflows/bench-ratio.yml\` (2)"
           } >> "$GITHUB_STEP_SUMMARY"
           echo "digest: ${DIGEST}"
