@@ -1,5 +1,5 @@
 # storm_schema is a debug-build artefact for the user-facing Atlas migration
-# flow (used only by tests/atlas.hcl + scripts/ci/test-atlas-migration.sh, both
+# flow (used only by tests/atlas.hcl + scripts/ci/atlas_migration_check.py, both
 # gated to ninja-debug). It calls storm_enable_migrations() which registers the
 # makemigrations / migrate target names. The bench dashboard (issue #247) also
 # calls storm_enable_migrations() under ENABLE_BENCH and would collide on those

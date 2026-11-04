@@ -417,7 +417,7 @@ jobs:
           && matrix.preset == 'ninja-debug' && matrix.postgres == 17
         run: |
           curl -sSf https://atlasgo.sh | sh
-          ./scripts/ci/test-atlas-migration.sh
+          python3 scripts/ci/atlas_migration_check.py
 
       # Full-tree clang-tidy sweep — tracked by issue #262.
       # Enable once the pre-existing drift across src/ and tests/ is cleaned up.
