@@ -11,6 +11,7 @@ Stdlib unittest, no syntax newer than Python 3.7.
 
     python3 scripts/ci/tests/test_atlas_migration_check.py
 """
+import contextlib
 import os
 import pathlib
 import re
@@ -184,6 +185,16 @@ class AtlasMigrationCheckTest(unittest.TestCase):
         self.assertTrue(arguments.migrations_dir.is_dir(), arguments.migrations_dir)
         self.assertEqual(arguments.build_dir, REPO_ROOT / "build" / "debug")
         self.assertTrue((REPO_ROOT / "tests" / "tools" / "storm_schema").is_dir())
+
+    def test_a_directory_argument_with_unsafe_characters_is_refused(self):
+        for unsafe in ("a b", "x;y", "x$(id)", "x\ny"):
+            with self.assertRaises(SystemExit, msg=unsafe):
+                with open(os.devnull, "w") as devnull, contextlib.redirect_stderr(devnull):
+                    check.parse_arguments(["--migrations-dir", unsafe])
+
+    def test_a_relative_directory_becomes_absolute_so_it_cannot_look_like_an_option(self):
+        arguments = check.parse_arguments(["--build-dir=-rf"])
+        self.assertTrue(arguments.build_dir.is_absolute(), arguments.build_dir)
 
     def test_a_missing_migrations_directory_is_skipped_not_failed(self):
         returncode, output = self.run_check(migrations=self.tmp / "absent")
