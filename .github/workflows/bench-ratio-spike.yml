@@ -2,7 +2,9 @@ name: Bench Ratio Spike (throwaway — #551)
 
 # THROWAWAY — see issue #551 ("Do this first" section).
 #
-# Not a gate. Runs storm_bench + storm_anchors in the same job and prints the
+# The verdict comes from benchmarks/scripts/ratio_gate.py's exit code (#752), but a
+# below-threshold result is only a warning until the threshold decision lands.
+# Runs storm_bench + storm_anchors in the same job and prints the
 # per-benchmark storm/raw ratio for the anchored subset, so it can be
 # triggered 8-10x on unchanged code to measure how stable that ratio actually
 # is on a shared ubuntu-24.04 runner before anyone designs a threshold on top
@@ -139,6 +141,15 @@ jobs:
         # the belt to this symlink's braces.
         run: ln -sfn /opt/clang-p2996 "$(dirname "$GITHUB_WORKSPACE")/clang-p2996"
 
+      - name: Fetch ratio_gate.py
+        # Sparse: this job deliberately has no full checkout (it only runs the
+        # binaries the build job produced); the gate script is the one source file
+        # it needs. Done before the download so checkout cannot clobber the binaries.
+        uses: actions/checkout@v4
+        with:
+          sparse-checkout: benchmarks/scripts/ratio_gate.py
+          sparse-checkout-cone-mode: false
+
       - name: Download binaries
         uses: actions/download-artifact@v4
         with:
@@ -177,130 +188,40 @@ jobs:
               --benchmark_out="storm_${round}.json"
           done
 
-      - name: Compute storm/raw ratio
+      - name: Compute storm/raw ratio and apply the gate
+        # The verdict is ratio_gate.py's exit status (0 pass / 1 below threshold /
+        # 2 unusable data) — the same script a local run uses, tested by
+        # scripts/ci/tests/test_ratio_gate.py. INSERT's 80% override is temporary:
+        # the bulk path sits at ~85% of raw (#779); raise it when that is closed.
+        #
+        # Exit 1 (below threshold) is only a warning for now: the 8-run spike data in
+        # #752 has WHERE/SELECT at a minimum of 95.6% and INSERT at 80.5%, so a
+        # single-run threshold would flake on noise. The threshold DoD item (and its
+        # K-consecutive-runs rule) decides when this becomes fatal. Exit 2 (unusable
+        # data) stays fatal: that is a broken measurement, not a slow one.
         run: |
-          python3 - <<'PYEOF'
-          import json
-          import os
-          import statistics
-          import sys
-
-          ROUNDS = 3
-
-          def load_json(path):
-              with open(path) as f:
-                  return json.load(f)
-
-          def load_aggregate(data, aggregate_name):
-              return {
-                  b["run_name"]: b["real_time"]
-                  for b in data["benchmarks"]
-                  if b.get("aggregate_name") == aggregate_name
-              }
-
-          def check_paired(raw, storm, what):
-              paired = sorted(set(raw) & set(storm))
-              print(f"{what}: raw={len(raw)} storm={len(storm)} paired={len(paired)}")
-              if not paired:
-                  sys.exit(f"no paired {what}: raw={len(raw)} storm={len(storm)} — filter or names drifted")
-              if len(paired) != len(raw) or len(paired) != len(storm):
-                  sys.exit(
-                      f"partial {what} match: raw={sorted(raw)} storm={sorted(storm)} — "
-                      "filter or names drifted between the two binaries"
-                  )
-              return paired
-
-          rounds_raw_median = []
-          rounds_storm_median = []
-          rounds_raw_cv = []
-          rounds_storm_cv = []
-          time_units = set()
-
-          for i in range(1, ROUNDS + 1):
-              raw_data = load_json(f"raw_{i}.json")
-              storm_data = load_json(f"storm_{i}.json")
-
-              # Each benchmark entry carries its own time_unit (ns by default),
-              # except RMS rows (from ->Complexity(oN) on the INSERT sweep),
-              # which report a percentage and have no time_unit at all. A
-              # future ->Unit(kMicrosecond) on only one side would make every
-              # ratio below wrong by 1000x while still printing a clean table —
-              # assert every timed entry across every round agrees.
-              time_units |= {b["time_unit"] for b in raw_data["benchmarks"] if "time_unit" in b}
-              time_units |= {b["time_unit"] for b in storm_data["benchmarks"] if "time_unit" in b}
-
-              raw_median = load_aggregate(raw_data, "median")
-              storm_median = load_aggregate(storm_data, "median")
-              raw_cv = load_aggregate(raw_data, "cv")
-              storm_cv = load_aggregate(storm_data, "cv")
-
-              # Fail loud on an empty or partial match rather than silently
-              # printing a short table — this is the exact failure mode #551's
-              # post-mortem calls out (defect 3: the missing statistic degraded
-              # to "-" instead of erroring). A renamed benchmark, a regex-flavor
-              # difference, or a drifted N: value must break this step, not
-              # quietly measure fewer benchmarks than intended. Checked for
-              # BOTH aggregates, every round.
-              paired = check_paired(raw_median, storm_median, f"round {i} median")
-              check_paired(raw_cv, storm_cv, f"round {i} cv")
-              if i > 1 and paired != sorted(rounds_raw_median[0]):
-                  sys.exit(f"round {i} benchmark set differs from round 1 — filter or gbench nondeterminism")
-
-              rounds_raw_median.append(raw_median)
-              rounds_storm_median.append(storm_median)
-              rounds_raw_cv.append(raw_cv)
-              rounds_storm_cv.append(storm_cv)
-
-          if len(time_units) != 1:
-              sys.exit(f"time_unit mismatch or non-uniform across rounds: {time_units} — ratios below would be nonsense")
-          unit = next(iter(time_units))
-          names = sorted(rounds_raw_median[0])
-
-          # Interleaved rounds (see the previous step's comment — this is
-          # Trap 2 from .claude/commands/benchmark.md) give two distinct
-          # trust numbers, both printed below:
-          #   - "ratio cv (rounds)": the round-to-round spread of the ratio
-          #     itself, across N independently-interleaved samples. This is
-          #     the DIRECT answer to #551's decision question ("how stable is
-          #     the ratio on this runner"), not a proxy for it.
-          #   - "raw/storm cv (max)": gbench's own within-round cv (from
-          #     --benchmark_repetitions), worst case across the N rounds. A
-          #     high value here means a single round's measurement is already
-          #     noisy before cross-round drift is even considered.
-          lines = [
-              f"| benchmark | raw_{unit} (median-of-{ROUNDS}) | storm_{unit} (median-of-{ROUNDS}) | % of raw | ratio cv (rounds) | raw/storm cv (max) |",
-              "|---|---:|---:|---:|---:|---:|",
-          ]
-          for name in names:
-              raw_vals = [r[name] for r in rounds_raw_median]
-              storm_vals = [s[name] for s in rounds_storm_median]
-              ratios = [r / s * 100 for r, s in zip(raw_vals, storm_vals)]
-              ratio_mean = statistics.mean(ratios)
-              ratio_cv = (statistics.stdev(ratios) / ratio_mean) if ratio_mean and len(ratios) > 1 else float("nan")
-              max_raw_cv = max(c[name] for c in rounds_raw_cv)
-              max_storm_cv = max(c[name] for c in rounds_storm_cv)
-              lines.append(
-                  f"| `{name}` | {statistics.median(raw_vals):.0f} | {statistics.median(storm_vals):.0f} | "
-                  f"{statistics.median(ratios):.1f}% | {ratio_cv:.1%} | {max(max_raw_cv, max_storm_cv):.1%} |"
-              )
-
-          table = "\n".join(lines)
-          print(table)
-
-          with open(os.environ["GITHUB_STEP_SUMMARY"], "a") as f:
-              run_number = os.environ.get("GITHUB_RUN_NUMBER", "?")
-              category = os.environ.get("MATRIX_CATEGORY", "?")
-              f.write(f"## storm/raw ratio — run {run_number} / {category}\n\n")
-              f.write(f"{ROUNDS} interleaved rounds (raw then storm, repeated {ROUNDS}x) — see the previous step's comment.\n\n")
-              f.write(table + "\n")
-          PYEOF
+          set +e
+          python3 benchmarks/scripts/ratio_gate.py \
+            --raw raw_1.json raw_2.json raw_3.json \
+            --storm storm_1.json storm_2.json storm_3.json \
+            --threshold 95 \
+            --override Storm/INSERT/=80 \
+            --title "storm/raw ratio — run ${GITHUB_RUN_NUMBER} / ${MATRIX_CATEGORY}" \
+            --summary "$GITHUB_STEP_SUMMARY"
+          status=$?
+          set -e
+          if [ "$status" -eq 1 ]; then
+            echo "::warning::${MATRIX_CATEGORY}: a benchmark is below its ratio threshold (informational until #752's threshold decision)"
+            exit 0
+          fi
+          exit "$status"
         env:
           MATRIX_CATEGORY: ${{ matrix.category }}
 
       - name: Upload raw JSON (for cross-run cv analysis)
         # always(): raw_*.json/storm_*.json are already written by the
-        # previous step by the time "Compute storm/raw ratio" could fail (e.g.
-        # the partial-match sys.exit) — keep them on a failed run too, since
+        # previous step by the time the ratio gate step could fail (e.g.
+        # ratio_gate.py's exit 2 on a partial match) — keep them on a failed run too, since
         # they're exactly the evidence needed to see which benchmark drifted.
         if: always()
         uses: actions/upload-artifact@v4
