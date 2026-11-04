@@ -11,22 +11,18 @@ Stdlib unittest, no syntax newer than Python 3.7.
 
     python3 scripts/ci/tests/test_atlas_migration_check.py
 """
-import contextlib
+import io
 import os
 import pathlib
 import re
 import sys
 import tempfile
 import unittest
+from unittest import mock
 
 REPO_ROOT = pathlib.Path(__file__).resolve().parents[3]
-sys.path.insert(0, str(REPO_ROOT / "scripts" / "lib"))
-import testing  # noqa: E402
-
 sys.path.insert(0, str(REPO_ROOT / "scripts" / "ci"))
 import atlas_migration_check as check  # noqa: E402
-
-CHECK = REPO_ROOT / "scripts" / "ci" / "atlas_migration_check.py"
 
 SQLITE_SQL = """\
 CREATE TABLE Person (id INTEGER PRIMARY KEY, name TEXT NOT NULL, age INTEGER, salary REAL, department TEXT);
@@ -109,14 +105,17 @@ class AtlasMigrationCheckTest(unittest.TestCase):
         return path
 
     def run_check(self, stub_env=None, path_dirs=None, migrations=None):
-        """(returncode, output). `path_dirs` replaces PATH (to hide the atlas stub)."""
+        """(returncode, output), run in-process with the fixed locations pointed at the
+        scratch tree. `path_dirs` replaces PATH (to hide the atlas stub)."""
         env = {"PATH": os.pathsep.join(path_dirs if path_dirs is not None else [str(self.bin)]),
                "STUB_SQLITE_SQL": str(self.sqlite_sql), "STUB_PG_SQL": str(self.pg_sql)}
         env.update(stub_env or {})
-        result = testing.run([sys.executable, CHECK, "--build-dir", self.build,
-                              "--migrations-dir", migrations or self.migrations],
-                             env=env, merge_stderr=True)
-        return result.returncode, result.stdout
+        out = io.StringIO()
+        with mock.patch.dict(os.environ, env, clear=True), \
+                mock.patch.object(check, "BUILD_DIR", self.build), \
+                mock.patch.object(check, "MIGRATIONS_DIR", migrations or self.migrations):
+            returncode = check.main(out=out)
+        return returncode, out.getvalue()
 
     def assert_fails_only(self, stub_env, expected):
         returncode, output = self.run_check(stub_env)
@@ -179,22 +178,11 @@ class AtlasMigrationCheckTest(unittest.TestCase):
         self.assertEqual(returncode, 1)
 
     def test_the_defaults_point_at_real_places(self):
-        # Every other test passes --build-dir / --migrations-dir; CI passes neither, and a
-        # wrong default would turn step 4 into a silent SKIP (or fail step 1 loudly).
-        arguments = check.parse_arguments([])
-        self.assertTrue(arguments.migrations_dir.is_dir(), arguments.migrations_dir)
-        self.assertEqual(arguments.build_dir, REPO_ROOT / "build" / "debug")
+        # Every other test patches the two locations; CI uses the defaults, and a wrong one
+        # would turn step 4 into a silent SKIP (or fail step 1 loudly).
+        self.assertTrue(check.MIGRATIONS_DIR.is_dir(), check.MIGRATIONS_DIR)
+        self.assertEqual(check.BUILD_DIR, REPO_ROOT / "build" / "debug")
         self.assertTrue((REPO_ROOT / "tests" / "tools" / "storm_schema").is_dir())
-
-    def test_a_directory_argument_with_unsafe_characters_is_refused(self):
-        for unsafe in ("a b", "x;y", "x$(id)", "x\ny"):
-            with self.assertRaises(SystemExit, msg=unsafe):
-                with open(os.devnull, "w") as devnull, contextlib.redirect_stderr(devnull):
-                    check.parse_arguments(["--migrations-dir", unsafe])
-
-    def test_a_relative_directory_becomes_absolute_so_it_cannot_look_like_an_option(self):
-        arguments = check.parse_arguments(["--build-dir=-rf"])
-        self.assertTrue(arguments.build_dir.is_absolute(), arguments.build_dir)
 
     def test_a_missing_migrations_directory_is_skipped_not_failed(self):
         returncode, output = self.run_check(migrations=self.tmp / "absent")
