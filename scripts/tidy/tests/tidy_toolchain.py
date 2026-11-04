@@ -14,7 +14,6 @@ reaches the tools - without a real clang-tidy. Not a test module itself.
 Stdlib only, no syntax newer than Python 3.9.
 """
 import json
-import os
 import pathlib
 import subprocess
 import sys
@@ -23,6 +22,9 @@ import unittest
 
 REPO_ROOT = pathlib.Path(__file__).resolve().parents[3]
 SCRIPT = REPO_ROOT / "scripts" / "tidy" / "run_clang_tidy.py"
+
+sys.path.insert(0, str(REPO_ROOT / "scripts" / "lib"))
+import testing  # noqa: E402
 
 FAKE_CLANG_TIDY = """#!/bin/sh
 for last; do :; done
@@ -59,11 +61,10 @@ PCH_COMMAND = ("clang++ -c -Xclang -include-pch -Xclang gtest.pch -Xclang -inclu
 
 
 def clean_env():
-    """The environment minus GIT_*: under the pre-commit hook GIT_INDEX_FILE points
-    at the real repo, and every git call below must act on the throwaway one."""
-    env = {key: value for key, value in os.environ.items() if not key.startswith("GIT_")}
-    env.pop("GITHUB_ACTIONS", None)
-    return env
+    """The environment minus what a git hook exports (under the pre-commit hook GIT_INDEX_FILE
+    points at the real repo, and every git call below must act on the throwaway one), and minus
+    GITHUB_ACTIONS, which would put run_clang_tidy.py into its CI mode."""
+    return testing.environment_without_git_hook_variables(also_drop=("GITHUB_ACTIONS",))
 
 
 class ToolchainTest(unittest.TestCase):

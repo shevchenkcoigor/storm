@@ -18,7 +18,6 @@ import json
 import os
 import pathlib
 import shutil
-import subprocess
 import sys
 import tempfile
 import unittest
@@ -32,19 +31,7 @@ SETTINGS = REPO_ROOT / ".claude" / "settings.json"
 WIRED = ".githooks"
 
 
-def clean_git_environment():
-    """os.environ without the GIT_* variables a git hook exports.
-
-    commit.sh runs this test from the pre-commit hook, where git exports GIT_INDEX_FILE (and,
-    for some invocations, GIT_DIR). Left set, every `git` call below would act on the REAL
-    repository instead of the throwaway one.
-    """
-    names = subprocess.check_output(["git", "rev-parse", "--local-env-vars"],
-                                    universal_newlines=True).split()
-    return {key: value for key, value in os.environ.items() if key not in names}
-
-
-ENVIRONMENT = clean_git_environment()
+ENVIRONMENT = testing.environment_without_git_hook_variables()
 
 
 def git(directory, *args):

@@ -29,7 +29,6 @@ import os
 import pathlib
 import re
 import shutil
-import subprocess
 import sys
 import tempfile
 import unittest
@@ -125,21 +124,7 @@ sys.exit(0)
 PG_ISREADY_STUB = "#!/bin/sh\nexit 0\n"
 
 
-def environment_without_git_hook_variables():
-    """os.environ minus what a git hook exports.
-
-    commit.sh runs this test from the pre-commit hook, where git exports GIT_INDEX_FILE (and,
-    for some invocations, GIT_DIR). Left set, every `git` call below would act on the REAL
-    repository's index - staging scenario files into the commit being checked. The hook also
-    exports STORM_PRE_COMMIT_HOOK; left set, "manual run" scenarios would run in hook mode.
-    """
-    names = subprocess.check_output(["git", "rev-parse", "--local-env-vars"],
-                                    universal_newlines=True).split()
-    drop = set(names) | {"STORM_PRE_COMMIT_HOOK"}
-    return {key: value for key, value in os.environ.items() if key not in drop}
-
-
-BASE_ENVIRONMENT = environment_without_git_hook_variables()
+BASE_ENVIRONMENT = testing.environment_without_git_hook_variables(also_drop=("STORM_PRE_COMMIT_HOOK",))
 
 
 class SelfHealConfigureTest(unittest.TestCase):

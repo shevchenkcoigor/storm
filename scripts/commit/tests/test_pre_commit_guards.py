@@ -84,9 +84,9 @@ class TriggerTest(unittest.TestCase):
         # scripts/lib/testing.py is imported by these self-tests (#763); editing it must rerun
         # them, or a helper regression is only found by whichever test someone happens to run.
         self.assertEqual(set(names(pcg.triggered_guards(["scripts/lib/testing.py"]))),
-                         {"cmake-format target", "coverage batch parallelism", "coverage gate",
+                         {"clang-tidy runner", "cmake-format target", "coverage batch parallelism", "coverage gate",
                           "ninjalog stats", "self-heal configure", "SessionStart hook wiring",
-                          "time-trace capture"})
+                          "shared test helpers", "time-trace capture"})
 
     def test_batch_two_self_tests_trigger_their_own_guard(self):
         for staged, guard in (("scripts/commit/tests/test_cmake_format_target.py", "cmake-format target"),

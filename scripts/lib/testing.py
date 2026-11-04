@@ -7,6 +7,7 @@ Python 3.7 (macOS system python3 runs these). A test imports it by path:
     import testing
 """
 import contextlib
+import os
 import pathlib
 import subprocess
 import tempfile
@@ -24,6 +25,28 @@ def run(command, env=None, cwd=None, input=None, merge_stderr=False):
                           stdout=subprocess.PIPE,
                           stderr=subprocess.STDOUT if merge_stderr else subprocess.PIPE,
                           universal_newlines=True)
+
+
+def environment_without_git_hook_variables(also_drop=()):
+    """os.environ without the variables a git hook exports, as a new dict.
+
+    commit.sh runs the git-driving self-tests from the pre-commit hook, where git exports
+    GIT_INDEX_FILE (and, for some invocations, GIT_DIR). Left set, every `git` call in a
+    throwaway repo would act on the REAL repository - staging scenario files into the commit
+    being checked. `also_drop` names further variables to remove (the hook also exports
+    STORM_PRE_COMMIT_HOOK, which would put a "manual run" scenario into hook mode).
+
+    Raises if git cannot list its variables: returning os.environ unchanged then would fail
+    open into exactly the corruption this exists to prevent.
+    """
+    if isinstance(also_drop, str):
+        # set("NAME") would silently be a set of single characters and drop nothing.
+        raise TypeError("also_drop takes a sequence of names, not one string: %r" % (also_drop,))
+    listing = run(["git", "rev-parse", "--local-env-vars"])
+    if listing.returncode != 0:
+        raise RuntimeError("git rev-parse --local-env-vars failed: " + listing.stderr.strip())
+    drop = set(listing.stdout.split()) | set(also_drop)
+    return {key: value for key, value in os.environ.items() if key not in drop}
 
 
 @contextlib.contextmanager

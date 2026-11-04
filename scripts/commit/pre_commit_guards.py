@@ -92,7 +92,8 @@ AGENT_FRONTMATTER = Guard(
 TIDY_SKIPLIST = Guard(
     "clang-tidy runner",
     r"^scripts/tidy/(clang_tidy_skiplist|run_clang_tidy)\.py$"
-    r"|^scripts/tidy/tests/(test_clang_tidy_skiplist|test_run_clang_tidy|test_run_clang_tidy_full|tidy_toolchain)\.py$",
+    r"|^scripts/tidy/tests/(test_clang_tidy_skiplist|test_run_clang_tidy|test_run_clang_tidy_full|tidy_toolchain)\.py$"
+    r"|^scripts/lib/testing\.py$",
     (Step(None, script("scripts/tidy/tests/test_clang_tidy_skiplist.py"),
           "clang-tidy skip-list self-test failed"),
      Step(None, script("scripts/tidy/tests/test_run_clang_tidy.py"),
@@ -314,10 +315,20 @@ SONAR_GATE = Guard(
     "SonarCloud gate self-test passed",
 )
 
+# --- shared self-test helpers (#774) ---
+# scripts/lib/testing.py is imported by most self-tests; the guards of those rerun when it
+# changes, but only this one can see a git-environment scrub that stopped scrubbing.
+SHARED_TEST_HELPERS = Guard(
+    "shared test helpers",
+    r"^scripts/lib/(testing\.py|tests/test_testing\.py)$",
+    (Step(None, script("scripts/lib/tests/test_testing.py"), "shared test helpers self-test failed"),),
+    "shared test helpers self-test passed",
+)
+
 GUARDS = (
     AGENT_FRONTMATTER, TIDY_SKIPLIST, SWEEP_WORKFLOW, SESSION_START_HOOK, SELF_HEAL, CMAKE_FORMAT_TARGET, PYYAML_CHECK,
     CPM_CACHE_CHECK, CPM_COLD_CACHE, COVERAGE_GATE, UNCOVERED_LINES, SMART_SKIP, TIDY_PREREQS, ORM_BACKEND_IMPORTS, PRE_COMMIT_GUARDS,
-    CI_DIGESTS, COVERAGE_PARALLEL, NINJALOG_STATS, TIME_TRACE, SONAR_GATE,
+    CI_DIGESTS, COVERAGE_PARALLEL, NINJALOG_STATS, TIME_TRACE, SONAR_GATE, SHARED_TEST_HELPERS,
 )
 
 # scripts/*/tests/ self-tests deliberately run by no guard, with where they DO run.
