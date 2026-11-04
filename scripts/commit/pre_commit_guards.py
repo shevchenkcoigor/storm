@@ -325,10 +325,21 @@ SHARED_TEST_HELPERS = Guard(
     "shared test helpers self-test passed",
 )
 
+# --- Atlas migration check (#773) ---
+# scripts/ci/atlas_migration_check.py is the "Atlas integration test" step of ci.yml. The real
+# atlas and a built storm_schema exist only there, so this runs its test against stubs of both;
+# the test imports scripts/lib/testing.py.
+ATLAS_MIGRATION_CHECK = Guard(
+    "atlas migration check",
+    r"^scripts/(ci/(atlas_migration_check\.py|tests/test_atlas_migration_check\.py)|lib/testing\.py)$",
+    (Step(None, script("scripts/ci/tests/test_atlas_migration_check.py"), "atlas migration check self-test failed"),),
+    "atlas migration check self-test passed",
+)
+
 GUARDS = (
     AGENT_FRONTMATTER, TIDY_SKIPLIST, SWEEP_WORKFLOW, SESSION_START_HOOK, SELF_HEAL, CMAKE_FORMAT_TARGET, PYYAML_CHECK,
     CPM_CACHE_CHECK, CPM_COLD_CACHE, COVERAGE_GATE, UNCOVERED_LINES, SMART_SKIP, TIDY_PREREQS, ORM_BACKEND_IMPORTS, PRE_COMMIT_GUARDS,
-    CI_DIGESTS, COVERAGE_PARALLEL, NINJALOG_STATS, TIME_TRACE, SONAR_GATE, SHARED_TEST_HELPERS,
+    CI_DIGESTS, COVERAGE_PARALLEL, NINJALOG_STATS, TIME_TRACE, SONAR_GATE, SHARED_TEST_HELPERS, ATLAS_MIGRATION_CHECK,
 )
 
 # scripts/*/tests/ self-tests deliberately run by no guard, with where they DO run.
