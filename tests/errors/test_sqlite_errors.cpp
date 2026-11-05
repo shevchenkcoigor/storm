@@ -21,7 +21,7 @@ import storm_orm_statements_insert;
 namespace fs = std::filesystem;
 using storm::db::DefaultConnection;
 using storm::db::sqlite::Connection;
-using storm::db::sqlite::Statement;
+using Statement = storm::db::sqlite::Connection::Statement;
 
 // ============================================================================
 // Connection Error Tests

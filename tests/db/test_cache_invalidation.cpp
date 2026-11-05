@@ -8,7 +8,7 @@ import storm_db_sqlite;
 import storm_db_concept;
 
 using storm::db::sqlite::Connection;
-using storm::db::sqlite::Statement;
+using Statement = storm::db::sqlite::Connection::Statement;
 
 // ============================================================================
 // Single-level Connection statement cache (formerly "Level 3")
