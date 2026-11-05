@@ -253,6 +253,7 @@ bash 3.2 on macOS, and a scan of `commit.sh` and `coverage-run-batched.sh` for b
 `test_libcxx_modules_symlink.py` (Python, needs cmake and ninja), which covers `cmake/libcxx.cmake` rather
 than a script, `test_pyyaml_check.py` (Python, plain cmake), which covers `cmake/pyyaml.cmake`'s configure-time PyYAML check (#703),
 `test_cpm_cache_check.py` (Python, plain cmake), which covers `cmake/cpm-cache.cmake`'s configure-time check for a CPM checkout left empty by an interrupted clone (#705),
+`test_ratio_gate.py` (Python, plain `python3`), which covers `benchmarks/scripts/ratio_gate.py` — the storm/raw ratio gate of `bench-ratio.yml` — and runs that workflow step's real `run:` block on fixture gbench JSON (#752),
 and `test_session_start_hook.py` (Python, needs `git`), which covers
 `.claude/hooks/session-start.sh` — the SessionStart hook that wires `core.hooksPath` (and
 so decides whether `commit.sh` runs at all, #651). `test_commit_self_heal_configure.py` (Python, needs `git`) covers `commit.sh` itself: it runs the real

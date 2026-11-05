@@ -84,7 +84,7 @@ class TriggerTest(unittest.TestCase):
         # scripts/lib/testing.py is imported by these self-tests (#763); editing it must rerun
         # them, or a helper regression is only found by whichever test someone happens to run.
         self.assertEqual(set(names(pcg.triggered_guards(["scripts/lib/testing.py"]))),
-                         {"atlas migration check", "clang-tidy runner", "cmake-format target", "coverage batch parallelism", "coverage gate",
+                         {"atlas migration check", "bench ratio gate", "clang-tidy runner", "cmake-format target", "coverage batch parallelism", "coverage gate",
                           "ninjalog stats", "self-heal configure", "SessionStart hook wiring",
                           "shared test helpers", "time-trace capture"})
 
@@ -138,8 +138,14 @@ class TriggerTest(unittest.TestCase):
             self.assertNotIn(name, run)
 
     def test_workflow_edit_triggers_the_digest_check(self):
-        for staged in (".github/workflows/ci.yml", ".github/workflows/bench-ratio-spike.yml"):
-            self.assertEqual(names(pcg.triggered_guards([staged])), ["storm-ci digest pins"], staged)
+        self.assertEqual(names(pcg.triggered_guards([".github/workflows/ci.yml"])),
+                         ["storm-ci digest pins"])
+
+    def test_bench_ratio_workflow_edit_triggers_the_digest_check_and_the_ratio_gate(self):
+        # It pins the storm-ci image AND calls ratio_gate.py, so both self-tests apply (#752).
+        hit = pcg.triggered_guards([".github/workflows/bench-ratio.yml"])
+
+        self.assertEqual(sorted(names(hit)), ["bench ratio gate", "storm-ci digest pins"])
 
     def test_orphaned_self_tests_trigger_on_their_scripts(self):
         for staged, guard in (("scripts/compile_time/ninjalog_stats.py", "ninjalog stats"),

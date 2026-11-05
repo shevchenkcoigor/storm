@@ -289,6 +289,16 @@ NINJALOG_STATS = Guard(
     "ninjalog stats self-test passed",
 )
 
+# --- storm/raw ratio gate (#752) ---
+# benchmarks/scripts/ratio_gate.py is the pass/fail verdict of the bench ratio workflow; its
+# self-test needs plain python3 only (the gbench JSON is synthesised).
+RATIO_GATE = Guard(
+    "bench ratio gate",
+    r"^(benchmarks/(scripts/ratio_gate\.py|anchors_raw(_[a-z]+)?\.(cpp|hpp)|sizes\.cppm)|scripts/ci/tests/test_ratio_gate\.py|scripts/lib/testing\.py|\.github/workflows/bench-ratio\.yml)$",
+    (Step(None, script("scripts/ci/tests/test_ratio_gate.py"), "bench ratio gate self-test failed"),),
+    "bench ratio gate self-test passed",
+)
+
 TIME_TRACE = Guard(
     "time-trace capture",
     r"^scripts/(compile_time/(time_trace|compile_replay)\.py|compile_time/tests/test_time_trace\.py|lib/testing\.py)$",
@@ -330,7 +340,8 @@ ATLAS_MIGRATION_CHECK = Guard(
 GUARDS = (
     AGENT_FRONTMATTER, TIDY_SKIPLIST, SWEEP_WORKFLOW, SESSION_START_HOOK, SELF_HEAL, CMAKE_FORMAT_TARGET, PYYAML_CHECK,
     CPM_CACHE_CHECK, CPM_COLD_CACHE, COVERAGE_GATE, SMART_SKIP, TIDY_PREREQS, ORM_BACKEND_IMPORTS, PRE_COMMIT_GUARDS,
-    CI_DIGESTS, COVERAGE_PARALLEL, NINJALOG_STATS, TIME_TRACE, SONAR_GATE, SHARED_TEST_HELPERS, ATLAS_MIGRATION_CHECK,
+    CI_DIGESTS, COVERAGE_PARALLEL, NINJALOG_STATS, RATIO_GATE, TIME_TRACE, SONAR_GATE, SHARED_TEST_HELPERS,
+    ATLAS_MIGRATION_CHECK,
 )
 
 # scripts/*/tests/ self-tests deliberately run by no guard, with where they DO run.

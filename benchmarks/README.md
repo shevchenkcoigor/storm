@@ -145,15 +145,11 @@ See [docs/internals/performance/BENCHMARK_DASHBOARD.md](../docs/internals/perfor
 
 ## 📉 Regression detection
 
-The per-PR benchmark gate (#241) is self-hosted on GitHub Actions and uses **GitHub Actions artifacts** for the baseline store — no external service.
+**CI does not gate on absolute walltime.** A per-PR gate that diffed `storm_bench` against a `develop` baseline artifact (±5%, Mann-Whitney U-test) was added in #241/#243 and removed in #245: absolute time on shared runners moves by ~25% between runners with no code change, so all 376 benchmarks of one doc-only PR read as "improved" (post-mortem in #551). What CI runs instead is the [storm/raw ratio gate](#stormraw-ratio-gate-githubworkflowsbench-ratioyml-752) below, which compares two binaries inside one job.
 
-- **Push to `develop`** runs `storm_bench` and uploads the JSON as the `develop-baseline-latest` artifact (overwriting prior, 90-day retention).
-- **Pull requests** run `storm_bench`, download `develop-baseline-latest` from the most recent successful develop run, diff via Google Benchmark's [`compare.py`](https://github.com/google/benchmark/blob/main/tools/compare.py) + Mann-Whitney U-test, post a marker-edited PR comment with the regression / improvement table, and **fail the gate on any benchmark slower than +5% with p<0.05**.
-- **First-run case** (no `develop-baseline-latest` artifact yet): the PR comment notes the missing baseline and the gate marks green. The first push to `develop` after this lands seeds the baseline.
+`benchmarks/scripts/compare_against_baseline.sh` remains as a **local A/B tool**: run it before and after a change on the **same machine** and it diffs the two JSONs via Google Benchmark's [`compare.py`](https://github.com/google/benchmark/blob/main/tools/compare.py) + Mann-Whitney U-test, exiting 1 on any benchmark slower than the threshold with statistical significance. No baseline is committed to the repo and CI produces none: a baseline is only meaningful on the same hardware as the comparison run.
 
-CI runs `benchmarks/scripts/compare_against_baseline.sh` — the same engine you can run locally against a saved JSON to get the same verdict before pushing. No committed baseline lives in the repo: a baseline is only meaningful on the same hardware class as the comparison run.
-
-**Local workflow** (same engine, same numbers as CI)
+**Local workflow** (compare two runs on one machine)
 
 ```bash
 cmake --preset ninja-release && cmake --build --preset ninja-release
@@ -189,6 +185,16 @@ Per-benchmark deltas are computed as `(current - baseline) / |baseline|`; the ga
 | `PYTHON` | `python3` | Override e.g. `/path/to/venv/bin/python` if numpy/scipy aren't system-installed. |
 
 `compare.py` requires `numpy` and `scipy` (used for the geometric mean and U-test respectively). Install via your distro's package manager (`pacman -S python-numpy python-scipy`, `apt install python3-numpy python3-scipy`, etc.) or a venv.
+
+### Storm/raw ratio gate (`.github/workflows/bench-ratio.yml`, #752)
+
+The absolute-walltime gate above is unreliable across shared runners, so CI also measures a **ratio**: `storm_bench` and the raw `storm_anchors` run **in the same job, interleaved** (raw, storm, raw, storm, …, 3 rounds), and the gate reads `% of raw` (raw time ÷ storm time) per benchmark. Runner-to-runner drift cancels in the ratio.
+
+- **Triggers:** nightly (03:30 UTC), manual `workflow_dispatch`, and PRs touching `src/db/**`, `src/orm/**`, `src/storm*.cppm`, `shared/models/**`, `benchmarks/**` (except `*.md`), `cmake/libcxx.cmake` or `CMakePresets.json` (~22 min per run, so not every PR). Anything the filter misses is caught by the nightly.
+- **Verdict:** `benchmarks/scripts/ratio_gate.py` — exit 0 pass, 1 a benchmark below its threshold, 2 unusable data (empty/partial pairing, drifted names, mixed time units, malformed JSON). The same script runs locally on gbench JSON from a CI run (`gh run download <id>`, into the checkout: it reads only JSON inside the repository, and exits 2 for a path outside it); it measures nothing itself and prints a markdown section on stdout (CI appends that to the job summary). Tested by `scripts/ci/tests/test_ratio_gate.py`.
+- **Thresholds:** 95% of raw (the project target), with a temporary 80% override for `Storm/INSERT/` and `Storm/INSERT_EDGE/` while the bulk INSERT gap is open (#779). A result below threshold is currently a **warning**, not a failure: single-run noise (WHERE/SELECT sat as low as 95.6% across 8 runs) needs a "K consecutive runs" rule first. Unusable data (exit 2) already fails the run.
+- **Not a required check:** it is deliberately outside `ci.yml`'s `CI gate` — a path-filtered workflow that does not run would leave a required check pending forever (#638).
+- **Red nightly:** a failed scheduled run opens (or comments on) a `bench-ratio: scheduled run failed` issue. Also check `gh run list --workflow bench-ratio.yml --event schedule`.
 
 ## 📦 Components
 
@@ -536,7 +542,7 @@ names.
 
 For current, verified efficiency numbers (not stale point-in-time snapshots), run the relevant
 category locally — see [Run Benchmarks by Category](#run-benchmarks-by-category) — or check the
-per-PR regression-gate comment described under [Regression detection](#-regression-detection).
+job summary of the latest `Bench Ratio` workflow run described under [Regression detection](#-regression-detection).
 
 ## 📝 YAML Test Schema
 

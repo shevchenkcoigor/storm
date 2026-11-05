@@ -1,0 +1,316 @@
+name: Bench Ratio
+
+# Scheduled in-place storm/raw ratio gate (#752; grown from the #551 spike).
+#
+# The verdict comes from benchmarks/scripts/ratio_gate.py's exit code, but a
+# below-threshold result is only a warning until the threshold decision lands.
+# Runs storm_bench + storm_anchors in the same job and prints the
+# per-benchmark storm/raw ratio for the anchored subset. Ratios, not absolute
+# time: runner-to-runner drift cancels because raw and storm share a job.
+# #241's ±5% gate on absolute walltime died to exactly that mistake — see #551
+# for the post-mortem.
+#
+# NOT part of ci.yml's `CI gate` required set, deliberately: it runs on PRs only
+# behind a path filter, and a required check that a path filter skips never
+# reports and leaves the PR waiting forever (#638). It takes ~22 min, and its
+# thresholds are not final. A red nightly is surfaced by `notify-failure` below,
+# which opens (or comments on) a tracking issue, since nothing else alerts on a
+# red scheduled run.
+#
+# Two-stage shape: `build` compiles once and uploads storm_bench + storm_anchors
+# as an artifact; `run-category` fans out over the anchored categories (where,
+# select, insert, update, delete, edge) in parallel, each downloading that same
+# artifact instead of rebuilding. Compilation (this is C++26 reflection —
+# minutes) dominates over actually running the anchored subset (about 1.5 min
+# for where/select, about 9 min for the INSERT sweep in the first CI run), so
+# splitting the categories into parallel jobs only pays off if the build is
+# shared rather than repeated per category.
+#
+# raw+storm still run sequentially within EACH category job, never split
+# across jobs — that pairing is the entire point of the in-place-ratio design
+# (same job, same runner, correlated noise cancels in the ratio). Only the
+# category split is parallel. Within a job, raw+storm run in 3 INTERLEAVED
+# rounds (round 1: raw then storm, round 2: raw then storm, ...), not "all
+# raw reps then all storm reps" — see .claude/commands/benchmark.md's Trap 2.
+#
+# Triggers: nightly (staggered from ci.yml's 03:00; the ratio is computed inside
+# one VM, so an overlap with that run cannot bias it), manual dispatch, and PRs
+# that can move the storm side of the ratio — the ORM/DB layers, the benchmarks,
+# the compiler flags — not every PR. Docs-only edits under benchmarks/ are
+# excluded. Anything this filter misses is caught by the nightly.
+
+on:
+  schedule:
+    - cron: "30 3 * * *"
+  workflow_dispatch: {}
+  pull_request:
+    branches: [develop]
+    paths:
+      - "src/db/**"
+      - "src/orm/**"
+      - "benchmarks/**"
+      - "!benchmarks/**/*.md"
+      - "shared/models/**"
+      - "src/storm*.cppm"
+      - "cmake/libcxx.cmake"
+      - "CMakePresets.json"
+      - ".github/workflows/bench-ratio.yml"
+
+# A new push to a PR cancels that PR's previous run. Nightly and manual runs get a
+# group of their own (run_id), as ci.yml does: sharing a group per ref would let a
+# third queued run cancel the pending one even with cancel-in-progress off, and a
+# cancelled nightly is not a `failure()`, so notify-failure would stay silent.
+concurrency:
+  group: bench-ratio-${{ github.event.pull_request.number || github.run_id }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: build storm_bench + storm_anchors
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    container:
+      # Keep in sync with ci.yml's `test` job pin — same image, same toolchain,
+      # so this measures the runner, not a toolchain difference.
+      image: ghcr.io/spiritecosse/storm-ci@sha256:ae4f62771d7611c663ccb8e0061af9acc8a8a3fe604eabde4285d11a77d37a61
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Link clang-p2996 next to source dir
+        run: ln -sfn /opt/clang-p2996 "$(dirname "$GITHUB_WORKSPACE")/clang-p2996"
+
+      - name: Create libc++ modules symlink for import std;
+        # Same rationale as ci.yml's test job (issue #326).
+        run: |
+          clang_root="$(dirname "$GITHUB_WORKSPACE")/clang-p2996"
+          share_dir="$clang_root/build/share/libc++"
+          link="$share_dir/v1"
+          target="$clang_root/build/modules/c++/v1"
+          if [ -d "$target" ] && [ ! -e "$link" ]; then
+            mkdir -p "$share_dir"
+            ln -sfn "$target" "$link"
+          fi
+
+      - name: Cache CPM packages
+        uses: actions/cache@v4
+        with:
+          path: .cache/CPM
+          key: cpm-ninja-release-${{ hashFiles('cmake/cpm.cmake', 'cmake/cmake-scripts.cmake', 'cmake/uuid.cmake', 'cmake/tests.cmake', 'cmake/bench.cmake') }}
+          restore-keys: |
+            cpm-ninja-release-
+            cpm-
+
+      - name: Configure
+        run: cmake --preset ninja-release
+
+      - name: Build
+        run: cmake --build --preset ninja-release
+
+      - name: Upload binaries
+        uses: actions/upload-artifact@v4
+        with:
+          # No run_attempt in this name (unlike the per-category upload below,
+          # which needs it): "Re-run failed jobs" bumps run_attempt for the
+          # whole workflow WITHOUT re-running this already-succeeded job, so a
+          # name that embeds run_attempt would ask run-category to download an
+          # artifact this job never uploaded on that attempt. overwrite: true
+          # makes "Re-run ALL jobs" (which DOES re-run this job) work too.
+          name: bench-binaries-${{ github.run_id }}
+          path: |
+            build/release/benchmarks/storm_bench
+            build/release/benchmarks/storm_anchors
+          retention-days: 1
+          if-no-files-found: error
+          overwrite: true
+
+  run-category:
+    name: "ratio: ${{ matrix.category }}"
+    needs: build
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    container:
+      image: ghcr.io/spiritecosse/storm-ci@sha256:ae4f62771d7611c663ccb8e0061af9acc8a8a3fe604eabde4285d11a77d37a61
+    strategy:
+      fail-fast: false
+      matrix:
+        # Filters are the exact benchmark names benchmarks/README.md documents
+        # as having a raw counterpart. Source of truth is
+        # benchmarks/anchors_raw.cpp's ->Name(...) registrations +
+        # kBatchStandard / kBatchInsertEdge / kBatchUpdateEdge. Every anchored
+        # benchmark has an entry; the remaining categories (JOIN, AGGREGATE,
+        # LIKE/BETWEEN/..., ORDER BY, ...) have no anchor yet and are tracked in
+        # #780. Add one matrix entry per new category rather than folding it
+        # into an existing one, and re-check this list against anchors_raw.cpp
+        # when it changes. A name that one binary registers and the other does
+        # not fails the step as a partial match (exit 2) on purpose.
+        include:
+          - category: where
+            filter: 'Storm/WHERE/(where_int_comparison_gt|where_bool_equality|where_double_comparison|where_int_less_than)/N:10000$'
+          - category: select
+            filter: 'Storm/SELECT/select/N:(100|1000|10000|100000)$'
+          - category: insert
+            filter: 'Storm/INSERT/insert/N:(1|10|100|500|1000|5000|10000|50000|100000)$|Storm/INSERT/insert_no_return/N:(1|10|100|500|1000|5000|10000|50000|100000)$'
+          - category: update
+            filter: 'Storm/UPDATE_PK/update_pk/N:(1|10|100|500|1000|5000|10000|50000|100000)$'
+          - category: delete
+            filter: 'Storm/DELETE_PK/delete_pk/N:(1|10|100|500|1000|5000|10000|50000|100000)$'
+          # The *_EDGE sweeps are 3 sizes each around a chunk boundary (248-250
+          # rows / 198-200 rows): two small categories share one job.
+          - category: edge
+            filter: 'Storm/INSERT_EDGE/insert_edge/N:(248|249|250)$|Storm/UPDATE_PK_EDGE/update_pk_edge/N:(198|199|200)$'
+    # Must keep `container:` — cmake/libcxx.cmake bakes an absolute,
+    # unnormalized rpath ($GITHUB_WORKSPACE/../clang-p2996/build/lib/...) into
+    # both binaries at link time. That only resolves here because containerized
+    # jobs get GITHUB_WORKSPACE=/__w/storm/storm, matching the build job's —
+    # a bare `runs-on` without `container:` would use /home/runner/work/... and
+    # the binaries would fail to start. LD_LIBRARY_PATH below is belt-and-
+    # braces against exactly that class of drift (DT_RUNPATH prefers it over
+    # the baked rpath), not a substitute for keeping this container.
+    env:
+      LD_LIBRARY_PATH: /opt/clang-p2996/build/lib/x86_64-unknown-linux-gnu
+    steps:
+      # No checkout, no configure/build — this job only executes the binaries
+      # the build job already produced. $GITHUB_WORKSPACE still exists as the
+      # job's working directory without a checkout, which is all the symlink
+      # below needs.
+      - name: Link clang-p2996 next to source dir
+        # Runtime dependency, not a build one: the binaries dynamically link
+        # libc++/libc++abi/libunwind via an rpath resolved relative to this
+        # same sibling path at link time (see the build job's identical
+        # step) — without it here, the binaries fail to start in this job's
+        # own fresh container/workspace. LD_LIBRARY_PATH (job env, above) is
+        # the belt to this symlink's braces.
+        run: ln -sfn /opt/clang-p2996 "$(dirname "$GITHUB_WORKSPACE")/clang-p2996"
+
+      - name: Fetch ratio_gate.py
+        # Sparse: this job deliberately has no full checkout (it only runs the
+        # binaries the build job produced); the gate script is the one source file
+        # it needs. Done before the download so checkout cannot clobber the binaries.
+        uses: actions/checkout@v4
+        with:
+          sparse-checkout: benchmarks/scripts/ratio_gate.py
+          sparse-checkout-cone-mode: false
+
+      - name: Download binaries
+        uses: actions/download-artifact@v4
+        with:
+          name: bench-binaries-${{ github.run_id }}
+
+      - name: Make binaries executable
+        # actions/upload-artifact@v4 does NOT preserve the exec bit
+        # (documented limitation) — this chmod is required, not optional.
+        run: chmod +x storm_bench storm_anchors
+
+      # Interleaved rounds, not "all anchors then all storm" — this is Trap 2
+      # from .claude/commands/benchmark.md verbatim: running one side's reps
+      # entirely before the other's hands thermal/scheduler drift to whichever
+      # binary runs second, and only interleaving cancels that common-mode
+      # drift. 3 rounds (the doc's own example uses 5; 3 keeps the job short,
+      # bump it if the ratio cv below proves too noisy) each running BOTH
+      # binaries — ratio_gate.py computes the ratio per round and reports its
+      # spread ("ratio cv"), which is the direct measure of how stable the
+      # ratio is on this runner.
+      - name: Run raw anchors + storm_bench, interleaved (${{ matrix.category }})
+        run: |
+          for round in 1 2 3; do
+            ./storm_anchors \
+              --benchmark_filter="${{ matrix.filter }}" \
+              --benchmark_repetitions=6 \
+              --benchmark_report_aggregates_only=true \
+              --benchmark_format=json \
+              --benchmark_out="raw_${round}.json"
+
+            ./storm_bench \
+              --benchmark_filter="${{ matrix.filter }}" \
+              --benchmark_repetitions=6 \
+              --benchmark_report_aggregates_only=true \
+              --benchmark_format=json \
+              --benchmark_out="storm_${round}.json"
+          done
+
+      - name: Compute storm/raw ratio and apply the gate
+        # The verdict is ratio_gate.py's exit status (0 pass / 1 below threshold /
+        # 2 unusable data) — the same script a local run uses, tested by
+        # scripts/ci/tests/test_ratio_gate.py. The INSERT / INSERT_EDGE 80% overrides are temporary:
+        # the bulk path sits at ~85–90% of raw (#779); raise it when that is closed.
+        #
+        # Exit 1 (below threshold) is only a warning for now: the 8-run spike data in
+        # #752 has WHERE/SELECT at a minimum of 95.6% and INSERT at 80.5%, so a
+        # single-run threshold would flake on noise. The threshold DoD item (and its
+        # K-consecutive-runs rule) decides when this becomes fatal. Exit 2 (unusable
+        # data) stays fatal: that is a broken measurement, not a slow one.
+        run: |
+          set +e
+          python3 benchmarks/scripts/ratio_gate.py \
+            --raw raw_1.json raw_2.json raw_3.json \
+            --storm storm_1.json storm_2.json storm_3.json \
+            --threshold 95 \
+            --override Storm/INSERT/=80 \
+            --override Storm/INSERT_EDGE/=80 \
+            --title "storm/raw ratio — run ${GITHUB_RUN_NUMBER} / ${MATRIX_CATEGORY}" \
+            > ratio_section.md
+          status=$?
+          set -e
+          # The script prints a markdown section instead of opening an output path
+          # itself; the job summary lives outside the workspace, so append it here.
+          cat ratio_section.md
+          cat ratio_section.md >> "$GITHUB_STEP_SUMMARY"
+          [ -s ratio_section.md ] || echo "## ${MATRIX_CATEGORY}: no ratio table (exit ${status}), see the step log" >> "$GITHUB_STEP_SUMMARY"
+          if [ "$status" -eq 1 ]; then
+            echo "::warning::${MATRIX_CATEGORY}: a benchmark is below its ratio threshold (informational until #752's threshold decision)"
+            exit 0
+          fi
+          exit "$status"
+        env:
+          MATRIX_CATEGORY: ${{ matrix.category }}
+
+      - name: Upload raw JSON (for cross-run cv analysis)
+        # always(): raw_*.json/storm_*.json are already written by the
+        # previous step by the time the ratio gate step could fail (e.g.
+        # ratio_gate.py's exit 2 on a partial match) — keep them on a failed run too, since
+        # they're exactly the evidence needed to see which benchmark drifted.
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: bench-ratio-${{ matrix.category }}-${{ github.run_id }}-${{ github.run_attempt }}
+          path: |
+            raw_*.json
+            storm_*.json
+          retention-days: 30
+
+  notify-failure:
+    # Nothing alerts on a red scheduled run (see ci.yml's note on nightlies), so a
+    # failed nightly would sit unseen. Open ONE tracking issue and comment on it
+    # for each further failure instead of opening one per night.
+    #
+    # Only a broken measurement or build reaches here: a below-threshold ratio is
+    # a warning, not a failure, until #752's threshold decision makes it fatal.
+    name: report a failed nightly
+    needs: [build, run-category]
+    if: ${{ failure() && github.event_name == 'schedule' }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions:
+      issues: write
+    env:
+      GH_TOKEN: ${{ github.token }}
+      RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+    steps:
+      - name: Open or update the tracking issue
+        run: |
+          title="bench-ratio: scheduled run failed"
+          existing="$(gh issue list --repo "$GITHUB_REPOSITORY" --state open \
+            --search "\"$title\" in:title" --json number --jq '.[0].number // empty')"
+          if [ -n "$existing" ]; then
+            gh issue comment "$existing" --repo "$GITHUB_REPOSITORY" \
+              --body "Failed again: $RUN_URL"
+          else
+            gh issue create --repo "$GITHUB_REPOSITORY" --title "$title" \
+              --body "The scheduled bench-ratio workflow failed: $RUN_URL
+
+          Only a broken build or unusable benchmark data fails the run; a ratio below its threshold is a warning. Close this issue once the nightly is green again."
+          fi
