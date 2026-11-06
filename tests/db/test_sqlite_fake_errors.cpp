@@ -1,6 +1,6 @@
 /**
- * @file test_orm_mock_errors.cpp
- * @brief Tests for Storm ORM error paths using mock SQLite
+ * @file test_sqlite_fake_errors.cpp
+ * @brief Tests for Storm ORM error paths using the fake sqlite3 API policy (#784)
  *
  * These tests use the mock SQLite library to test hard-to-trigger error paths
  * in the Storm ORM that would be difficult or impossible to test with real SQLite.
@@ -15,19 +15,23 @@
  * - Step failures during execution
  */
 
-#include <format>
+#include <cstdint>
 #include <gtest/gtest.h>
 #include <meta>
+#include <sqlite3.h>
+#include <string>
+#include <vector>
 
 // NOLINTBEGIN(cppcoreguidelines-non-private-member-variables-in-classes,misc-non-private-member-variables-in-classes) // NOSONAR(cpp:S125)
 // NOLINTBEGIN(misc-const-correctness,bugprone-unused-return-value,performance-inefficient-vector-operation) // NOSONAR(cpp:S125)
-
-#include "mock_sqlite3.h"
 
 import std;
 import storm_orm_utilities;
 import storm_orm_transaction;
 import storm;
+import storm_orm_queryset;
+import storm_orm_statements_insert;
+import storm_db_default_connection;
 import storm_orm_statements_upsert_grammar; // UpsertGrammar — internal, not re-exported by `storm`
 using storm::auto_update;
 using storm::field_specs_for;
@@ -35,14 +39,21 @@ using storm::many_to_many;
 using storm::primary;
 using storm::primary_part;
 using storm::orm::statements::InsertOptions;
-using storm::orm::statements::InsertStatement;
 using storm::orm::statements::ReturnId;
 using storm::orm::statements::UpsertGrammar;
 
 namespace db  = storm::db;
 namespace orm = storm::orm;
-using storm::QuerySet;
-using storm::test::MockSqlite3Config;
+
+#include "fake_sqlite_api.hpp" // NOSONAR cpp:S954 - must follow the imports
+
+using fake_sqlite::FakeConn;
+using fake_sqlite::FakeSqliteApi;
+using fake_sqlite::FakeSqliteConfig;
+using FakeDefault = storm::db::BasicDefaultConnection<FakeConn>;
+template <typename T, typename Conn = FakeConn, bool Finalized = false>
+using QuerySet                              = storm::BasicQuerySet<T, Conn, Finalized>;
+template <typename T> using InsertStatement = storm::orm::statements::BasicInsertStatement<T, FakeConn>;
 
 // Struct with indexes — must be at namespace scope for Indexes<> specialization
 struct MockIndexedPerson {
@@ -56,13 +67,13 @@ template <> struct storm::Indexes<MockIndexedPerson> {
 };
 
 namespace {
-    using storm::db::DefaultConnection;
 
     // Test model for ORM operations
     struct MockPerson {
         [[= primary]] std::int64_t id{};
-        std::string                name;
-        int                        age{};
+        // unique: real SQLite rejects `ON CONFLICT (name)` at prepare without a UNIQUE constraint
+        [[= storm::unique]] std::string name;
+        int                             age{};
     };
 
     // fields:: selector proxies (#518).
@@ -125,16 +136,52 @@ namespace {
      * Sets up a fresh in-memory database and resets mock configuration
      * before each test.
      */
+    // Creates every base model's table on a fresh in-memory default connection, plus
+    // the tables of any extra models a test needs, then restores the armed fake plan:
+    // table DDL must run un-failed, and a test may arm failures before calling this.
+    template <typename... Extra> auto fresh_db() -> void {
+        auto armed = FakeSqliteApi::plan;
+        FakeSqliteApi::reset();
+        if (!FakeDefault::set(":memory:").has_value()) {
+            ADD_FAILURE() << "could not open the in-memory default connection";
+            return;
+        }
+        using orm::schema::SchemaStatement;
+        const bool base =
+                SchemaStatement<MockIndexedPerson>::template create_table_if_not_exists<FakeConn>().has_value() &&
+                SchemaStatement<MockPerson>::template create_table_if_not_exists<FakeConn>().has_value() &&
+                SchemaStatement<MockPersonOptional>::template create_table_if_not_exists<FakeConn>().has_value() &&
+                SchemaStatement<MockPersonAutoUpdate>::template create_table_if_not_exists<FakeConn>().has_value() &&
+                SchemaStatement<MockOrderLine>::template create_table_if_not_exists<FakeConn>().has_value() &&
+                SchemaStatement<MockOrderLineAutoUpdate>::template create_table_if_not_exists<FakeConn>().has_value() &&
+                SchemaStatement<MockOptionalCompositeFkOrder>::template create_table_if_not_exists<FakeConn>()
+                        .has_value();
+        const bool extras =
+                (... && SchemaStatement<Extra>::template create_table_if_not_exists<FakeConn>().has_value());
+        const bool created = base && extras;
+        EXPECT_TRUE(created);
+        // Match the removed mock's bring-up: only BEGIN/COMMIT/ROLLBACK cached (set() runs
+        // prepare_common_statements), and prepare_calls already at 3 -- the Nth-prepare
+        // tests below count from there (only the prepare counter is mirrored). DDL above would otherwise leave extra
+        // statements cached.
+        FakeDefault::get()->clear_statement_cache();
+        FakeSqliteApi::reset();
+        FakeDefault::get()->prepare_common_statements();
+        const int common_prepares = FakeSqliteApi::plan.prepare_calls;
+        FakeSqliteApi::plan       = std::move(armed);
+        FakeSqliteApi::plan.prepare_calls += common_prepares;
+    }
+
     class ORMMockErrorTest : public ::testing::Test {
-      protected:
+      public:
         void SetUp() override {
-            MockSqlite3Config::reset();
-            // Set up default connection for QuerySet
-            (void)DefaultConnection<>::set(":memory:");
+            FakeSqliteConfig::reset();
+            fresh_db();
         }
 
         void TearDown() override {
-            MockSqlite3Config::reset();
+            FakeSqliteConfig::reset();
+            FakeDefault::clear();
         }
     };
 
@@ -144,7 +191,7 @@ namespace {
 
     TEST_F(ORMMockErrorTest, InsertFailsOnPrepareError) {
         // Configure mock to fail on prepare
-        MockSqlite3Config::prepare_returns(SQLITE_ERROR);
+        FakeSqliteConfig::prepare_returns(SQLITE_ERROR);
 
         QuerySet<MockPerson> qs;
         MockPerson const     person{.id = 0, .name = "Alice", .age = 30};
@@ -155,20 +202,19 @@ namespace {
         EXPECT_EQ(result.error().code(), SQLITE_ERROR);
     }
 
-    TEST_F(ORMMockErrorTest, InsertFailsOnBindInt64Nomem) {
-        // Let prepare succeed, but fail on bind_int64 (used for int64_t id field)
-        // Note: age field uses bind_int, id field uses bind_int64
-        MockSqlite3Config::bind_int64_returns(SQLITE_NOMEM);
+    TEST_F(ORMMockErrorTest, UpdateFailsOnBindInt64Nomem) {
+        // An INSERT never binds the DB-generated int64 PK; an UPDATE binds it in its
+        // WHERE clause, so that is where a bind_int64 failure is reachable.
+        FakeSqliteConfig::bind_int64_returns(SQLITE_NOMEM);
 
         QuerySet<MockPerson> qs;
-        MockPerson const     person{.id = 0, .name = "Alice", .age = 30};
+        MockPerson const     person{.id = 1, .name = "Alice", .age = 30};
 
-        auto result = qs.insert(person).execute();
+        auto result = qs.update(person).execute();
 
         // The ORM may handle bind errors internally - verify behavior
-        if (!result.has_value()) {
-            EXPECT_EQ(result.error().code(), SQLITE_NOMEM);
-        }
+        ASSERT_FALSE(result.has_value());
+        EXPECT_EQ(result.error().code(), SQLITE_NOMEM);
         // If it succeeds, that's also valid behavior if bind error happens after execution
     }
 
@@ -176,9 +222,25 @@ namespace {
     // doesn't propagate bind errors - the insert succeeds even when bind fails.
     // This is a potential improvement area for the ORM error handling.
 
+    // INSERT ... RETURNING that finishes with no row (step -> DONE) yields id 0
+    // (insert.cppm execute_single, R == ReturnId::Yes). SQLite never does this on its
+    // own, so it takes an injected step result; this branch used to be reached only
+    // incidentally by a test whose armed bind_int64 failure never fired.
+    TEST_F(ORMMockErrorTest, InsertReturningYieldsZeroWhenNoRowComesBack) {
+        FakeSqliteConfig::step_returns(SQLITE_DONE);
+
+        QuerySet<MockPerson> qs;
+        MockPerson const     person{.id = 0, .name = "Alice", .age = 30};
+
+        auto result = qs.insert(person).execute();
+
+        ASSERT_TRUE(result.has_value());
+        EXPECT_EQ(*result, 0);
+    }
+
     TEST_F(ORMMockErrorTest, InsertFailsOnStepError) {
         // Let prepare and binding succeed, but fail on step
-        MockSqlite3Config::step_returns(SQLITE_IOERR);
+        FakeSqliteConfig::step_returns(SQLITE_IOERR);
 
         QuerySet<MockPerson> qs;
         MockPerson const     person{.id = 0, .name = "Alice", .age = 30};
@@ -190,7 +252,7 @@ namespace {
     }
 
     TEST_F(ORMMockErrorTest, InsertFailsOnStepCorrupt) {
-        MockSqlite3Config::step_returns(SQLITE_CORRUPT);
+        FakeSqliteConfig::step_returns(SQLITE_CORRUPT);
 
         QuerySet<MockPerson> qs;
         MockPerson const     person{.id = 0, .name = "Alice", .age = 30};
@@ -209,7 +271,7 @@ namespace {
 
     TEST_F(ORMMockErrorTest, UpsertNothingFailsOnBindError) {
         // Fail bind_text (used for the "name" field) so prepare_and_bind() errors out.
-        MockSqlite3Config::bind_text_returns(SQLITE_NOMEM);
+        FakeSqliteConfig::bind_text_returns(SQLITE_NOMEM);
 
         InsertStatement<MockPerson> stat{};
         MockPerson const            person{.id = 0, .name = "Alice", .age = 30};
@@ -222,7 +284,7 @@ namespace {
 
     TEST_F(ORMMockErrorTest, UpsertToSqlFailsOnBindError) {
         // Fail bind_text so the bind step inside to_sql_with() errors out.
-        MockSqlite3Config::bind_text_returns(SQLITE_NOMEM);
+        FakeSqliteConfig::bind_text_returns(SQLITE_NOMEM);
 
         InsertStatement<MockPerson> stat{};
         MockPerson const            person{.id = 0, .name = "Alice", .age = 30};
@@ -238,7 +300,7 @@ namespace {
     TEST_F(ORMMockErrorTest, UpsertNothingFailsOnStepError) {
         // Let prepare and binding succeed, but fail on step with a real DB error
         // (neither ROW_AVAILABLE nor NO_MORE_ROWS).
-        MockSqlite3Config::step_returns(SQLITE_IOERR);
+        FakeSqliteConfig::step_returns(SQLITE_IOERR);
 
         InsertStatement<MockPerson> stat{};
         MockPerson const            person{.id = 0, .name = "Alice", .age = 30};
@@ -250,7 +312,7 @@ namespace {
     }
 
     TEST_F(ORMMockErrorTest, UpsertUpdateFailsOnPrepareError) {
-        MockSqlite3Config::prepare_returns(SQLITE_ERROR);
+        FakeSqliteConfig::prepare_returns(SQLITE_ERROR);
 
         InsertStatement<MockPerson> stat{};
         MockPerson const            person{.id = 0, .name = "Alice", .age = 30};
@@ -263,7 +325,7 @@ namespace {
 
     TEST_F(ORMMockErrorTest, UpsertUpdateFailsOnBindError) {
         // Fail bind_text (used for the "name" VALUES field) so bind_all_fields() errors out.
-        MockSqlite3Config::bind_text_returns(SQLITE_NOMEM);
+        FakeSqliteConfig::bind_text_returns(SQLITE_NOMEM);
 
         InsertStatement<MockPerson> stat{};
         MockPerson const            person{.id = 0, .name = "Alice", .age = 30};
@@ -276,7 +338,7 @@ namespace {
 
     TEST_F(ORMMockErrorTest, UpsertUpdateFailsOnStepError) {
         // Let prepare and binding succeed, but fail on step with a real DB error.
-        MockSqlite3Config::step_returns(SQLITE_IOERR);
+        FakeSqliteConfig::step_returns(SQLITE_IOERR);
 
         InsertStatement<MockPerson> stat{};
         MockPerson const            person{.id = 0, .name = "Alice", .age = 30};
@@ -294,9 +356,9 @@ namespace {
         // updated_at unlisted, so the auto_update tail (#209) re-binds it -> text #3.
         // Fail only text #3 to isolate bind_upsert_auto_updates' error branch from
         // bind_all_fields'.
-        MockSqlite3Config::bind_text_fails_on_call(3, SQLITE_NOMEM);
+        FakeSqliteConfig::bind_text_fails_on_call(3, SQLITE_NOMEM);
 
-        (void)DefaultConnection<>::set(":memory:");
+        fresh_db();
         InsertStatement<MockPersonAutoUpdate> stat{};
         MockPersonAutoUpdate const            person{.id = 0, .name = "Alice"};
 
@@ -313,9 +375,9 @@ namespace {
     // is single-PK and never exercises it.
 
     TEST_F(ORMMockErrorTest, CompositeUpsertNothingFailsOnPrepareError) {
-        MockSqlite3Config::prepare_returns(SQLITE_ERROR);
+        FakeSqliteConfig::prepare_returns(SQLITE_ERROR);
 
-        (void)DefaultConnection<>::set(":memory:");
+        fresh_db();
         InsertStatement<MockOrderLine> stat{};
         MockOrderLine const            line{.order_id = 1, .product_id = 10, .quantity = 5};
 
@@ -327,9 +389,9 @@ namespace {
     }
 
     TEST_F(ORMMockErrorTest, CompositeUpsertNothingFailsOnStepError) {
-        MockSqlite3Config::step_returns(SQLITE_IOERR);
+        FakeSqliteConfig::step_returns(SQLITE_IOERR);
 
-        (void)DefaultConnection<>::set(":memory:");
+        fresh_db();
         InsertStatement<MockOrderLine> stat{};
         MockOrderLine const            line{.order_id = 1, .product_id = 10, .quantity = 5};
 
@@ -341,9 +403,9 @@ namespace {
     }
 
     TEST_F(ORMMockErrorTest, CompositeUpsertUpdateFailsOnPrepareError) {
-        MockSqlite3Config::prepare_returns(SQLITE_ERROR);
+        FakeSqliteConfig::prepare_returns(SQLITE_ERROR);
 
-        (void)DefaultConnection<>::set(":memory:");
+        fresh_db();
         InsertStatement<MockOrderLine> stat{};
         MockOrderLine const            line{.order_id = 1, .product_id = 10, .quantity = 5};
 
@@ -356,9 +418,9 @@ namespace {
 
     TEST_F(ORMMockErrorTest, CompositeUpsertUpdateFailsOnBindError) {
         // Fail bind_int (used for every field of MockOrderLine) so bind_all_fields() errors out.
-        MockSqlite3Config::bind_int_returns(SQLITE_NOMEM);
+        FakeSqliteConfig::bind_int_returns(SQLITE_NOMEM);
 
-        (void)DefaultConnection<>::set(":memory:");
+        fresh_db();
         InsertStatement<MockOrderLine> stat{};
         MockOrderLine const            line{.order_id = 1, .product_id = 10, .quantity = 5};
 
@@ -370,9 +432,9 @@ namespace {
     }
 
     TEST_F(ORMMockErrorTest, CompositeUpsertUpdateFailsOnStepError) {
-        MockSqlite3Config::step_returns(SQLITE_IOERR);
+        FakeSqliteConfig::step_returns(SQLITE_IOERR);
 
-        (void)DefaultConnection<>::set(":memory:");
+        fresh_db();
         InsertStatement<MockOrderLine> stat{};
         MockOrderLine const            line{.order_id = 1, .product_id = 10, .quantity = 5};
 
@@ -390,9 +452,9 @@ namespace {
         // quantity leaves updated_at unlisted, so the auto_update tail (#209) re-binds it ->
         // text #2. Fail only text #2 to isolate bind_upsert_auto_updates' error branch from
         // bind_all_fields'.
-        MockSqlite3Config::bind_text_fails_on_call(2, SQLITE_NOMEM);
+        FakeSqliteConfig::bind_text_fails_on_call(2, SQLITE_NOMEM);
 
-        (void)DefaultConnection<>::set(":memory:");
+        fresh_db();
         InsertStatement<MockOrderLineAutoUpdate> stat{};
         MockOrderLineAutoUpdate const            line{.order_id = 1, .product_id = 10, .quantity = 5};
 
@@ -410,7 +472,7 @@ namespace {
     // ============================================================================
 
     TEST_F(ORMMockErrorTest, SelectFailsOnPrepareError) {
-        MockSqlite3Config::prepare_returns(SQLITE_ERROR);
+        FakeSqliteConfig::prepare_returns(SQLITE_ERROR);
 
         QuerySet<MockPerson> qs;
         auto                 result = qs.select().execute();
@@ -420,18 +482,16 @@ namespace {
     }
 
     TEST_F(ORMMockErrorTest, SelectFailsOnStepCorrupt) {
-        // First let table creation and data setup succeed
-        // Then fail on the actual SELECT step
-        MockSqlite3Config::step_fails_on_call(3, SQLITE_CORRUPT);
+        // The SELECT on the empty table is a single step.
+        FakeSqliteConfig::step_fails_on_call(1, SQLITE_CORRUPT);
 
         QuerySet<MockPerson> qs;
         auto                 result = qs.select().execute();
 
         // The exact behavior depends on when the failure occurs
         // It should either fail or return an error
-        if (!result.has_value()) {
-            EXPECT_EQ(result.error().code(), SQLITE_CORRUPT);
-        }
+        ASSERT_FALSE(result.has_value());
+        EXPECT_EQ(result.error().code(), SQLITE_CORRUPT);
     }
 
     // ============================================================================
@@ -439,7 +499,7 @@ namespace {
     // ============================================================================
 
     TEST_F(ORMMockErrorTest, UpdateFailsOnPrepareError) {
-        MockSqlite3Config::prepare_returns(SQLITE_ERROR);
+        FakeSqliteConfig::prepare_returns(SQLITE_ERROR);
 
         QuerySet<MockPerson> qs;
         MockPerson const     person{.id = 1, .name = "Updated", .age = 35};
@@ -451,7 +511,7 @@ namespace {
     }
 
     TEST_F(ORMMockErrorTest, UpdateFailsOnBindError) {
-        MockSqlite3Config::bind_text_returns(SQLITE_NOMEM);
+        FakeSqliteConfig::bind_text_returns(SQLITE_NOMEM);
 
         QuerySet<MockPerson> qs;
         MockPerson const     person{.id = 1, .name = "Updated", .age = 35};
@@ -463,7 +523,7 @@ namespace {
     }
 
     TEST_F(ORMMockErrorTest, UpdateFailsOnStepError) {
-        MockSqlite3Config::step_returns(SQLITE_BUSY);
+        FakeSqliteConfig::step_returns(SQLITE_BUSY);
 
         QuerySet<MockPerson> qs;
         MockPerson const     person{.id = 1, .name = "Updated", .age = 35};
@@ -479,7 +539,7 @@ namespace {
     // ============================================================================
 
     TEST_F(ORMMockErrorTest, RemoveFailsOnPrepareError) {
-        MockSqlite3Config::prepare_returns(SQLITE_ERROR);
+        FakeSqliteConfig::prepare_returns(SQLITE_ERROR);
 
         QuerySet<MockPerson> qs;
         MockPerson const     person{.id = 1, .name = "ToDelete", .age = 25};
@@ -491,7 +551,7 @@ namespace {
     }
 
     TEST_F(ORMMockErrorTest, RemoveFailsOnStepError) {
-        MockSqlite3Config::step_returns(SQLITE_LOCKED);
+        FakeSqliteConfig::step_returns(SQLITE_LOCKED);
 
         QuerySet<MockPerson> qs;
         MockPerson const     person{.id = 1, .name = "ToDelete", .age = 25};
@@ -505,7 +565,7 @@ namespace {
     // Conditional bulk DELETE (#198) error paths
 
     TEST_F(ORMMockErrorTest, ConditionalEraseFailsOnPrepareError) {
-        MockSqlite3Config::prepare_returns(SQLITE_ERROR);
+        FakeSqliteConfig::prepare_returns(SQLITE_ERROR);
 
         QuerySet<MockPerson> qs;
         auto                 result = qs.where(fields::MockPerson.age > 30).erase().execute();
@@ -515,7 +575,7 @@ namespace {
     }
 
     TEST_F(ORMMockErrorTest, ConditionalEraseFailsOnBindError) {
-        MockSqlite3Config::bind_int_fails_on_call(1, SQLITE_NOMEM);
+        FakeSqliteConfig::bind_int_fails_on_call(1, SQLITE_NOMEM);
 
         QuerySet<MockPerson> qs;
         auto                 result = qs.where(fields::MockPerson.age > 30).erase().execute();
@@ -525,7 +585,7 @@ namespace {
     }
 
     TEST_F(ORMMockErrorTest, ConditionalEraseFailsOnStepError) {
-        MockSqlite3Config::step_returns(SQLITE_LOCKED);
+        FakeSqliteConfig::step_returns(SQLITE_LOCKED);
 
         QuerySet<MockPerson> qs;
         auto                 result = qs.where(fields::MockPerson.age > 30).erase().execute();
@@ -550,7 +610,7 @@ namespace {
     // Conditional bulk UPDATE (#403) error paths
 
     TEST_F(ORMMockErrorTest, ConditionalUpdateFailsOnPrepareError) {
-        MockSqlite3Config::prepare_returns(SQLITE_ERROR);
+        FakeSqliteConfig::prepare_returns(SQLITE_ERROR);
 
         QuerySet<MockPerson> qs;
         auto                 result = qs.where(fields::MockPerson.age > 30)
@@ -563,7 +623,7 @@ namespace {
 
     TEST_F(ORMMockErrorTest, ConditionalUpdateFailsOnSetBindError) {
         // SET binds the explicit column first (param index 1) — force that bind to fail.
-        MockSqlite3Config::bind_text_fails_on_call(1, SQLITE_NOMEM);
+        FakeSqliteConfig::bind_text_fails_on_call(1, SQLITE_NOMEM);
 
         QuerySet<MockPerson> qs;
         auto                 result = qs.where(fields::MockPerson.age > 30)
@@ -576,7 +636,7 @@ namespace {
 
     TEST_F(ORMMockErrorTest, ConditionalUpdateFailsOnWhereBindError) {
         // SET binds name (text, param 1); WHERE binds age (int, param 2) — fail the WHERE bind.
-        MockSqlite3Config::bind_int_fails_on_call(1, SQLITE_NOMEM);
+        FakeSqliteConfig::bind_int_fails_on_call(1, SQLITE_NOMEM);
 
         QuerySet<MockPerson> qs;
         auto                 result = qs.where(fields::MockPerson.age > 30)
@@ -588,7 +648,7 @@ namespace {
     }
 
     TEST_F(ORMMockErrorTest, ConditionalUpdateFailsOnStepError) {
-        MockSqlite3Config::step_returns(SQLITE_LOCKED);
+        FakeSqliteConfig::step_returns(SQLITE_LOCKED);
 
         QuerySet<MockPerson> qs;
         auto                 result = qs.where(fields::MockPerson.age > 30)
@@ -617,7 +677,7 @@ namespace {
     // ============================================================================
 
     TEST_F(ORMMockErrorTest, CountFailsOnPrepareError) {
-        MockSqlite3Config::prepare_returns(SQLITE_ERROR);
+        FakeSqliteConfig::prepare_returns(SQLITE_ERROR);
 
         QuerySet<MockPerson> qs;
         auto                 result = qs.count().execute();
@@ -627,7 +687,7 @@ namespace {
     }
 
     TEST_F(ORMMockErrorTest, SumFailsOnStepError) {
-        MockSqlite3Config::step_returns(SQLITE_MISUSE);
+        FakeSqliteConfig::step_returns(SQLITE_MISUSE);
 
         QuerySet<MockPerson> qs;
         auto                 result = qs.sum<fields::MockPerson.age>().execute();
@@ -637,7 +697,7 @@ namespace {
     }
 
     TEST_F(ORMMockErrorTest, AvgFailsOnStepError) {
-        MockSqlite3Config::step_returns(SQLITE_NOMEM);
+        FakeSqliteConfig::step_returns(SQLITE_NOMEM);
 
         QuerySet<MockPerson> qs;
         auto                 result = qs.avg<fields::MockPerson.age>().execute();
@@ -650,9 +710,10 @@ namespace {
     // Transaction Error Tests
     // ============================================================================
 
-    TEST_F(ORMMockErrorTest, TransactionBeginFailsOnExecError) {
-        // Configure exec to fail (used for BEGIN TRANSACTION)
-        MockSqlite3Config::exec_returns(SQLITE_BUSY);
+    TEST_F(ORMMockErrorTest, TransactionBeginFailsOnStepError) {
+        // BEGIN TRANSACTION goes through a cached prepared statement (not exec), so its
+        // step is the first step of the batch.
+        FakeSqliteConfig::step_fails_on_call(1, SQLITE_BUSY);
 
         QuerySet<MockPerson> qs;
 
@@ -664,10 +725,8 @@ namespace {
 
         auto result = qs.insert(std::span{people}).execute();
 
-        // The ORM may not use exec() for transactions, or may handle the error differently
-        if (!result.has_value()) {
-            EXPECT_EQ(result.error().code(), SQLITE_BUSY);
-        }
+        ASSERT_FALSE(result.has_value());
+        EXPECT_EQ(result.error().code(), SQLITE_BUSY);
         // Note: If insert succeeds, ORM may use a different mechanism for transactions
     }
 
@@ -676,10 +735,10 @@ namespace {
     // ============================================================================
 
     TEST_F(ORMMockErrorTest, ConnectionOpenFailsOnError) {
-        MockSqlite3Config::open_returns(SQLITE_CANTOPEN);
+        FakeSqliteConfig::open_returns(SQLITE_CANTOPEN);
 
         // Try to create a new connection
-        auto conn_result = db::sqlite::Connection::open("nonexistent.db");
+        auto conn_result = FakeConn::open("nonexistent.db");
 
         ASSERT_FALSE(conn_result.has_value());
         EXPECT_EQ(conn_result.error().code(), SQLITE_CANTOPEN);
@@ -689,9 +748,9 @@ namespace {
     // there aborts open() and reports the error (default config has a non-zero
     // busy_timeout, so the call always happens).
     TEST_F(ORMMockErrorTest, ConnectionOpenFailsOnBusyTimeoutError) {
-        MockSqlite3Config::busy_timeout_returns(SQLITE_ERROR);
+        FakeSqliteConfig::busy_timeout_returns(SQLITE_ERROR);
 
-        auto conn_result = db::sqlite::Connection::open(":memory:");
+        auto conn_result = FakeConn::open(":memory:");
 
         ASSERT_FALSE(conn_result.has_value());
         EXPECT_EQ(conn_result.error().code(), SQLITE_ERROR);
@@ -700,9 +759,9 @@ namespace {
     // Issue #410: with journal_mode = WAL, open() issues PRAGMA journal_mode=WAL via
     // sqlite3_exec(); a failure there aborts open() and reports the error.
     TEST_F(ORMMockErrorTest, ConnectionOpenFailsOnWalPragmaError) {
-        MockSqlite3Config::exec_returns(SQLITE_ERROR);
+        FakeSqliteConfig::exec_returns(SQLITE_ERROR);
 
-        auto conn_result = db::sqlite::Connection::open(":memory:", {.journal_mode = db::sqlite::JournalMode::WAL});
+        auto conn_result = FakeConn::open(":memory:", {.journal_mode = db::sqlite::JournalMode::WAL});
 
         ASSERT_FALSE(conn_result.has_value());
         EXPECT_EQ(conn_result.error().code(), SQLITE_ERROR);
@@ -713,7 +772,7 @@ namespace {
     // ============================================================================
 
     TEST_F(ORMMockErrorTest, DistinctFailsOnPrepareError) {
-        MockSqlite3Config::prepare_returns(SQLITE_ERROR);
+        FakeSqliteConfig::prepare_returns(SQLITE_ERROR);
 
         QuerySet<MockPerson> qs;
         auto                 result = qs.distinct<fields::MockPerson.name>().execute();
@@ -723,7 +782,7 @@ namespace {
     }
 
     TEST_F(ORMMockErrorTest, DistinctFailsOnStepCorrupt) {
-        MockSqlite3Config::step_returns(SQLITE_CORRUPT);
+        FakeSqliteConfig::step_returns(SQLITE_CORRUPT);
 
         QuerySet<MockPerson> qs;
         auto                 result = qs.distinct<fields::MockPerson.name>().execute();
@@ -734,7 +793,7 @@ namespace {
 
     // #197: distinct().to_sql() prepare failure (distinct.cppm prepare_and_bind).
     TEST_F(ORMMockErrorTest, DistinctToSqlFailsOnPrepareError) {
-        MockSqlite3Config::prepare_returns(SQLITE_ERROR);
+        FakeSqliteConfig::prepare_returns(SQLITE_ERROR);
 
         QuerySet<MockPerson> qs;
         auto                 result = qs.distinct<fields::MockPerson.name>().to_sql();
@@ -745,7 +804,7 @@ namespace {
 
     // #197: distinct().to_sql() WHERE bind failure (distinct.cppm prepare_and_bind).
     TEST_F(ORMMockErrorTest, DistinctToSqlWithWhereFailsOnBindError) {
-        MockSqlite3Config::bind_int_returns(SQLITE_NOMEM);
+        FakeSqliteConfig::bind_int_returns(SQLITE_NOMEM);
 
         QuerySet<MockPerson> qs;
         auto                 age    = storm::orm::where::Field<^^MockPerson::age>{};
@@ -757,7 +816,7 @@ namespace {
 
     // #197: count().to_sql() prepare failure (aggregate.cppm to_sql).
     TEST_F(ORMMockErrorTest, CountToSqlFailsOnPrepareError) {
-        MockSqlite3Config::prepare_returns(SQLITE_ERROR);
+        FakeSqliteConfig::prepare_returns(SQLITE_ERROR);
 
         QuerySet<MockPerson> qs;
         auto                 result = qs.count().to_sql();
@@ -768,7 +827,7 @@ namespace {
 
     // #197: where().count().to_sql() WHERE bind failure (aggregate.cppm to_sql).
     TEST_F(ORMMockErrorTest, CountToSqlWithWhereFailsOnBindError) {
-        MockSqlite3Config::bind_int_returns(SQLITE_NOMEM);
+        FakeSqliteConfig::bind_int_returns(SQLITE_NOMEM);
 
         QuerySet<MockPerson> qs;
         auto                 age    = storm::orm::where::Field<^^MockPerson::age>{};
@@ -780,7 +839,7 @@ namespace {
 
     // #197: group_by().having().count().to_sql() HAVING bind failure (aggregate.cppm to_sql).
     TEST_F(ORMMockErrorTest, GroupByHavingToSqlFailsOnBindError) {
-        MockSqlite3Config::bind_int_returns(SQLITE_NOMEM);
+        FakeSqliteConfig::bind_int_returns(SQLITE_NOMEM);
 
         QuerySet<MockPerson> qs;
         auto                 age    = storm::orm::where::Field<^^MockPerson::age>{};
@@ -795,7 +854,7 @@ namespace {
     // ============================================================================
 
     TEST_F(ORMMockErrorTest, GroupByCountFailsOnPrepareError) {
-        MockSqlite3Config::prepare_returns(SQLITE_ERROR);
+        FakeSqliteConfig::prepare_returns(SQLITE_ERROR);
 
         QuerySet<MockPerson> qs;
         auto                 result = qs.group_by<fields::MockPerson.age>().count().execute();
@@ -805,7 +864,7 @@ namespace {
     }
 
     TEST_F(ORMMockErrorTest, GroupBySumFailsOnStepError) {
-        MockSqlite3Config::step_returns(SQLITE_IOERR);
+        FakeSqliteConfig::step_returns(SQLITE_IOERR);
 
         QuerySet<MockPerson> qs;
         auto                 result = qs.group_by<fields::MockPerson.name>().sum<fields::MockPerson.age>().execute();
@@ -829,7 +888,7 @@ namespace {
 
     TEST_F(ORMMockErrorTest, InsertFailsOnBindIntNomem) {
         // bind_int is used for regular int fields (age)
-        MockSqlite3Config::bind_int_returns(SQLITE_NOMEM);
+        FakeSqliteConfig::bind_int_returns(SQLITE_NOMEM);
 
         QuerySet<MockPerson> qs;
         MockPerson const     person{.id = 0, .name = "Alice", .age = 30};
@@ -838,11 +897,7 @@ namespace {
 
         // Verify bind error is propagated (error code may vary in ORM layer)
         // Key behavior: operation should fail when bind fails
-        if (!result.has_value()) {
-            // Error was propagated - test passes
-            SUCCEED() << "Bind error properly propagated with code: " << result.error().code();
-        }
-        // If operation succeeds, ORM doesn't propagate bind errors (documented behavior)
+        EXPECT_FALSE(result.has_value()) << "armed failure was not reached";
     }
 
     // Test model with double field for bind_double coverage
@@ -853,9 +908,9 @@ namespace {
     };
 
     TEST_F(ORMMockErrorTest, InsertFailsOnBindDoubleNomem) {
-        MockSqlite3Config::reset();
-        (void)DefaultConnection<>::set(":memory:");
-        MockSqlite3Config::bind_double_returns(SQLITE_NOMEM);
+        FakeSqliteConfig::reset();
+        fresh_db<MockPersonWithDouble>();
+        FakeSqliteConfig::bind_double_returns(SQLITE_NOMEM);
 
         QuerySet<MockPersonWithDouble> qs;
         MockPersonWithDouble const     person{.id = 0, .name = "Alice", .salary = 50000.0};
@@ -863,9 +918,7 @@ namespace {
         auto result = qs.insert(person).execute();
 
         // Verify bind error is propagated (error code may vary in ORM layer)
-        if (!result.has_value()) {
-            SUCCEED() << "Bind error properly propagated with code: " << result.error().code();
-        }
+        EXPECT_FALSE(result.has_value()) << "armed failure was not reached";
     }
 
     // Test model with blob field for bind_blob coverage
@@ -876,9 +929,9 @@ namespace {
     };
 
     TEST_F(ORMMockErrorTest, InsertFailsOnBindBlobNomem) {
-        MockSqlite3Config::reset();
-        (void)DefaultConnection<>::set(":memory:");
-        MockSqlite3Config::bind_blob_returns(SQLITE_NOMEM);
+        FakeSqliteConfig::reset();
+        fresh_db<MockPersonWithBlob>();
+        FakeSqliteConfig::bind_blob_returns(SQLITE_NOMEM);
 
         QuerySet<MockPersonWithBlob> qs;
         MockPersonWithBlob const     person{.id = 0, .name = "Alice", .data = {0x01, 0x02, 0x03}};
@@ -886,15 +939,13 @@ namespace {
         auto result = qs.insert(person).execute();
 
         // Verify bind error is propagated (error code may vary in ORM layer)
-        if (!result.has_value()) {
-            SUCCEED() << "Bind error properly propagated with code: " << result.error().code();
-        }
+        EXPECT_FALSE(result.has_value()) << "armed failure was not reached";
     }
 
     TEST_F(ORMMockErrorTest, InsertOptionalFieldFailsOnBindNullNomem) {
-        MockSqlite3Config::reset();
-        (void)DefaultConnection<>::set(":memory:");
-        MockSqlite3Config::bind_null_returns(SQLITE_NOMEM);
+        FakeSqliteConfig::reset();
+        fresh_db();
+        FakeSqliteConfig::bind_null_returns(SQLITE_NOMEM);
 
         QuerySet<MockPersonOptional> qs;
         MockPersonOptional const     person{.id = 0, .name = std::nullopt, .age = std::nullopt};
@@ -902,9 +953,7 @@ namespace {
         auto result = qs.insert(person).execute();
 
         // Verify bind error is propagated (error code may vary in ORM layer)
-        if (!result.has_value()) {
-            SUCCEED() << "Bind error properly propagated with code: " << result.error().code();
-        }
+        EXPECT_FALSE(result.has_value()) << "armed failure was not reached";
     }
 
     // ============================================================================
@@ -914,7 +963,7 @@ namespace {
 
     TEST_F(ORMMockErrorTest, InsertFailsOnSqliteFull) {
         // SQLITE_FULL: Database disk is full
-        MockSqlite3Config::step_returns(SQLITE_FULL);
+        FakeSqliteConfig::step_returns(SQLITE_FULL);
 
         QuerySet<MockPerson> qs;
         MockPerson const     person{.id = 0, .name = "Alice", .age = 30};
@@ -927,7 +976,7 @@ namespace {
 
     TEST_F(ORMMockErrorTest, InsertFailsOnSqliteReadonly) {
         // SQLITE_READONLY: Attempt to write to readonly database
-        MockSqlite3Config::step_returns(SQLITE_READONLY);
+        FakeSqliteConfig::step_returns(SQLITE_READONLY);
 
         QuerySet<MockPerson> qs;
         MockPerson const     person{.id = 0, .name = "Alice", .age = 30};
@@ -940,7 +989,7 @@ namespace {
 
     TEST_F(ORMMockErrorTest, InsertFailsOnSqliteToobig) {
         // SQLITE_TOOBIG: String or blob exceeds size limit
-        MockSqlite3Config::step_returns(SQLITE_TOOBIG);
+        FakeSqliteConfig::step_returns(SQLITE_TOOBIG);
 
         QuerySet<MockPerson> qs;
         MockPerson const     person{.id = 0, .name = "Alice", .age = 30};
@@ -953,7 +1002,7 @@ namespace {
 
     TEST_F(ORMMockErrorTest, SelectFailsOnSqliteSchema) {
         // SQLITE_SCHEMA: Database schema changed (requires re-prepare)
-        MockSqlite3Config::step_returns(SQLITE_SCHEMA);
+        FakeSqliteConfig::step_returns(SQLITE_SCHEMA);
 
         QuerySet<MockPerson> qs;
         auto                 result = qs.select().execute();
@@ -964,7 +1013,7 @@ namespace {
 
     TEST_F(ORMMockErrorTest, SelectFailsOnSqliteInterrupt) {
         // SQLITE_INTERRUPT: Operation interrupted
-        MockSqlite3Config::step_returns(SQLITE_INTERRUPT);
+        FakeSqliteConfig::step_returns(SQLITE_INTERRUPT);
 
         QuerySet<MockPerson> qs;
         auto                 result = qs.select().execute();
@@ -975,7 +1024,7 @@ namespace {
 
     TEST_F(ORMMockErrorTest, UpdateFailsOnSqliteAbort) {
         // SQLITE_ABORT: Callback requested abort
-        MockSqlite3Config::step_returns(SQLITE_ABORT);
+        FakeSqliteConfig::step_returns(SQLITE_ABORT);
 
         QuerySet<MockPerson> qs;
         MockPerson const     person{.id = 1, .name = "Updated", .age = 35};
@@ -991,7 +1040,7 @@ namespace {
     // ============================================================================
 
     TEST_F(ORMMockErrorTest, MinFailsOnPrepareError) {
-        MockSqlite3Config::prepare_returns(SQLITE_ERROR);
+        FakeSqliteConfig::prepare_returns(SQLITE_ERROR);
 
         QuerySet<MockPerson> qs;
         auto                 result = qs.min<fields::MockPerson.age>().execute();
@@ -1001,7 +1050,7 @@ namespace {
     }
 
     TEST_F(ORMMockErrorTest, MinFailsOnStepError) {
-        MockSqlite3Config::step_returns(SQLITE_IOERR);
+        FakeSqliteConfig::step_returns(SQLITE_IOERR);
 
         QuerySet<MockPerson> qs;
         auto                 result = qs.min<fields::MockPerson.age>().execute();
@@ -1011,7 +1060,7 @@ namespace {
     }
 
     TEST_F(ORMMockErrorTest, MaxFailsOnPrepareError) {
-        MockSqlite3Config::prepare_returns(SQLITE_ERROR);
+        FakeSqliteConfig::prepare_returns(SQLITE_ERROR);
 
         QuerySet<MockPerson> qs;
         auto                 result = qs.max<fields::MockPerson.age>().execute();
@@ -1021,7 +1070,7 @@ namespace {
     }
 
     TEST_F(ORMMockErrorTest, MaxFailsOnStepError) {
-        MockSqlite3Config::step_returns(SQLITE_CORRUPT);
+        FakeSqliteConfig::step_returns(SQLITE_CORRUPT);
 
         QuerySet<MockPerson> qs;
         auto                 result = qs.max<fields::MockPerson.age>().execute();
@@ -1036,8 +1085,8 @@ namespace {
     // ============================================================================
 
     TEST_F(ORMMockErrorTest, BatchInsertFailsOnMidBatchStepError) {
-        // Fail on the 2nd step call (after first row succeeds)
-        MockSqlite3Config::step_fails_on_call(2, SQLITE_IOERR);
+        // The 3 rows go out as one multi-row INSERT, i.e. a single step.
+        FakeSqliteConfig::step_fails_on_call(1, SQLITE_IOERR);
 
         QuerySet<MockPerson>    qs;
         std::vector<MockPerson> people = {
@@ -1049,14 +1098,13 @@ namespace {
         auto result = qs.insert(std::span{people}).execute();
 
         // The batch should fail when the second insert fails
-        if (!result.has_value()) {
-            EXPECT_EQ(result.error().code(), SQLITE_IOERR);
-        }
+        ASSERT_FALSE(result.has_value());
+        EXPECT_EQ(result.error().code(), SQLITE_IOERR);
     }
 
     TEST_F(ORMMockErrorTest, BatchInsertFailsOnMidBatchBindError) {
-        // Fail on the 3rd bind_int call (during second row)
-        MockSqlite3Config::bind_int_fails_on_call(3, SQLITE_NOMEM);
+        // `age` is the only bind_int per row, so call 2 is the second row's age.
+        FakeSqliteConfig::bind_int_fails_on_call(2, SQLITE_NOMEM);
 
         QuerySet<MockPerson>    qs;
         std::vector<MockPerson> people = {
@@ -1067,13 +1115,12 @@ namespace {
         auto result = qs.insert(std::span{people}).execute();
 
         // If ORM propagates bind errors, it should fail
-        if (!result.has_value()) {
-            EXPECT_EQ(result.error().code(), SQLITE_NOMEM);
-        }
+        ASSERT_FALSE(result.has_value());
+        EXPECT_EQ(result.error().code(), SQLITE_NOMEM);
     }
 
     TEST_F(ORMMockErrorTest, BatchUpdateFailsOnMidBatchStepError) {
-        MockSqlite3Config::step_fails_on_call(2, SQLITE_BUSY);
+        FakeSqliteConfig::step_fails_on_call(2, SQLITE_BUSY);
 
         QuerySet<MockPerson>    qs;
         std::vector<MockPerson> people = {
@@ -1083,13 +1130,12 @@ namespace {
 
         auto result = qs.update(std::span{people}).execute();
 
-        if (!result.has_value()) {
-            EXPECT_EQ(result.error().code(), SQLITE_BUSY);
-        }
+        ASSERT_FALSE(result.has_value());
+        EXPECT_EQ(result.error().code(), SQLITE_BUSY);
     }
 
     TEST_F(ORMMockErrorTest, BatchRemoveFailsOnMidBatchStepError) {
-        MockSqlite3Config::step_fails_on_call(2, SQLITE_LOCKED);
+        FakeSqliteConfig::step_fails_on_call(1, SQLITE_LOCKED);
 
         QuerySet<MockPerson>    qs;
         std::vector<MockPerson> people = {
@@ -1099,9 +1145,8 @@ namespace {
 
         auto result = qs.erase(std::span{people}).execute();
 
-        if (!result.has_value()) {
-            EXPECT_EQ(result.error().code(), SQLITE_LOCKED);
-        }
+        ASSERT_FALSE(result.has_value());
+        EXPECT_EQ(result.error().code(), SQLITE_LOCKED);
     }
 
     // ============================================================================
@@ -1110,28 +1155,26 @@ namespace {
     // ============================================================================
 
     TEST_F(ORMMockErrorTest, SelectWithWhereFailsOnBindIntError) {
-        MockSqlite3Config::bind_int_returns(SQLITE_NOMEM);
+        FakeSqliteConfig::bind_int_returns(SQLITE_NOMEM);
 
         QuerySet<MockPerson> qs;
         auto                 age    = storm::orm::where::Field<^^MockPerson::age>{};
         auto                 result = qs.where(age > 25).select().execute();
 
         // WHERE condition binding should fail
-        if (!result.has_value()) {
-            EXPECT_EQ(result.error().code(), SQLITE_NOMEM);
-        }
+        ASSERT_FALSE(result.has_value());
+        EXPECT_EQ(result.error().code(), SQLITE_NOMEM);
     }
 
     TEST_F(ORMMockErrorTest, SelectWithWhereFailsOnBindTextError) {
-        MockSqlite3Config::bind_text_returns(SQLITE_NOMEM);
+        FakeSqliteConfig::bind_text_returns(SQLITE_NOMEM);
 
         QuerySet<MockPerson> qs;
         auto                 name   = storm::orm::where::Field<^^MockPerson::name>{};
         auto                 result = qs.where(name == "Alice").select().execute();
 
-        if (!result.has_value()) {
-            EXPECT_EQ(result.error().code(), SQLITE_NOMEM);
-        }
+        ASSERT_FALSE(result.has_value());
+        EXPECT_EQ(result.error().code(), SQLITE_NOMEM);
     }
 
     // ============================================================================
@@ -1139,19 +1182,18 @@ namespace {
     // ============================================================================
 
     TEST_F(ORMMockErrorTest, DistinctWithWhereFailsOnBindError) {
-        MockSqlite3Config::bind_int_returns(SQLITE_NOMEM);
+        FakeSqliteConfig::bind_int_returns(SQLITE_NOMEM);
 
         QuerySet<MockPerson> qs;
         auto                 age    = storm::orm::where::Field<^^MockPerson::age>{};
         auto                 result = qs.where(age > 25).distinct<fields::MockPerson.name>().execute();
 
-        if (!result.has_value()) {
-            EXPECT_EQ(result.error().code(), SQLITE_NOMEM);
-        }
+        ASSERT_FALSE(result.has_value());
+        EXPECT_EQ(result.error().code(), SQLITE_NOMEM);
     }
 
     TEST_F(ORMMockErrorTest, DistinctMultiFieldFailsOnStepError) {
-        MockSqlite3Config::step_returns(SQLITE_IOERR);
+        FakeSqliteConfig::step_returns(SQLITE_IOERR);
 
         QuerySet<MockPerson> qs;
         auto                 result = qs.distinct<fields::MockPerson.name, fields::MockPerson.age>().execute();
@@ -1165,19 +1207,18 @@ namespace {
     // ============================================================================
 
     TEST_F(ORMMockErrorTest, GroupByWithWhereFailsOnBindError) {
-        MockSqlite3Config::bind_int_returns(SQLITE_NOMEM);
+        FakeSqliteConfig::bind_int_returns(SQLITE_NOMEM);
 
         QuerySet<MockPerson> qs;
         auto                 age    = storm::orm::where::Field<^^MockPerson::age>{};
         auto                 result = qs.where(age > 25).group_by<fields::MockPerson.name>().count().execute();
 
-        if (!result.has_value()) {
-            EXPECT_EQ(result.error().code(), SQLITE_NOMEM);
-        }
+        ASSERT_FALSE(result.has_value());
+        EXPECT_EQ(result.error().code(), SQLITE_NOMEM);
     }
 
     TEST_F(ORMMockErrorTest, GroupByAvgFailsOnStepError) {
-        MockSqlite3Config::step_returns(SQLITE_CORRUPT);
+        FakeSqliteConfig::step_returns(SQLITE_CORRUPT);
 
         QuerySet<MockPerson> qs;
         auto                 result = qs.group_by<fields::MockPerson.name>().avg<fields::MockPerson.age>().execute();
@@ -1187,7 +1228,7 @@ namespace {
     }
 
     TEST_F(ORMMockErrorTest, GroupByMinFailsOnStepError) {
-        MockSqlite3Config::step_returns(SQLITE_NOMEM);
+        FakeSqliteConfig::step_returns(SQLITE_NOMEM);
 
         QuerySet<MockPerson> qs;
         auto                 result = qs.group_by<fields::MockPerson.name>().min<fields::MockPerson.age>().execute();
@@ -1197,7 +1238,7 @@ namespace {
     }
 
     TEST_F(ORMMockErrorTest, GroupByMaxFailsOnStepError) {
-        MockSqlite3Config::step_returns(SQLITE_BUSY);
+        FakeSqliteConfig::step_returns(SQLITE_BUSY);
 
         QuerySet<MockPerson> qs;
         auto                 result = qs.group_by<fields::MockPerson.name>().max<fields::MockPerson.age>().execute();
@@ -1212,7 +1253,7 @@ namespace {
     // ============================================================================
 
     TEST_F(ORMMockErrorTest, SelectWithOrderByFailsOnPrepareError) {
-        MockSqlite3Config::prepare_returns(SQLITE_ERROR);
+        FakeSqliteConfig::prepare_returns(SQLITE_ERROR);
 
         QuerySet<MockPerson> qs;
         auto                 result = qs.order_by<fields::MockPerson.age>().select().execute();
@@ -1223,7 +1264,7 @@ namespace {
     }
 
     TEST_F(ORMMockErrorTest, SelectWithLimitFailsOnPrepareError) {
-        MockSqlite3Config::prepare_returns(SQLITE_ERROR);
+        FakeSqliteConfig::prepare_returns(SQLITE_ERROR);
 
         QuerySet<MockPerson> qs;
         auto                 result = qs.limit(10).select().execute();
@@ -1234,7 +1275,7 @@ namespace {
     }
 
     TEST_F(ORMMockErrorTest, SelectWithOffsetFailsOnPrepareError) {
-        MockSqlite3Config::prepare_returns(SQLITE_ERROR);
+        FakeSqliteConfig::prepare_returns(SQLITE_ERROR);
 
         QuerySet<MockPerson> qs;
         auto                 result = qs.offset(5).select().execute();
@@ -1245,7 +1286,7 @@ namespace {
     }
 
     TEST_F(ORMMockErrorTest, SelectWithAllModifiersFailsOnStepError) {
-        MockSqlite3Config::step_returns(SQLITE_IOERR);
+        FakeSqliteConfig::step_returns(SQLITE_IOERR);
 
         QuerySet<MockPerson> qs;
         auto                 age = storm::orm::where::Field<^^MockPerson::age>{};
@@ -1261,12 +1302,12 @@ namespace {
     // ============================================================================
 
     TEST_F(ORMMockErrorTest, ConnectionExecuteFailsOnExecError) {
-        auto conn_result = db::sqlite::Connection::open(":memory:");
+        auto conn_result = FakeConn::open(":memory:");
         ASSERT_TRUE(conn_result.has_value());
         auto& conn = *conn_result;
 
-        MockSqlite3Config::exec_returns(SQLITE_ERROR);
-        MockSqlite3Config::exec_error_message("mock exec error");
+        FakeSqliteConfig::exec_returns(SQLITE_ERROR);
+        FakeSqliteConfig::exec_error_message("mock exec error");
 
         auto result = conn.execute("CREATE TABLE test (id INTEGER)");
 
@@ -1281,7 +1322,7 @@ namespace {
 
     TEST_F(ORMMockErrorTest, SelectWithUnexpectedStepReturnValue) {
         // SQLITE_INTERNAL is an unexpected return from step()
-        MockSqlite3Config::step_returns(SQLITE_INTERNAL);
+        FakeSqliteConfig::step_returns(SQLITE_INTERNAL);
 
         QuerySet<MockPerson> qs;
         auto                 result = qs.select().execute();
@@ -1292,7 +1333,7 @@ namespace {
 
     TEST_F(ORMMockErrorTest, SelectWithStepReturnsNotadb) {
         // SQLITE_NOTADB: File is not a database
-        MockSqlite3Config::step_returns(SQLITE_NOTADB);
+        FakeSqliteConfig::step_returns(SQLITE_NOTADB);
 
         QuerySet<MockPerson> qs;
         auto                 result = qs.select().execute();
@@ -1308,7 +1349,7 @@ namespace {
 
     TEST_F(ORMMockErrorTest, SelectMultiRowFailsOnThirdRow) {
         // First two rows succeed, third row fails
-        MockSqlite3Config::step_returns_sequence({SQLITE_ROW, SQLITE_ROW, SQLITE_CORRUPT});
+        FakeSqliteConfig::step_returns_sequence({SQLITE_ROW, SQLITE_ROW, SQLITE_CORRUPT});
 
         QuerySet<MockPerson> qs;
         auto                 result = qs.select().execute();
@@ -1318,7 +1359,7 @@ namespace {
     }
 
     TEST_F(ORMMockErrorTest, DistinctMultiRowFailsOnSecondRow) {
-        MockSqlite3Config::step_returns_sequence({SQLITE_ROW, SQLITE_IOERR});
+        FakeSqliteConfig::step_returns_sequence({SQLITE_ROW, SQLITE_IOERR});
 
         QuerySet<MockPerson> qs;
         auto                 result = qs.distinct<fields::MockPerson.name>().execute();
@@ -1332,29 +1373,27 @@ namespace {
     // ============================================================================
 
     TEST_F(ORMMockErrorTest, UpdateFailsOnBindInt64Error) {
-        MockSqlite3Config::bind_int64_returns(SQLITE_NOMEM);
+        FakeSqliteConfig::bind_int64_returns(SQLITE_NOMEM);
 
         QuerySet<MockPerson> qs;
         MockPerson const     person{.id = 1, .name = "Updated", .age = 35};
 
         auto result = qs.update(person).execute();
 
-        if (!result.has_value()) {
-            EXPECT_EQ(result.error().code(), SQLITE_NOMEM);
-        }
+        ASSERT_FALSE(result.has_value());
+        EXPECT_EQ(result.error().code(), SQLITE_NOMEM);
     }
 
     TEST_F(ORMMockErrorTest, UpdateFailsOnBindIntError) {
-        MockSqlite3Config::bind_int_returns(SQLITE_NOMEM);
+        FakeSqliteConfig::bind_int_returns(SQLITE_NOMEM);
 
         QuerySet<MockPerson> qs;
         MockPerson const     person{.id = 1, .name = "Updated", .age = 35};
 
         auto result = qs.update(person).execute();
 
-        if (!result.has_value()) {
-            EXPECT_EQ(result.error().code(), SQLITE_NOMEM);
-        }
+        ASSERT_FALSE(result.has_value());
+        EXPECT_EQ(result.error().code(), SQLITE_NOMEM);
     }
 
     // ============================================================================
@@ -1362,16 +1401,15 @@ namespace {
     // ============================================================================
 
     TEST_F(ORMMockErrorTest, RemoveFailsOnBindInt64Error) {
-        MockSqlite3Config::bind_int64_returns(SQLITE_NOMEM);
+        FakeSqliteConfig::bind_int64_returns(SQLITE_NOMEM);
 
         QuerySet<MockPerson> qs;
         MockPerson const     person{.id = 1, .name = "ToDelete", .age = 25};
 
         auto result = qs.erase(person).execute();
 
-        if (!result.has_value()) {
-            EXPECT_EQ(result.error().code(), SQLITE_NOMEM);
-        }
+        ASSERT_FALSE(result.has_value());
+        EXPECT_EQ(result.error().code(), SQLITE_NOMEM);
     }
 
     // ============================================================================
@@ -1379,27 +1417,25 @@ namespace {
     // ============================================================================
 
     TEST_F(ORMMockErrorTest, CountWithWhereFailsOnBindError) {
-        MockSqlite3Config::bind_int_returns(SQLITE_NOMEM);
+        FakeSqliteConfig::bind_int_returns(SQLITE_NOMEM);
 
         QuerySet<MockPerson> qs;
         auto                 age    = storm::orm::where::Field<^^MockPerson::age>{};
         auto                 result = qs.where(age > 25).count().execute();
 
-        if (!result.has_value()) {
-            EXPECT_EQ(result.error().code(), SQLITE_NOMEM);
-        }
+        ASSERT_FALSE(result.has_value());
+        EXPECT_EQ(result.error().code(), SQLITE_NOMEM);
     }
 
     TEST_F(ORMMockErrorTest, SumWithWhereFailsOnBindError) {
-        MockSqlite3Config::bind_int_returns(SQLITE_NOMEM);
+        FakeSqliteConfig::bind_int_returns(SQLITE_NOMEM);
 
         QuerySet<MockPerson> qs;
         auto                 age    = storm::orm::where::Field<^^MockPerson::age>{};
         auto                 result = qs.where(age > 25).sum<fields::MockPerson.age>().execute();
 
-        if (!result.has_value()) {
-            EXPECT_EQ(result.error().code(), SQLITE_NOMEM);
-        }
+        ASSERT_FALSE(result.has_value());
+        EXPECT_EQ(result.error().code(), SQLITE_NOMEM);
     }
 
     // ============================================================================
@@ -1407,12 +1443,11 @@ namespace {
     // ============================================================================
 
     TEST_F(ORMMockErrorTest, ConnectionPrepareCachedFailsOnError) {
-        auto conn_result = db::sqlite::Connection::open(":memory:");
+        auto conn_result = FakeConn::open(":memory:");
         ASSERT_TRUE(conn_result.has_value());
         auto& conn = *conn_result;
 
-        MockSqlite3Config::prepare_returns(SQLITE_ERROR);
-        MockSqlite3Config::prepare_error_message("mock prepare error");
+        FakeSqliteConfig::prepare_returns(SQLITE_ERROR);
 
         auto result = conn.prepare_cached("SELECT * FROM test");
 
@@ -1421,12 +1456,11 @@ namespace {
     }
 
     TEST_F(ORMMockErrorTest, ConnectionPrepareFailsOnError) {
-        auto conn_result = db::sqlite::Connection::open(":memory:");
+        auto conn_result = FakeConn::open(":memory:");
         ASSERT_TRUE(conn_result.has_value());
         auto& conn = *conn_result;
 
-        MockSqlite3Config::prepare_returns(SQLITE_ERROR);
-        MockSqlite3Config::prepare_error_message("mock prepare error");
+        FakeSqliteConfig::prepare_returns(SQLITE_ERROR);
 
         auto result = conn.prepare("SELECT * FROM test");
 
@@ -1443,7 +1477,7 @@ namespace {
         // With supports_returning=true (SQLite 3.35+), INSERT uses step() which
         // expects SQLITE_ROW to retrieve the RETURNING result. Test that an
         // unexpected error code (not ROW, not DONE) causes failure.
-        MockSqlite3Config::step_returns(SQLITE_ERROR);
+        FakeSqliteConfig::step_returns(SQLITE_ERROR);
 
         QuerySet<MockPerson> qs;
         MockPerson const     person{.id = 0, .name = "Alice", .age = 30};
@@ -1460,16 +1494,16 @@ namespace {
     // ============================================================================
 
     TEST_F(ORMMockErrorTest, PrepareCallCountTracking) {
-        MockSqlite3Config::reset();
+        FakeSqliteConfig::reset();
 
         // Get baseline count after reset
-        int const baseline_count = MockSqlite3Config::get_prepare_call_count();
+        int const baseline_count = FakeSqliteConfig::get_prepare_call_count();
         EXPECT_EQ(baseline_count, 0);
 
-        (void)DefaultConnection<>::set(":memory:");
+        fresh_db();
 
         // Count after connection setup
-        int const after_setup_count = MockSqlite3Config::get_prepare_call_count();
+        int const after_setup_count = FakeSqliteConfig::get_prepare_call_count();
         EXPECT_GE(after_setup_count, baseline_count); // May have prepare calls during setup
 
         QuerySet<MockPerson> qs;
@@ -1477,7 +1511,7 @@ namespace {
         (void)qs.insert(person).execute();
 
         // At least one more prepare call for INSERT
-        EXPECT_GT(MockSqlite3Config::get_prepare_call_count(), after_setup_count);
+        EXPECT_GT(FakeSqliteConfig::get_prepare_call_count(), after_setup_count);
     }
 
     // ============================================================================
@@ -1486,7 +1520,7 @@ namespace {
     // ============================================================================
 
     TEST_F(ORMMockErrorTest, ComplexQueryChainFailsOnStepError) {
-        MockSqlite3Config::step_returns(SQLITE_CORRUPT);
+        FakeSqliteConfig::step_returns(SQLITE_CORRUPT);
 
         QuerySet<MockPerson> qs;
         auto                 age = storm::orm::where::Field<^^MockPerson::age>{};
@@ -1497,7 +1531,7 @@ namespace {
     }
 
     TEST_F(ORMMockErrorTest, DistinctWithModifiersFailsOnPrepareError) {
-        MockSqlite3Config::prepare_returns(SQLITE_ERROR);
+        FakeSqliteConfig::prepare_returns(SQLITE_ERROR);
 
         QuerySet<MockPerson> qs;
         auto result = qs.order_by<fields::MockPerson.age>().limit(5).distinct<fields::MockPerson.name>().execute();
@@ -1533,19 +1567,20 @@ namespace {
     } // namespace fields
 
     class JoinMockErrorTest : public ::testing::Test {
-      protected:
+      public:
         void SetUp() override {
-            MockSqlite3Config::reset();
-            (void)DefaultConnection<>::set(":memory:");
+            FakeSqliteConfig::reset();
+            fresh_db<MockUser, MockMessage>();
         }
 
         void TearDown() override {
-            MockSqlite3Config::reset();
+            FakeSqliteConfig::reset();
+            FakeDefault::clear();
         }
     };
 
     TEST_F(JoinMockErrorTest, JoinSelectFailsOnPrepareError) {
-        MockSqlite3Config::prepare_returns(SQLITE_ERROR);
+        FakeSqliteConfig::prepare_returns(SQLITE_ERROR);
 
         QuerySet<MockMessage> qs;
         auto                  result = qs.join<fields::MockMessage.sender>().select().execute();
@@ -1556,7 +1591,7 @@ namespace {
     }
 
     TEST_F(JoinMockErrorTest, JoinSelectFailsOnStepError) {
-        MockSqlite3Config::step_returns(SQLITE_CORRUPT);
+        FakeSqliteConfig::step_returns(SQLITE_CORRUPT);
 
         QuerySet<MockMessage> qs;
         auto                  result = qs.join<fields::MockMessage.sender>().select().execute();
@@ -1566,22 +1601,23 @@ namespace {
     }
 
     TEST_F(JoinMockErrorTest, JoinWithWhereFailsOnBindError) {
-        MockSqlite3Config::bind_int_returns(SQLITE_NOMEM);
+        // #785: `id > 5` / `id` in a join is "ambiguous column name" on real SQLite, so these
+        // use `text` (and count()) until it is fixed; revert then.
+        FakeSqliteConfig::bind_text_returns(SQLITE_NOMEM);
 
         QuerySet<MockMessage> qs;
-        auto                  id     = storm::orm::where::Field<^^MockMessage::id>{};
-        auto                  result = qs.where(id > 5).join<fields::MockMessage.sender>().select().execute();
+        auto                  result =
+                qs.where(fields::MockMessage.text == "hello").join<fields::MockMessage.sender>().select().execute();
 
-        if (!result.has_value()) {
-            EXPECT_EQ(result.error().code(), SQLITE_NOMEM);
-        }
+        ASSERT_FALSE(result.has_value());
+        EXPECT_EQ(result.error().code(), SQLITE_NOMEM);
     }
 
     TEST_F(JoinMockErrorTest, JoinWithOrderByFailsOnStepError) {
-        MockSqlite3Config::step_returns(SQLITE_IOERR);
+        FakeSqliteConfig::step_returns(SQLITE_IOERR);
 
         QuerySet<MockMessage> qs;
-        auto result = qs.join<fields::MockMessage.sender>().order_by<fields::MockMessage.id>().select().execute();
+        auto result = qs.join<fields::MockMessage.sender>().order_by<fields::MockMessage.text>().select().execute();
 
         ASSERT_FALSE(result.has_value());
         EXPECT_EQ(result.error().code(), SQLITE_IOERR);
@@ -1593,7 +1629,7 @@ namespace {
     // Failing bind_int on call 1 will fail the FK bind
     TEST_F(JoinMockErrorTest, UpdateWithFkFieldFailsOnFkBindError) {
         // Fail on first bind_int call which binds the FK field's PK
-        MockSqlite3Config::bind_int_fails_on_call(1, SQLITE_NOMEM);
+        FakeSqliteConfig::bind_int_fails_on_call(1, SQLITE_NOMEM);
 
         QuerySet<MockMessage> qs;
         MockUser const        sender{.id = 1, .name = "Sender", .age = 30};
@@ -1612,7 +1648,7 @@ namespace {
 
     TEST_F(ORMMockErrorTest, GroupByMultiRowFailsOnThirdRow) {
         // GROUP BY returning multiple groups, fail on third group
-        MockSqlite3Config::step_returns_sequence({SQLITE_ROW, SQLITE_ROW, SQLITE_CORRUPT});
+        FakeSqliteConfig::step_returns_sequence({SQLITE_ROW, SQLITE_ROW, SQLITE_CORRUPT});
 
         QuerySet<MockPerson> qs;
         auto                 result = qs.group_by<fields::MockPerson.age>().count().execute();
@@ -1622,7 +1658,7 @@ namespace {
     }
 
     TEST_F(ORMMockErrorTest, AggregateWithOrderByFailsOnStepError) {
-        MockSqlite3Config::step_returns(SQLITE_IOERR);
+        FakeSqliteConfig::step_returns(SQLITE_IOERR);
 
         QuerySet<MockPerson> qs;
         auto                 result = qs.order_by<fields::MockPerson.age>().count().execute();
@@ -1637,7 +1673,7 @@ namespace {
     // ============================================================================
 
     TEST_F(ORMMockErrorTest, SelectFailsOnProtocolError) {
-        MockSqlite3Config::step_returns(SQLITE_PROTOCOL);
+        FakeSqliteConfig::step_returns(SQLITE_PROTOCOL);
 
         QuerySet<MockPerson> qs;
         auto                 result = qs.select().execute();
@@ -1647,7 +1683,7 @@ namespace {
     }
 
     TEST_F(ORMMockErrorTest, InsertFailsOnPermError) {
-        MockSqlite3Config::step_returns(SQLITE_PERM);
+        FakeSqliteConfig::step_returns(SQLITE_PERM);
 
         QuerySet<MockPerson> qs;
         MockPerson const     person{.id = 0, .name = "Alice", .age = 30};
@@ -1659,7 +1695,7 @@ namespace {
     }
 
     TEST_F(ORMMockErrorTest, UpdateFailsOnAuthError) {
-        MockSqlite3Config::step_returns(SQLITE_AUTH);
+        FakeSqliteConfig::step_returns(SQLITE_AUTH);
 
         QuerySet<MockPerson> qs;
         MockPerson const     person{.id = 1, .name = "Updated", .age = 35};
@@ -1675,7 +1711,7 @@ namespace {
     // ============================================================================
 
     TEST_F(ORMMockErrorTest, CountStarFailsOnStepError) {
-        MockSqlite3Config::step_returns(SQLITE_NOMEM);
+        FakeSqliteConfig::step_returns(SQLITE_NOMEM);
 
         QuerySet<MockPerson> qs;
         auto                 result = qs.count().execute();
@@ -1693,13 +1729,13 @@ namespace {
         QuerySet<MockPerson> qs;
 
         // First call succeeds (caches the statement)
-        MockSqlite3Config::step_returns(SQLITE_DONE);
+        FakeSqliteConfig::step_returns(SQLITE_DONE);
         auto first_result = qs.select().execute();
         // Note: DONE means no rows, which is valid for empty table
         EXPECT_TRUE(first_result.has_value());
 
         // Second call uses cached statement but step fails
-        MockSqlite3Config::step_returns(SQLITE_CORRUPT);
+        FakeSqliteConfig::step_returns(SQLITE_CORRUPT);
         auto second_result = qs.select().execute();
 
         ASSERT_FALSE(second_result.has_value());
@@ -1711,21 +1747,21 @@ namespace {
     // ============================================================================
 
     TEST_F(ORMMockErrorTest, BindCallCountsAreTracked) {
-        MockSqlite3Config::reset();
+        FakeSqliteConfig::reset();
 
-        EXPECT_EQ(MockSqlite3Config::get_bind_int_call_count(), 0);
-        EXPECT_EQ(MockSqlite3Config::get_bind_text_call_count(), 0);
+        EXPECT_EQ(FakeSqliteConfig::get_bind_int_call_count(), 0);
+        EXPECT_EQ(FakeSqliteConfig::get_bind_text_call_count(), 0);
 
         // Setup fresh connection
-        (void)DefaultConnection<>::set(":memory:");
+        fresh_db();
 
         QuerySet<MockPerson> qs;
         MockPerson const     person{.id = 0, .name = "Test", .age = 25};
         (void)qs.insert(person).execute();
 
         // Should have called bind_int (for age) and bind_text (for name)
-        EXPECT_GE(MockSqlite3Config::get_bind_int_call_count(), 0); // Implementation may vary
-        EXPECT_GE(MockSqlite3Config::get_bind_text_call_count(), 0);
+        EXPECT_GE(FakeSqliteConfig::get_bind_int_call_count(), 0); // Implementation may vary
+        EXPECT_GE(FakeSqliteConfig::get_bind_text_call_count(), 0);
     }
 
     // ============================================================================
@@ -1738,7 +1774,7 @@ namespace {
         // "Bind primary key last" - when PK binding fails
         // MockPerson binds: name(text), age(int), id(int64 for WHERE)
         // Fail on 1st bind_int64 call (the PK in WHERE clause)
-        MockSqlite3Config::bind_int64_fails_on_call(1, SQLITE_NOMEM);
+        FakeSqliteConfig::bind_int64_fails_on_call(1, SQLITE_NOMEM);
 
         QuerySet<MockPerson> qs;
         MockPerson const     person{.id = 1, .name = "Updated", .age = 35};
@@ -1752,7 +1788,7 @@ namespace {
     TEST_F(ORMMockErrorTest, UpdateFailsOnFirstFieldBindError) {
         // This covers the inline_bind_all_fields error path (lines 166-167, 185-186)
         // Fail on 1st bind_text call (the 'name' field)
-        MockSqlite3Config::bind_text_fails_on_call(1, SQLITE_IOERR);
+        FakeSqliteConfig::bind_text_fails_on_call(1, SQLITE_IOERR);
 
         QuerySet<MockPerson> qs;
         MockPerson const     person{.id = 1, .name = "Updated", .age = 35};
@@ -1765,7 +1801,7 @@ namespace {
 
     TEST_F(ORMMockErrorTest, UpdateFailsOnSecondFieldBindError) {
         // Fail on 1st bind_int call (the 'age' field, after 'name' succeeds)
-        MockSqlite3Config::bind_int_fails_on_call(1, SQLITE_CORRUPT);
+        FakeSqliteConfig::bind_int_fails_on_call(1, SQLITE_CORRUPT);
 
         QuerySet<MockPerson> qs;
         MockPerson const     person{.id = 1, .name = "Updated", .age = 35};
@@ -1779,7 +1815,7 @@ namespace {
     TEST_F(ORMMockErrorTest, BatchUpdateFailsOnSecondRowBindError) {
         // This covers the batch update loop error path (lines 165-168 in update.cppm)
         // Fail on 2nd bind_text call (during second row's 'name' field)
-        MockSqlite3Config::bind_text_fails_on_call(2, SQLITE_NOMEM);
+        FakeSqliteConfig::bind_text_fails_on_call(2, SQLITE_NOMEM);
 
         QuerySet<MockPerson>    qs;
         std::vector<MockPerson> people = {
@@ -1812,7 +1848,7 @@ namespace {
 
     TEST_F(ORMMockErrorTest, SpanOfOneUpdateFailsOnBindError) {
         // This covers execute_single_row bind error (lines 185-187)
-        MockSqlite3Config::bind_text_fails_on_call(1, SQLITE_NOMEM);
+        FakeSqliteConfig::bind_text_fails_on_call(1, SQLITE_NOMEM);
 
         QuerySet<MockPerson>    qs;
         std::vector<MockPerson> single = {{.id = 1, .name = "SingleSpan", .age = 30}};
@@ -1825,7 +1861,7 @@ namespace {
 
     TEST_F(ORMMockErrorTest, SpanOfOneUpdateFailsOnExecError) {
         // This covers execute_single_row exec error (lines 190-192)
-        MockSqlite3Config::step_returns(SQLITE_BUSY);
+        FakeSqliteConfig::step_returns(SQLITE_BUSY);
 
         QuerySet<MockPerson>    qs;
         std::vector<MockPerson> single = {{.id = 1, .name = "SingleSpan", .age = 30}};
@@ -1849,7 +1885,7 @@ namespace {
     TEST_F(ORMMockErrorTest, BatchUpdatePrepareFailure) {
         // This covers prepare_cached failure in execute(span) (lines 143-146)
         // Use batch of 2+ to go through batch path, not single-row path
-        MockSqlite3Config::prepare_returns(SQLITE_ERROR);
+        FakeSqliteConfig::prepare_returns(SQLITE_ERROR);
 
         QuerySet<MockPerson>    qs;
         std::vector<MockPerson> people = {
@@ -1873,7 +1909,7 @@ namespace {
         //   step 3: UPDATE row 2
         //   step 4: COMMIT
         // Fail on step 1 to simulate transaction begin failure
-        MockSqlite3Config::step_fails_on_call(1, SQLITE_BUSY);
+        FakeSqliteConfig::step_fails_on_call(1, SQLITE_BUSY);
 
         QuerySet<MockPerson>    qs;
         std::vector<MockPerson> people = {
@@ -1909,7 +1945,7 @@ namespace {
 
     TEST_F(ORMMockErrorTest, AggregateSumFailsOnPrepareError) {
         // Covers prepare_cached failure in aggregate execute_simple
-        MockSqlite3Config::prepare_returns(SQLITE_ERROR);
+        FakeSqliteConfig::prepare_returns(SQLITE_ERROR);
 
         QuerySet<MockPerson> qs;
         auto                 result = qs.sum<fields::MockPerson.age>().execute();
@@ -1919,7 +1955,7 @@ namespace {
     }
 
     TEST_F(ORMMockErrorTest, AggregateAvgFailsOnPrepareError) {
-        MockSqlite3Config::prepare_returns(SQLITE_CANTOPEN);
+        FakeSqliteConfig::prepare_returns(SQLITE_CANTOPEN);
 
         QuerySet<MockPerson> qs;
         auto                 result = qs.avg<fields::MockPerson.age>().execute();
@@ -1929,7 +1965,7 @@ namespace {
     }
 
     TEST_F(ORMMockErrorTest, AggregateMinFailsOnPrepareError) {
-        MockSqlite3Config::prepare_returns(SQLITE_CORRUPT);
+        FakeSqliteConfig::prepare_returns(SQLITE_CORRUPT);
 
         QuerySet<MockPerson> qs;
         auto                 result = qs.min<fields::MockPerson.age>().execute();
@@ -1939,7 +1975,7 @@ namespace {
     }
 
     TEST_F(ORMMockErrorTest, AggregateMaxFailsOnPrepareError) {
-        MockSqlite3Config::prepare_returns(SQLITE_FULL);
+        FakeSqliteConfig::prepare_returns(SQLITE_FULL);
 
         QuerySet<MockPerson> qs;
         auto                 result = qs.max<fields::MockPerson.age>().execute();
@@ -1954,7 +1990,7 @@ namespace {
 
     TEST_F(ORMMockErrorTest, AggregateSumFailsOnStepError) {
         // Covers line 253: step error in execute_impl
-        MockSqlite3Config::step_returns(SQLITE_CORRUPT);
+        FakeSqliteConfig::step_returns(SQLITE_CORRUPT);
 
         QuerySet<MockPerson> qs;
         auto                 result = qs.sum<fields::MockPerson.age>().execute();
@@ -1964,7 +2000,7 @@ namespace {
     }
 
     TEST_F(ORMMockErrorTest, AggregateMinFailsOnStepError) {
-        MockSqlite3Config::step_returns(SQLITE_IOERR);
+        FakeSqliteConfig::step_returns(SQLITE_IOERR);
 
         QuerySet<MockPerson> qs;
         auto                 result = qs.min<fields::MockPerson.age>().execute();
@@ -1974,7 +2010,7 @@ namespace {
     }
 
     TEST_F(ORMMockErrorTest, AggregateMaxFailsOnStepError) {
-        MockSqlite3Config::step_returns(SQLITE_NOTADB);
+        FakeSqliteConfig::step_returns(SQLITE_NOTADB);
 
         QuerySet<MockPerson> qs;
         auto                 result = qs.max<fields::MockPerson.age>().execute();
@@ -1989,7 +2025,7 @@ namespace {
 
     TEST_F(ORMMockErrorTest, AggregateWithWhereFailsOnPrepareError) {
         // Covers execute_where prepare error (aggregate.cppm lines 463-465)
-        MockSqlite3Config::prepare_returns(SQLITE_ERROR);
+        FakeSqliteConfig::prepare_returns(SQLITE_ERROR);
 
         QuerySet<MockPerson> qs;
         auto                 age    = storm::orm::where::Field<^^MockPerson::age>{};
@@ -2001,27 +2037,25 @@ namespace {
 
     TEST_F(ORMMockErrorTest, AggregateWithWhereFailsOnBindError) {
         // Covers bind_where_params error path in aggregate
-        MockSqlite3Config::bind_int_returns(SQLITE_NOMEM);
+        FakeSqliteConfig::bind_int_returns(SQLITE_NOMEM);
 
         QuerySet<MockPerson> qs;
         auto                 age    = storm::orm::where::Field<^^MockPerson::age>{};
         auto                 result = qs.where(age > 25).sum<fields::MockPerson.age>().execute();
 
-        if (!result.has_value()) {
-            EXPECT_EQ(result.error().code(), SQLITE_NOMEM);
-        }
+        ASSERT_FALSE(result.has_value());
+        EXPECT_EQ(result.error().code(), SQLITE_NOMEM);
     }
 
     TEST_F(ORMMockErrorTest, AggregateCountWithWhereFailsOnBindError) {
-        MockSqlite3Config::bind_int_returns(SQLITE_TOOBIG);
+        FakeSqliteConfig::bind_int_returns(SQLITE_TOOBIG);
 
         QuerySet<MockPerson> qs;
         auto                 age    = storm::orm::where::Field<^^MockPerson::age>{};
         auto                 result = qs.where(age > 30).count().execute();
 
-        if (!result.has_value()) {
-            EXPECT_EQ(result.error().code(), SQLITE_TOOBIG);
-        }
+        ASSERT_FALSE(result.has_value());
+        EXPECT_EQ(result.error().code(), SQLITE_TOOBIG);
     }
 
     // ============================================================================
@@ -2030,7 +2064,7 @@ namespace {
 
     TEST_F(ORMMockErrorTest, GroupByAggregateFailsOnPrepareError) {
         // Covers prepare error in AggregateStatement (GROUP BY path)
-        MockSqlite3Config::prepare_returns(SQLITE_ERROR);
+        FakeSqliteConfig::prepare_returns(SQLITE_ERROR);
 
         QuerySet<MockPerson> qs;
         auto                 result = qs.group_by<fields::MockPerson.age>().count().execute();
@@ -2041,7 +2075,7 @@ namespace {
 
     TEST_F(ORMMockErrorTest, GroupByAggregateFailsOnStepError) {
         // Covers step error in execute_query_loop
-        MockSqlite3Config::step_returns(SQLITE_CORRUPT);
+        FakeSqliteConfig::step_returns(SQLITE_CORRUPT);
 
         QuerySet<MockPerson> qs;
         auto                 result = qs.group_by<fields::MockPerson.age>().count().execute();
@@ -2051,7 +2085,7 @@ namespace {
     }
 
     TEST_F(ORMMockErrorTest, GroupBySumFailsOnPrepareError) {
-        MockSqlite3Config::prepare_returns(SQLITE_CANTOPEN);
+        FakeSqliteConfig::prepare_returns(SQLITE_CANTOPEN);
 
         QuerySet<MockPerson> qs;
         auto                 result = qs.group_by<fields::MockPerson.name>().sum<fields::MockPerson.age>().execute();
@@ -2068,7 +2102,7 @@ namespace {
         // For chunked erase (800+ rows), transaction begin failure
         // This requires a large batch that triggers chunked processing
         // Transaction begin = first step call
-        MockSqlite3Config::step_fails_on_call(1, SQLITE_BUSY);
+        FakeSqliteConfig::step_fails_on_call(1, SQLITE_BUSY);
 
         QuerySet<MockPerson>    qs;
         std::vector<MockPerson> large_batch;
@@ -2079,16 +2113,15 @@ namespace {
         auto result = qs.erase(std::span{large_batch}).execute();
 
         // Should fail on transaction begin
-        if (!result.has_value()) {
-            EXPECT_EQ(result.error().code(), SQLITE_BUSY);
-        }
+        ASSERT_FALSE(result.has_value());
+        EXPECT_EQ(result.error().code(), SQLITE_BUSY);
     }
 
     TEST_F(ORMMockErrorTest, ChunkedRemoveFailsOnMaxBulkPrepareError) {
         // Covers lines 249-250: prepare error for max bulk statement in execute_chunked
         // SetUp pre-caches 3 statements (BEGIN, COMMIT, ROLLBACK) via prepare_common_statements
         // So BEGIN is already cached. execute_chunked's prepare_cached(max_bulk_delete_sql) = call 4
-        MockSqlite3Config::prepare_fails_on_call(4, SQLITE_NOMEM);
+        FakeSqliteConfig::prepare_fails_on_call(4, SQLITE_NOMEM);
 
         QuerySet<MockPerson>    qs;
         std::vector<MockPerson> large_batch;
@@ -2105,7 +2138,7 @@ namespace {
     TEST_F(ORMMockErrorTest, ChunkedRemoveFailsOnRemainderPrepareError) {
         // Covers lines 263-264: prepare error for remainder statement in execute_chunked
         // Prepare calls: 1-3=pre-cached (BEGIN, COMMIT, ROLLBACK), 4=max bulk DELETE, 5=remainder
-        MockSqlite3Config::prepare_fails_on_call(5, SQLITE_IOERR);
+        FakeSqliteConfig::prepare_fails_on_call(5, SQLITE_IOERR);
 
         QuerySet<MockPerson>    qs;
         std::vector<MockPerson> large_batch;
@@ -2123,7 +2156,7 @@ namespace {
         // Covers lines 273-274: bind_pks_and_execute error for full chunk
         // Step calls: 1=BEGIN, 2=full chunk (799 items)
         // Fail on step 2 to hit the full chunk execution error path
-        MockSqlite3Config::step_fails_on_call(2, SQLITE_CORRUPT);
+        FakeSqliteConfig::step_fails_on_call(2, SQLITE_CORRUPT);
 
         QuerySet<MockPerson>    qs;
         std::vector<MockPerson> large_batch;
@@ -2140,7 +2173,7 @@ namespace {
     TEST_F(ORMMockErrorTest, ChunkedRemoveFailsOnRemainderExecError) {
         // Covers lines 282-283: bind_pks_and_execute error for remainder chunk
         // Step calls: 1=BEGIN, 2=full chunk (succeeds), 3=remainder chunk (fails)
-        MockSqlite3Config::step_fails_on_call(3, SQLITE_IOERR);
+        FakeSqliteConfig::step_fails_on_call(3, SQLITE_IOERR);
 
         QuerySet<MockPerson>    qs;
         std::vector<MockPerson> large_batch;
@@ -2160,7 +2193,7 @@ namespace {
 
     TEST_F(ORMMockErrorTest, ChunkedUpdateFailsOnTransactionBeginError) {
         // For chunked update, transaction begin failure
-        MockSqlite3Config::step_fails_on_call(1, SQLITE_LOCKED);
+        FakeSqliteConfig::step_fails_on_call(1, SQLITE_LOCKED);
 
         QuerySet<MockPerson>    qs;
         std::vector<MockPerson> large_batch;
@@ -2171,16 +2204,15 @@ namespace {
         auto result = qs.update(std::span{large_batch}).execute();
 
         // Should fail on transaction begin
-        if (!result.has_value()) {
-            EXPECT_EQ(result.error().code(), SQLITE_LOCKED);
-        }
+        ASSERT_FALSE(result.has_value());
+        EXPECT_EQ(result.error().code(), SQLITE_LOCKED);
     }
 
     TEST_F(ORMMockErrorTest, ChunkedUpdateFailsOnSecondChunkError) {
         // Fail on a step in the second chunk (after 800 rows)
         // First chunk: rows 0-799 (800 steps after BEGIN)
         // Second chunk starts at step 802 (BEGIN + 800 updates + 1)
-        MockSqlite3Config::step_fails_on_call(810, SQLITE_IOERR);
+        FakeSqliteConfig::step_fails_on_call(810, SQLITE_IOERR);
 
         QuerySet<MockPerson>    qs;
         std::vector<MockPerson> large_batch;
@@ -2191,9 +2223,8 @@ namespace {
         auto result = qs.update(std::span{large_batch}).execute();
 
         // Should fail during second chunk processing
-        if (!result.has_value()) {
-            EXPECT_EQ(result.error().code(), SQLITE_IOERR);
-        }
+        ASSERT_FALSE(result.has_value());
+        EXPECT_EQ(result.error().code(), SQLITE_IOERR);
     }
 
     // ============================================================================
@@ -2201,7 +2232,7 @@ namespace {
     // ============================================================================
 
     TEST_F(ORMMockErrorTest, ChunkedInsertFailsOnTransactionBeginError) {
-        MockSqlite3Config::step_fails_on_call(1, SQLITE_BUSY);
+        FakeSqliteConfig::step_fails_on_call(1, SQLITE_BUSY);
 
         QuerySet<MockPerson>    qs;
         std::vector<MockPerson> large_batch;
@@ -2211,9 +2242,8 @@ namespace {
 
         auto result = qs.insert(std::span{large_batch}).execute();
 
-        if (!result.has_value()) {
-            EXPECT_EQ(result.error().code(), SQLITE_BUSY);
-        }
+        ASSERT_FALSE(result.has_value());
+        EXPECT_EQ(result.error().code(), SQLITE_BUSY);
     }
 
     // ============================================================================
@@ -2222,7 +2252,7 @@ namespace {
 
     TEST_F(JoinMockErrorTest, AggregateWithJoinFailsOnPrepareError) {
         // Covers prepare error in aggregate with JOIN
-        MockSqlite3Config::prepare_returns(SQLITE_ERROR);
+        FakeSqliteConfig::prepare_returns(SQLITE_ERROR);
 
         QuerySet<MockMessage> qs;
         auto                  result = qs.join<fields::MockMessage.sender>().sum<fields::MockMessage.id>().execute();
@@ -2232,7 +2262,7 @@ namespace {
     }
 
     TEST_F(JoinMockErrorTest, AggregateWithJoinFailsOnStepError) {
-        MockSqlite3Config::step_returns(SQLITE_CORRUPT);
+        FakeSqliteConfig::step_returns(SQLITE_CORRUPT);
 
         QuerySet<MockMessage> qs;
         auto                  result = qs.join<fields::MockMessage.sender>().count().execute();
@@ -2243,7 +2273,7 @@ namespace {
 
     TEST_F(JoinMockErrorTest, AggregateWithWhereJoinFailsOnPrepareError) {
         // Covers execute_where_join prepare error (aggregate.cppm lines 530-532)
-        MockSqlite3Config::prepare_returns(SQLITE_ERROR);
+        FakeSqliteConfig::prepare_returns(SQLITE_ERROR);
 
         QuerySet<MockMessage> qs;
         auto                  id     = storm::orm::where::Field<^^MockMessage::id>{};
@@ -2255,15 +2285,16 @@ namespace {
 
     TEST_F(JoinMockErrorTest, AggregateWithWhereJoinFailsOnBindError) {
         // Covers execute_where_join bind error (aggregate.cppm lines 535-537)
-        MockSqlite3Config::bind_int_returns(SQLITE_NOMEM);
+        // #785: `id > 5` / `id` in a join is "ambiguous column name" on real SQLite, so these
+        // use `text` (and count()) until it is fixed; revert then.
+        FakeSqliteConfig::bind_text_returns(SQLITE_NOMEM);
 
         QuerySet<MockMessage> qs;
-        auto                  id = storm::orm::where::Field<^^MockMessage::id>{};
-        auto result = qs.where(id > 5).join<fields::MockMessage.sender>().sum<fields::MockMessage.id>().execute();
+        auto                  result =
+                qs.where(fields::MockMessage.text == "hello").join<fields::MockMessage.sender>().count().execute();
 
-        if (!result.has_value()) {
-            EXPECT_EQ(result.error().code(), SQLITE_NOMEM);
-        }
+        ASSERT_FALSE(result.has_value());
+        EXPECT_EQ(result.error().code(), SQLITE_NOMEM);
     }
 
     // ============================================================================
@@ -2283,7 +2314,7 @@ namespace {
 
     TEST_F(ORMMockErrorTest, SpanOfOneRemoveFailsOnStepError) {
         // Covers execute_one error path through span interface
-        MockSqlite3Config::step_returns(SQLITE_LOCKED);
+        FakeSqliteConfig::step_returns(SQLITE_LOCKED);
 
         QuerySet<MockPerson>    qs;
         std::vector<MockPerson> single = {{.id = 1, .name = "ToDelete", .age = 30}};
@@ -2296,7 +2327,7 @@ namespace {
 
     TEST_F(ORMMockErrorTest, BulkRemoveFailsOnPrepareError) {
         // Covers line 205-206: prepare error in execute_bulk
-        MockSqlite3Config::prepare_returns(SQLITE_ERROR);
+        FakeSqliteConfig::prepare_returns(SQLITE_ERROR);
 
         QuerySet<MockPerson>    qs;
         std::vector<MockPerson> people = {
@@ -2312,7 +2343,7 @@ namespace {
 
     TEST_F(ORMMockErrorTest, BulkRemoveFailsOnBindError) {
         // Covers line 214-215: bind error in execute_bulk
-        MockSqlite3Config::bind_int64_returns(SQLITE_NOMEM);
+        FakeSqliteConfig::bind_int64_returns(SQLITE_NOMEM);
 
         QuerySet<MockPerson>    qs;
         std::vector<MockPerson> people = {
@@ -2322,14 +2353,13 @@ namespace {
 
         auto result = qs.erase(std::span{people}).execute();
 
-        if (!result.has_value()) {
-            EXPECT_EQ(result.error().code(), SQLITE_NOMEM);
-        }
+        ASSERT_FALSE(result.has_value());
+        EXPECT_EQ(result.error().code(), SQLITE_NOMEM);
     }
 
     TEST_F(ORMMockErrorTest, BulkRemoveFailsOnExecError) {
         // Covers line 219-220: exec error in execute_bulk
-        MockSqlite3Config::step_returns(SQLITE_BUSY);
+        FakeSqliteConfig::step_returns(SQLITE_BUSY);
 
         QuerySet<MockPerson>    qs;
         std::vector<MockPerson> people = {
@@ -2358,7 +2388,7 @@ namespace {
     // ============================================================================
 
     TEST_F(ORMMockErrorTest, InsertBatchFailsOnPrepareError) {
-        MockSqlite3Config::prepare_returns(SQLITE_ERROR);
+        FakeSqliteConfig::prepare_returns(SQLITE_ERROR);
 
         QuerySet<MockPerson>    qs;
         std::vector<MockPerson> people = {
@@ -2375,7 +2405,7 @@ namespace {
     TEST_F(ORMMockErrorTest, InsertBatchFailsOnBindTextError) {
         // Batch insert binds: name (text), age (int) for each row
         // Fail on bind_text to test text binding error path
-        MockSqlite3Config::bind_text_returns(SQLITE_NOMEM);
+        FakeSqliteConfig::bind_text_returns(SQLITE_NOMEM);
 
         QuerySet<MockPerson>    qs;
         std::vector<MockPerson> people = {
@@ -2386,15 +2416,11 @@ namespace {
         auto result = qs.insert(std::span{people}).execute();
 
         // Either fails with expected error, or succeeds (bind_text might not be called for batch)
-        if (!result.has_value()) {
-            // Accept any error - the path was exercised
-            SUCCEED() << "Insert failed as expected with code: " << result.error().code();
-        }
-        // If it succeeds, the bind_text might not be called in the batch insert path
+        EXPECT_FALSE(result.has_value()) << "armed failure was not reached";
     }
 
     TEST_F(ORMMockErrorTest, InsertBatchFailsOnStepError) {
-        MockSqlite3Config::step_returns(SQLITE_CONSTRAINT);
+        FakeSqliteConfig::step_returns(SQLITE_CONSTRAINT);
 
         QuerySet<MockPerson>    qs;
         std::vector<MockPerson> people = {
@@ -2414,7 +2440,7 @@ namespace {
 
     TEST_F(ORMMockErrorTest, InsertBatchReturningFailsOnPrepareError) {
         using ReturnId = ReturnId;
-        MockSqlite3Config::prepare_returns(SQLITE_ERROR);
+        FakeSqliteConfig::prepare_returns(SQLITE_ERROR);
 
         QuerySet<MockPerson>    qs;
         std::vector<MockPerson> people = {
@@ -2430,7 +2456,7 @@ namespace {
 
     TEST_F(ORMMockErrorTest, InsertBatchReturningFailsOnBindError) {
         using ReturnId = ReturnId;
-        MockSqlite3Config::bind_text_returns(SQLITE_NOMEM);
+        FakeSqliteConfig::bind_text_returns(SQLITE_NOMEM);
 
         QuerySet<MockPerson>    qs;
         std::vector<MockPerson> people = {
@@ -2440,14 +2466,12 @@ namespace {
 
         auto result = qs.insert<ReturnId::Yes>(std::span{people}).execute();
 
-        if (!result.has_value()) {
-            SUCCEED() << "Insert returning failed as expected with code: " << result.error().code();
-        }
+        EXPECT_FALSE(result.has_value()) << "armed failure was not reached";
     }
 
     TEST_F(ORMMockErrorTest, InsertBatchReturningFailsOnStepError) {
         using ReturnId = ReturnId;
-        MockSqlite3Config::step_returns(SQLITE_BUSY);
+        FakeSqliteConfig::step_returns(SQLITE_BUSY);
 
         QuerySet<MockPerson>    qs;
         std::vector<MockPerson> people = {
@@ -2485,7 +2509,7 @@ namespace {
 
     TEST_F(ORMMockErrorTest, InsertBatchReturningToSqlFailsOnPrepareError) {
         using ReturnId = ReturnId;
-        MockSqlite3Config::prepare_returns(SQLITE_ERROR);
+        FakeSqliteConfig::prepare_returns(SQLITE_ERROR);
 
         QuerySet<MockPerson>    qs;
         std::vector<MockPerson> people = {
@@ -2500,7 +2524,7 @@ namespace {
 
     TEST_F(ORMMockErrorTest, InsertBatchReturningToSqlFailsOnBindError) {
         using ReturnId = ReturnId;
-        MockSqlite3Config::bind_text_returns(SQLITE_NOMEM);
+        FakeSqliteConfig::bind_text_returns(SQLITE_NOMEM);
 
         QuerySet<MockPerson>    qs;
         std::vector<MockPerson> people = {
@@ -2509,15 +2533,13 @@ namespace {
 
         auto result = qs.insert<ReturnId::Yes>(std::span{people}).to_sql();
 
-        if (!result.has_value()) {
-            SUCCEED() << "to_sql returning failed on bind error";
-        }
+        EXPECT_FALSE(result.has_value()) << "armed failure was not reached";
     }
 
     TEST_F(ORMMockErrorTest, InsertChunkedBatchReturningFailsOnTxnBeginError) {
         using ReturnId = ReturnId;
         // Step failure on BEGIN TRANSACTION (first step call)
-        MockSqlite3Config::step_returns(SQLITE_BUSY);
+        FakeSqliteConfig::step_returns(SQLITE_BUSY);
 
         QuerySet<MockPerson>    qs;
         std::vector<MockPerson> people = {
@@ -2536,7 +2558,7 @@ namespace {
     TEST_F(ORMMockErrorTest, InsertChunkedBatchReturningFailsOnChunkError) {
         using ReturnId = ReturnId;
         // First step = SQLITE_DONE (BEGIN succeeds), then SQLITE_ERROR on chunk step
-        MockSqlite3Config::step_returns_sequence({SQLITE_DONE, SQLITE_ERROR});
+        FakeSqliteConfig::step_returns_sequence({SQLITE_DONE, SQLITE_ERROR});
 
         QuerySet<MockPerson>    qs;
         std::vector<MockPerson> people = {
@@ -2555,7 +2577,7 @@ namespace {
     TEST_F(ORMMockErrorTest, InsertChunkedBatchReturningFailsOnCommitError) {
         using ReturnId = ReturnId;
         // BEGIN=DONE, chunk1 step=ROW(id=1), chunk1 done=DONE, chunk2 step=ROW(id=2), chunk2 done=DONE, COMMIT=BUSY
-        MockSqlite3Config::step_returns_sequence(
+        FakeSqliteConfig::step_returns_sequence(
                 {SQLITE_DONE, SQLITE_ROW, SQLITE_DONE, SQLITE_ROW, SQLITE_DONE, SQLITE_BUSY}
         );
 
@@ -2580,11 +2602,11 @@ namespace {
 
     TEST_F(ORMMockErrorTest, TransactionGuardDoubleCommitReturnsSuccess) {
         // Covers line 396-397: commit() when committed_ == true
-        auto conn_result = db::sqlite::Connection::open(":memory:");
+        auto conn_result = FakeConn::open(":memory:");
         ASSERT_TRUE(conn_result.has_value());
-        auto conn = std::make_shared<db::sqlite::Connection>(std::move(*conn_result));
+        auto conn = std::make_shared<FakeConn>(std::move(*conn_result));
 
-        using TxnGuard = storm::TransactionGuard<db::sqlite::Connection>;
+        using TxnGuard = storm::TransactionGuard<FakeConn>;
 
         auto txn = TxnGuard::begin(conn);
         ASSERT_TRUE(txn.has_value());
@@ -2600,11 +2622,11 @@ namespace {
 
     TEST_F(ORMMockErrorTest, TransactionGuardCommitOnMovedFromReturnsSuccess) {
         // Covers line 396-397: commit() when conn_ == nullptr (moved-from) // NOSONAR(cpp:S125)
-        auto conn_result = db::sqlite::Connection::open(":memory:");
+        auto conn_result = FakeConn::open(":memory:");
         ASSERT_TRUE(conn_result.has_value());
-        auto conn = std::make_shared<db::sqlite::Connection>(std::move(*conn_result));
+        auto conn = std::make_shared<FakeConn>(std::move(*conn_result));
 
-        using TxnGuard = storm::TransactionGuard<db::sqlite::Connection>;
+        using TxnGuard = storm::TransactionGuard<FakeConn>;
 
         auto txn = TxnGuard::begin(conn);
         ASSERT_TRUE(txn.has_value());
@@ -2623,15 +2645,15 @@ namespace {
 
     TEST_F(ORMMockErrorTest, TransactionGuardCommitFailureTriggersRollback) {
         // Covers lines 400-402: commit() when COMMIT execution fails
-        auto conn_result = db::sqlite::Connection::open(":memory:");
+        auto conn_result = FakeConn::open(":memory:");
         ASSERT_TRUE(conn_result.has_value());
-        auto conn = std::make_shared<db::sqlite::Connection>(std::move(*conn_result));
+        auto conn = std::make_shared<FakeConn>(std::move(*conn_result));
 
-        using TxnGuard = storm::TransactionGuard<db::sqlite::Connection>;
+        using TxnGuard = storm::TransactionGuard<FakeConn>;
 
         // Step 1: BEGIN TRANSACTION (succeeds)
         // Step 2: COMMIT (fails with BUSY)
-        MockSqlite3Config::step_fails_on_call(2, SQLITE_BUSY);
+        FakeSqliteConfig::step_fails_on_call(2, SQLITE_BUSY);
 
         auto txn = TxnGuard::begin(conn);
         ASSERT_TRUE(txn.has_value());
@@ -2644,12 +2666,12 @@ namespace {
     TEST_F(ORMMockErrorTest, TransactionScopeBeginFailurePropagates) {
         // transaction (#415) error path: BEGIN fails → body never runs,
         // the begin error propagates as std::unexpected.
-        auto conn_result = db::sqlite::Connection::open(":memory:");
+        auto conn_result = FakeConn::open(":memory:");
         ASSERT_TRUE(conn_result.has_value());
-        auto conn = std::make_shared<db::sqlite::Connection>(std::move(*conn_result));
+        auto conn = std::make_shared<FakeConn>(std::move(*conn_result));
 
         // Step 1: BEGIN TRANSACTION fails.
-        MockSqlite3Config::step_fails_on_call(1, SQLITE_BUSY);
+        FakeSqliteConfig::step_fails_on_call(1, SQLITE_BUSY);
 
         bool body_ran = false;
         auto result   = storm::transaction(conn, [&](auto& /*txn*/) -> std::expected<int, db::Error> {
@@ -2665,12 +2687,12 @@ namespace {
     TEST_F(ORMMockErrorTest, TransactionScopeCommitFailurePropagates) {
         // transaction (#415) error path: body succeeds but COMMIT fails →
         // the commit error propagates (guard already rolled back).
-        auto conn_result = db::sqlite::Connection::open(":memory:");
+        auto conn_result = FakeConn::open(":memory:");
         ASSERT_TRUE(conn_result.has_value());
-        auto conn = std::make_shared<db::sqlite::Connection>(std::move(*conn_result));
+        auto conn = std::make_shared<FakeConn>(std::move(*conn_result));
 
         // Step 1: BEGIN (succeeds), Step 2: COMMIT (fails with BUSY).
-        MockSqlite3Config::step_fails_on_call(2, SQLITE_BUSY);
+        FakeSqliteConfig::step_fails_on_call(2, SQLITE_BUSY);
 
         auto result = storm::transaction(conn, [&](auto& /*txn*/) -> std::expected<int, db::Error> {
             return 7; // body succeeds → scope attempts COMMIT.
@@ -2683,14 +2705,14 @@ namespace {
     TEST_F(ORMMockErrorTest, TransactionGuardCommitFailureDoesNotDoubleRollback) {
         // #353 nit: commit() failure issues one in-commit() ROLLBACK; the
         // destructor must NOT issue a second redundant ROLLBACK.
-        auto conn_result = db::sqlite::Connection::open(":memory:");
+        auto conn_result = FakeConn::open(":memory:");
         ASSERT_TRUE(conn_result.has_value());
-        auto conn = std::make_shared<db::sqlite::Connection>(std::move(*conn_result));
+        auto conn = std::make_shared<FakeConn>(std::move(*conn_result));
 
-        using TxnGuard = storm::TransactionGuard<db::sqlite::Connection>;
+        using TxnGuard = storm::TransactionGuard<FakeConn>;
 
         // Step 1: BEGIN TRANSACTION (succeeds), Step 2: COMMIT (fails)
-        MockSqlite3Config::step_fails_on_call(2, SQLITE_BUSY);
+        FakeSqliteConfig::step_fails_on_call(2, SQLITE_BUSY);
 
         {
             auto txn = TxnGuard::begin(conn);
@@ -2700,22 +2722,22 @@ namespace {
             ASSERT_FALSE(result.has_value());
 
             // After failed commit(): BEGIN(1) + COMMIT(2) + in-commit ROLLBACK(3) = 3 steps
-            EXPECT_EQ(MockSqlite3Config::get_step_call_count(), 3);
+            EXPECT_EQ(FakeSqliteConfig::get_step_call_count(), 3);
             // Guard goes out of scope here → destructor must not ROLLBACK again
         }
 
         // Destructor must NOT have issued a second ROLLBACK (would make it 4)
-        EXPECT_EQ(MockSqlite3Config::get_step_call_count(), 3);
+        EXPECT_EQ(FakeSqliteConfig::get_step_call_count(), 3);
     }
 
     TEST_F(ORMMockErrorTest, TransactionGuardMoveCtorDoesNotRollbackMovedFrom) {
         // #353: moving a guard must neutralize the source so destroying the
         // moved-from object issues no ROLLBACK.
-        auto conn_result = db::sqlite::Connection::open(":memory:");
+        auto conn_result = FakeConn::open(":memory:");
         ASSERT_TRUE(conn_result.has_value());
-        auto conn = std::make_shared<db::sqlite::Connection>(std::move(*conn_result));
+        auto conn = std::make_shared<FakeConn>(std::move(*conn_result));
 
-        using TxnGuard = storm::TransactionGuard<db::sqlite::Connection>;
+        using TxnGuard = storm::TransactionGuard<FakeConn>;
 
         // dst (live owner) outlives the inner scope where the moved-from source dies.
         std::optional<TxnGuard> dst;
@@ -2726,7 +2748,7 @@ namespace {
             ASSERT_TRUE(src_result.has_value());
             TxnGuard src = std::move(*src_result);
 
-            after_begin = MockSqlite3Config::get_step_call_count();
+            after_begin = FakeSqliteConfig::get_step_call_count();
 
             // Move-CONSTRUCT dst from src. src becomes moved-from.
             dst.emplace(std::move(src));
@@ -2734,7 +2756,7 @@ namespace {
         }
 
         // No ROLLBACK from the moved-from src destruction.
-        EXPECT_EQ(MockSqlite3Config::get_step_call_count(), after_begin);
+        EXPECT_EQ(FakeSqliteConfig::get_step_call_count(), after_begin);
 
         // dst owns the live transaction → commit to clean up.
         auto commit_result = dst->commit();
@@ -2744,18 +2766,18 @@ namespace {
     TEST_F(ORMMockErrorTest, TransactionGuardMoveAssignDoesNotRollbackMovedFrom) {
         // #353: move-assignment must neutralize the source so destroying the
         // moved-from object issues no ROLLBACK.
-        auto conn_result = db::sqlite::Connection::open(":memory:");
+        auto conn_result = FakeConn::open(":memory:");
         ASSERT_TRUE(conn_result.has_value());
-        auto conn = std::make_shared<db::sqlite::Connection>(std::move(*conn_result));
+        auto conn = std::make_shared<FakeConn>(std::move(*conn_result));
 
-        using TxnGuard = storm::TransactionGuard<db::sqlite::Connection>;
+        using TxnGuard = storm::TransactionGuard<FakeConn>;
 
         // Target guard already committed → its move-assign rollback_if_needed() is a no-op.
         auto dst = TxnGuard::begin(conn);
         ASSERT_TRUE(dst.has_value());
         ASSERT_TRUE(dst->commit().has_value());
 
-        const int before_assign = MockSqlite3Config::get_step_call_count();
+        const int before_assign = FakeSqliteConfig::get_step_call_count();
 
         {
             // Source guard lives only in this scope, moved into dst below.
@@ -2768,7 +2790,7 @@ namespace {
         }
 
         // The BEGIN for src counts as one step; no extra ROLLBACK from moved-from destruction.
-        EXPECT_EQ(MockSqlite3Config::get_step_call_count(), before_assign + 1);
+        EXPECT_EQ(FakeSqliteConfig::get_step_call_count(), before_assign + 1);
 
         // dst now owns the live transaction → commit to clean up.
         auto commit_result = dst->commit();
@@ -2902,42 +2924,39 @@ namespace {
 
     TEST_F(ORMMockErrorTest, BetweenExprBindFailsOnFirstParam) {
         // Covers lines 156-157: BetweenExpr::bind_params_direct min value bind failure
-        MockSqlite3Config::bind_int_returns(SQLITE_NOMEM);
+        FakeSqliteConfig::bind_int_returns(SQLITE_NOMEM);
 
         QuerySet<MockPerson> qs;
         auto                 age    = storm::orm::where::Field<^^MockPerson::age>{};
         auto                 result = qs.where(age.between(20, 40)).select().execute();
 
-        if (!result.has_value()) {
-            EXPECT_EQ(result.error().code(), SQLITE_NOMEM);
-        }
+        ASSERT_FALSE(result.has_value());
+        EXPECT_EQ(result.error().code(), SQLITE_NOMEM);
     }
 
     TEST_F(ORMMockErrorTest, InExprBindFailsOnValueParam) {
         // Covers lines 204-205: InExpression::bind_params_direct value bind failure
-        MockSqlite3Config::bind_int_returns(SQLITE_NOMEM);
+        FakeSqliteConfig::bind_int_returns(SQLITE_NOMEM);
 
         QuerySet<MockPerson> qs;
         auto                 age    = storm::orm::where::Field<^^MockPerson::age>{};
         auto                 result = qs.where(age.in(25, 30, 35)).select().execute();
 
-        if (!result.has_value()) {
-            EXPECT_EQ(result.error().code(), SQLITE_NOMEM);
-        }
+        ASSERT_FALSE(result.has_value());
+        EXPECT_EQ(result.error().code(), SQLITE_NOMEM);
     }
 
     TEST_F(ORMMockErrorTest, LogicalExprLeftChildBindFailure) {
         // Covers lines 295-296: BindParamsVisitor left child bind failure in AND/OR
-        MockSqlite3Config::bind_int_returns(SQLITE_NOMEM);
+        FakeSqliteConfig::bind_int_returns(SQLITE_NOMEM);
 
         QuerySet<MockPerson> qs;
         auto                 age = storm::orm::where::Field<^^MockPerson::age>{};
         // The left child (age > 25) will fail to bind because bind_int returns NOMEM
         auto result = qs.where(age > 25 && age < 40).select().execute();
 
-        if (!result.has_value()) {
-            EXPECT_EQ(result.error().code(), SQLITE_NOMEM);
-        }
+        ASSERT_FALSE(result.has_value());
+        EXPECT_EQ(result.error().code(), SQLITE_NOMEM);
     }
 
     // =====================================================================
@@ -2945,7 +2964,7 @@ namespace {
     // =====================================================================
 
     TEST_F(ORMMockErrorTest, FirstFailsOnPrepareError) {
-        MockSqlite3Config::prepare_returns(SQLITE_ERROR);
+        FakeSqliteConfig::prepare_returns(SQLITE_ERROR);
 
         QuerySet<MockPerson> qs;
         auto                 result = qs.first().execute();
@@ -2955,7 +2974,7 @@ namespace {
     }
 
     TEST_F(ORMMockErrorTest, FirstFailsOnStepError) {
-        MockSqlite3Config::step_returns(SQLITE_CORRUPT);
+        FakeSqliteConfig::step_returns(SQLITE_CORRUPT);
 
         QuerySet<MockPerson> qs;
         auto                 result = qs.first().execute();
@@ -2965,7 +2984,7 @@ namespace {
     }
 
     TEST_F(ORMMockErrorTest, GetFailsOnPrepareError) {
-        MockSqlite3Config::prepare_returns(SQLITE_ERROR);
+        FakeSqliteConfig::prepare_returns(SQLITE_ERROR);
 
         QuerySet<MockPerson> qs;
         auto                 result = qs.get().execute();
@@ -2975,7 +2994,7 @@ namespace {
     }
 
     TEST_F(ORMMockErrorTest, GetFailsOnStepError) {
-        MockSqlite3Config::step_returns(SQLITE_CORRUPT);
+        FakeSqliteConfig::step_returns(SQLITE_CORRUPT);
 
         QuerySet<MockPerson> qs;
         auto                 result = qs.get().execute();
@@ -2986,7 +3005,9 @@ namespace {
     }
 
     TEST_F(ORMMockErrorTest, FirstWithJoinFailsOnPrepareError) {
-        MockSqlite3Config::prepare_returns(SQLITE_ERROR);
+        FakeSqliteConfig::reset();
+        fresh_db<MockMessage>();
+        FakeSqliteConfig::prepare_returns(SQLITE_ERROR);
 
         QuerySet<MockMessage> qs;
         auto                  result = qs.join<fields::MockMessage.sender>().first().execute();
@@ -2995,7 +3016,9 @@ namespace {
     }
 
     TEST_F(ORMMockErrorTest, GetWithJoinFailsOnPrepareError) {
-        MockSqlite3Config::prepare_returns(SQLITE_ERROR);
+        FakeSqliteConfig::reset();
+        fresh_db<MockMessage>();
+        FakeSqliteConfig::prepare_returns(SQLITE_ERROR);
 
         QuerySet<MockMessage> qs;
         auto                  result = qs.join<fields::MockMessage.sender>().get().execute();
@@ -3004,7 +3027,9 @@ namespace {
     }
 
     TEST_F(ORMMockErrorTest, FirstWithJoinFailsOnStepError) {
-        MockSqlite3Config::step_returns(SQLITE_CORRUPT);
+        FakeSqliteConfig::reset();
+        fresh_db<MockMessage>();
+        FakeSqliteConfig::step_returns(SQLITE_CORRUPT);
 
         QuerySet<MockMessage> qs;
         auto                  result = qs.join<fields::MockMessage.sender>().first().execute();
@@ -3014,8 +3039,10 @@ namespace {
     }
 
     TEST_F(ORMMockErrorTest, FirstWithJoinReturnsRow) {
+        FakeSqliteConfig::reset();
+        fresh_db<MockMessage>();
         // Return one row then done — exercises JOIN lambda body in execute_one()
-        MockSqlite3Config::step_returns_sequence({SQLITE_ROW, SQLITE_DONE});
+        FakeSqliteConfig::step_returns_sequence({SQLITE_ROW, SQLITE_DONE});
 
         QuerySet<MockMessage> qs;
         auto                  result = qs.join<fields::MockMessage.sender>().first().execute();
@@ -3026,7 +3053,9 @@ namespace {
     }
 
     TEST_F(ORMMockErrorTest, GetWithJoinFailsOnStepError) {
-        MockSqlite3Config::step_returns(SQLITE_CORRUPT);
+        FakeSqliteConfig::reset();
+        fresh_db<MockMessage>();
+        FakeSqliteConfig::step_returns(SQLITE_CORRUPT);
 
         QuerySet<MockMessage> qs;
         auto                  result = qs.join<fields::MockMessage.sender>().get().execute();
@@ -3036,8 +3065,10 @@ namespace {
     }
 
     TEST_F(ORMMockErrorTest, GetWithJoinReturnsRow) {
+        FakeSqliteConfig::reset();
+        fresh_db<MockMessage>();
         // Return one row then done — exercises JOIN lambda body in execute_get()
-        MockSqlite3Config::step_returns_sequence({SQLITE_ROW, SQLITE_DONE});
+        FakeSqliteConfig::step_returns_sequence({SQLITE_ROW, SQLITE_DONE});
 
         QuerySet<MockMessage> qs;
         auto                  result = qs.join<fields::MockMessage.sender>().get().execute();
@@ -3051,7 +3082,7 @@ namespace {
     // ============================================================================
 
     TEST_F(ORMMockErrorTest, ToSqlSelectFailsOnPrepare) {
-        MockSqlite3Config::prepare_returns(SQLITE_ERROR);
+        FakeSqliteConfig::prepare_returns(SQLITE_ERROR);
 
         QuerySet<MockPerson> qs;
         auto                 result = qs.select().to_sql();
@@ -3060,7 +3091,7 @@ namespace {
     }
 
     TEST_F(ORMMockErrorTest, ToSqlSelectWithWhereFailsOnBind) {
-        MockSqlite3Config::bind_int_returns(SQLITE_NOMEM);
+        FakeSqliteConfig::bind_int_returns(SQLITE_NOMEM);
 
         QuerySet<MockPerson> qs;
         auto                 age    = storm::orm::where::Field<^^MockPerson::age>{};
@@ -3074,7 +3105,7 @@ namespace {
     // ============================================================================
 
     TEST_F(ORMMockErrorTest, ToSqlInsertFailsOnPrepare) {
-        MockSqlite3Config::prepare_returns(SQLITE_ERROR);
+        FakeSqliteConfig::prepare_returns(SQLITE_ERROR);
 
         QuerySet<MockPerson> qs;
         MockPerson const     person{.id = 0, .name = "Alice", .age = 30};
@@ -3084,7 +3115,7 @@ namespace {
     }
 
     TEST_F(ORMMockErrorTest, ToSqlInsertFailsOnBind) {
-        MockSqlite3Config::bind_text_returns(SQLITE_NOMEM);
+        FakeSqliteConfig::bind_text_returns(SQLITE_NOMEM);
 
         QuerySet<MockPerson> qs;
         MockPerson const     person{.id = 0, .name = "Alice", .age = 30};
@@ -3098,7 +3129,7 @@ namespace {
     // ============================================================================
 
     TEST_F(ORMMockErrorTest, ToSqlBulkInsertFailsOnPrepare) {
-        MockSqlite3Config::prepare_returns(SQLITE_ERROR);
+        FakeSqliteConfig::prepare_returns(SQLITE_ERROR);
 
         QuerySet<MockPerson>    qs;
         std::vector<MockPerson> people = {MockPerson{.id = 0, .name = "Alice", .age = 30}};
@@ -3108,7 +3139,7 @@ namespace {
     }
 
     TEST_F(ORMMockErrorTest, ToSqlBulkInsertFailsOnBind) {
-        MockSqlite3Config::bind_text_returns(SQLITE_NOMEM);
+        FakeSqliteConfig::bind_text_returns(SQLITE_NOMEM);
 
         QuerySet<MockPerson>    qs;
         std::vector<MockPerson> people = {MockPerson{.id = 0, .name = "Alice", .age = 30}};
@@ -3122,7 +3153,7 @@ namespace {
     // ============================================================================
 
     TEST_F(ORMMockErrorTest, ToSqlRemoveFailsOnPrepare) {
-        MockSqlite3Config::prepare_returns(SQLITE_ERROR);
+        FakeSqliteConfig::prepare_returns(SQLITE_ERROR);
 
         QuerySet<MockPerson> qs;
         MockPerson const     person{.id = 1, .name = "Alice", .age = 30};
@@ -3132,7 +3163,7 @@ namespace {
     }
 
     TEST_F(ORMMockErrorTest, ToSqlRemoveFailsOnBind) {
-        MockSqlite3Config::bind_int64_returns(SQLITE_NOMEM);
+        FakeSqliteConfig::bind_int64_returns(SQLITE_NOMEM);
 
         QuerySet<MockPerson> qs;
         MockPerson const     person{.id = 1, .name = "Alice", .age = 30};
@@ -3146,7 +3177,7 @@ namespace {
     // ============================================================================
 
     TEST_F(ORMMockErrorTest, ToSqlBulkRemoveFailsOnPrepare) {
-        MockSqlite3Config::prepare_returns(SQLITE_ERROR);
+        FakeSqliteConfig::prepare_returns(SQLITE_ERROR);
 
         QuerySet<MockPerson>    qs;
         std::vector<MockPerson> people = {MockPerson{.id = 1, .name = "Alice", .age = 30}};
@@ -3156,7 +3187,7 @@ namespace {
     }
 
     TEST_F(ORMMockErrorTest, ToSqlBulkRemoveFailsOnBind) {
-        MockSqlite3Config::bind_int64_returns(SQLITE_NOMEM);
+        FakeSqliteConfig::bind_int64_returns(SQLITE_NOMEM);
 
         QuerySet<MockPerson>    qs;
         std::vector<MockPerson> people = {MockPerson{.id = 1, .name = "Alice", .age = 30}};
@@ -3170,7 +3201,7 @@ namespace {
     // ============================================================================
 
     TEST_F(ORMMockErrorTest, ToSqlUpdateFailsOnPrepare) {
-        MockSqlite3Config::prepare_returns(SQLITE_ERROR);
+        FakeSqliteConfig::prepare_returns(SQLITE_ERROR);
 
         QuerySet<MockPerson> qs;
         MockPerson const     person{.id = 1, .name = "Alice", .age = 30};
@@ -3180,7 +3211,7 @@ namespace {
     }
 
     TEST_F(ORMMockErrorTest, ToSqlUpdateFailsOnBind) {
-        MockSqlite3Config::bind_text_returns(SQLITE_NOMEM);
+        FakeSqliteConfig::bind_text_returns(SQLITE_NOMEM);
 
         QuerySet<MockPerson> qs;
         MockPerson const     person{.id = 1, .name = "Alice", .age = 30};
@@ -3196,7 +3227,7 @@ namespace {
     TEST_F(ORMMockErrorTest, ChunkedInsertTransactionBeginFails) {
         // BEGIN TRANSACTION is executed via sqlite3_step (cached prepared statement path),
         // so step_fails_on_call(1, ...) intercepts it — exec_returns has no effect here
-        MockSqlite3Config::step_fails_on_call(1, SQLITE_BUSY);
+        FakeSqliteConfig::step_fails_on_call(1, SQLITE_BUSY);
 
         QuerySet<MockPerson>    qs;
         std::vector<MockPerson> people = {
@@ -3214,7 +3245,7 @@ namespace {
     TEST_F(ORMMockErrorTest, ChunkedInsertPartialFailureRollsBack) {
         // step call 1 = BEGIN TRANSACTION (succeeds), step call 2 = first INSERT (fails)
         // RAII TransactionGuard destructor issues ROLLBACK automatically on scope exit
-        MockSqlite3Config::step_fails_on_call(2, SQLITE_IOERR);
+        FakeSqliteConfig::step_fails_on_call(2, SQLITE_IOERR);
 
         QuerySet<MockPerson>    qs;
         std::vector<MockPerson> people = {
@@ -3245,7 +3276,7 @@ namespace {
         ASSERT_TRUE(result.has_value());
         // BEGIN TRANSACTION + COMMIT go through sqlite3_step (cached prepared statement path).
         // With batch_size=1 and 3 rows: step(BEGIN) + step(INSERT)*3 + step(COMMIT) = 5 minimum
-        EXPECT_GE(MockSqlite3Config::get_step_call_count(), 5);
+        EXPECT_GE(FakeSqliteConfig::get_step_call_count(), 5);
     }
 
     // ============================================================================
@@ -3253,7 +3284,7 @@ namespace {
     // ============================================================================
 
     TEST_F(ORMMockErrorTest, SetOpExecuteFailsOnPrepareError) {
-        MockSqlite3Config::prepare_returns(SQLITE_ERROR);
+        FakeSqliteConfig::prepare_returns(SQLITE_ERROR);
 
         QuerySet<MockPerson> qs1;
         QuerySet<MockPerson> qs2;
@@ -3264,7 +3295,7 @@ namespace {
     }
 
     TEST_F(ORMMockErrorTest, SetOpExecuteFailsOnBindError) {
-        MockSqlite3Config::bind_int_returns(SQLITE_NOMEM);
+        FakeSqliteConfig::bind_int_returns(SQLITE_NOMEM);
 
         QuerySet<MockPerson> qs1;
         QuerySet<MockPerson> qs2;
@@ -3275,7 +3306,7 @@ namespace {
     }
 
     TEST_F(ORMMockErrorTest, SetOpExecuteFailsOnStepError) {
-        MockSqlite3Config::step_returns(SQLITE_CORRUPT);
+        FakeSqliteConfig::step_returns(SQLITE_CORRUPT);
 
         QuerySet<MockPerson> qs1;
         QuerySet<MockPerson> qs2;
@@ -3286,7 +3317,7 @@ namespace {
     }
 
     TEST_F(ORMMockErrorTest, SetOpToSqlFailsOnPrepareError) {
-        MockSqlite3Config::prepare_returns(SQLITE_ERROR);
+        FakeSqliteConfig::prepare_returns(SQLITE_ERROR);
 
         QuerySet<MockPerson> qs1;
         QuerySet<MockPerson> qs2;
@@ -3297,7 +3328,7 @@ namespace {
     }
 
     TEST_F(ORMMockErrorTest, SetOpToSqlFailsOnBindError) {
-        MockSqlite3Config::bind_int_returns(SQLITE_NOMEM);
+        FakeSqliteConfig::bind_int_returns(SQLITE_NOMEM);
 
         QuerySet<MockPerson> qs1;
         QuerySet<MockPerson> qs2;
@@ -3312,7 +3343,7 @@ namespace {
     // ============================================================================
 
     TEST_F(ORMMockErrorTest, RowsFailsOnPrepareError) {
-        MockSqlite3Config::prepare_returns(SQLITE_ERROR);
+        FakeSqliteConfig::prepare_returns(SQLITE_ERROR);
 
         QuerySet<MockPerson> qs;
         for (auto&& result : qs.rows()) {
@@ -3322,7 +3353,7 @@ namespace {
     }
 
     TEST_F(ORMMockErrorTest, RowsFailsOnBindError) {
-        MockSqlite3Config::bind_int_returns(SQLITE_NOMEM);
+        FakeSqliteConfig::bind_int_returns(SQLITE_NOMEM);
 
         QuerySet<MockPerson> qs;
         auto                 age       = fields::MockPerson.age;
@@ -3337,7 +3368,7 @@ namespace {
     }
 
     TEST_F(ORMMockErrorTest, RowsFailsOnStepError) {
-        MockSqlite3Config::step_returns(SQLITE_CORRUPT);
+        FakeSqliteConfig::step_returns(SQLITE_CORRUPT);
 
         QuerySet<MockPerson> qs;
         bool                 got_error = false;
@@ -3351,7 +3382,7 @@ namespace {
     }
 
     TEST_F(JoinMockErrorTest, JoinRowsFailsOnStepError) {
-        MockSqlite3Config::step_returns(SQLITE_IOERR);
+        FakeSqliteConfig::step_returns(SQLITE_IOERR);
 
         QuerySet<MockMessage> qs;
         bool                  got_error = false;
@@ -3369,7 +3400,7 @@ namespace {
     // ============================================================================
 
     TEST_F(ORMMockErrorTest, InsertNoReturnPrepareFailure) {
-        MockSqlite3Config::prepare_returns(SQLITE_ERROR);
+        FakeSqliteConfig::prepare_returns(SQLITE_ERROR);
 
         QuerySet<MockPerson> qs;
         MockPerson const     person{.id = 0, .name = "Alice", .age = 30};
@@ -3381,20 +3412,19 @@ namespace {
     }
 
     TEST_F(ORMMockErrorTest, InsertNoReturnBindFailure) {
-        MockSqlite3Config::bind_text_returns(SQLITE_NOMEM);
+        FakeSqliteConfig::bind_text_returns(SQLITE_NOMEM);
 
         QuerySet<MockPerson> qs;
         MockPerson const     person{.id = 0, .name = "Alice", .age = 30};
 
         auto result = qs.insert<ReturnId::No>(person).execute();
 
-        if (!result.has_value()) {
-            EXPECT_EQ(result.error().code(), SQLITE_NOMEM);
-        }
+        ASSERT_FALSE(result.has_value());
+        EXPECT_EQ(result.error().code(), SQLITE_NOMEM);
     }
 
     TEST_F(ORMMockErrorTest, InsertNoReturnStepFailure) {
-        MockSqlite3Config::step_returns(SQLITE_IOERR);
+        FakeSqliteConfig::step_returns(SQLITE_IOERR);
 
         QuerySet<MockPerson> qs;
         MockPerson const     person{.id = 0, .name = "Alice", .age = 30};
@@ -3406,7 +3436,7 @@ namespace {
     }
 
     TEST_F(ORMMockErrorTest, InsertNoReturnToSqlPrepareFailure) {
-        MockSqlite3Config::prepare_returns(SQLITE_ERROR);
+        FakeSqliteConfig::prepare_returns(SQLITE_ERROR);
 
         QuerySet<MockPerson> qs;
         MockPerson const     person{.id = 0, .name = "Alice", .age = 30};
@@ -3418,16 +3448,15 @@ namespace {
     }
 
     TEST_F(ORMMockErrorTest, InsertNoReturnToSqlBindFailure) {
-        MockSqlite3Config::bind_text_returns(SQLITE_NOMEM);
+        FakeSqliteConfig::bind_text_returns(SQLITE_NOMEM);
 
         QuerySet<MockPerson> qs;
         MockPerson const     person{.id = 0, .name = "Alice", .age = 30};
 
         auto result = qs.insert<ReturnId::No>(person).to_sql();
 
-        if (!result.has_value()) {
-            EXPECT_EQ(result.error().code(), SQLITE_NOMEM);
-        }
+        ASSERT_FALSE(result.has_value());
+        EXPECT_EQ(result.error().code(), SQLITE_NOMEM);
     }
 
     // ============================================================================
@@ -3441,7 +3470,7 @@ namespace {
     TEST_F(ORMMockErrorTest, HavingBindFailsInPrepareBindExtract) {
         // bind_int call order: WHERE param (age > 30), then HAVING param (age > 25)
         // Fail on 2nd bind_int call (the HAVING param)
-        MockSqlite3Config::bind_int_fails_on_call(2, SQLITE_NOMEM);
+        FakeSqliteConfig::bind_int_fails_on_call(2, SQLITE_NOMEM);
 
         QuerySet<MockPerson> qs;
         auto                 age = storm::orm::where::Field<^^MockPerson::age>{};
@@ -3454,7 +3483,7 @@ namespace {
     // Test: prepare_cached failure in prepare_bind_having_extract (aggregate.cppm:470-472)
     // When GROUP BY + HAVING (no WHERE): execute_simple() → prepare_bind_having_extract()
     TEST_F(ORMMockErrorTest, HavingPrepareFailsInPrepareBindHavingExtract) {
-        MockSqlite3Config::prepare_returns(SQLITE_ERROR);
+        FakeSqliteConfig::prepare_returns(SQLITE_ERROR);
 
         QuerySet<MockPerson> qs;
         auto                 age    = storm::orm::where::Field<^^MockPerson::age>{};
@@ -3468,7 +3497,7 @@ namespace {
     // When GROUP BY + HAVING (no WHERE): execute_simple() → prepare_bind_having_extract()
     TEST_F(ORMMockErrorTest, HavingBindFailsInPrepareBindHavingExtract) {
         // Fail on 1st bind_int call (the HAVING param — no WHERE params)
-        MockSqlite3Config::bind_int_returns(SQLITE_NOMEM);
+        FakeSqliteConfig::bind_int_returns(SQLITE_NOMEM);
 
         QuerySet<MockPerson> qs;
         auto                 age    = storm::orm::where::Field<^^MockPerson::age>{};
@@ -3481,7 +3510,7 @@ namespace {
     // Test: bind_having_params error (base.cppm:811-813)
     // Same path as above but verifies the reset + error propagation in bind_having_params
     TEST_F(ORMMockErrorTest, BindHavingParamsResetsOnError) {
-        MockSqlite3Config::bind_int_fails_on_call(1, SQLITE_CORRUPT);
+        FakeSqliteConfig::bind_int_fails_on_call(1, SQLITE_CORRUPT);
 
         QuerySet<MockPerson> qs;
         auto                 age    = storm::orm::where::Field<^^MockPerson::age>{};
@@ -3494,7 +3523,7 @@ namespace {
     // Test: Step error in extract_simple_no_reset (aggregate.cppm:514-519)
     // When simple aggregate (no GROUP BY) step returns error
     TEST_F(ORMMockErrorTest, AggregateStepErrorInExtractSimpleNoReset) {
-        MockSqlite3Config::step_returns(SQLITE_CORRUPT);
+        FakeSqliteConfig::step_returns(SQLITE_CORRUPT);
 
         QuerySet<MockPerson> qs;
         auto                 result = qs.count().execute();
@@ -3506,7 +3535,7 @@ namespace {
     // Test: Step returns NO_MORE_ROWS in extract_simple_no_reset (aggregate.cppm:515-516)
     // Returns default ResultType when no rows
     TEST_F(ORMMockErrorTest, AggregateStepNoRowsInExtractSimpleNoReset) {
-        MockSqlite3Config::step_returns(SQLITE_DONE);
+        FakeSqliteConfig::step_returns(SQLITE_DONE);
 
         QuerySet<MockPerson> qs;
         auto                 result = qs.count().execute();
@@ -3518,7 +3547,7 @@ namespace {
     // Test: Step error in extract_simple_result (aggregate.cppm:343-354)
     // WHERE + non-grouped aggregate → execute_where → extract_simple_result
     TEST_F(ORMMockErrorTest, AggregateWithWhereStepErrorInExtractSimpleResult) {
-        MockSqlite3Config::step_returns(SQLITE_CORRUPT);
+        FakeSqliteConfig::step_returns(SQLITE_CORRUPT);
 
         QuerySet<MockPerson> qs;
         auto                 age    = storm::orm::where::Field<^^MockPerson::age>{};
@@ -3530,7 +3559,7 @@ namespace {
 
     // Test: Step returns NO_MORE_ROWS in extract_simple_result (aggregate.cppm:346-351)
     TEST_F(ORMMockErrorTest, AggregateWithWhereStepNoRowsInExtractSimpleResult) {
-        MockSqlite3Config::step_returns(SQLITE_DONE);
+        FakeSqliteConfig::step_returns(SQLITE_DONE);
 
         QuerySet<MockPerson> qs;
         auto                 age    = storm::orm::where::Field<^^MockPerson::age>{};
@@ -3555,9 +3584,9 @@ namespace {
         // MockOptionalFKMessage has optional<MockUser> sender
         // When sender has value, bind_int is called for sender.id (FK PK)
         // Fail on first bind_int call
-        MockSqlite3Config::bind_int_fails_on_call(1, SQLITE_NOMEM);
+        FakeSqliteConfig::bind_int_fails_on_call(1, SQLITE_NOMEM);
 
-        (void)DefaultConnection<>::set(":memory:");
+        fresh_db<MockUser, MockOptionalFKMessage>();
         QuerySet<MockOptionalFKMessage> qs;
         MockUser const                  sender{.id = 1, .name = "Sender", .age = 30};
         MockOptionalFKMessage const     msg{.id = 0, .sender = sender, .text = "Hello"};
@@ -3570,9 +3599,9 @@ namespace {
 
     TEST_F(ORMMockErrorTest, InsertOptionalFKNullBindFailure) {
         // When sender is nullopt, bind_null is called
-        MockSqlite3Config::bind_null_returns(SQLITE_NOMEM);
+        FakeSqliteConfig::bind_null_returns(SQLITE_NOMEM);
 
-        (void)DefaultConnection<>::set(":memory:");
+        fresh_db<MockOptionalFKMessage>();
         QuerySet<MockOptionalFKMessage> qs;
         MockOptionalFKMessage const     msg{.id = 0, .sender = std::nullopt, .text = "No sender"};
 
@@ -3586,9 +3615,9 @@ namespace {
     // MockOrderLine>, 2-part PK) loops bind_null() once per target PK part, so a
     // failure must propagate out of the loop rather than being swallowed.
     TEST_F(ORMMockErrorTest, InsertOptionalCompositeFKNullBindFailure) {
-        MockSqlite3Config::bind_null_returns(SQLITE_NOMEM);
+        FakeSqliteConfig::bind_null_returns(SQLITE_NOMEM);
 
-        (void)DefaultConnection<>::set(":memory:");
+        fresh_db();
         QuerySet<MockOptionalCompositeFkOrder> qs;
         MockOptionalCompositeFkOrder const     order{.id = 0, .shipment_line = std::nullopt};
 
@@ -3606,13 +3635,13 @@ namespace {
     TEST_F(ORMMockErrorTest, CreateIndexesFailsOnExecError) {
         // Open first — open() issues PRAGMA foreign_keys = ON via sqlite3_exec (#412),
         // so the exec-failure must be configured AFTER a successful open, not before.
-        auto conn_result = db::sqlite::Connection::open(":memory:");
+        auto conn_result = FakeConn::open(":memory:");
         ASSERT_TRUE(conn_result.has_value());
-        auto conn = std::make_shared<db::sqlite::Connection>(std::move(conn_result.value()));
+        auto conn = std::make_shared<FakeConn>(std::move(conn_result.value()));
 
         // Configure exec to fail (create_indexes_if_not_exist uses conn->execute)
-        MockSqlite3Config::exec_returns(SQLITE_ERROR);
-        MockSqlite3Config::exec_error_message("index creation failed");
+        FakeSqliteConfig::exec_returns(SQLITE_ERROR);
+        FakeSqliteConfig::exec_error_message("index creation failed");
 
         // MockIndexedPerson has Index<name, department> → exec runs → fails
         auto result = orm::schema::SchemaStatement<MockIndexedPerson>::create_indexes_if_not_exist(conn);
@@ -3624,10 +3653,10 @@ namespace {
     // open() issues PRAGMA foreign_keys = ON via sqlite3_exec (#412). When that exec
     // fails, open() must surface the error and not return a half-initialised connection.
     TEST_F(ORMMockErrorTest, OpenFailsWhenForeignKeysPragmaFails) {
-        MockSqlite3Config::exec_returns(SQLITE_ERROR);
-        MockSqlite3Config::exec_error_message("pragma failed");
+        FakeSqliteConfig::exec_returns(SQLITE_ERROR);
+        FakeSqliteConfig::exec_error_message("pragma failed");
 
-        auto conn_result = db::sqlite::Connection::open(":memory:");
+        auto conn_result = FakeConn::open(":memory:");
 
         ASSERT_FALSE(conn_result.has_value()) << "open() must fail when the foreign_keys PRAGMA exec fails";
         EXPECT_EQ(conn_result.error().code(), SQLITE_ERROR);
@@ -3726,18 +3755,18 @@ namespace {
     // ============================================================================
 
     TEST_F(ORMMockErrorTest, ExpandedSqlReturnsEmptyOnNull) {
-        auto conn_result = db::sqlite::Connection::open(":memory:");
+        auto conn_result = FakeConn::open(":memory:");
         ASSERT_TRUE(conn_result.has_value());
 
-        MockPerson const                             alice{.id = 0, .name = "Alice", .age = 30};
-        QuerySet<MockPerson, db::sqlite::Connection> queryset;
+        MockPerson const               alice{.id = 0, .name = "Alice", .age = 30};
+        QuerySet<MockPerson, FakeConn> queryset;
 
         // First insert normally to get a prepared statement
         auto insert_result = queryset.insert(alice).execute();
         ASSERT_TRUE(insert_result.has_value());
 
         // Configure expanded_sql to return null
-        MockSqlite3Config::expanded_sql_returns_null();
+        FakeSqliteConfig::expanded_sql_returns_null();
 
         // to_sql() calls expanded_sql internally — should return empty string when null
         auto sql_result = queryset.insert(alice).to_sql();
@@ -3746,7 +3775,7 @@ namespace {
     }
 
     TEST_F(ORMMockErrorTest, ConnectionRawHandleGet) {
-        auto conn_result = db::sqlite::Connection::open(":memory:");
+        auto conn_result = FakeConn::open(":memory:");
         ASSERT_TRUE(conn_result.has_value());
 
         // get() should return a non-null raw sqlite3 pointer
@@ -3779,7 +3808,9 @@ namespace {
     } // namespace fields
 
     TEST_F(ORMMockErrorTest, M2MSelectFailsOnStepError) {
-        MockSqlite3Config::step_returns(SQLITE_IOERR);
+        FakeSqliteConfig::reset();
+        fresh_db<MockStudent>();
+        FakeSqliteConfig::step_returns(SQLITE_IOERR);
 
         QuerySet<MockStudent> qs;
         auto                  rows = qs.join<fields::MockStudent.courses>().select().execute();
@@ -3789,7 +3820,9 @@ namespace {
     }
 
     TEST_F(ORMMockErrorTest, M2MFirstFailsOnStepError) {
-        MockSqlite3Config::step_returns(SQLITE_IOERR);
+        FakeSqliteConfig::reset();
+        fresh_db<MockStudent>();
+        FakeSqliteConfig::step_returns(SQLITE_IOERR);
 
         QuerySet<MockStudent> qs;
         auto                  first = qs.join<fields::MockStudent.courses>().first().execute();
@@ -3799,7 +3832,9 @@ namespace {
     }
 
     TEST_F(ORMMockErrorTest, M2MGetFailsOnStepError) {
-        MockSqlite3Config::step_returns(SQLITE_IOERR);
+        FakeSqliteConfig::reset();
+        fresh_db<MockStudent>();
+        FakeSqliteConfig::step_returns(SQLITE_IOERR);
 
         QuerySet<MockStudent> qs;
         auto                  got = qs.join<fields::MockStudent.courses>().get().execute();
@@ -3809,7 +3844,9 @@ namespace {
     }
 
     TEST_F(ORMMockErrorTest, M2MRowsGeneratorYieldsStepError) {
-        MockSqlite3Config::step_returns(SQLITE_CORRUPT);
+        FakeSqliteConfig::reset();
+        fresh_db<MockStudent>();
+        FakeSqliteConfig::step_returns(SQLITE_CORRUPT);
 
         QuerySet<MockStudent> qs;
         auto                  joined    = qs.join<fields::MockStudent.courses>();
@@ -3829,7 +3866,9 @@ namespace {
     // proves the transaction is opened BEFORE Q1/Q2 run: the BEGIN error surfaces
     // and no rows come back.
     TEST_F(ORMMockErrorTest, M2MSelectOpensTransactionBeforeQueries) {
-        MockSqlite3Config::step_fails_on_call(1, SQLITE_BUSY); // 1st step = BEGIN TRANSACTION
+        FakeSqliteConfig::reset();
+        fresh_db<MockStudent>();
+        FakeSqliteConfig::step_fails_on_call(1, SQLITE_BUSY); // 1st step = BEGIN TRANSACTION
 
         QuerySet<MockStudent> qs;
         auto                  rows = qs.join<fields::MockStudent.courses>().select().execute();
@@ -3844,7 +3883,9 @@ namespace {
     // 5 = Q2 (junction⋈related). Failing each exercises the distinct prepare error
     // branch in run_q1 / run_q2_stitch (via prepare_clause_sql).
     TEST_F(ORMMockErrorTest, M2MSelectFailsOnQ1PrepareError) {
-        MockSqlite3Config::prepare_fails_on_call(4, SQLITE_NOMEM); // Q1 prepare
+        FakeSqliteConfig::reset();
+        fresh_db<MockStudent>();
+        FakeSqliteConfig::prepare_fails_on_call(4, SQLITE_NOMEM); // Q1 prepare
 
         QuerySet<MockStudent> qs;
         auto                  rows = qs.join<fields::MockStudent.courses>().select().execute();
@@ -3854,7 +3895,9 @@ namespace {
     }
 
     TEST_F(ORMMockErrorTest, M2MSelectFailsOnQ2PrepareError) {
-        MockSqlite3Config::prepare_fails_on_call(5, SQLITE_IOERR); // Q2 prepare
+        FakeSqliteConfig::reset();
+        fresh_db<MockStudent>();
+        FakeSqliteConfig::prepare_fails_on_call(5, SQLITE_IOERR); // Q2 prepare
 
         QuerySet<MockStudent> qs;
         auto                  rows = qs.join<fields::MockStudent.courses>().select().execute();
@@ -3866,7 +3909,9 @@ namespace {
     // Q2's row loop ends on a non-NO_MORE_ROWS step → error surfaces from
     // run_q2_stitch. Step sequence: 1=BEGIN ok, 2=Q1 NO_MORE (empty), 3=Q2 fails.
     TEST_F(ORMMockErrorTest, M2MSelectFailsOnQ2StepError) {
-        MockSqlite3Config::step_fails_on_call(3, SQLITE_CORRUPT);
+        FakeSqliteConfig::reset();
+        fresh_db<MockStudent>();
+        FakeSqliteConfig::step_fails_on_call(3, SQLITE_CORRUPT);
 
         QuerySet<MockStudent> qs;
         auto                  rows = qs.join<fields::MockStudent.courses>().select().execute();
@@ -3878,7 +3923,9 @@ namespace {
     // The final COMMIT (4th step: BEGIN, Q1 NO_MORE, Q2 NO_MORE, COMMIT) fails →
     // error surfaces from execute_m2m_2query's commit() branch.
     TEST_F(ORMMockErrorTest, M2MSelectFailsOnCommitError) {
-        MockSqlite3Config::step_fails_on_call(4, SQLITE_FULL);
+        FakeSqliteConfig::reset();
+        fresh_db<MockStudent>();
+        FakeSqliteConfig::step_fails_on_call(4, SQLITE_FULL);
 
         QuerySet<MockStudent> qs;
         auto                  rows = qs.join<fields::MockStudent.courses>().select().execute();
@@ -3890,7 +3937,9 @@ namespace {
     // An m2m select WITH a WHERE clause binds params into Q1; a bind failure
     // surfaces from prepare_clause_sql's bind branch.
     TEST_F(ORMMockErrorTest, M2MSelectFailsOnWhereBindError) {
-        MockSqlite3Config::bind_int_returns(SQLITE_RANGE);
+        FakeSqliteConfig::reset();
+        fresh_db<MockStudent>();
+        FakeSqliteConfig::bind_int_returns(SQLITE_RANGE);
 
         QuerySet<MockStudent> qs;
         auto rows = qs.join<fields::MockStudent.courses>().where(fields::MockStudent.id > 0).select().execute();
@@ -3928,7 +3977,9 @@ namespace {
     // (courses), 6 = Q2b (clubs). Failing call 6 exercises the per-relation Q2
     // loop's error branch for a relation after the first.
     TEST_F(ORMMockErrorTest, MultiM2MSelectFailsOnSecondQ2PrepareError) {
-        MockSqlite3Config::prepare_fails_on_call(6, SQLITE_IOERR);
+        FakeSqliteConfig::reset();
+        fresh_db<MockMember>();
+        FakeSqliteConfig::prepare_fails_on_call(6, SQLITE_IOERR);
 
         QuerySet<MockMember> qs;
         auto                 rows = qs.join<fields::MockMember.courses, fields::MockMember.clubs>().select().execute();
@@ -3941,7 +3992,9 @@ namespace {
     // 4 = Q2b fails → the error surfaces from the second run_q2_stitch and the
     // transaction never commits.
     TEST_F(ORMMockErrorTest, MultiM2MSelectFailsOnSecondQ2StepError) {
-        MockSqlite3Config::step_fails_on_call(4, SQLITE_CORRUPT);
+        FakeSqliteConfig::reset();
+        fresh_db<MockMember>();
+        FakeSqliteConfig::step_fails_on_call(4, SQLITE_CORRUPT);
 
         QuerySet<MockMember> qs;
         auto                 rows = qs.join<fields::MockMember.courses, fields::MockMember.clubs>().select().execute();
@@ -3952,7 +4005,9 @@ namespace {
 
     // With two relations the COMMIT is the 5th step (BEGIN, Q1, Q2a, Q2b, COMMIT).
     TEST_F(ORMMockErrorTest, MultiM2MSelectFailsOnCommitError) {
-        MockSqlite3Config::step_fails_on_call(5, SQLITE_FULL);
+        FakeSqliteConfig::reset();
+        fresh_db<MockMember>();
+        FakeSqliteConfig::step_fails_on_call(5, SQLITE_FULL);
 
         QuerySet<MockMember> qs;
         auto                 rows = qs.join<fields::MockMember.courses, fields::MockMember.clubs>().select().execute();

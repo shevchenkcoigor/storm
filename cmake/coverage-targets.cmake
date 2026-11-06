@@ -1,18 +1,17 @@
 # Coverage targets — must be included after test targets are defined (after
 # tests.cmake).
 #
-# Combines data from three test binaries: - storm_tests:             main tests
-# (real SQLite/PostgreSQL) - storm_orm_mock_tests:    SQLite mock tests via
-# LD_PRELOAD (error paths) - storm_orm_pg_mock_tests: PG mock tests via
+# Combines data from two test binaries: - storm_tests:             main tests
+# (real SQLite/PostgreSQL, incl. the SQLite error paths driven by the fake
+# sqlite3 API policy, #784) - storm_orm_pg_mock_tests: PG mock tests via
 # LD_PRELOAD (PG error paths)
 if(ENABLE_COVERAGE AND ENABLE_TESTS)
 
-  # The three raw-profile inputs, shared by coverage-merge (profdata merge) and
+  # The raw-profile inputs, shared by coverage-merge (profdata merge) and
   # coverage-clean (rm). Kept as a space-joined string so it drops straight into
   # the bash -c command lines below.
   set(COVERAGE_PROFRAW
-      "${CMAKE_BINARY_DIR}/batch_*.profraw ${CMAKE_BINARY_DIR}/mock.profraw ${CMAKE_BINARY_DIR}/pg_mock.profraw"
-  )
+      "${CMAKE_BINARY_DIR}/batch_*.profraw ${CMAKE_BINARY_DIR}/pg_mock.profraw")
 
   # The coverage run needs a REAL PostgreSQL: three constexpr
   # transaction-nesting methods on the PG Connection (postgresql_connection.cppm
@@ -44,16 +43,6 @@ if(ENABLE_COVERAGE AND ENABLE_TESTS)
     VERBATIM)
 
   add_custom_target(
-    coverage-run-mock
-    COMMAND
-      ${CMAKE_COMMAND} -E env LLVM_PROFILE_FILE=${CMAKE_BINARY_DIR}/mock.profraw
-      LD_PRELOAD=$<TARGET_FILE:mock_sqlite3> $<TARGET_FILE:storm_orm_mock_tests>
-    DEPENDS storm_orm_mock_tests mock_sqlite3
-    WORKING_DIRECTORY ${CMAKE_BINARY_DIR}
-    COMMENT "Running mock tests with coverage instrumentation (LD_PRELOAD)"
-    VERBATIM)
-
-  add_custom_target(
     coverage-run-pg-mock
     COMMAND
       ${CMAKE_COMMAND} -E env
@@ -67,7 +56,7 @@ if(ENABLE_COVERAGE AND ENABLE_TESTS)
 
   add_custom_target(
     coverage-run
-    DEPENDS coverage-run-main coverage-run-mock coverage-run-pg-mock
+    DEPENDS coverage-run-main coverage-run-pg-mock
     COMMENT "All coverage tests completed")
 
   add_custom_target(
@@ -78,27 +67,24 @@ if(ENABLE_COVERAGE AND ENABLE_TESTS)
       "${LLVM_PROFDATA} merge -sparse ${COVERAGE_PROFRAW} -o ${COVERAGE_OUTPUT_DIR}/coverage.profdata"
     DEPENDS coverage-run
     WORKING_DIRECTORY ${CMAKE_BINARY_DIR}
-    COMMENT
-      "Merging coverage data from batched main tests, mock tests, and PG mock tests"
+    COMMENT "Merging coverage data from batched main tests and PG mock tests"
     VERBATIM)
 
   # Single source of truth for excluded path fragments. These are filtered out
   # at the llvm-cov export stage (coverage-lcov) — it scans the storm_tests and
-  # the two mock binaries, so vendored/build paths and the mock shared objects
-  # show up there and must be dropped. By the time the lcov stage runs, the
-  # exported tracefile already contains src/ paths only, so it needs no path
-  # globs (the previous "*/third_party/*" etc. were dead — lcov reported them as
-  # unused). The one src/ file that still needs removing is the vendored
-  # generator, handled separately below.
-  set(COVERAGE_EXCLUDE_PATHS third_party googletest build mock_sqlite
-                             mock_libpq)
+  # the PG mock binary, so vendored/build paths and the mock shared object show
+  # up there and must be dropped. By the time the lcov stage runs, the exported
+  # tracefile already contains src/ paths only, so it needs no path globs (the
+  # previous "*/third_party/*" etc. were dead — lcov reported them as unused).
+  # The one src/ file that still needs removing is the vendored generator,
+  # handled separately below.
+  set(COVERAGE_EXCLUDE_PATHS third_party googletest build mock_libpq)
   list(JOIN COVERAGE_EXCLUDE_PATHS "|" COVERAGE_EXCLUDE_REGEX)
 
   add_custom_target(
     coverage-lcov
     COMMAND
       ${LLVM_COV} export $<TARGET_FILE:storm_tests>
-      -object=$<TARGET_FILE:storm_orm_mock_tests>
       -object=$<TARGET_FILE:storm_orm_pg_mock_tests>
       -instr-profile=${COVERAGE_OUTPUT_DIR}/coverage.profdata -format=lcov
       -ignore-filename-regex="${COVERAGE_EXCLUDE_REGEX}" ${CMAKE_SOURCE_DIR}/src

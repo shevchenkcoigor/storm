@@ -32,7 +32,6 @@ cmake/
 ├── sanitizers.cmake         # USE_SANITIZER option
 └── format.cmake             # clang-format/cmake-format targets
 tests/CMakeLists.txt         # Test binary, mock sub-targets
-tests/mock_sqlite/CMakeLists.txt
 tests/mock_libpq/CMakeLists.txt
 benchmarks/CMakeLists.txt
 CMakePresets.json            # ninja-debug, ninja-release, ninja-prod presets

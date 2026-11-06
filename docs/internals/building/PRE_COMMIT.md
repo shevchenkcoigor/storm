@@ -9,7 +9,7 @@ modes with different scopes.
 Before running clang-tidy, `commit.sh` configures the release build and then
 builds clang-tidy's prerequisites, so a fresh worktree doesn't fail with
 "module BMI not found" (clang-tidy on files that `import std;`/`import storm;`
-need the BMIs) or a missing test binary later at the test stage (the test stage runs `storm_tests`, `storm_mock_tests`, and
+need the BMIs) or a missing test binary later at the test stage (the test stage runs `storm_tests` and
 `storm_pq_mock_tests` directly — see
 [TESTING.md#local-test-suite-speed](../testing/TESTING.md#local-test-suite-speed)
 for why it doesn't use `ctest`). It similarly ensures `build/debug` is built

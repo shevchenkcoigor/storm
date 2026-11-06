@@ -232,8 +232,8 @@ git add -A && git commit -m "message"
 # Self-heal (#489/#557): commit.sh configures build/release, then builds just what
 #   clang-tidy needs (storm BMIs + synthesized-module BMIs + the two mock binaries)
 #   (BMIs + mock binaries, so no missing compile_commands.json / std.pcm) and
-#   build/debug before running the test binaries directly (so none of the three
-#   — storm_tests, storm_mock_tests, storm_pq_mock_tests — is missing). No-op on
+#   build/debug before running the test binaries directly (so neither of the two
+#   — storm_tests, storm_pq_mock_tests — is missing). No-op on
 #   the warm path; covers both the git-hook path and a manual ./commit.sh on a
 #   fresh worktree. Each configure runs INSIDE the step that needs it, so a
 #   failed configure fails that step with the CMake error in its log (#674).
