@@ -30,8 +30,9 @@ TEST_BIN="${BUILD_DIR}/tests/storm_tests"
 # The coverage gate requires a REAL PostgreSQL. Three constexpr transaction
 # methods on the PG Connection (postgresql_connection.cppm in_transaction /
 # enter_transaction / leave_transaction) plus part of pool.cppm are instantiated
-# only by a live connection — tests/mock_libpq never reaches them — so without a
-# server the run lands at ~99.8-99.9% and the 100% gate fails.
+# only by a live connection — as are the PG error-path tests (the fake libpq API
+# policy forwards to a real server, #787) — so without a server the 100% gate
+# fails.
 #
 # Default to the local unix socket, but let an already-exported value win: that
 # is how the CI coverage job points these tests at its postgres service

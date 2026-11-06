@@ -90,7 +90,7 @@ if args[:2] == ["--build", "--preset"]:
         sys.stderr.write("ninja: error: loading 'build.ninja': No such file or directory\\n")
         sys.exit(1)
     if args[2] == "ninja-debug" and len(args) == 3:
-        for binary in ("tests/storm_tests", "tests/mock_libpq/storm_pq_mock_tests"):
+        for binary in ("tests/storm_tests",):
             path = os.path.join(directory, binary)
             os.makedirs(os.path.dirname(path), exist_ok=True)
             with open(path, "w") as script:

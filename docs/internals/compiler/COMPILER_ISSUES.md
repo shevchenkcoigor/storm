@@ -453,7 +453,7 @@ PCH holds only `<gtest/gtest.h>`, which the TU includes textually anyway), and
 
 **Cause**: same family as section 11 (#464). An alias of a class-template specialization (`BasicConnection<RealApi>`) exported from a module did not merge across the PCH and the several `import` paths a TU sees, so lookup found two distinct declarations. Plain aliases such as `using Error = storm::db::Error;` still work, so this is specific to the template-specialization case. A real class merges by ODR and is fine.
 
-**Rule**: a name that tests and users spell qualified (`storm::db::sqlite::Connection`) and that would alias a class-template specialization must be a real class instead. Member aliases inside a class (`Connection::Statement`) are fine. #760 made `Connection` a final subclass of `BasicConnection<RealApi>` and dropped the `sqlite::Statement` alias (use `Connection::Statement`).
+**Rule**: a name that tests and users spell qualified (`storm::db::sqlite::Connection`) and that would alias a class-template specialization must be a real class instead. Member aliases inside a class (`Connection::Statement`) are fine. #760 made `Connection` a final subclass of `BasicConnection<RealApi>` and dropped the `sqlite::Statement` alias (use `Connection::Statement`). #787 applied the same rule to PostgreSQL: `postgresql::Connection` is a final subclass of `BasicConnection<RealApi>`, and the former `postgresql::Statement` class is now `BasicStatement<Api>`, spelled `Connection::Statement`.
 
 ## Debugging Tips
 

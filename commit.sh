@@ -130,7 +130,7 @@ configure_and_build() {
 # never links — so building the full default release target set to enable it
 # spends ~90% of its time on the ~110 release test TUs of storm_tests that
 # clang-tidy never opens. Measured on a cold tree (4 cores): 764s for the full
-# set against 172s for the three things it actually needs:
+# set against 172s for what it actually needs:
 #
 #   a) the storm library BMIs, for `import storm;`
 #   b) the BMIs of the module targets CMake SYNTHESIZES for module consumers
@@ -138,7 +138,8 @@ configure_and_build() {
 #      so they are not reachable as static ninja targets until the .dd files
 #      exist — building `storm` alone leaves them absent and clang-tidy then
 #      fails with `module 'std' not found`, which is #489's first failure mode.
-#   c) the PG mock test binary, for #489's second failure mode.
+#   (#489's second failure mode, unbuilt mock test binaries, is gone with the
+#   binaries: the SQLite and PG error-path tests run in storm_tests, #784/#787.)
 #
 # FAIL SAFE, per #557: every uncertain path falls back to the full build. A
 # wrong skip is expensive to attribute — a missing BMI does not make clang-tidy
@@ -186,13 +187,9 @@ build_tidy_prereqs() {
         return
     fi
 
-    # storm: the library BMIs. The PG mock binary: #489's failure mode 2, and its
-    # modmap, which tests/mock_libpq/ TUs need — those files get staged often.
-    # Named explicitly, so renaming it (tests/mock_libpq/CMakeLists.txt) fails
-    # this step CLOSED and blocks the commit, rather than silently under-building.
-    # (The SQLite mock binary is gone: its tests run in storm_tests, #784.)
-    cmake --build --preset ninja-release \
-        --target storm storm_pq_mock_tests || return 1
+    # storm: the library BMIs. (The mock test binaries this also built are gone:
+    # their tests run in storm_tests, #784/#787.)
+    cmake --build --preset ninja-release --target storm || return 1
 
     # The BMIs of the module targets CMake synthesizes for module CONSUMERS
     # (CMakeFiles/*@synth_N.dir/*.bmi). `--target storm` does not build them —
@@ -366,11 +363,11 @@ TOTAL_STEPS=0
 #      will NOT build itself. CMake wires the std module + per-TU `@….modmap` via
 #      ninja dyndep, invisible to compile_commands — only a real release build
 #      produces them (#326 Finding C).
-#   2. `storm_mock_tests_NOT_BUILT` (now storm_pq_mock_tests) on a later `ctest`/tidy run against release —
-#      the mock test binaries were never compiled. Building `--target storm` alone
-#      (the pre-#489 behavior) produced the BMIs but not the mock binaries.
+#   2. `storm_mock_tests_NOT_BUILT` on a later `ctest`/tidy run against release —
+#      the mock test binaries were never compiled. Moot since #787 removed the
+#      last mock binary (both suites now run in storm_tests).
 # So this prebuild configures release if needed, then builds what clang-tidy
-# needs (BMIs + mock test binaries), self-healing a fresh/stale worktree for
+# needs (the module BMIs), self-healing a fresh/stale worktree for
 # both the git-hook path and a manual `./commit.sh` run (#489). It builds those
 # targets specifically rather than the full default set, which spent ~90% of a
 # cold build on release test TUs clang-tidy never opens (#557) — see
@@ -419,14 +416,14 @@ if [[ "$RUN_TIDY" == true ]]; then
     # Self-heal a fresh/stale build/release before clang-tidy (#489): configure
     # if compile_commands.json is absent — inside the step, so a failed configure
     # fails it with the CMake error in its log (#674) — then build what clang-tidy
-    # needs: the module BMIs (for `import std;`/`import storm;`) and the mock test
-    # binaries. build_tidy_prereqs builds those targets specifically rather than the full
+    # needs: the module BMIs (for `import std;`/`import storm;`).
+    # build_tidy_prereqs builds those targets specifically rather than the full
     # default set (#557), and falls back to the full build whenever it cannot
     # prove that is enough. This is a no-op when release is already up to date
     # (the ninja build short-circuits), so the warm path stays fast. See the
     # RUN_TIDY_BMI comment above for the two failures this prevents.
     if [[ "$RUN_TIDY_BMI" == true ]]; then
-        run_step "release prereqs (BMIs + PG mock binary, for clang-tidy)" "$LOG_TIDY_BMI" \
+        run_step "release prereqs (BMIs, for clang-tidy)" "$LOG_TIDY_BMI" \
             build_tidy_prereqs
     fi
 
@@ -455,15 +452,15 @@ if [[ "$RUN_BENCH_RELEASE" == true ]]; then
 fi
 
 # --- Step 4: tests ---
-# Run the two gtest binaries directly instead of `ctest --preset ninja-debug`:
+# Run the gtest binary directly instead of `ctest --preset ninja-debug`:
 # ctest registers each of the ~3000 individual gtest cases as its own CTest test
 # (gtest_discover_tests DISCOVERY_MODE PRE_TEST), so it re-launches the whole
 # storm_tests process per test case. Measured 2026-08-27: ~260s via ctest vs
-# ~33s running the binaries once each (7.8x) — see
+# ~33s running the binary once (7.8x) — see
 # docs/internals/testing/TESTING.md#local-test-suite-speed. Self-heal first:
 # configure build/debug if absent, then build the FULL default debug target set
-# so every binary (main + PG mock) exists — otherwise a fresh/stale worktree
-# would be missing them (#489). Both are no-ops on the warm path (config guarded
+# so storm_tests exists — otherwise a fresh/stale worktree would be missing it
+# (#489). Both are no-ops on the warm path (config guarded
 # by a file check; the ninja build short-circuits when up to date).
 if [[ "$RUN_TESTS" == true ]]; then
     build_debug_then_test() {
@@ -519,7 +516,6 @@ if [[ "$RUN_TESTS" == true ]]; then
         }
         local overall=0
         run_with_timeout 900 ./build/debug/tests/storm_tests --gtest_brief=1 || overall=1
-        run_with_timeout 60 ./build/debug/tests/mock_libpq/storm_pq_mock_tests --gtest_brief=1 || overall=1
         return $overall
     }
     run_step_live "tests (SQLite + PostgreSQL)" "$LOG_TESTS" build_debug_then_test || true

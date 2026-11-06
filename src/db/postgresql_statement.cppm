@@ -12,9 +12,9 @@ import storm_db_postgresql_error;
 
 export namespace storm::db::postgresql {
 
-    // RAII wrapper emulating step-based iteration over PGresult*
-    class Statement { // NOSONAR(cpp:S1448) - monolithic statement class required for RAII + step iteration over C
-                      // PGresult API
+    // RAII wrapper emulating step-based iteration over PGresult*. `Api` is the libpq call
+    // policy (#787): RealApi (storm_db_postgresql_connection) in production, a fake in tests.
+    template <typename Api> class BasicStatement { // NOSONAR(cpp:S1448) - RAII + step iteration over PGresult
       public:
         using Error = postgresql::Error;
 
@@ -23,7 +23,7 @@ export namespace storm::db::postgresql {
         static constexpr int         NO_MORE_ROWS     = 0;
         static constexpr std::size_t MAX_DB_VARIABLES = 999; // matches BaseStatement::MAX_DB_VARIABLES
 
-        explicit Statement(PGconn* conn, std::string stmt_name) : conn_(conn), stmt_name_(std::move(stmt_name)) {
+        explicit BasicStatement(PGconn* conn, std::string stmt_name) : conn_(conn), stmt_name_(std::move(stmt_name)) {
             param_values_.reserve(MAX_DB_VARIABLES);
             param_ptrs_.reserve(MAX_DB_VARIABLES);
             param_lengths_.reserve(MAX_DB_VARIABLES);
@@ -36,18 +36,18 @@ export namespace storm::db::postgresql {
         // connection's lifetime when the bounded L3 cache evicts this entry.
         // finalize() is best-effort and noexcept-safe, and clears stmt_name_ so a
         // moved-from Statement (whose name was swapped away) does nothing.
-        ~Statement() {
+        ~BasicStatement() {
             finalize();
         }
 
         // Move semantics — swap-based to keep the field list in one place.
         // `other` ends up in a default-constructed-equivalent state; its destructor
         // sees result_==nullptr and does nothing.
-        Statement(Statement&& other) noexcept {
+        BasicStatement(BasicStatement&& other) noexcept {
             swap(*this, other);
         }
 
-        auto operator=(Statement&& other) noexcept -> Statement& {
+        auto operator=(BasicStatement&& other) noexcept -> BasicStatement& {
             if (this != &other) {
                 clear_result();
                 swap(*this, other);
@@ -55,7 +55,7 @@ export namespace storm::db::postgresql {
             return *this;
         }
 
-        friend auto swap(Statement& first, Statement& second) noexcept -> void {
+        friend auto swap(BasicStatement& first, BasicStatement& second) noexcept -> void {
             using std::swap;
             swap(first.conn_, second.conn_);
             swap(first.stmt_name_, second.stmt_name_);
@@ -75,8 +75,8 @@ export namespace storm::db::postgresql {
         }
 
         // Delete copy operations
-        Statement(const Statement&)                    = delete;
-        auto operator=(const Statement&) -> Statement& = delete;
+        BasicStatement(const BasicStatement&)                    = delete;
+        auto operator=(const BasicStatement&) -> BasicStatement& = delete;
 
         // Shared core for all text-based bind paths. Propagates OOM as Error rather than
         // throwing through noexcept — see issue #316.
@@ -183,7 +183,7 @@ export namespace storm::db::postgresql {
             // Rebuild param_ptrs_ from param_values_ to ensure pointers are valid
             rebuild_param_ptrs();
 
-            result_ = PQexecPrepared(
+            result_ = Api::exec_prepared(
                     conn_,
                     stmt_name_.c_str(),
                     param_count_,
@@ -195,7 +195,7 @@ export namespace storm::db::postgresql {
 
             const ExecStatusType status = PQresultStatus(result_);
             if (status != PGRES_COMMAND_OK && status != PGRES_TUPLES_OK) [[unlikely]] {
-                const char* msg = PQerrorMessage(conn_);
+                const char* msg = Api::error_message(conn_);
                 clear_result();
                 return std::unexpected(Error{static_cast<int>(status), msg});
             }
@@ -254,7 +254,7 @@ export namespace storm::db::postgresql {
                 // so a stack buffer for "DEALLOCATE <name>" can never overflow and never throws.
                 std::array<char, 11 + 64 + 1> buf{};
                 std::snprintf(buf.data(), buf.size(), "DEALLOCATE %s", stmt_name_.c_str());
-                PGresult* res = PQexec(conn_, buf.data());
+                PGresult* res = Api::exec(conn_, buf.data());
                 if (res != nullptr) {
                     PQclear(res);
                 }
@@ -446,7 +446,7 @@ export namespace storm::db::postgresql {
 
         template <typename = void>
         [[nodiscard]] __attribute__((always_inline)) auto get_error_message() const noexcept -> const char* {
-            return PQerrorMessage(conn_);
+            return Api::error_message(conn_);
         }
 
       private:

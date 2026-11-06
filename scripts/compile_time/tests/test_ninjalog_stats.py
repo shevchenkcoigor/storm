@@ -26,7 +26,6 @@ STATS = testing.REPO_ROOT / "scripts" / "compile_time" / "ninjalog_stats.py"
 BUCKET_STORM = "storm library modules"
 BUCKET_TESTS = "hand-written test TUs"
 BUCKET_YAML = "yaml corpus TUs"
-BUCKET_MOCK = "mock test binaries"
 BUCKET_OTHER = "other (gtest/gmock, std module, tools, deps)"
 TOTAL = "TOTAL (object compiles)"
 SCANS = "module scan edges (excluded)"
@@ -92,13 +91,12 @@ class NinjalogStatsTest(unittest.TestCase):
         result = self.stats([
             (0, 1000, "tests/CMakeFiles/storm_tests.dir/query/test_where.cpp.o", "1111aaaa"),
             (0, 2000, "tests/CMakeFiles/storm_tests.dir/yaml/test_unified_yaml_select.cpp.o", "2222bbbb"),
-            (0, 3000, "tests/mock_libpq/CMakeFiles/storm_pq_mock_tests.dir/mock_libpq.cpp.o", "3333cccc"),
             (0, 4000, QUEUE_MODULE_OBJ, "4444dddd")])
         rows = table(result.stdout)
-        # A yaml/ TU is the corpus, not a hand-written test; the other three land as named.
+        # A yaml/ TU is the corpus, not a hand-written test; the other two land as named.
         self.assertEqual({label: rows[label][0] for label in
-                          (BUCKET_YAML, BUCKET_TESTS, BUCKET_MOCK, BUCKET_STORM)},
-                         {BUCKET_YAML: 1, BUCKET_TESTS: 1, BUCKET_MOCK: 1, BUCKET_STORM: 1})
+                          (BUCKET_YAML, BUCKET_TESTS, BUCKET_STORM)},
+                         {BUCKET_YAML: 1, BUCKET_TESTS: 1, BUCKET_STORM: 1})
 
     def test_foreign_targets_stay_out_of_storm_rows(self):
         # Both were live bugs caught by classifying a real build log: a bare "mock" also
@@ -112,7 +110,6 @@ class NinjalogStatsTest(unittest.TestCase):
         self.assertEqual(result.returncode, 0, result.stderr)
         # All three were seen and filed under "other", so an empty stdout cannot pass vacuously.
         self.assertEqual(table(result.stdout)[BUCKET_OTHER][0], 3, result.stdout)
-        self.assertNotIn(BUCKET_MOCK, result.stdout)
         self.assertNotIn(BUCKET_STORM, result.stdout)
 
     def test_a_log_with_no_compiles_is_an_error(self):

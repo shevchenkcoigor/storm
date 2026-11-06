@@ -48,17 +48,14 @@ def bucket(output: str) -> str:
     """Classify an edge by output path, matching COMPILE_TIME.md's rows.
 
     Anchored on the CMake target directories rather than on loose substrings.
-    Two near-misses are why: a bare "mock" also matches GoogleMock's own
-    `_deps/googletest-build/googlemock/CMakeFiles/gmock.dir/`, and a bare
-    "@synth" also matches `@cmake_cxx_std@synth_0.dir` — the synthesized BMI of
-    the *std* module, which would then be counted as a Storm module while
-    `@cmake_cxx_std.dir` itself fell through to the dependency bucket. Both
-    inflate a Storm row with work that is not Storm's.
+    A near-miss is why: a bare "@synth" also matches `@cmake_cxx_std@synth_0.dir`
+    — the synthesized BMI of the *std* module, which would then be counted as a
+    Storm module while `@cmake_cxx_std.dir` itself fell through to the dependency
+    bucket, inflating a Storm row with work that is not Storm's. (The mock test
+    binaries had their own row until #787 moved their tests into storm_tests.)
     """
     if "/storm_tests.dir/" in output:
         return "yaml corpus TUs" if "/yaml/" in output else "hand-written test TUs"
-    if output.startswith("tests/mock_libpq/"):
-        return "mock test binaries"
     if output.startswith(("CMakeFiles/storm.dir/", "CMakeFiles/storm@synth")):
         return "storm library modules"
     return "other (gtest/gmock, std module, tools, deps)"
