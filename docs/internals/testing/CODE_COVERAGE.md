@@ -202,13 +202,18 @@ For example, `EraseStatement` has 8 methods × ~9 model types = ~52 "functions" 
 
 **Guideline**: Focus on **line coverage** (required: 100%). Function coverage gaps from unexercised template instantiations are expected and do not indicate missing test coverage.
 
-### Mock Tests
+### Error-Path Tests
 
-Error handling paths are tested in `tests/mock_sqlite/test_orm_mock_errors.cpp` using `LD_PRELOAD` to inject SQLite failures.
+SQLite error-handling paths are tested in `tests/db/test_sqlite_fake_errors.cpp`, which runs inside
+`storm_tests`: a fake `sqlite3_*` API policy (`tests/db/fake_sqlite_api.hpp`, #760/#784) injects failures at
+compile time, so no separate binary or `LD_PRELOAD` is involved and the tests also run on macOS.
+
+PostgreSQL error paths still use the `LD_PRELOAD` libpq mock (`tests/mock_libpq/`) until `PQ*` gets the same
+policy treatment.
 
 ```bash
-# Run mock tests separately
-cmake --build --preset ninja-debug --target coverage-run-mock
+# Run the PG mock tests separately
+cmake --build --preset ninja-debug --target coverage-run-pg-mock
 ```
 
 ## Batched Test Execution

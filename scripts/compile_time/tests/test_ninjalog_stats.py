@@ -92,7 +92,7 @@ class NinjalogStatsTest(unittest.TestCase):
         result = self.stats([
             (0, 1000, "tests/CMakeFiles/storm_tests.dir/query/test_where.cpp.o", "1111aaaa"),
             (0, 2000, "tests/CMakeFiles/storm_tests.dir/yaml/test_unified_yaml_select.cpp.o", "2222bbbb"),
-            (0, 3000, "tests/mock_sqlite/CMakeFiles/storm_mock_tests.dir/mock_sqlite3.cpp.o", "3333cccc"),
+            (0, 3000, "tests/mock_libpq/CMakeFiles/storm_pq_mock_tests.dir/mock_libpq.cpp.o", "3333cccc"),
             (0, 4000, QUEUE_MODULE_OBJ, "4444dddd")])
         rows = table(result.stdout)
         # A yaml/ TU is the corpus, not a hand-written test; the other three land as named.

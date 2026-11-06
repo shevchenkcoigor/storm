@@ -31,7 +31,6 @@ You will execute and analyze tests for the Storm ORM project, which uses cutting
 # The socket below is Linux's; macOS (Homebrew PostgreSQL) uses host=/tmp.
 STORM_PG_CONNSTR="host=/var/run/postgresql dbname=storm_db user=storm_db" \
     ./build/debug/tests/storm_tests \
-    && ./build/debug/tests/mock_sqlite/storm_mock_tests \
     && ./build/debug/tests/mock_libpq/storm_pq_mock_tests
 ```
 
@@ -147,7 +146,6 @@ For any non-trivial change, run all three test tiers:
 # (Linux socket shown; macOS Homebrew PostgreSQL uses host=/tmp)
 STORM_PG_CONNSTR="host=/var/run/postgresql dbname=storm_db user=storm_db" \
     ./build/debug/tests/storm_tests \
-    && ./build/debug/tests/mock_sqlite/storm_mock_tests \
     && ./build/debug/tests/mock_libpq/storm_pq_mock_tests
 
 # 2. ASAN + UBSAN (memory safety + undefined behavior)

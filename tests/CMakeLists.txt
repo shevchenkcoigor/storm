@@ -64,8 +64,7 @@ set_property(
   APPEND
   PROPERTY ADDITIONAL_CLEAN_FILES ${STALE_CASES_JSON})
 
-# Auto-discover all test source files (excluding mock_sqlite/mock_libpq
-# directories)
+# Auto-discover all test source files (excluding the mock_libpq directory)
 file(
   GLOB
   TEST_SOURCES
@@ -204,6 +203,15 @@ set_property(SOURCE ${STORM_PCH_SKIP_DASHBOARD} PROPERTY SKIP_PRECOMPILE_HEADERS
 set_property(SOURCE "${CMAKE_CURRENT_SOURCE_DIR}/db/test_sqlite_tuning.cpp"
              PROPERTY SKIP_PRECOMPILE_HEADERS ON)
 
+# #784: with the PCH this TU fails at `import std;` -- "definition with same
+# mangled name ... __packed_format_arg_store ... previous definition is here"
+# (libc++ __format/format_arg_store.h). Dropping the textual <format>, <string>,
+# <vector> and <cstdint> includes did NOT help, and the root cause is not
+# identified; it is the same PCH/`import std` split as above. Opt out until it
+# is. The old LD_PRELOAD mock binary never used the PCH.
+set_property(SOURCE "${CMAKE_CURRENT_SOURCE_DIR}/db/test_sqlite_fake_errors.cpp"
+             PROPERTY SKIP_PRECOMPILE_HEADERS ON)
+
 include(GoogleTest)
 
 target_link_libraries(${PROJECT_NAME} PRIVATE storm gtest gtest_main gmock
@@ -276,5 +284,4 @@ target_compile_options(${PROJECT_NAME} PRIVATE -Werror)
 
 add_dependencies(${PROJECT_NAME} generate_test_json)
 
-add_subdirectory(mock_sqlite)
 add_subdirectory(mock_libpq)

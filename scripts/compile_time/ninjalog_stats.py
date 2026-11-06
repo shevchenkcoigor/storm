@@ -57,7 +57,7 @@ def bucket(output: str) -> str:
     """
     if "/storm_tests.dir/" in output:
         return "yaml corpus TUs" if "/yaml/" in output else "hand-written test TUs"
-    if output.startswith(("tests/mock_sqlite/", "tests/mock_libpq/")):
+    if output.startswith("tests/mock_libpq/"):
         return "mock test binaries"
     if output.startswith(("CMakeFiles/storm.dir/", "CMakeFiles/storm@synth")):
         return "storm library modules"
