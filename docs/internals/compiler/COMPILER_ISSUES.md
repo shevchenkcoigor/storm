@@ -447,6 +447,14 @@ PCH holds only `<gtest/gtest.h>`, which the TU includes textually anyway), and
 `--diff` now fails on `PLEASE submit a bug report` instead of reporting success.
 **Removing either guard re-breaks the tidy gate silently.**
 
+### 14. Namespace-Scope Type Alias Exported From a Module — "Reference Is Ambiguous" (#760)
+
+**Symptom**: after `using Connection = BasicConnection<RealApi>;` in `storm_db_sqlite`, ~80 test TUs failed with `reference to 'Connection' is ambiguous` — on `using storm::db::sqlite::Connection;` AND on plain `db::sqlite::Connection`.
+
+**Cause**: same family as section 11 (#464). An alias of a class-template specialization (`BasicConnection<RealApi>`) exported from a module did not merge across the PCH and the several `import` paths a TU sees, so lookup found two distinct declarations. Plain aliases such as `using Error = storm::db::Error;` still work, so this is specific to the template-specialization case. A real class merges by ODR and is fine.
+
+**Rule**: a name that tests and users spell qualified (`storm::db::sqlite::Connection`) and that would alias a class-template specialization must be a real class instead. Member aliases inside a class (`Connection::Statement`) are fine. #760 made `Connection` a final subclass of `BasicConnection<RealApi>` and dropped the `sqlite::Statement` alias (use `Connection::Statement`).
+
 ## Debugging Tips
 
 1. **Clean build**: `rm -rf build/ && cmake --preset ninja-debug`

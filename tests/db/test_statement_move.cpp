@@ -6,7 +6,7 @@ import storm_db_sqlite;
 import std;
 import storm_db_sqlite;
 
-using storm::db::sqlite::Statement;
+using Statement = storm::db::sqlite::Connection::Statement;
 
 // ============================================================================
 // Statement move semantics (issue #354)

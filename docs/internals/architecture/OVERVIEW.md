@@ -78,7 +78,8 @@ src/
 ├── db/
 │   ├── concept.cppm                # Database concepts (incl. dialect-support concepts, #477)
 │   ├── pool.cppm                   # PoolConfig, connection pooling
-│   ├── sqlite.cppm                 # SQLite implementation
+│   ├── sqlite.cppm                 # SQLite BasicConnection<Api> + Connection (RealApi)
+│   ├── sqlite_statement.cppm       # RealApi sqlite3_* policy + BasicStatement<Api> (#760)
 │   ├── postgresql.cppm             # PostgreSQL implementation
 │   ├── postgresql_connection.cppm  # PostgreSQL connection management
 │   ├── postgresql_error.cppm       # PostgreSQL error mapping
