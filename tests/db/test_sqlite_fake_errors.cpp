@@ -15,12 +15,9 @@
  * - Step failures during execution
  */
 
-#include <cstdint>
 #include <gtest/gtest.h>
 #include <meta>
 #include <sqlite3.h>
-#include <string>
-#include <vector>
 
 // NOLINTBEGIN(cppcoreguidelines-non-private-member-variables-in-classes,misc-non-private-member-variables-in-classes) // NOSONAR(cpp:S125)
 // NOLINTBEGIN(misc-const-correctness,bugprone-unused-return-value,performance-inefficient-vector-operation) // NOSONAR(cpp:S125)

@@ -203,10 +203,12 @@ set_property(SOURCE ${STORM_PCH_SKIP_DASHBOARD} PROPERTY SKIP_PRECOMPILE_HEADERS
 set_property(SOURCE "${CMAKE_CURRENT_SOURCE_DIR}/db/test_sqlite_tuning.cpp"
              PROPERTY SKIP_PRECOMPILE_HEADERS ON)
 
-# #784: the ported SQLite error tests use std::format heavily. Through the PCH,
-# libc++'s textual <format> collides with the `std` module's copy ("definition
-# with same mangled name ... __packed_format_arg_store"), the same PCH/module
-# split as above. The old LD_PRELOAD mock binary never used the PCH.
+# #784: with the PCH this TU fails at `import std;` -- "definition with same
+# mangled name ... __packed_format_arg_store ... previous definition is here"
+# (libc++ __format/format_arg_store.h). Dropping the textual <format>, <string>,
+# <vector> and <cstdint> includes did NOT help, and the root cause is not
+# identified; it is the same PCH/`import std` split as above. Opt out until it
+# is. The old LD_PRELOAD mock binary never used the PCH.
 set_property(SOURCE "${CMAKE_CURRENT_SOURCE_DIR}/db/test_sqlite_fake_errors.cpp"
              PROPERTY SKIP_PRECOMPILE_HEADERS ON)
 
