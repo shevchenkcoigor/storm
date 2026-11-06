@@ -21,7 +21,7 @@ using storm::orm::statements::UpdateStatement;
 
 // readability-implicit-bool-conversion: false positive from GTest's EXPECT_TRUE(cond) << "msg"
 // macro expansion (the streamed message literal is misattributed); same pattern is used
-// throughout tests/ — see tests/mock_libpq/mock_libpq.cpp for the same file-level suppression.
+// throughout tests/.
 // NOLINTBEGIN(misc-const-correctness,readability-implicit-bool-conversion)
 
 using std::chrono::system_clock;

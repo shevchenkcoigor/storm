@@ -25,6 +25,9 @@ Object compiles only, ninja edges deduplicated (a C++ module edge emits both
 | YAML corpus TUs | 4 | 159 | **5.3%** | 39.7s |
 | mock test binaries | 6 | 54 | 1.8% | 9.0s |
 
+The `mock test binaries` rows in this file predate #787, which removed the
+preloaded libpq mock and its two binaries; later measurements have no such bucket.
+
 Total ≈ **3003 s** of compile CPU. Release is ~32% more expensive again (3954 s)
 despite Debug carrying coverage instrumentation — `-O2` over this much template
 instantiation costs more than the instrumentation does.

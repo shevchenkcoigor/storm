@@ -109,8 +109,8 @@ These scripts have project-specific conventions — understand them before modif
 **`scripts/coverage/coverage-run-batched.sh`** — Batched coverage report generation
 - **Requires a running PostgreSQL** to reach 100%: the PG `Connection`'s `constexpr`
   transaction methods and part of `pool.cppm` are instantiated only by a live connection
-  (the libpq mock does not reach them). Without one the tree measures ~99.8-99.9% and
-  function coverage drops 80.6% → 48.7%; the script prints a `WARN: PostgreSQL unreachable`
+  (and the PG error-path tests on the fake libpq API policy skip without one, #787), so without
+  one the gate fails, well below 100%, and function coverage drops sharply; the script prints a `WARN: PostgreSQL unreachable`
   line so the failure is self-diagnosing.
 - Defaults `STORM_PG_CONNSTR` per host OS via `scripts/coverage/coverage_gate.py pg-connstr` (Linux
   `host=/var/run/postgresql`, macOS `host=/tmp`; `commit.sh` uses the same helper, and the same module is the 100% line gate for `commit.sh` and CI); an exported value wins — that

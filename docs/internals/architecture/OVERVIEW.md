@@ -81,9 +81,9 @@ src/
 │   ├── sqlite.cppm                 # SQLite BasicConnection<Api> + Connection (RealApi)
 │   ├── sqlite_statement.cppm       # RealApi sqlite3_* policy + BasicStatement<Api> (#760)
 │   ├── postgresql.cppm             # PostgreSQL implementation
-│   ├── postgresql_connection.cppm  # PostgreSQL connection management
+│   ├── postgresql_connection.cppm  # RealApi PQ* policy + BasicConnection<Api> + Connection (#787)
 │   ├── postgresql_error.cppm       # PostgreSQL error mapping
-│   └── postgresql_statement.cppm   # PostgreSQL prepared statements
+│   └── postgresql_statement.cppm   # PostgreSQL BasicStatement<Api> (prepared statements)
 └── orm/
     ├── queryset.cppm               # QuerySet interface
     ├── ref_action.cppm             # RefAction, ref_action_sql (leaf module, #562)

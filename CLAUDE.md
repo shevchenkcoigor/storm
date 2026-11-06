@@ -230,10 +230,9 @@ git add -A && git commit -m "message"
 # Smart skips: no C++/cmake → skip all; cmake-only → tests+coverage+cmake-format; C++ only-bench → skip tests/coverage
 # Nothing staged (`--allow-empty`): the git hook skips everything (.githooks/pre-commit sets STORM_PRE_COMMIT_HOOK=1, #706); a manual ./commit.sh keeps the full suite; empty is relative to HEAD, so a reword-only `--amend` skips too
 # Self-heal (#489/#557): commit.sh configures build/release, then builds just what
-#   clang-tidy needs (storm BMIs + synthesized-module BMIs + the two mock binaries)
-#   (BMIs + mock binaries, so no missing compile_commands.json / std.pcm) and
-#   build/debug before running the test binaries directly (so neither of the two
-#   — storm_tests, storm_pq_mock_tests — is missing). No-op on
+#   clang-tidy needs (storm BMIs + synthesized-module BMIs, so no missing
+#   compile_commands.json / std.pcm) and build/debug before running storm_tests
+#   directly (the only test binary since #787, so it is never missing). No-op on
 #   the warm path; covers both the git-hook path and a manual ./commit.sh on a
 #   fresh worktree. Each configure runs INSIDE the step that needs it, so a
 #   failed configure fails that step with the CMake error in its log (#674).
@@ -280,7 +279,7 @@ cmake --preset ninja-release && cmake --build --preset ninja-release
 # ninja-debug has coverage enabled by default
 cmake --preset ninja-debug && cmake --build --preset ninja-debug
 
-# Console summary (quick) — ninja-debug-coverage unsets STORM_PG_CONNSTR (SQLite + mock PG only)
+# Console summary (quick) — ninja-debug-coverage unsets STORM_PG_CONNSTR; the coverage script then defaults it per OS
 cmake --build --preset ninja-debug-coverage --target coverage
 
 # HTML report (detailed)
@@ -299,9 +298,9 @@ The 100% is of the **filtered** set — 24 files / 8613 lines, `LCOV_EXCL` marke
 denominator — not of every line in the tree.
 
 **⚠️ Coverage requires a running PostgreSQL** — the PG `Connection`'s `constexpr` transaction-nesting
-methods and part of `pool.cppm` are instantiated only by a live connection (the libpq mock does not
-reach them). Without a server the tree measures **~99.8-99.9%** and the gate fails; function coverage
-dropping from 80.6% to **48.7%** is the tell, and the run prints a `WARN: PostgreSQL unreachable`
+methods and part of `pool.cppm` are instantiated only by a live connection, and the PG error-path tests
+(fake libpq API policy, #787) skip without one — so without a server the gate fails, well below 100%;
+a sharp drop in function coverage (about 82% with PG) is the tell, and the run prints a `WARN: PostgreSQL unreachable`
 line. `scripts/coverage/coverage-run-batched.sh` (and `commit.sh`) default `STORM_PG_CONNSTR` per host OS via
 `scripts/coverage/coverage_gate.py pg-connstr` — `host=/var/run/postgresql` on Linux, `host=/tmp` on macOS (Homebrew),
 anything else fails loudly; an exported value wins, which is how CI targets its `postgres` service container. Note the
@@ -899,7 +898,7 @@ Every new feature or modification MUST include thorough tests covering these cat
 
 #### Error Handling
 - Invalid inputs where applicable
-- Error paths tested via mock (test_orm_mock_errors.cpp pattern)
+- Error paths tested via the fake C-API policies (`tests/db/test_sqlite_fake_errors.cpp` / `test_pq_fake_errors.cpp` pattern, #784/#787)
 
 #### Cross-Backend
 - Tests use TYPED_TEST with DatabaseTypes to run on both SQLite and PostgreSQL

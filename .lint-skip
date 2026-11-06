@@ -26,7 +26,6 @@ src/orm/schema.cppm:               file-size
 
 # Pre-existing test fixture; #295 is src/ only. See `tests/` exclusion in issue body.
 tests/db/test_pool.cpp:                          file-size, duplicate
-tests/mock_libpq/test_orm_pg_mock_errors.cpp:    file-size, duplicate
 tests/schema/test_sql_inspection.cpp:            file-size
 tests/schema/test_types.cpp:                     file-size, duplicate, length
 tests/crud/test_insert_returning.cpp:            duplicate
@@ -37,7 +36,7 @@ tests/crud/test_insert_returning.cpp:            duplicate
 tests/crud/test_composite_pk_crud_body.h:        file-size
 tests/errors/test_sqlite_errors.cpp:            file-size, duplicate
 tests/db/test_sqlite_fake_errors.cpp:           file-size, duplicate
-tests/mock_libpq/mock_libpq.cpp:                parameters
+tests/db/test_pq_fake_errors.cpp:               file-size, duplicate
 benchmarks/schema.cppm:                         duplicate
 benchmarks/parser.cppm:                         file-size, duplicate, complexity
 tests/query/test_collate.cpp:                    duplicate

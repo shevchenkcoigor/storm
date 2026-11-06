@@ -4,7 +4,7 @@
 // and `<sqlite3.h>` (a textual include placed before the imports).
 //
 // FakeSqliteApi forwards to the real RealApi, substituting a result only where a
-// test armed one. Counting rules mirror the removed LD_PRELOAD mock: global call
+// test armed one. Counting rules mirror the removed preloaded mock: global call
 // counters, fail-on-call-N checked first, then a step sequence, then a fixed code.
 // A step sequence returns its codes without stepping the real statement; an
 // un-stepped statement reads back as NULL columns, as the mock's dummy handles did.

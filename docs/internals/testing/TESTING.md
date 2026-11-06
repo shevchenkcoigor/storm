@@ -75,9 +75,8 @@ Measured 2026-08-27 on the full `storm_tests` binary (2961 tests, SQLite + Postg
 | `./build/debug/tests/storm_tests` (direct) | ~33s | gtest's own in-process loop, one process |
 | `ctest --preset ninja-debug` | ~260s (7.8x slower) | `gtest_discover_tests` registers each test case as its own CTest test, so ctest re-launches the whole 129MB binary process per test — that per-process overhead swamps the preset's `jobs: 50` parallelism (and 50 also oversubscribes an 8-core machine) |
 
-**Takeaway**: for local iteration, run the gtest binaries directly. `commit.sh`'s
-test step does this (two binaries: `storm_tests` and
-`mock_libpq/storm_pq_mock_tests`). `ctest` is still useful locally for `-R`/`-N`
+**Takeaway**: for local iteration, run the gtest binary directly. `commit.sh`'s
+test step does this (`storm_tests`, the only test binary since #787). `ctest` is still useful locally for `-R`/`-N`
 filtering/listing. CI also uses `ctest` (via `ctest --test-dir build/<dir>`, with
 its own service-container connstr, not the `ninja-debug` testPreset), where
 per-test pass/fail visibility in the Actions UI matters more than raw wall time.
@@ -151,8 +150,8 @@ Per-category counts go stale fast as the suite grows, so this tracks only the
 total, measured alongside [Local Test Suite Speed](#local-test-suite-speed):
 
 - **2,961 tests** across 373 test suites in `storm_tests` (SQLite + PostgreSQL,
-  TYPED_TEST'd), plus 37 in `storm_pq_mock_tests`
-  (PG mock error-path binary; the SQLite error paths run in `storm_tests`, #784) — 100% passing
+  TYPED_TEST'd, incl. the SQLite and PostgreSQL error paths on the fake API policies,
+  #784/#787) — 100% passing
 - ~33s wall time running the binaries directly (measured 2026-08-27)
 
 ## Writing New Tests

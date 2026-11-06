@@ -19,7 +19,7 @@ export namespace storm::db::sqlite {
     // member is a static forwarder, so BasicStatement<RealApi>/BasicConnection<RealApi>
     // compile to the same direct sqlite3_* calls as before (no virtual, no
     // std::function). A test substitutes a fake policy to inject SQLITE_NOMEM,
-    // I/O errors etc. without LD_PRELOAD. Calls that cannot meaningfully fail
+    // I/O errors etc. with no library interposition. Calls that cannot meaningfully fail
     // (column_*, errmsg, finalize, close) stay direct.
     // The hot members (step, bind_*) are `template <typename = void>` on purpose: a
     // non-template function defined in a named module is not inlined into importing
