@@ -100,9 +100,9 @@ These scripts have project-specific conventions — understand them before modif
 - Exits non-zero on warnings/errors that affect the current mode's scope.
 
 **`sonar` CLI** — Branch-aware SonarCloud quality gate:
-- Branch mode (develop/master/main): `sonar list issues --project spiritEcosse_storm --branch develop --format table`
-- PR mode (feature branches): `sonar list issues --project spiritEcosse_storm --pull-request <N> --format table`
-- Quality gate status: `sonar api get "/api/qualitygates/project_status?projectKey=spiritEcosse_storm&branch=develop"`
+- Branch mode (develop/master/main): `sonar list issues --project shevchenkcoigor_storm --branch develop --format table`
+- PR mode (feature branches): `sonar list issues --project shevchenkcoigor_storm --pull-request <N> --format table`
+- Quality gate status: `sonar api get "/api/qualitygates/project_status?projectKey=shevchenkcoigor_storm&branch=develop"`
 - Auth stored in OS keychain via `sonar auth login`
 - Used by the `/sonarcloud-status` skill
 

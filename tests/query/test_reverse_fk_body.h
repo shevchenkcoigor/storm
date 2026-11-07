@@ -270,6 +270,43 @@ TYPED_TEST(ReverseFKTest, LeftJoinAggregateCountIncludesZeroGroups) {
     EXPECT_EQ(*total, 4);
 }
 
+// #785: the reverse-FK aggregate SQL is "RfPerson t1 <KW> RfTask t2", and RfTask also has
+// `id` — a base column in WHERE / an aggregate / GROUP BY must be written t1.id.
+TYPED_TEST(ReverseFKTest, JoinWhereAndAggregateOnSharedIdAreQualified) {
+    auto agg = (SelectStatement<RfPerson, TypeParam>{})
+                   .all()
+                   .where(fields::RfPerson.id > 0)
+                   .template join<fields::RfTask.assignee>()
+                   .template sum<fields::RfPerson.id>();
+    EXPECT_TRUE(agg.sql().starts_with("SELECT SUM(t1.id) FROM RfPerson t1 ")) << agg.sql();
+    EXPECT_TRUE(agg.sql().ends_with(" WHERE t1.id > ?")) << agg.sql();
+    auto sum = agg.execute();
+    ASSERT_TRUE(sum.has_value()) << sum.error().message();
+    EXPECT_EQ(*sum, 1 + 1 + 2); // T1, T2 -> Alice(1); T3 -> Bob(2)
+
+    auto count = (SelectStatement<RfPerson, TypeParam>{})
+                     .all()
+                     .where(fields::RfPerson.id > 0)
+                     .template join<fields::RfTask.assignee>()
+                     .count()
+                     .execute();
+    ASSERT_TRUE(count.has_value()) << count.error().message();
+    EXPECT_EQ(*count, 3);
+}
+
+TYPED_TEST(ReverseFKTest, LeftJoinGroupByOnSharedIdIsQualified) {
+    auto agg = (SelectStatement<RfPerson, TypeParam>{})
+                   .all()
+                   .where(fields::RfPerson.id > 0)
+                   .template left_join<fields::RfTask.assignee>()
+                   .template group_by<fields::RfPerson.id>()
+                   .count();
+    EXPECT_TRUE(agg.sql().contains(" WHERE t1.id > ? GROUP BY t1.id")) << agg.sql();
+    auto groups = agg.execute();
+    ASSERT_TRUE(groups.has_value()) << groups.error().message();
+    EXPECT_EQ(groups->size(), 3U); // Alice, Bob, Carol (LEFT keeps the zero group)
+}
+
 // ============================================================================
 // Disambiguation fixture (RfReporter / RfBug)
 // ============================================================================

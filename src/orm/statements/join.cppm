@@ -671,7 +671,7 @@ export namespace storm::orm::statements {
                     if (!first) {
                         result.append(", ");
                     }
-                    result.append("t1.");
+                    result.append(join_base_alias_prefix);
                     result.append(std::meta::identifier_of(member));
                     first = false;
                 }
@@ -1028,7 +1028,7 @@ export namespace storm::orm::statements {
                 if (!first) {
                     result.append(", ");
                 }
-                result.append("t1.");
+                result.append(join_base_alias_prefix);
                 meta::append_column_name(result, Base::all_members_[i]); // #422 — emits FK "_id"
                 first = false;
             }
@@ -1517,7 +1517,7 @@ export namespace storm::orm::statements {
                 if (!first) {
                     sql.append(", ");
                 }
-                sql.append("t1.");
+                sql.append(join_base_alias_prefix);
                 meta::append_column_name(sql, Base::all_members_[i]); // #422 — emits FK "_id"
                 first = false;
             }

@@ -62,7 +62,7 @@ struct QueryBase {
     template <auto... Args, typename Self>
         requires OrderBySelectorsAreSingleColumn<Args...>
     [[nodiscard]] auto order_by(this Self self) -> Self {
-        self.order_by_wrapper = make_order_by_wrapper<Args...>();
+        self.order_by_wrapper = make_order_by_wrapper<T, Args...>();
         return self;
     }
 

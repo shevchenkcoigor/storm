@@ -115,7 +115,7 @@ export namespace storm::orm::statements {
         // Compile-time field list with "t1." table alias prefix for JOIN queries
         template <std::size_t... Is>
         static consteval auto build_join_field_list_constexpr(std::index_sequence<Is...> seq) {
-            return build_field_list_with_prefix<NumFields * 3, Is...>("t1.", seq);
+            return build_field_list_with_prefix<NumFields * 3, Is...>(join_base_alias_prefix, seq);
         }
 
         static constexpr auto join_field_list_constexpr_ =
@@ -304,14 +304,17 @@ export namespace storm::orm::statements {
                 } // LCOV_EXCL_STOP
                 sql += join_field_list_string_;
                 sql.append(join_sql, from_pos, std::string::npos);
+                // Base table aliased t1: its WHERE / ORDER BY columns are qualified (#785).
+                Base::append_join_where(sql, where_expr_);
+                Base::template append_join_order_by<ConnType>(sql, order_by_wrapper_);
             } else {
                 sql = projection_sql_string_;
+                if (where_expr_) {
+                    sql += " WHERE ";
+                    sql += orm::where::to_sql(*where_expr_);
+                }
+                Base::template append_order_by<ConnType>(sql, order_by_wrapper_);
             }
-            if (where_expr_) {
-                sql += " WHERE ";
-                sql += orm::where::to_sql(*where_expr_);
-            }
-            Base::template append_order_by<ConnType>(sql, order_by_wrapper_);
             Base::template append_limit_offset<ConnType>(sql, limit_, offset_);
             return sql;
         }

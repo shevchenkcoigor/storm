@@ -399,6 +399,70 @@ TYPED_TEST(M2MSeededTest, CountOverM2MJoinCountsPairs) {
     EXPECT_EQ(count.value(), 3);
 }
 
+// #785: the m2m aggregate/DISTINCT SQL aliases the base t1 and joins Course t3, which
+// also has `id` — so a base column in WHERE / an aggregate / GROUP BY / HAVING must be
+// written t1.id or the statement is rejected as ambiguous. Executed, not text-only.
+TYPED_TEST(M2MSeededTest, M2MJoinWhereAndAggregateOnSharedIdAreQualified) {
+    auto agg = (SelectStatement<Student, TypeParam>{})
+                   .all()
+                   .template join<fields::Student.courses>()
+                   .where(fields::Student.id > 0)
+                   .template sum<fields::Student.id>();
+    EXPECT_TRUE(agg.sql().starts_with("SELECT SUM(t1.id) FROM ")) << agg.sql();
+    EXPECT_TRUE(agg.sql().ends_with(" WHERE t1.id > ?")) << agg.sql();
+    auto sum = agg.execute();
+    ASSERT_TRUE(sum.has_value()) << sum.error().message();
+    EXPECT_EQ(sum.value(), 1 + 1 + 2); // pairs (Alice,Math) (Alice,Physics) (Bob,Math)
+
+    auto count = (SelectStatement<Student, TypeParam>{})
+                     .all()
+                     .template join<fields::Student.courses>()
+                     .where(fields::Student.id > 0)
+                     .count()
+                     .execute();
+    ASSERT_TRUE(count.has_value()) << count.error().message();
+    EXPECT_EQ(count.value(), 3);
+}
+
+TYPED_TEST(M2MSeededTest, M2MLeftJoinWhereCountOnSharedIdIsQualified) {
+    auto count = (SelectStatement<Student, TypeParam>{})
+                     .all()
+                     .template left_join<fields::Student.courses>()
+                     .where(fields::Student.id > 0)
+                     .count()
+                     .execute();
+    ASSERT_TRUE(count.has_value()) << count.error().message();
+    EXPECT_EQ(count.value(), 4); // 3 pairs + Carol's NULL row
+}
+
+TYPED_TEST(M2MSeededTest, M2MJoinGroupByHavingOnSharedIdIsQualified) {
+    auto agg = (SelectStatement<Student, TypeParam>{})
+                   .all()
+                   .template join<fields::Student.courses>()
+                   .where(fields::Student.id > 0)
+                   .template group_by<fields::Student.id>()
+                   .having(fields::Student.id > 0)
+                   .count();
+    EXPECT_TRUE(agg.sql().contains(" GROUP BY t1.id HAVING t1.id > ?")) << agg.sql();
+    auto groups = agg.execute();
+    ASSERT_TRUE(groups.has_value()) << groups.error().message();
+    EXPECT_EQ(groups->size(), 2U); // Alice, Bob
+}
+
+TYPED_TEST(M2MSeededTest, M2MJoinDistinctOnSharedIdIsQualified) {
+    auto stmt = (SelectStatement<Student, TypeParam>{})
+                    .all()
+                    .template join<fields::Student.courses>()
+                    .where(fields::Student.id > 0)
+                    .template order_by<fields::Student.id>()
+                    .template distinct<fields::Student.id>();
+    EXPECT_TRUE(stmt.sql().starts_with("SELECT DISTINCT t1.id FROM ")) << stmt.sql();
+    EXPECT_TRUE(stmt.sql().contains(" WHERE t1.id > ? ORDER BY t1.id ")) << stmt.sql();
+    auto ids = stmt.execute();
+    ASSERT_TRUE(ids.has_value()) << ids.error().message();
+    EXPECT_EQ(ids->size(), 2U); // Alice, Bob — Carol has no course
+}
+
 // ============================================================================
 // Container coverage (#203 Phase 1 edge cases): plf::hive and shared_ptr elements
 // ============================================================================
