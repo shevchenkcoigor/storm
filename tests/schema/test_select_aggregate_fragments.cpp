@@ -69,7 +69,7 @@ TEST(AggregateGrammar, SingleOpSqlNamesColumns) {
 }
 
 TEST(AggregateGrammar, OpsAndGroupFieldListsAreCommaJoined) {
-    constexpr auto ops = build_ops_list<CountAll, AvgPrice>(std::make_index_sequence<2>{});
+    constexpr auto ops = build_owned_ops_list<void, CountAll, AvgPrice>(std::make_index_sequence<2>{});
     constexpr auto groups =
             build_group_fields_sql<GroupByFields<^^AgRow::name, ^^AgRow::owner>>(std::make_index_sequence<2>{});
     EXPECT_EQ(ops.view(), "COUNT(*), AVG(price)");

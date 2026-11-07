@@ -82,16 +82,16 @@ Use the `sonar` CLI to inspect code quality. Auth is stored in the OS keychain v
 
 ```bash
 # List issues on develop branch
-sonar list issues --project spiritEcosse_storm --branch develop --format table
+sonar list issues --project shevchenkcoigor_storm --branch develop --format table
 
 # List issues on a PR (new code only)
-sonar list issues --project spiritEcosse_storm --pull-request 48 --format table
+sonar list issues --project shevchenkcoigor_storm --pull-request 48 --format table
 
 # Quality gate status
-sonar api get "/api/qualitygates/project_status?projectKey=spiritEcosse_storm&branch=develop"
+sonar api get "/api/qualitygates/project_status?projectKey=shevchenkcoigor_storm&branch=develop"
 
 # Quality gate status for a PR
-sonar api get "/api/qualitygates/project_status?projectKey=spiritEcosse_storm&pullRequest=48"
+sonar api get "/api/qualitygates/project_status?projectKey=shevchenkcoigor_storm&pullRequest=48"
 ```
 
 ### Using with Claude Code Slash Commands
@@ -107,7 +107,7 @@ Inside Claude Code, you can use slash commands:
 ### Example
 
 ```bash
-$ sonar list issues --project spiritEcosse_storm --pull-request 48 --format table
+$ sonar list issues --project shevchenkcoigor_storm --pull-request 48 --format table
 
 Detecting PR for branch: claude/my-feature-branch
 Found PR #48
@@ -151,7 +151,7 @@ Duplication details (from PR files):
     ↔     Lines 283-303 in src/orm/statements/select.cppm
 
 🔗 Links:
-  Dashboard: https://sonarcloud.io/dashboard?id=spiritEcosse_storm&pullRequest=48
+  Dashboard: https://sonarcloud.io/dashboard?id=shevchenkcoigor_storm&pullRequest=48
   Issues: https://sonarcloud.io/project/issues?pullRequest=48&...
 
 === Summary ===

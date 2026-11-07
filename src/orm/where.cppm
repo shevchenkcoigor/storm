@@ -75,9 +75,15 @@ export namespace storm::orm::where {
         std::string field_name_;
         CompOp      op_;
         ValueType   value_;
+        // Owning model (#785); see ColumnQualifier. Empty for a hand-built node.
+        std::string_view owner_;
 
         [[nodiscard]] __attribute__((always_inline)) auto to_sql() const -> std::string {
-            return std::format("{}{}?", field_name_, comp_op_to_sql(op_));
+            return to_sql_with_column(field_name_);
+        }
+
+        [[nodiscard]] auto to_sql_with_column(std::string_view column) const -> std::string {
+            return std::format("{}{}?", column, comp_op_to_sql(op_));
         }
 
         template <typename StmtType, typename ErrorType>
@@ -91,9 +97,15 @@ export namespace storm::orm::where {
     struct NullCheckExpr {
         std::string field_name_;
         bool        is_null_; // true = IS NULL, false = IS NOT NULL
+        // Owning model (#785); see ColumnQualifier. Empty for a hand-built node.
+        std::string_view owner_;
 
         [[nodiscard]] __attribute__((always_inline)) auto to_sql() const -> std::string {
-            return is_null_ ? std::format("{} IS NULL", field_name_) : std::format("{} IS NOT NULL", field_name_);
+            return to_sql_with_column(field_name_);
+        }
+
+        [[nodiscard]] auto to_sql_with_column(std::string_view column) const -> std::string {
+            return is_null_ ? std::format("{} IS NULL", column) : std::format("{} IS NOT NULL", column);
         }
 
         template <typename StmtType, typename ErrorType>
@@ -107,9 +119,15 @@ export namespace storm::orm::where {
     struct LikeExpr {
         std::string field_name_;
         std::string pattern_;
+        // Owning model (#785); see ColumnQualifier. Empty for a hand-built node.
+        std::string_view owner_;
 
         [[nodiscard]] __attribute__((always_inline)) auto to_sql() const -> std::string {
-            return std::format("{} LIKE ?", field_name_);
+            return to_sql_with_column(field_name_);
+        }
+
+        [[nodiscard]] static auto to_sql_with_column(std::string_view column) -> std::string {
+            return std::format("{} LIKE ?", column);
         }
 
         template <typename StmtType, typename ErrorType>
@@ -124,9 +142,15 @@ export namespace storm::orm::where {
         std::string field_name_;
         ValueType   min_val_;
         ValueType   max_val_;
+        // Owning model (#785); see ColumnQualifier. Empty for a hand-built node.
+        std::string_view owner_;
 
         [[nodiscard]] __attribute__((always_inline)) auto to_sql() const -> std::string {
-            return std::format("{} BETWEEN ? AND ?", field_name_);
+            return to_sql_with_column(field_name_);
+        }
+
+        [[nodiscard]] auto to_sql_with_column(std::string_view column) const -> std::string {
+            return std::format("{} BETWEEN ? AND ?", column);
         }
 
         template <typename StmtType, typename ErrorType>
@@ -144,14 +168,20 @@ export namespace storm::orm::where {
     template <typename ValueType> struct InExpression {
         std::string            field_name_;
         std::vector<ValueType> values_;
+        // Owning model (#785); see ColumnQualifier. Empty for a hand-built node.
+        std::string_view owner_;
 
         [[nodiscard]] __attribute__((always_inline)) auto to_sql() const -> std::string {
+            return to_sql_with_column(field_name_);
+        }
+
+        [[nodiscard]] auto to_sql_with_column(std::string_view column) const -> std::string {
             if (values_.empty()) {
                 return "1 = 0"; // SQL that always evaluates to false
             }
             auto placeholders = std::views::repeat(std::string_view("?"), values_.size()) |
                                 std::views::join_with(std::string_view(", "));
-            return std::format("{} IN ({})", field_name_, std::string(placeholders.begin(), placeholders.end()));
+            return std::format("{} IN ({})", column, std::string(placeholders.begin(), placeholders.end()));
         }
 
         template <typename StmtType, typename ErrorType>
@@ -255,6 +285,41 @@ export namespace storm::orm::where {
         return std::visit(ToSqlVisitor{}, expr);
     }
 
+    // Which columns a JOIN-path rendering qualifies, and with what (#785): every leaf whose
+    // owner_ is `owner` (the join's base model) is written "<prefix><col>"; any other leaf —
+    // a column of a joined model — keeps its bare spelling.
+    struct ColumnQualifier {
+        std::string_view owner;
+        std::string_view prefix;
+    };
+
+    [[nodiscard]] auto to_sql(const ExpressionVariant& expr, const ColumnQualifier& qualifier) -> std::string;
+
+    struct QualifiedToSqlVisitor {
+        ColumnQualifier qualifier;
+
+        [[nodiscard]] auto operator()(const LogicalExpr& expr) const -> std::string {
+            return std::format(
+                    "({}{}{})",
+                    to_sql(*expr.left, qualifier),
+                    logical_op_to_sql(expr.op),
+                    to_sql(*expr.right, qualifier)
+            );
+        }
+
+        template <typename T> [[nodiscard]] auto operator()(const T& expr) const -> std::string {
+            if (expr.owner_ != qualifier.owner) {
+                return expr.to_sql();
+            }
+            return expr.to_sql_with_column(std::format("{}{}", qualifier.prefix, expr.field_name_));
+        }
+    };
+
+    // The JOIN-path twin of to_sql(expr): same text, base-model columns qualified (#785).
+    [[nodiscard]] inline auto to_sql(const ExpressionVariant& expr, const ColumnQualifier& qualifier) -> std::string {
+        return std::visit(QualifiedToSqlVisitor{qualifier}, expr);
+    }
+
     // bind_params_direct uses a lambda visitor that captures param_index by reference,
     // so no raw pointer/reference data members are required.
     // Every Expr type exposes a small `bind_impl(StmtType*, int&)`. The type-erased
@@ -326,10 +391,11 @@ export namespace storm::orm::where {
     // and Field used to spell out the four nullable methods (is_null, is_not_null,
     // operator==(nullopt_t), operator!=(nullopt_t)) body-for-body identical.
     // Now both classes route through these one-line helpers.
-    [[nodiscard]] inline auto make_null_check_expr(std::string field_name, bool is_null) -> Expr {
+    [[nodiscard]] inline auto make_null_check_expr(std::string field_name, bool is_null, std::string_view owner)
+            -> Expr {
         return Expr(
                 std::make_shared<ExpressionVariant>(
-                        NullCheckExpr{.field_name_ = std::move(field_name), .is_null_ = is_null}
+                        NullCheckExpr{.field_name_ = std::move(field_name), .is_null_ = is_null, .owner_ = owner}
                 )
         );
     }
@@ -342,11 +408,12 @@ export namespace storm::orm::where {
     // normalize_column_operand — #622). ColumnType is the field's declared type, passed
     // explicitly by Field/CollatedField below, which have it as their own FieldType alias.
     template <typename ColumnType, typename V>
-    [[nodiscard]] auto make_comparison_expr(const std::string& field_name, CompOp op, V&& value) -> Expr {
+    [[nodiscard]] auto make_comparison_expr(const std::string& field_name, CompOp op, V&& value, std::string_view owner)
+            -> Expr {
         auto stored = normalize_column_operand<ColumnType>(std::forward<V>(value));
         return Expr(
                 std::make_shared<ExpressionVariant>(ComparisonExpr<decltype(stored)>{
-                        .field_name_ = std::move(field_name), .op_ = op, .value_ = std::move(stored)
+                        .field_name_ = std::move(field_name), .op_ = op, .value_ = std::move(stored), .owner_ = owner
                 })
         );
     }
@@ -354,11 +421,12 @@ export namespace storm::orm::where {
     // Build a LikeExpr for `field_name LIKE pattern`. Shared by Field::like and
     // CollatedField::like so the two bodies cannot drift (same rationale as make_in_expr's
     // #578 note).
-    [[nodiscard]] inline auto make_like_expr(std::string field_name, std::string_view pattern) -> Expr {
+    [[nodiscard]] inline auto make_like_expr(std::string field_name, std::string_view pattern, std::string_view owner)
+            -> Expr {
         return Expr(
-                std::make_shared<ExpressionVariant>(
-                        LikeExpr{.field_name_ = std::move(field_name), .pattern_ = std::string(pattern)}
-                )
+                std::make_shared<ExpressionVariant>(LikeExpr{
+                        .field_name_ = std::move(field_name), .pattern_ = std::string(pattern), .owner_ = owner
+                })
         );
     }
 
@@ -366,14 +434,16 @@ export namespace storm::orm::where {
     // (#406): text operands are copied into an owning std::string (closes the deferred-bind dangle
     // #352 fixed for comparisons) and enums fold to int — the same rules as make_comparison_expr.
     template <typename V>
-    [[nodiscard]] auto make_between_expr(const std::string& field_name, V&& min_val, V&& max_val) -> Expr {
+    [[nodiscard]] auto
+    make_between_expr(const std::string& field_name, V&& min_val, V&& max_val, std::string_view owner) -> Expr {
         auto stored_min = normalize_operand(std::forward<V>(min_val));
         auto stored_max = normalize_operand(std::forward<V>(max_val));
         return Expr(
                 std::make_shared<ExpressionVariant>(BetweenExpr<decltype(stored_min)>{
                         .field_name_ = std::move(field_name),
                         .min_val_    = std::move(stored_min),
-                        .max_val_    = std::move(stored_max)
+                        .max_val_    = std::move(stored_max),
+                        .owner_      = owner
                 })
         );
     }
@@ -395,7 +465,7 @@ export namespace storm::orm::where {
     // not a new risk class.
     template <typename TargetType, typename... Values>
         requires(std::constructible_from<TargetType, Values> && ...)
-    [[nodiscard]] auto make_in_expr(const std::string& field_name, Values&&... values) -> Expr {
+    [[nodiscard]] auto make_in_expr(const std::string& field_name, std::string_view owner, Values&&... values) -> Expr {
         using StoredType = decltype(normalize_operand(std::declval<TargetType>()));
         // Also checked HERE, not only in in()'s requires-clause: this function is exported, so a
         // direct make_in_expr<std::filesystem::path>(...) would otherwise still hard-error below.
@@ -406,7 +476,8 @@ export namespace storm::orm::where {
         return Expr(
                 std::make_shared<ExpressionVariant>(InExpression<StoredType>{
                         .field_name_ = std::move(field_name),
-                        .values_     = {normalize_operand(static_cast<TargetType>(std::forward<Values>(values)))...}
+                        .values_     = {normalize_operand(static_cast<TargetType>(std::forward<Values>(values)))...},
+                        .owner_      = owner
                 })
         );
     }
@@ -453,6 +524,11 @@ export namespace storm::orm::where {
     concept OrderableOperand = ComparableOperand<MemberInfo, V> && !std::is_same_v<std::decay_t<V>, utilities::UUID> &&
                                !ColumnIsUuid<MemberInfo>;
 
+    // The name of the model a field selector belongs to — its table name, the same string
+    // BaseStatement<Model>::table_name_ holds — stamped on every leaf as owner_ (#785).
+    template <std::meta::info MemberInfo>
+    inline constexpr std::string_view column_owner_name = std::meta::identifier_of(std::meta::parent_of(MemberInfo));
+
     // CollatedField proxy - wraps field name with COLLATE clause
     // Created via fields::Person.name.collate(Collate::NoCase)
     // All comparison operators produce SQL like: "name COLLATE NOCASE = ?"
@@ -478,7 +554,9 @@ export namespace storm::orm::where {
         template <typename... Values>
             requires InStorableTarget<MemberInfo> && (InOperandFor<MemberInfo, Values> && ...)
         auto in(Values&&... values) const {
-            return where::make_in_expr<InTargetType<MemberInfo>>(collated_name_, std::forward<Values>(values)...);
+            return where::make_in_expr<InTargetType<MemberInfo>>(
+                    collated_name_, owner_sv, std::forward<Values>(values)...
+            );
         }
 
         // Comparison/pattern operators, gated on ComparableOperand (ordering ops and between()
@@ -493,16 +571,17 @@ export namespace storm::orm::where {
         template <typename V> auto operator>=(V&& value) const -> Expr requires OrderableOperand<MemberInfo, V> { return make_comparison(CompOp::GreaterEqual, std::forward<V>(value)); }
         template <typename V> auto operator<(V&& value)  const -> Expr requires OrderableOperand<MemberInfo, V> { return make_comparison(CompOp::Less, std::forward<V>(value)); }
         template <typename V> auto operator<=(V&& value) const -> Expr requires OrderableOperand<MemberInfo, V> { return make_comparison(CompOp::LessEqual, std::forward<V>(value)); }
-        [[nodiscard]] auto is_null()     const -> Expr requires NullableField<FieldType> { return make_null_check_expr(collated_name_, true); }
-        [[nodiscard]] auto is_not_null() const -> Expr requires NullableField<FieldType> { return make_null_check_expr(collated_name_, false); }
+        [[nodiscard]] auto is_null()     const -> Expr requires NullableField<FieldType> { return make_null_check_expr(collated_name_, true, owner_sv); }
+        [[nodiscard]] auto is_not_null() const -> Expr requires NullableField<FieldType> { return make_null_check_expr(collated_name_, false, owner_sv); }
         auto operator==(std::nullopt_t /*unused*/)  const -> Expr requires NullableField<FieldType> { return is_null(); }
         auto operator!=(std::nullopt_t /*unused*/)  const -> Expr requires NullableField<FieldType> { return is_not_null(); }
-        [[nodiscard]] auto like(std::string_view pattern) const -> Expr { return where::make_like_expr(collated_name_, pattern); }
-        template <typename V> auto between(V&& min_val, V&& max_val) const -> Expr requires OrderableOperand<MemberInfo, V> { return where::make_between_expr(collated_name_, std::forward<V>(min_val), std::forward<V>(max_val)); }
+        [[nodiscard]] auto like(std::string_view pattern) const -> Expr { return where::make_like_expr(collated_name_, pattern, owner_sv); }
+        template <typename V> auto between(V&& min_val, V&& max_val) const -> Expr requires OrderableOperand<MemberInfo, V> { return where::make_between_expr(collated_name_, std::forward<V>(min_val), std::forward<V>(max_val), owner_sv); }
         // clang-format on
 
       private:
-        std::string collated_name_;
+        static constexpr std::string_view owner_sv = column_owner_name<MemberInfo>;
+        std::string                       collated_name_;
 
         static auto make_collated_name(utilities::Collate col) -> std::string {
             return std::format("{}{}", storm::meta::column_name_view<MemberInfo>, utilities::collate_to_sql(col));
@@ -510,7 +589,7 @@ export namespace storm::orm::where {
 
         template <typename V> auto make_comparison(CompOp op, V&& value) const -> Expr {
             return where::make_comparison_expr<ComparisonColumnType<MemberInfo>>(
-                    collated_name_, op, std::forward<V>(value)
+                    collated_name_, op, std::forward<V>(value), owner_sv
             );
         }
     };
@@ -531,6 +610,7 @@ export namespace storm::orm::where {
         // single "_id" suffix. Every method below gates on SingleColumnMember<MemberInfo>
         // before reading this; a new method that reads field_name_sv MUST gate the same way.
         static constexpr auto field_name_sv = storm::meta::column_name_view<MemberInfo>;
+        static constexpr auto owner_sv      = column_owner_name<MemberInfo>;
         using FieldType                     = typename[:std::meta::type_of(MemberInfo):];
 
         // Return a CollatedField proxy. Deduced return type, deliberately not
@@ -554,7 +634,7 @@ export namespace storm::orm::where {
                      (InOperandFor<MemberInfo, Values> && ...)
         auto in(Values&&... values) const {
             return where::make_in_expr<InTargetType<MemberInfo>>(
-                    std::string(field_name_sv), std::forward<Values>(values)...
+                    std::string(field_name_sv), owner_sv, std::forward<Values>(values)...
             );
         }
 
@@ -575,11 +655,11 @@ export namespace storm::orm::where {
         // Deleted, not absent (#613, RelationRef's pattern): <=> covers !=/>/>=/< via rewrite.
         template <typename V> auto operator==(const V&) const -> bool requires (!storm::meta::SingleColumnMember<MemberInfo>) = delete ("this member is a foreign key to a composite-PK target: it spreads over multiple \"<member>_<part>\" columns, so there is no single column to compare in where().");
         template <typename V> auto operator<=>(const V&) const -> std::partial_ordering requires (!storm::meta::SingleColumnMember<MemberInfo>) = delete ("this member is a foreign key to a composite-PK target: it spreads over multiple \"<member>_<part>\" columns, so there is no single column to compare in where().");
-        [[nodiscard]] auto is_null()     const -> Expr requires (NullableField<FieldType> && storm::meta::SingleColumnMember<MemberInfo>) { return make_null_check_expr(std::string(field_name_sv), true); }
-        [[nodiscard]] auto is_not_null() const -> Expr requires (NullableField<FieldType> && storm::meta::SingleColumnMember<MemberInfo>) { return make_null_check_expr(std::string(field_name_sv), false); }
+        [[nodiscard]] auto is_null()     const -> Expr requires (NullableField<FieldType> && storm::meta::SingleColumnMember<MemberInfo>) { return make_null_check_expr(std::string(field_name_sv), true, owner_sv); }
+        [[nodiscard]] auto is_not_null() const -> Expr requires (NullableField<FieldType> && storm::meta::SingleColumnMember<MemberInfo>) { return make_null_check_expr(std::string(field_name_sv), false, owner_sv); }
         auto operator==(std::nullopt_t /*unused*/)  const -> Expr requires (NullableField<FieldType> && storm::meta::SingleColumnMember<MemberInfo>) { return is_null(); }
         auto operator!=(std::nullopt_t /*unused*/)  const -> Expr requires (NullableField<FieldType> && storm::meta::SingleColumnMember<MemberInfo>) { return is_not_null(); }
-        [[nodiscard]] auto like(std::string_view pattern) const -> Expr requires storm::meta::SingleColumnMember<MemberInfo> { return where::make_like_expr(std::string(field_name_sv), pattern); }
+        [[nodiscard]] auto like(std::string_view pattern) const -> Expr requires storm::meta::SingleColumnMember<MemberInfo> { return where::make_like_expr(std::string(field_name_sv), pattern, owner_sv); }
         // clang-format on
 
         template <typename V>
@@ -587,7 +667,7 @@ export namespace storm::orm::where {
             requires OrderableOperand<MemberInfo, V>
         {
             return where::make_between_expr(
-                    std::string(field_name_sv), std::forward<V>(min_val), std::forward<V>(max_val)
+                    std::string(field_name_sv), std::forward<V>(min_val), std::forward<V>(max_val), owner_sv
             );
         }
 
@@ -595,7 +675,7 @@ export namespace storm::orm::where {
         // Helper: create comparison expression, converting enum values to int
         template <typename V> auto make_comp(CompOp op, V&& value) const -> Expr {
             return where::make_comparison_expr<ComparisonColumnType<MemberInfo>>(
-                    std::string(field_name_sv), op, std::forward<V>(value)
+                    std::string(field_name_sv), op, std::forward<V>(value), owner_sv
             );
         }
     };

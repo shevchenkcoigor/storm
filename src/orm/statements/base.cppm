@@ -1113,17 +1113,50 @@ export namespace storm::orm::statements {
         __attribute__((always_inline)) static void
         append_order_by(std::string& sql, const std::optional<OrderByWrapper>& order_by_wrapper) {
             if (order_by_wrapper.has_value() && !order_by_wrapper->empty()) {
-                const auto& order_sql = order_by_wrapper->get_order_by_sql();
-                if constexpr (db::SupportsPgDialect<ConnTypeForDialect>) {
-                    std::string adapted = order_sql; // LCOV_EXCL_LINE — PG-only
-                    adapt_order_by_for_pg(adapted);  // LCOV_EXCL_LINE — PG-only
-                    sql += adapted;                  // LCOV_EXCL_LINE — PG-only
-                } else {
-                    sql += order_sql;
-                }
+                append_order_by_text<ConnTypeForDialect>(sql, order_by_wrapper->get_order_by_sql());
             }
         }
 
+        // JOIN-path twins of the WHERE / ORDER BY appenders (#785): the FK, reverse-FK and
+        // m2m join SQL aliases the base table t1, so T's own columns are written "t1.<col>"
+        // (a bare `id` shared with a joined table is ambiguous). Joined-model columns stay
+        // bare. The non-join appenders above are untouched.
+        template <typename ConnTypeForDialect = void>
+        static void append_join_order_by(std::string& sql, const std::optional<OrderByWrapper>& order_by_wrapper) {
+            if (order_by_wrapper.has_value() && !order_by_wrapper->empty()) {
+                append_order_by_text<ConnTypeForDialect>(sql, order_by_wrapper->get_join_order_by_sql());
+            }
+        }
+
+        static constexpr orm::where::ColumnQualifier join_column_qualifier_{
+                .owner = table_name_, .prefix = join_base_alias_prefix
+        };
+
+        [[nodiscard]] static auto join_where_sql(const orm::where::ExpressionVariant& expr) -> std::string {
+            return orm::where::to_sql(expr, join_column_qualifier_);
+        }
+
+        static void append_join_where(std::string& sql, const orm::where::ExpressionVariantPtr& where_expr) {
+            if (where_expr) {
+                sql += " WHERE ";
+                sql += join_where_sql(*where_expr);
+            }
+        }
+
+      private:
+        template <typename ConnTypeForDialect>
+        __attribute__((always_inline)) static void
+        append_order_by_text(std::string& sql, const std::string& order_sql) {
+            if constexpr (db::SupportsPgDialect<ConnTypeForDialect>) {
+                std::string adapted = order_sql; // LCOV_EXCL_LINE — PG-only
+                adapt_order_by_for_pg(adapted);  // LCOV_EXCL_LINE — PG-only
+                sql += adapted;                  // LCOV_EXCL_LINE — PG-only
+            } else {
+                sql += order_sql;
+            }
+        }
+
+      public:
         // Helper: Append LIMIT/OFFSET clauses to SQL
         // NOTE: SQLite requires LIMIT when using OFFSET, so we use LIMIT -1 (meaning unlimited)
         // PostgreSQL uses LIMIT ALL for unlimited rows

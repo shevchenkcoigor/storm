@@ -59,7 +59,7 @@ export namespace storm::orm::statements {
         template <auto... Args>
             requires OrderBySelectorsAreSingleColumn<Args...>
         [[nodiscard]] auto order_by() -> SetOpBuilder&& {
-            order_by_wrapper_ = make_order_by_wrapper<Args...>();
+            order_by_wrapper_ = make_order_by_wrapper<T, Args...>();
             return std::move(*this);
         }
 

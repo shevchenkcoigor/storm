@@ -101,7 +101,15 @@ export namespace storm::orm::statements {
                 }
                 return sql;
             }
-            std::string sql = join_wrapper ? join_wrapper->get_complete_sql() : std::string(get_select_sql());
+            if (join_wrapper) {
+                // FK join: base table aliased t1, so its columns are qualified (#785).
+                std::string sql = join_wrapper->get_complete_sql();
+                Base::append_join_where(sql, where_expr);
+                Base::template append_join_order_by<ConnType>(sql, order_by_wrapper);
+                Base::template append_limit_offset<ConnType>(sql, limit, offset);
+                return sql;
+            }
+            std::string sql(get_select_sql());
             if (where_expr) {
                 sql += " WHERE ";
                 sql += orm::where::to_sql(*where_expr);

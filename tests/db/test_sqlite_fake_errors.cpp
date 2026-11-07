@@ -1598,13 +1598,10 @@ namespace {
     }
 
     TEST_F(JoinMockErrorTest, JoinWithWhereFailsOnBindError) {
-        // #785: `id > 5` / `id` in a join is "ambiguous column name" on real SQLite, so these
-        // use `text` (and count()) until it is fixed; revert then.
-        FakeSqliteConfig::bind_text_returns(SQLITE_NOMEM);
+        FakeSqliteConfig::bind_int_returns(SQLITE_NOMEM);
 
         QuerySet<MockMessage> qs;
-        auto                  result =
-                qs.where(fields::MockMessage.text == "hello").join<fields::MockMessage.sender>().select().execute();
+        auto result = qs.where(fields::MockMessage.id > 5).join<fields::MockMessage.sender>().select().execute();
 
         ASSERT_FALSE(result.has_value());
         EXPECT_EQ(result.error().code(), SQLITE_NOMEM);
@@ -1614,7 +1611,7 @@ namespace {
         FakeSqliteConfig::step_returns(SQLITE_IOERR);
 
         QuerySet<MockMessage> qs;
-        auto result = qs.join<fields::MockMessage.sender>().order_by<fields::MockMessage.text>().select().execute();
+        auto result = qs.join<fields::MockMessage.sender>().order_by<fields::MockMessage.id>().select().execute();
 
         ASSERT_FALSE(result.has_value());
         EXPECT_EQ(result.error().code(), SQLITE_IOERR);
@@ -2282,13 +2279,13 @@ namespace {
 
     TEST_F(JoinMockErrorTest, AggregateWithWhereJoinFailsOnBindError) {
         // Covers execute_where_join bind error (aggregate.cppm lines 535-537)
-        // #785: `id > 5` / `id` in a join is "ambiguous column name" on real SQLite, so these
-        // use `text` (and count()) until it is fixed; revert then.
-        FakeSqliteConfig::bind_text_returns(SQLITE_NOMEM);
+        FakeSqliteConfig::bind_int_returns(SQLITE_NOMEM);
 
         QuerySet<MockMessage> qs;
-        auto                  result =
-                qs.where(fields::MockMessage.text == "hello").join<fields::MockMessage.sender>().count().execute();
+        auto                  result = qs.where(fields::MockMessage.id > 5)
+                              .join<fields::MockMessage.sender>()
+                              .sum<fields::MockMessage.id>()
+                              .execute();
 
         ASSERT_FALSE(result.has_value());
         EXPECT_EQ(result.error().code(), SQLITE_NOMEM);

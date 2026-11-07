@@ -343,8 +343,13 @@ export namespace storm {
         auto capture_operand() const -> orm::statements::SetOpOperand<T>
             requires(!F_)
         {
-            std::string sql = q_.join_wrapper.has_value() ? std::string(q_.join_wrapper->get_complete_sql())
-                                                          : Select::get_select_sql();
+            if (q_.join_wrapper.has_value()) {
+                // Base table aliased t1: its WHERE columns are qualified (#785).
+                std::string sql = q_.join_wrapper->get_complete_sql();
+                orm::statements::BaseStatement<T>::append_join_where(sql, q_.where_expr);
+                return {std::move(sql), q_.where_expr};
+            }
+            std::string sql = Select::get_select_sql();
             if (q_.where_expr) {
                 sql += " WHERE ";
                 sql += orm::where::to_sql(*q_.where_expr);

@@ -686,7 +686,20 @@ auto result = message_qs.join<fields::Message.sender>()
 SELECT t1.id, t1.content, t1.sender_id, t2.id, t2.username, t2.level
 FROM Message t1
 INNER JOIN User t2 ON t2.id = t1.sender_id
-WHERE t2.level > 5 AND t1.content LIKE '%urgent%'
+WHERE (level > ? AND t1.content LIKE ?)
+```
+
+**Column qualification over a JOIN (#785)**: the join SQL aliases the base table `t1`, so
+every column of the BASE model in WHERE, ORDER BY, an aggregate operand, GROUP BY and
+HAVING is written `t1.<col>`. Without it a column name the joined table shares — every
+model's `id` — is rejected as ambiguous (`ambiguous column name: id` on SQLite, `column
+reference "id" is ambiguous` on PostgreSQL). A column of a JOINED model (`fields::User.level`
+above) keeps its bare spelling, so it must not share a name with a base-table column. Queries
+with no JOIN are byte-identical to before.
+
+```cpp
+message_qs.where(fields::Message.id > 5).join<fields::Message.sender>().sum<fields::Message.id>();
+// SELECT SUM(t1.id) FROM Message t1 INNER JOIN User t2 ON t2.id = t1.sender_id WHERE t1.id > ?
 ```
 
 See [WHERE Clauses](WHERE_CLAUSES.md) for more details.
