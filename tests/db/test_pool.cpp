@@ -510,7 +510,7 @@ TYPED_TEST(PoolShutdownTest, Shutdown_RejectsNew) {
     auto pool = ConnectionPool<TypeParam>::create(this->connstr_, {.min_connections = 1, .max_connections = 3});
     ASSERT_TRUE(pool.has_value()) << pool.error().message();
 
-    pool->shutdown();
+    EXPECT_TRUE(pool->shutdown());
     auto conn = pool->checkout();
     EXPECT_FALSE(conn.has_value());
 }
@@ -523,14 +523,15 @@ TYPED_TEST(PoolShutdownTest, Shutdown_WaitsForReturns) {
     ASSERT_TRUE(conn.has_value());
 
     std::atomic<bool> shutdown_done{false};
+    std::atomic<bool> shutdown_drained{false};
     std::latch        shutdown_started{1};
-    std::thread       shutdown_thread([&pool, &shutdown_done, &shutdown_started] {
+    std::thread       shutdown_thread([&pool, &shutdown_done, &shutdown_drained, &shutdown_started] {
         shutdown_started.count_down();
-        pool->shutdown();
-        shutdown_done = true;
+        shutdown_drained = pool->shutdown();
+        shutdown_done    = true;
     });
 
-    // Deterministic: shutdown() blocks in cv_.wait until in_use == 0, so shutdown_done
+    // Deterministic: shutdown() blocks (up to shutdown_timeout_ms) until in_use == 0, so shutdown_done
     // cannot become true while `conn` is held — regardless of how far the thread has
     // progressed. The latch only confirms the thread is running before we assert
     // (#307, replaces a 50ms sync sleep).
@@ -540,6 +541,68 @@ TYPED_TEST(PoolShutdownTest, Shutdown_WaitsForReturns) {
     conn->reset(); // Return connection
     shutdown_thread.join();
     EXPECT_TRUE(shutdown_done);
+    EXPECT_TRUE(shutdown_drained); // returned within the timeout, not by giving up
+}
+
+TYPED_TEST(PoolShutdownTest, Shutdown_ReturnsTrueWhenDrained) {
+    auto pool = ConnectionPool<TypeParam>::create(this->connstr_, {.min_connections = 1, .max_connections = 3});
+    ASSERT_TRUE(pool.has_value()) << pool.error().message();
+
+    EXPECT_TRUE(pool->shutdown());
+}
+
+// #733: shutdown() used to wait forever on a connection that was never returned.
+TYPED_TEST(PoolShutdownTest, Shutdown_TimesOutWhenConnectionNeverReturned) {
+    auto pool = ConnectionPool<TypeParam>::create(
+            this->connstr_, {.min_connections = 2, .max_connections = 3, .shutdown_timeout_ms = 50}
+    );
+    ASSERT_TRUE(pool.has_value()) << pool.error().message();
+
+    auto conn = pool->checkout();
+    ASSERT_TRUE(conn.has_value());
+
+    EXPECT_FALSE(pool->shutdown());
+    EXPECT_EQ(pool->size(), 1);   // the idle connection was released
+    EXPECT_EQ(pool->in_use(), 1); // the held one is left alone, not destroyed under its owner
+    EXPECT_FALSE(pool->checkout().has_value());
+
+    conn->reset(); // late return after a timed-out shutdown closes the connection
+    EXPECT_EQ(pool->size(), 0);
+    EXPECT_TRUE(pool->shutdown());
+}
+
+TYPED_TEST(PoolShutdownTest, Shutdown_ZeroTimeoutDoesNotWait) {
+    auto pool = ConnectionPool<TypeParam>::create(
+            this->connstr_, {.min_connections = 1, .max_connections = 3, .shutdown_timeout_ms = 0}
+    );
+    ASSERT_TRUE(pool.has_value()) << pool.error().message();
+
+    auto conn = pool->checkout();
+    ASSERT_TRUE(conn.has_value());
+    EXPECT_FALSE(pool->shutdown());
+    EXPECT_EQ(pool->in_use(), 1);
+    EXPECT_EQ(pool->size(), 1);
+}
+
+// #733: the calling thread's own DefaultConnection slot holds a checked-out
+// connection, so nobody else can ever return it.
+TYPED_TEST(PoolShutdownTest, Shutdown_DoesNotSelfDeadlockOnOwnDefaultConnection) {
+    auto pool = ConnectionPool<TypeParam>::create(
+            this->connstr_, {.min_connections = 1, .max_connections = 3, .shutdown_timeout_ms = 50}
+    );
+    ASSERT_TRUE(pool.has_value()) << pool.error().message();
+
+    ASSERT_TRUE(storm::db::DefaultConnection<TypeParam>::set(*pool).has_value());
+
+    EXPECT_FALSE(pool->shutdown());
+
+    storm::db::DefaultConnection<TypeParam>::clear();
+    EXPECT_EQ(pool->size(), 0);
+}
+
+TYPED_TEST(PoolShutdownTest, Shutdown_InvalidTimeoutRejected) {
+    auto pool = ConnectionPool<TypeParam>::create(this->connstr_, {.shutdown_timeout_ms = -1});
+    EXPECT_FALSE(pool.has_value());
 }
 
 // ============================================================================
@@ -998,11 +1061,13 @@ TEST_F(MockPoolTest, Checkout_ShutdownDuringWait) {
     });
 
     waiter_started.wait();
-    std::thread shutdown_thread([&pool] { pool->shutdown(); });
+    std::atomic<bool> shutdown_drained{false};
+    std::thread       shutdown_thread([&pool, &shutdown_drained] { shutdown_drained = pool->shutdown(); });
 
     waiter.join();
     c1->reset(); // Return c1 → shutdown_thread's cv_.wait predicate becomes true.
     shutdown_thread.join();
+    EXPECT_TRUE(shutdown_drained);
     EXPECT_TRUE(got_shutdown_error);
 }
 
@@ -1056,7 +1121,7 @@ TEST_F(MockPoolTest, Checkout_ShutdownDuringGrow) {
     //   3. open_release lets open() return; the grower re-locks, sees shutdown_ ==
     //      true, and checkout fails (covers pool.cppm try_grow shutdown branch, #307).
     in_open.wait();
-    pool->shutdown();
+    EXPECT_TRUE(pool->shutdown());
     open_release.count_down();
     grower.join();
     EXPECT_TRUE(checkout_failed);
