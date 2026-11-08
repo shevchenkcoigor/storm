@@ -28,20 +28,15 @@ Include scope when relevant: `feat(queryset): add batch update support`
 All checks run automatically via the pre-commit hook (`.githooks/pre-commit` → `commit.sh`):
 
 ```bash
-# Standard commit (hook runs format, tidy, tests, sonar, bench)
+# Standard commit (hook runs format, tidy, tests)
 git add src/orm/queryset.cppm tests/test_queryset.cpp
 git commit -m "feat(queryset): add batch update support"
 
-# Skip optional checks
-SKIP_BENCH=1 git commit -m "fix(reflection): handle nullable fields"
-SKIP_SONAR=1 git commit -m "docs: update README"
-
 # Run checks manually without committing
 ./commit.sh
-./commit.sh --no-sonar --no-bench
 ```
 
-The hook automatically: runs clang-format, clang-tidy --fix, re-stages modified files, runs full test suite, runs sonar check, runs benchmark sanity check.
+The hook automatically: runs clang-format, clang-tidy --fix, re-stages modified files, runs the test suite. Coverage, sanitizers, benchmarks and SonarCloud run in CI only (#793); there are no skip flags.
 
 ## After Push: Always Create the PR
 

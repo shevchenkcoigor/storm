@@ -238,7 +238,7 @@ eval "$(git diff --cached --name-only | ./scripts/ci/detect_changes.py)"
 
 ### Where it runs
 
-- **`commit.sh`** — over staged files, to skip format/tidy/tests/coverage when nothing
+- **`commit.sh`** — over staged files, to skip format/tidy/tests when nothing
   they could affect changed.
 - **CI** — the `changes` job in `.github/workflows/ci.yml`, which also self-tests the
   script before using its output. `run_heavy` (the job's output) additionally forces a
@@ -247,8 +247,8 @@ eval "$(git diff --cached --name-only | ./scripts/ci/detect_changes.py)"
 
 ## Script Self-Tests (scripts/*/tests/)
 
-Self-tests live under each group's `tests/` folder. Among them are `test_coverage_gate.py`, which covers `coverage/coverage_gate.py` (the lcov line-coverage parser and 100% gate shared by `commit.sh` and CI's `coverage` job, and the per-OS default `STORM_PG_CONNSTR` socket: Linux
-`/var/run/postgresql`, macOS `/tmp`, #765) plus the real text of its callers — `commit.sh`'s `run_coverage_check()` and the `STORM_PG_CONNSTR` default blocks of `commit.sh` and `coverage-run-batched.sh` — run under `/bin/bash` too, which is
+Self-tests live under each group's `tests/` folder. Among them are `test_coverage_gate.py`, which covers `coverage/coverage_gate.py` (the lcov line-coverage parser and 100% gate used by CI's `coverage` job, and the per-OS default `STORM_PG_CONNSTR` socket: Linux
+`/var/run/postgresql`, macOS `/tmp`, #765) plus the real text of its callers — the `STORM_PG_CONNSTR` default blocks of `commit.sh` and `coverage-run-batched.sh` — run under `/bin/bash` too, which is
 bash 3.2 on macOS, and a scan of `commit.sh` and `coverage-run-batched.sh` for bash-4-only constructs (#689),
 `test_libcxx_modules_symlink.py` (Python, needs cmake and ninja), which covers `cmake/libcxx.cmake` rather
 than a script, `test_pyyaml_check.py` (Python, plain cmake), which covers `cmake/pyyaml.cmake`'s configure-time PyYAML check (#703),
@@ -289,7 +289,7 @@ failure so one run reports them all (#708). So a new self-test reaches CI by bec
 | `tidy_prereqs.py` | Whether clang-tidy's module BMIs exist for the staged files (#557). Prints `complete`; anything else — including a crash — is `incomplete`, so the caller rebuilds. |
 | `run_clang_tidy.py` | The clang-tidy runner `commit.sh` calls in `--diff --fix` (or `--full --fix`) mode and the weekly sweep calls with `--all` (#692). |
 | `clang_tidy_skiplist.py` | The files clang-tidy must not open: `KNOWN_UNPARSEABLE`, the vendored file, and the diff filter. Imported by `run_clang_tidy.py`; `commit.sh` pipes staged paths through `--keep` to drop them from its BMI probe (#550). |
-| `coverage_gate.py` | The coverage gate shared by `commit.sh` and CI's `coverage` job (#765): `check` reads the `lcov --summary` text on stdin, compares the line row to 100.0 and lists the uncovered lines on a miss; `line-coverage` prints the bare percentage; `pg-connstr [OS]` prints the default `STORM_PG_CONNSTR` for the host OS; `uncovered` prints just the uncovered files and line ranges from `build/debug/coverage/coverage-filtered.lcov` under the cwd (no arguments; it was `uncovered_lines.py` until #776). |
+| `coverage_gate.py` | The coverage gate used by CI's `coverage` job (#765; `commit.sh` dropped its copy in #793): `check` reads the `lcov --summary` text on stdin, compares the line row to 100.0 and lists the uncovered lines on a miss; `line-coverage` prints the bare percentage; `pg-connstr [OS]` prints the default `STORM_PG_CONNSTR` for the host OS; `uncovered` prints just the uncovered files and line ranges from `build/debug/coverage/coverage-filtered.lcov` under the cwd (no arguments; it was `uncovered_lines.py` until #776). |
 
 ### Prerequisites
 

@@ -2,7 +2,7 @@
 """Tests for .claude/hooks/session-start.sh (issue #651, ported from bash in #767).
 
 `git config core.hooksPath .githooks` - the only thing that makes .githooks/pre-commit (and
-therefore commit.sh: format, clang-tidy, tests, the 100% coverage gate) run at all - must
+therefore commit.sh: format, clang-tidy, tests) run at all - must
 happen on every session start. #651: the wiring used to live only in CMakeLists.txt, i.e.
 behind a successful cmake configure, which is precisely what a session with no
 ../clang-p2996 cannot do; such a session committed with no checks and no warning.

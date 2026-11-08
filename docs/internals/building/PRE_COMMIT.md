@@ -1,6 +1,6 @@
 # Pre-Commit Hook
 
-Storm's pre-commit hook (`commit.sh`) runs format → clang-tidy → tests → coverage.
+Storm's pre-commit hook (`commit.sh`) runs format → clang-tidy → tests. The 100% coverage gate and the benchmark build are CI-only (#793).
 This page documents the **clang-tidy** stage in detail, because it has three
 modes with different scopes.
 
@@ -20,8 +20,8 @@ common path — it only matters the first time you commit from a new worktree.
 ### A failed self-heal configure blocks the commit with the CMake error (#674)
 
 Every self-heal `cmake --preset` — `build/release` for the clang-tidy
-prerequisites and the bench release build, `build/debug` for clang-format,
-cmake-format, tests and coverage — runs through `configure_if_missing` *inside*
+prerequisites, `build/debug` for clang-format,
+cmake-format and tests — runs through `configure_if_missing` *inside*
 the step that needs the tree. It configures only when the sentinel file is
 absent (`compile_commands.json` for clang-tidy, `build.ninja` elsewhere), so the
 warm path never runs cmake. When the configure fails, that step fails: the

@@ -431,8 +431,8 @@ jobs:
       #   if: matrix.preset == 'ninja-release' && matrix.postgres == 17
       #   run: ./scripts/tidy/run_clang_tidy.py --all
 
-  # Reproduces commit.sh step 5 (the 100%-line-coverage gate) in CI, so the gate
-  # stops being self-reported from one developer's machine. Deliberately NOT a
+  # The 100%-line-coverage gate. It was also a commit.sh step until #793 moved it
+  # to CI only (it needs a live PostgreSQL, which a laptop often lacks). Deliberately NOT a
   # matrix entry on `test`: it needs no postgres service, runs a different build
   # target, and would otherwise be duplicated across the whole PG matrix for no
   # extra signal.

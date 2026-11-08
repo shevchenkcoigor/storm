@@ -3,14 +3,14 @@
 
 One module owns what used to be two sourced bash helpers (`line_coverage.sh`,
 `pg-default-connstr.sh`) plus the gate logic that commit.sh and CI's `coverage` job each
-spelled out: read the line percentage from the lcov summary, compare it to 100.0, report
+spelled out (commit.sh dropped its copy in #793; CI's job remains): read the line percentage from the lcov summary, compare it to 100.0, report
 the uncovered lines (`format_ranges`, `uncovered_by_file`, merged in from the former
 uncovered_lines.py, #776), and pick the per-OS default PostgreSQL socket.
 
 The parser and the OS table are plain functions, tested on fixture text. The CLI runs as a
 subprocess for what only a process shows (exit codes, stdout). The callers are tested by
 running their REAL text: the PostgreSQL default blocks of commit.sh and
-coverage-run-batched.sh and commit.sh's run_coverage_check(), extracted and run in bash
+coverage-run-batched.sh, extracted and run in bash
 with `cmake` stubbed, because a deleted call or a hardcoded path is invisible to a unit
 test of the module alone. They run under /bin/bash too (macOS: bash 3.2, #689), and
 commit.sh plus the scripts it runs are scanned for bash-4-only constructs.
@@ -361,37 +361,6 @@ class DefaultBlockTest(unittest.TestCase):
                 self.assertEqual(run("export STORM_PG_CONNSTR='%s'" % EXPORTED), EXPORTED)
                 # commit.sh differs deliberately: a set-but-empty value counts as unset.
                 self.assertEqual(run(self.AS_DARWIN + "; export STORM_PG_CONNSTR="), DARWIN_DEFAULT)
-
-
-class CommitCoverageStepTest(unittest.TestCase):
-    """commit.sh's run_coverage_check(), the real text, with cmake stubbed to print a summary."""
-
-    def run_check(self, shell, percent):
-        block = block_between(COMMIT, r"^    run_coverage_check\(\) \{", r"^    \}$")
-        program = "\n".join([
-            "RED= BOLD= RESET= DIM=",
-            "cmake() { [[ \"$*\" == *'--target coverage' ]] && printf '%s' \"$SUMMARY\"; return 0; }",
-            "configure_if_missing() { return 0; }",
-            block,
-            "run_coverage_check; echo \"rc=$?\"",
-        ])
-        with tempfile.TemporaryDirectory() as tmp:
-            env = dict(os.environ, SUMMARY=summary(percent))
-            return testing.run([shell, "-c", program], env=env, cwd=tmp, merge_stderr=True).stdout
-
-    def test_full_coverage_passes_the_gate(self):
-        for shell in bash_shells():
-            with self.subTest(shell=shell):
-                out = self.run_check(shell, "100.0")
-                self.assertIn("Line coverage: 100.0%", out)
-                self.assertTrue(out.rstrip().endswith("rc=0"), out)
-
-    def test_partial_coverage_fails_the_gate_with_the_real_number(self):
-        for shell in bash_shells():
-            with self.subTest(shell=shell):
-                out = self.run_check(shell, "99.8")
-                self.assertIn("Line coverage: 99.8% (required: 100.0%)", out)
-                self.assertTrue(out.rstrip().endswith("rc=1"), out)
 
 
 class NoBash4ConstructsTest(unittest.TestCase):
