@@ -93,5 +93,20 @@ wait.
   it stays in WAL across reopens until explicitly changed; re-requesting WAL is
   idempotent.
 
+## Pool shutdown (`shutdown_timeout_ms`)
+
+`ConnectionPool::shutdown()` waits for checked-out connections to come back, but
+only up to `PoolConfig::shutdown_timeout_ms` (default `5000`; `0` = don't wait).
+It returns `bool` (`[[nodiscard]]`): `true` means every connection was returned and
+the pool is torn down; `false` means the wait timed out and some are still checked out.
+
+On `false`, idle connections are already released, and a connection still held is
+never destroyed under its owner — it is closed when its handle is finally returned.
+Do not delete the database file or stop the server on `false`.
+
+A thread whose own `DefaultConnection` slot holds a checkout can never return it
+while blocked in `shutdown()`; call `DefaultConnection<...>::clear()` first, or
+`shutdown()` will wait out the full timeout and return `false`.
+
 See also [Statement Caching](../../internals/architecture/STATEMENT_CACHING.md) for the
 `statement_cache_capacity` knob that shares the same `Config`.

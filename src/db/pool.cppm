@@ -15,6 +15,7 @@ export namespace storm::db {
         int         min_connections          = 1;       // Pre-created on init
         int         max_connections          = 10;      // Hard upper bound
         int         checkout_timeout_ms      = 5000;    // 0 = fail immediately
+        int         shutdown_timeout_ms      = 5000;    // Issue #733: shutdown() wait bound (0 = don't wait)
         int         max_lifetime_ms          = 1800000; // 30 min (0 = never recycle)
         int         idle_timeout_ms          = 600000;  // 10 min (0 = never expire idle)
         bool        validate_on_checkout     = true;    // is_open() check before handing out
@@ -122,15 +123,24 @@ export namespace storm::db {
 
             auto checkin(ConnType* conn) -> void {
                 std::lock_guard lock(mutex_);
-                for (auto& entry : entries_) {
-                    if (entry.conn.get() == conn) {
-                        debug_release_owner(entry); // Issue #271
-                        entry.in_use       = false;
-                        entry.last_used_at = Clock::now();
-                        cv_.notify_one();
-                        return;
-                    }
+                auto            it =
+                        std::ranges::find_if(entries_, [conn](const auto& entry) { return entry.conn.get() == conn; });
+                // LCOV_EXCL_START — a handle's pointer is always in entries_ (in-use entries are never erased)
+                if (it == entries_.end()) {
+                    return;
                 }
+                // LCOV_EXCL_STOP
+                debug_release_owner(*it); // Issue #271
+                it->in_use = false;
+                if (shutdown_) {
+                    // Issue #733: a return after shutdown() began (possibly after it timed
+                    // out) closes the connection now rather than parking it until the core dies.
+                    entries_.erase(it);
+                    cv_.notify_all(); // every concurrent shutdown() waiter, not just one
+                    return;
+                }
+                it->last_used_at = Clock::now();
+                cv_.notify_one();
             }
 
             [[nodiscard]] auto size() const -> int {
@@ -154,17 +164,28 @@ export namespace storm::db {
                 return count_entries([](const auto& entry) { return entry.in_use; });
             }
 
-            auto shutdown() -> void {
+            // Issue #733: bounded wait. Returns true when every connection came back
+            // and the pool was torn down; false when `shutdown_timeout_ms` elapsed first
+            // (a leaked handle, or the calling thread's own DefaultConnection slot —
+            // which nobody else can return). On timeout only IDLE entries are released:
+            // a connection still checked out is never destroyed under its owner, and its
+            // late checkin finds the entry still present.
+            [[nodiscard]] auto shutdown() -> bool {
                 std::unique_lock lock(mutex_);
                 shutdown_ = true;
                 cv_.notify_all();
 
-                // Wait for all connections to be returned.
-                cv_.wait(lock, [this] {
+                auto all_returned = [this] {
                     return std::ranges::none_of(entries_, [](const auto& entry) { return entry.in_use; });
-                });
-
-                entries_.clear();
+                };
+                const bool drained =
+                        cv_.wait_for(lock, std::chrono::milliseconds(config_.shutdown_timeout_ms), all_returned);
+                if (drained) {
+                    entries_.clear();
+                } else {
+                    std::erase_if(entries_, [](const auto& entry) { return !entry.in_use; });
+                }
+                return drained;
             }
 
           private:
@@ -313,7 +334,7 @@ export namespace storm::db {
                 -> std::expected<ConnectionPool, Error> {
             if (config.min_connections < 0 || config.max_connections <= 0 ||
                 config.min_connections > config.max_connections || config.checkout_timeout_ms < 0 ||
-                config.max_lifetime_ms < 0 || config.idle_timeout_ms < 0) {
+                config.shutdown_timeout_ms < 0 || config.max_lifetime_ms < 0 || config.idle_timeout_ms < 0) {
                 return std::unexpected(Error{-1, "Invalid pool config: min >= 0, max > 0, min <= max, timeouts >= 0"});
             }
 
@@ -354,8 +375,9 @@ export namespace storm::db {
             return core_->in_use();
         }
 
-        auto shutdown() -> void {
-            core_->shutdown();
+        // Issue #733: false = timed out with connections still checked out (see PoolCore::shutdown).
+        [[nodiscard]] auto shutdown() -> bool {
+            return core_->shutdown();
         }
 
       private:
