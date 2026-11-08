@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
 """The 100% line-coverage gate and the PostgreSQL default it depends on (issue #765).
 
-One module for what commit.sh's coverage step, CI's `coverage` job and
-coverage-run-batched.sh each used to do their own way (two sourced bash helpers plus an
-inline awk block), so the local and CI gates cannot drift.
+One module for what CI's `coverage` job and coverage-run-batched.sh each used to do their
+own way (two sourced bash helpers plus an inline awk block). commit.sh now uses only
+`pg-connstr`; its coverage step moved to CI in #793.
 
     coverage_gate.py check < summary.txt     compare the line row to 100.0; on failure
                                              list the uncovered lines. Exit 0 / 1.
@@ -46,7 +46,7 @@ CONNSTR_TEMPLATE = "host=%s dbname=storm_db user=storm_db"
 
 COLORS = {"RED": "\033[0;31m", "YELLOW": "\033[0;33m", "BOLD": "\033[1m", "DIM": "\033[2m", "RESET": "\033[0m"}
 
-# The one file commit.sh's coverage target writes, relative to the repo root. It is
+# The one file the coverage target writes, relative to the repo root. It is
 # a constant, not an argument: nothing from the command line names a path.
 LCOV_RELATIVE_PATH = os.path.join("build", "debug", "coverage", "coverage-filtered.lcov")
 RULE_WIDTH = 60

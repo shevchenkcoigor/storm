@@ -1,14 +1,14 @@
 #!/bin/bash
-# Pre-commit checks: format -> tidy --fix -> test -> coverage
+# Pre-commit checks: format -> tidy --fix -> test (coverage and benchmarks are CI-only, #793)
 # Runs automatically via git pre-commit hook, or manually: ./commit.sh
 #
 # All checks are mandatory. No skip flags available.
 #
 # Smart skips (automatic, based on staged files; classified by
 # scripts/ci/detect_changes.py, shared with .github/workflows/ci.yml):
-#   No C++ or cmake files         → skip format, tidy, tests, coverage
-#   cmake-only changes            → skip clang-format, clang-tidy; run tests + coverage + cmake-format
-#   C++ but no src/tests/cmake    → skip tests, coverage
+#   No C++ or cmake files         → skip format, tidy, tests
+#   cmake-only changes            → skip clang-format, clang-tidy; run tests + cmake-format
+#   C++ but no src/tests/cmake    → skip tests
 #   Nothing staged                → git hook: skip everything; manual run: run everything
 #
 # SonarCloud quality gate runs on `git push` via .githooks/pre-push.
@@ -39,9 +39,7 @@ LOG_FORMAT=$LOG_DIR/storm_format.log
 LOG_CMAKE_FORMAT=$LOG_DIR/storm_cmake_format.log
 LOG_TIDY=$LOG_DIR/storm_tidy.log
 LOG_TIDY_BMI=$LOG_DIR/storm_tidy_bmi.log
-LOG_RELEASE=$LOG_DIR/storm_release.log
 LOG_TESTS=$LOG_DIR/storm_tests.log
-LOG_COVERAGE=$LOG_DIR/storm_coverage.log
 LOG_SELF_HEAL=$LOG_DIR/storm_self_heal_test.log
 
 print_header() {
@@ -87,7 +85,7 @@ run_step() {
     _step_finish "$name" "$exit_code" "$(( SECONDS - start ))" "$logfile"
 }
 
-# Show full output live (for long-running steps like tests/coverage)
+# Show full output live (for long-running steps like tests)
 run_step_live() {
     local name="$1" logfile="$2"
     shift 2
@@ -319,7 +317,7 @@ STAGED_FILES=$(git diff --cached --name-only 2>/dev/null || true)
 # FAIL CLOSED: a helper that prints nothing would leave every RUN_* unset, so
 # TOTAL_STEPS==0 and the commit would pass with no checks. Take the plan with its
 # exit status, and require each switch to be exactly true/false before using it.
-RUN_SWITCHES=(RUN_FORMAT RUN_CMAKE_FORMAT RUN_TIDY RUN_TESTS RUN_COVERAGE RUN_BENCH_RELEASE)
+RUN_SWITCHES=(RUN_FORMAT RUN_CMAKE_FORMAT RUN_TIDY RUN_TESTS)
 unset "${RUN_SWITCHES[@]}" SKIP_NOTE
 if [[ -n "$STAGED_FILES" ]]; then
     PLAN=$(set -o pipefail
@@ -373,15 +371,12 @@ TOTAL_STEPS=0
 # cold build on release test TUs clang-tidy never opens (#557) — see
 # build_tidy_prereqs above for the target list, the measurements, and the
 # fallbacks that keep both failure modes below covered.
-RELEASE_BUILD_NINJA="build/release/build.ninja"
 RUN_TIDY_BMI=false
 if [[ "$RUN_TIDY" == true ]]; then
     RUN_TIDY_BMI=true
     ((TOTAL_STEPS++))
 fi
-[[ "$RUN_BENCH_RELEASE" == true ]] && ((TOTAL_STEPS++))
 [[ "$RUN_TESTS" == true ]] && ((TOTAL_STEPS++))
-[[ "$RUN_COVERAGE" == true ]] && ((TOTAL_STEPS++))
 
 if [[ $TOTAL_STEPS -eq 0 ]]; then
     echo -e "${GREEN}✓ No checks needed for this commit.${RESET}"
@@ -445,12 +440,6 @@ if [[ "$RUN_FORMAT" == true || "$RUN_CMAKE_FORMAT" == true || "$RUN_TIDY" == tru
     git add -u
 fi
 
-# --- Step 3b: bench release build ---
-if [[ "$RUN_BENCH_RELEASE" == true ]]; then
-    run_step "release build" "$LOG_RELEASE" \
-        configure_and_build ninja-release "$RELEASE_BUILD_NINJA"
-fi
-
 # --- Step 4: tests ---
 # Run the gtest binary directly instead of `ctest --preset ninja-debug`:
 # ctest registers each of the ~3000 individual gtest cases as its own CTest test
@@ -468,8 +457,8 @@ if [[ "$RUN_TESTS" == true ]]; then
 
         # Soft default (not an override): an already-exported STORM_PG_CONNSTR
         # wins, as in scripts/coverage/coverage-run-batched.sh — a hard override here would
-        # silently point tests at a different DB than coverage uses in the same
-        # commit.sh run. The two share the DEFAULT (per-OS socket directory, from
+        # silently point tests at a different DB than the one coverage-run-batched.sh and
+        # CI use. They share the DEFAULT (per-OS socket directory, from
         # scripts/coverage/coverage_gate.py) but not the empty-value rule: this treats
         # a set-but-empty value as unset, the coverage script passes it through.
         # CMakePresets.json's testPresets still carry the Linux path (`ctest
@@ -519,37 +508,6 @@ if [[ "$RUN_TESTS" == true ]]; then
         return $overall
     }
     run_step_live "tests (SQLite + PostgreSQL)" "$LOG_TESTS" build_debug_then_test || true
-fi
-
-# --- Step 5: coverage ---
-if [[ "$RUN_COVERAGE" == true ]]; then
-    # Run coverage as a compound check: clean + build, then the gate (coverage_gate.py check:
-    # parse the line row, compare to 100.0, list the uncovered lines - the same code CI runs, #765)
-    run_coverage_check() {
-        # Self-heal an absent build/debug inside the step (#674), so a failed
-        # configure is reported here rather than as a coverage build error.
-        configure_if_missing ninja-debug build/debug/build.ninja || return 1
-
-        # Clean stale profraw/profdata to prevent false uncovered lines
-        cmake --build --preset ninja-debug-coverage --target coverage-clean > /dev/null 2>&1
-        local output
-        output=$(cmake --build --preset ninja-debug-coverage --target coverage 2>&1)
-        local build_exit=$?
-
-        if [[ $build_exit -ne 0 ]]; then
-            echo "$output" | tail -20
-            echo ""
-            echo "Coverage build/analysis failed."
-            return 1
-        fi
-
-        # Plain text when this script's own colours are blank (as in its self-test).
-        local no_color=""
-        [[ -z "$RED" ]] && no_color=1
-        NO_COLOR="$no_color" "$(dirname "${BASH_SOURCE[0]}")/scripts/coverage/coverage_gate.py" check <<< "$output"
-    }
-
-    run_step_live "coverage (100% required)" "$LOG_COVERAGE" run_coverage_check || true
 fi
 
 # --- Final summary ---

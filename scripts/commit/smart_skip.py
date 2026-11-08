@@ -12,22 +12,23 @@ nothing was skipped).
 Empty stdin (no staged files) keeps every gate on, unless `--empty-index-skips`
 (the git hook, #706) says a commit changing nothing needs no checks and turns them
 all off. Input missing any of the five flags or holding
-a value other than exactly true/false, keeps every gate on and the bench build
-off: an unclassifiable commit gets every check, never fewer.
+a value other than exactly true/false, keeps every gate on:
+an unclassifiable commit gets every check, never fewer.
 
 Rules (first match wins for the note):
-  no C++ and no cmake          -> skip format, tidy, tests, coverage
+  no C++ and no cmake          -> skip format, tidy, tests
   cmake but no C++             -> skip clang-format, clang-tidy
-  C++ but no src/tests/cmake   -> skip tests, coverage
+  C++ but no src/tests/cmake   -> skip tests
   no cmake                     -> skip cmake-format
-  bench AND C++                -> also build release for the benchmarks
+
+The 100% coverage gate and the bench release build are CI-only (#793).
 
 Stdlib only, no syntax newer than Python 3.7.
 """
 import shlex
 import sys
 
-RUN_KEYS = ("RUN_FORMAT", "RUN_CMAKE_FORMAT", "RUN_TIDY", "RUN_TESTS", "RUN_COVERAGE", "RUN_BENCH_RELEASE")
+RUN_KEYS = ("RUN_FORMAT", "RUN_CMAKE_FORMAT", "RUN_TIDY", "RUN_TESTS")
 
 
 def decide(flags):
@@ -35,26 +36,24 @@ def decide(flags):
 
     Returns ({RUN_*: bool}, note).
     """
-    plan = {key: key != "RUN_BENCH_RELEASE" for key in RUN_KEYS}
+    plan = {key: True for key in RUN_KEYS}
     if flags is None:
         return plan, ""
 
     cpp, cmake = flags["HAS_CPP_CHANGES"], flags["HAS_CMAKE_CHANGES"]
     note = ""
     if not cpp and not cmake:
-        note = "No C++ or cmake files in commit — skipping format, tidy, tests, coverage"
-        plan.update(RUN_FORMAT=False, RUN_CMAKE_FORMAT=False, RUN_TIDY=False,
-                    RUN_TESTS=False, RUN_COVERAGE=False)
+        note = "No C++ or cmake files in commit — skipping format, tidy, tests"
+        plan.update(RUN_FORMAT=False, RUN_CMAKE_FORMAT=False, RUN_TIDY=False, RUN_TESTS=False)
     elif not cpp:
         note = "cmake-only changes — skipping clang-format, clang-tidy"
         plan.update(RUN_FORMAT=False, RUN_TIDY=False)
     elif not (flags["HAS_SRC_CHANGES"] or flags["HAS_TEST_CHANGES"] or cmake):
-        note = "No src/, tests/, or cmake changes — skipping tests, coverage"
-        plan.update(RUN_TESTS=False, RUN_COVERAGE=False)
+        note = "No src/, tests/, or cmake changes — skipping tests"
+        plan.update(RUN_TESTS=False)
 
     if not cmake:
         plan["RUN_CMAKE_FORMAT"] = False
-    plan["RUN_BENCH_RELEASE"] = flags["HAS_BENCH_CHANGES"] and cpp
     return plan, note
 
 

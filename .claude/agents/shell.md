@@ -77,10 +77,10 @@ Always provide working, tested solutions with clear explanations. When multiple 
 These scripts have project-specific conventions — understand them before modifying:
 
 **`commit.sh`** — Pre-commit checks orchestrator (runs via `.githooks/pre-commit`):
-- Pipeline: clang-format → cmake-format → clang-tidy → tests → coverage
-- Smart skips based on staged file types (no C++/cmake → skip all; cmake-only → skip format/tidy; bench-only → skip tests/coverage; nothing staged → skip all under the git hook, which exports `STORM_PRE_COMMIT_HOOK=1`, full suite on a manual run, #706)
+- Pipeline: clang-format → cmake-format → clang-tidy → tests (coverage and the bench build are CI-only, #793)
+- Smart skips based on staged file types (no C++/cmake → skip all; cmake-only → skip clang-format/tidy; C++ outside src/tests/cmake → skip tests; nothing staged → skip all under the git hook, which exports `STORM_PRE_COMMIT_HOOK=1`, full suite on a manual run, #706)
 - No manual skip flags — skipping is automatic based on what's staged
-- Thin orchestrator (#688): logic lives in tested stdlib-Python helpers — `scripts/commit/pre_commit_guards.py` (staged-file guards table, run before the `TOTAL_STEPS==0` exit), `scripts/commit/smart_skip.py` (skip rules), `scripts/tidy/tidy_prereqs.py` (clang-tidy BMI verdict, fails closed), `scripts/coverage/coverage_gate.py` (coverage gate + gap report), `scripts/tidy/run_clang_tidy.py` + `scripts/tidy/clang_tidy_skiplist.py` (the clang-tidy runner and its skip lists, #692). Keep them free of syntax newer than Python 3.9 (macOS system python3)
+- Thin orchestrator (#688): logic lives in tested stdlib-Python helpers — `scripts/commit/pre_commit_guards.py` (staged-file guards table, run before the `TOTAL_STEPS==0` exit), `scripts/commit/smart_skip.py` (skip rules), `scripts/tidy/tidy_prereqs.py` (clang-tidy BMI verdict, fails closed), `scripts/coverage/coverage_gate.py` (per-OS `STORM_PG_CONNSTR` default; the gate itself runs in CI), `scripts/tidy/run_clang_tidy.py` + `scripts/tidy/clang_tidy_skiplist.py` (the clang-tidy runner and its skip lists, #692). Keep them free of syntax newer than Python 3.9 (macOS system python3)
 
 **`.githooks/pre-commit`** — Thin wrapper: exports `STORM_PRE_COMMIT_HOOK=1` (empty index then skips all checks, #706), then `exec ./commit.sh`
 

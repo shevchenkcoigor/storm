@@ -62,8 +62,8 @@ open build/debug/coverage/html-filtered/index.html      # macOS
 
 The `coverage` job in `.github/workflows/ci.yml` runs on every PR and nightly on
 `develop` (not on the post-merge push — #700). It builds `ninja-debug`, runs the `coverage` target, and **fails the
-job below 100% line coverage** — the same gate `commit.sh` applies locally, so
-the threshold is no longer self-reported from one developer's machine (#528).
+job below 100% line coverage** — the only automated place the gate runs (`commit.sh` dropped its copy in #793; run the
+`coverage` target by hand to check locally).
 
 The job parses the **line** row of the lcov summary specifically. Function
 coverage (~81%) and branch coverage (~92%) are not gated; anchoring on the wrong
@@ -179,8 +179,7 @@ build/debug/coverage/
 
 ### Line Coverage
 
-- **100% is required** — enforced by the `commit.sh` pre-commit hook locally and
-  by the `coverage` CI job on every PR (#528)
+- **100% is required** — enforced by the `coverage` CI job on every PR (#528)
 - The figure is 100% of the **filtered** set — 24 files / 8613 lines, after
   `LCOV_EXCL` markers are removed from the denominator (56 markers across 11
   files in `src/`). It is not 100% of every line in the tree
