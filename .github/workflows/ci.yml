@@ -21,7 +21,8 @@ name: CI
 # the cron line — check `gh run list --workflow ci.yml --event schedule`.
 # A develop commit shows one skipped check literally named
 # `${{ matrix.preset }} / PG ${{ matrix.postgres }}`: that is the job-level
-# matrix skip, harmless on a push (see the heavy jobs' `if:`), not #638.
+# matrix skip, harmless on any event (docs-only PRs and merge groups show it
+# too): only `CI gate` is required, so it is not #638.
 on:
   push:
     branches: [develop]
@@ -51,38 +52,23 @@ jobs:
   # they run everything) via scripts/ci/detect_changes.py —
   # the same script commit.sh uses for its staged-file smart skips, so both
   # places agree on what counts as "src/tests/cmake changed". `run_heavy`
-  # gates the expensive STEPS of the `test` / `coverage` /
-  # `clang-p2996-host-layout` jobs below: a PR touching only docs/ or
-  # unrelated top-level files reports those jobs green without configuring,
-  # building or testing anything.
+  # gates the `test` / `coverage` / `clang-p2996-host-layout` jobs below, and
+  # `run_cold_cpm` the cold-cpm-configure job: a PR touching only docs/ or
+  # unrelated top-level files SKIPS them outright — no storm-ci image pulled,
+  # no postgres service started, nothing configured, built or tested (#639).
   #
-  # The gate is on the steps, not on the jobs, and that distinction is
-  # load-bearing (#638). A job skipped by a job-level `if:` still produces a
-  # check run — but a MATRIX job produces exactly ONE, named with the matrix
-  # expression unexpanded (`${{ matrix.preset }} / PG ${{ matrix.postgres }}`).
-  # The per-matrix contexts develop's branch protection requires
-  # (`ninja-debug / PG 17`, `ninja-tsan / PG 17`, ...) are then never reported
-  # at all, and the PR sits at "Expected — waiting for status to be reported"
-  # with no way to merge it. #607 introduced the skip on the assumption that a
-  # skipped required check reads as passed; that holds for a plain job, not for
-  # the matrix. Gating the steps keeps every context name intact and green.
-  #
-  # The price, stated honestly because the next person will see it: `container:`
-  # and `services:` are resolved BEFORE the first step's `if:` is evaluated and
-  # cannot be gated, so a docs-only PR still pulls the (multi-GB) storm-ci image
-  # nine times and starts eight postgres services. That is minutes, not seconds
-  # — but no configure/build/test, against 12-22 min of matrix before. It also
-  # gives docs-only PRs an infrastructure failure surface they did not have when
-  # the jobs were skipped outright: a GHCR outage, an unavailable pinned digest,
-  # or a pg_isready health-check flake now reds a required context on a PR that
-  # changed nothing but prose. Accepted as the cost of a mergeable PR.
-  #
-  # That cost is removable: the `ci-gate` job at the bottom of this file is a
-  # single always-running required context, and once develop's branch
-  # protection requires IT instead of the individual job names, these three
-  # jobs can go back to skipping outright — zero containers, zero services.
-  # See that job's comment for the exact edit; it is three lines, and it must
-  # not be made before the required-checks list is changed.
+  # Skipping whole jobs is safe only because `CI gate` (the `ci-gate` job at
+  # the bottom of this file) is the single required context and reads
+  # `skipped` as a pass. That was NOT always so (#638): a job skipped by a
+  # job-level `if:` still produces a check run, but a MATRIX job produces
+  # exactly ONE, named with the matrix expression unexpanded
+  # (`${{ matrix.preset }} / PG ${{ matrix.postgres }}`), so the per-matrix
+  # contexts the old branch protection required were never reported and the PR
+  # sat at "Expected — waiting for status to be reported". Until develop's
+  # ruleset required only `CI gate`, the heavy jobs therefore ran and gated
+  # their STEPS instead, paying for the image pulls and postgres services on
+  # every docs-only PR. Do not re-add a per-job or per-matrix required context
+  # without first putting that step-gating back.
   #
   # Fail-closed by design: this job's output defaults every consumer's `if:`
   # to "run" unless it explicitly says `run_heavy == 'false'` (see those
@@ -247,12 +233,13 @@ jobs:
   clang-p2996-host-layout:
     name: clang-p2996 host-layout resolution
     needs: changes
-    # Always RUNS on a PR (fail-closed on a broken `changes` job, whose empty
-    # output reads as "not false"); the steps below are what `run_heavy` gates.
-    # See the note on the `changes` job for why that is not a job-level `if:`.
-    # The `push` skip IS job-level: no branch protection reads the contexts of
-    # a develop push run, so #638 cannot bite there (see the note under `on:`).
-    if: ${{ !cancelled() && github.event_name != 'push' }}
+    # Skipped outright (no container pulled, no service started) when the
+    # diff does not need it: `run_heavy` is the `changes` job's verdict. Fail-closed:
+    # a broken `changes` job leaves the output empty, and '' != 'false' still
+    # runs. Skipping a whole job is safe because `CI gate`, the only required
+    # context, reads `skipped` as a pass (#638, #639). The `push` skip is
+    # job-level too (#700).
+    if: ${{ !cancelled() && github.event_name != 'push' && needs.changes.outputs.run_heavy != 'false' }}
     env:
       RUN_HEAVY: ${{ needs.changes.outputs.run_heavy }}
     runs-on: ubuntu-24.04
@@ -261,10 +248,6 @@ jobs:
       # rebuilds. Bump this when publishing a new image (see docker-ci-image.yml).
       image: ghcr.io/spiritecosse/storm-ci@sha256:ae4f62771d7611c663ccb8e0061af9acc8a8a3fe604eabde4285d11a77d37a61
     steps:
-      - name: No src/tests/cmake changes — heavy steps skipped
-        if: env.RUN_HEAVY == 'false'
-        run: echo "Diff touches none of src/, tests/ or cmake — build/test steps skipped."
-
       - name: Checkout
         if: env.RUN_HEAVY != 'false'
         uses: actions/checkout@v4
@@ -283,12 +266,13 @@ jobs:
     # preset produces no signal. Re-add the matrix entry once a fixed
     # clang-p2996 build lands (track at #326).
     needs: changes
-    # Always RUNS on a PR (fail-closed on a broken `changes` job, whose empty
-    # output reads as "not false"); the steps below are what `run_heavy` gates.
-    # See the note on the `changes` job for why that is not a job-level `if:`.
-    # The `push` skip IS job-level: no branch protection reads the contexts of
-    # a develop push run, so #638 cannot bite there (see the note under `on:`).
-    if: ${{ !cancelled() && github.event_name != 'push' }}
+    # Skipped outright (no container pulled, no service started) when the
+    # diff does not need it: `run_heavy` is the `changes` job's verdict. Fail-closed:
+    # a broken `changes` job leaves the output empty, and '' != 'false' still
+    # runs. Skipping a whole job is safe because `CI gate`, the only required
+    # context, reads `skipped` as a pass (#638, #639). The `push` skip is
+    # job-level too (#700).
+    if: ${{ !cancelled() && github.event_name != 'push' && needs.changes.outputs.run_heavy != 'false' }}
     env:
       RUN_HEAVY: ${{ needs.changes.outputs.run_heavy }}
     runs-on: ubuntu-24.04
@@ -347,10 +331,6 @@ jobs:
             postgres: 17
 
     steps:
-      - name: No src/tests/cmake changes — heavy steps skipped
-        if: env.RUN_HEAVY == 'false'
-        run: echo "Diff touches none of src/, tests/ or cmake — build/test steps skipped."
-
       - name: Checkout
         if: env.RUN_HEAVY != 'false'
         uses: actions/checkout@v4
@@ -469,12 +449,13 @@ jobs:
   coverage:
     name: coverage (100% lines, filtered)
     needs: changes
-    # Always RUNS on a PR (fail-closed on a broken `changes` job, whose empty
-    # output reads as "not false"); the steps below are what `run_heavy` gates.
-    # See the note on the `changes` job for why that is not a job-level `if:`.
-    # The `push` skip IS job-level: no branch protection reads the contexts of
-    # a develop push run, so #638 cannot bite there (see the note under `on:`).
-    if: ${{ !cancelled() && github.event_name != 'push' }}
+    # Skipped outright (no container pulled, no service started) when the
+    # diff does not need it: `run_heavy` is the `changes` job's verdict. Fail-closed:
+    # a broken `changes` job leaves the output empty, and '' != 'false' still
+    # runs. Skipping a whole job is safe because `CI gate`, the only required
+    # context, reads `skipped` as a pass (#638, #639). The `push` skip is
+    # job-level too (#700).
+    if: ${{ !cancelled() && github.event_name != 'push' && needs.changes.outputs.run_heavy != 'false' }}
     env:
       RUN_HEAVY: ${{ needs.changes.outputs.run_heavy }}
     runs-on: ubuntu-24.04
@@ -505,10 +486,6 @@ jobs:
           --health-retries 5
 
     steps:
-      - name: No src/tests/cmake changes — heavy steps skipped
-        if: env.RUN_HEAVY == 'false'
-        run: echo "Diff touches none of src/, tests/ or cmake — build/test steps skipped."
-
       - name: Checkout
         if: env.RUN_HEAVY != 'false'
         uses: actions/checkout@v4
@@ -631,15 +608,18 @@ jobs:
   # Runs on the nightly `schedule` (an upstream deletion between PRs) and on PRs
   # that touch CMakeLists.txt / *.cmake or the CI plumbing (`run_cold_cpm`, set
   # by the `changes` job). Not on every PR: an upstream deletion or a GitHub
-  # network blip would then red unrelated PRs. Step-gated, not job-gated, for
-  # the same #638 reason as the heavy jobs above.
+  # network blip would then red unrelated PRs. Job-gated like the heavy jobs
+  # above (#639): `CI gate` reads its `skipped` as a pass.
   cold-cpm-configure:
     name: cold CPM configure (#702)
     needs: changes
-    # Always RUNS on a PR (fail-closed on a broken `changes` job, whose empty
-    # output reads as "not false"); the steps below are what `run_cold_cpm`
-    # gates. The `push` skip is job-level, as on the heavy jobs (#700).
-    if: ${{ !cancelled() && github.event_name != 'push' }}
+    # Skipped outright (no container pulled) when the
+    # diff does not need it: `run_cold_cpm` is the `changes` job's verdict. Fail-closed:
+    # a broken `changes` job leaves the output empty, and '' != 'false' still
+    # runs. Skipping a whole job is safe because `CI gate`, the only required
+    # context, reads `skipped` as a pass (#638, #639). The `push` skip is
+    # job-level too (#700).
+    if: ${{ !cancelled() && github.event_name != 'push' && needs.changes.outputs.run_cold_cpm != 'false' }}
     env:
       RUN_COLD_CPM: ${{ needs.changes.outputs.run_cold_cpm }}
     runs-on: ubuntu-24.04
@@ -649,10 +629,6 @@ jobs:
       # Keep in sync with the `test` job's pin — scripts/ci/check_ci_digests.py asserts they agree.
       image: ghcr.io/spiritecosse/storm-ci@sha256:ae4f62771d7611c663ccb8e0061af9acc8a8a3fe604eabde4285d11a77d37a61
     steps:
-      - name: No CMake changes — cold configure skipped
-        if: env.RUN_COLD_CPM == 'false'
-        run: echo "Diff touches no CMakeLists.txt / *.cmake / CI plumbing — cold CPM configure skipped."
-
       - name: Checkout
         if: env.RUN_COLD_CPM != 'false'
         uses: actions/checkout@v4
@@ -741,33 +717,24 @@ jobs:
   #        iv.  only then turn the merge queue on, and verify with a small
   #             docs-only PR (it also shows which conclusion Sonar posts on a
   #             PR with no C++ — sonar_gate.py fails anything but `success`).
-  #   4. Only then, the flip below.
+  #   4. DONE (#639): the flip — the job-level `if:` of `test`, `coverage`,
+  #      `clang-p2996-host-layout` and `cold-cpm-configure` carries
+  #      `&& needs.changes.outputs.<run_heavy|run_cold_cpm> != 'false'`, so a
+  #      docs-only PR starts no container and no postgres service at all.
+  #      Fail-closed survives: a broken `changes` job leaves the output empty
+  #      and '' != 'false' still runs everything.
   #   5. Verify on a docs-only PR: heavy jobs `skipped`, `CI gate` green,
   #      merge unblocked.
   #
   # Step 3 must NOT precede step 1: `CI gate` does not exist on develop until
   # this job is merged, so requiring it first strands EVERY open PR — including
   # the one that would create it — on a context no run will ever report.
-  # Step 4 must NOT precede step 3: that is #638, reproduced exactly.
+  # Step 4 must NOT precede step 3: that is #638, reproduced exactly. Undoing
+  # step 3 (re-requiring a per-job context) therefore means undoing step 4 too.
   #
-  # THE FLIP (step 4), which returns docs-only PRs to zero cost — no container
-  # pull, no postgres service, nothing started at all:
-  #
-  #   a. Append `&& needs.changes.outputs.run_heavy != 'false'` to the
-  #      job-level `if:` of `test`, `coverage` and `clang-p2996-host-layout`,
-  #      keeping the `github.event_name != 'push'` term (#700).
-  #      Fail-closed survives: a broken `changes` job leaves the output empty
-  #      and '' != 'false' still runs everything.
-  #   b. Delete the now-unreachable `No src/tests/cmake changes — heavy steps
-  #      skipped` step at the top of those three jobs. After (a) its condition
-  #      is the exact negation of the job-level one, so it is dead code that
-  #      reads as if step-gating were still doing work.
-  #   c. Update CLAUDE.md rule 7: its "the jobs still RUN and report green,
-  #      with their build/test steps skipped" clause describes the pre-flip
-  #      mechanism and becomes false.
-  #
-  # The step-level `env.RUN_HEAVY` guards themselves can stay — they are only
-  # reachable when the job-level condition already let the job run.
+  # The step-level `env.RUN_HEAVY` / `env.RUN_COLD_CPM` guards remain; they are
+  # only reachable when the job-level condition already let the job run, so
+  # they are always true there and cheap insurance, not live logic.
   ci-gate:
     name: CI gate
     # always(), not !cancelled(): a cancelled dependency must read as a
