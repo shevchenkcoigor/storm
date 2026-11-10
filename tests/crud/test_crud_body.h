@@ -45,7 +45,7 @@ template <typename ConnType> class PersonCrudTestBase : public StormTestFixture<
         std::vector<Person> batch;
         batch.reserve(static_cast<std::size_t>(to) - static_cast<std::size_t>(from) + 1U);
         for (int i = from; i <= to; i++) {
-            batch.push_back(Person{.id = i, .name = std::format("Person{}", i), .age = 20 + (i % 60)});
+            batch.push_back(Person{.id = i, .name = storm::test::numbered("Person", i), .age = 20 + (i % 60)});
         }
         auto result = qs.insert(std::span<const Person>(batch)).execute();
         ASSERT_TRUE(result.has_value()) << "Failed to insert test data";
@@ -115,7 +115,7 @@ TYPED_TEST(QuerySetEraseTest, EraseBatchPerformance) {
     // Measure individual removes
     auto start_individual = std::chrono::steady_clock::now();
     for (int i = 1; i <= 50; i++) {
-        Person const person{.id = i, .name = std::format("Person{}", i), .age = 20 + (i % 60)};
+        Person const person{.id = i, .name = storm::test::numbered("Person", i), .age = 20 + (i % 60)};
         auto result = queryset.erase(person).execute();
         ASSERT_TRUE(result.has_value()) << "Individual erase should succeed";
     }
@@ -126,7 +126,7 @@ TYPED_TEST(QuerySetEraseTest, EraseBatchPerformance) {
     // Prepare batch for batch erase
     std::vector<Person> batch;
     for (int i = 51; i <= 100; i++) {
-        batch.emplace_back(i, std::format("Person{}", i), 20 + (i % 60));
+        batch.emplace_back(i, storm::test::numbered("Person", i), 20 + (i % 60));
     }
 
     // Measure batch erase
@@ -160,7 +160,7 @@ TYPED_TEST(QuerySetEraseTest, EraseBatchChunked) {
     // Create batch of >799 persons to erase (triggers chunked path)
     std::vector<Person> chunked_batch;
     for (int i = 1; i <= 850; i++) {
-        chunked_batch.emplace_back(i, std::format("Person{}", i), 20 + (i % 60));
+        chunked_batch.emplace_back(i, storm::test::numbered("Person", i), 20 + (i % 60));
     }
 
     // Erase chunked batch - should use execute_chunked with transaction
@@ -197,7 +197,7 @@ TYPED_TEST(QuerySetEraseTest, EraseBatchChunkedWithRemainder) {
     // Create batch of 1650 persons (2 full chunks + 52 remainder)
     std::vector<Person> chunked_batch;
     for (int i = 1; i <= 1650; i++) {
-        chunked_batch.emplace_back(i, std::format("Person{}", i), 20 + (i % 60));
+        chunked_batch.emplace_back(i, storm::test::numbered("Person", i), 20 + (i % 60));
     }
 
     // Erase chunked batch - should use execute_chunked with remainder
@@ -293,13 +293,13 @@ TYPED_TEST(QuerySetUpdateTest, UpdateCachedStatementReuse) {
 
     // Perform multiple updates to verify statement caching works correctly
     for (int i = 0; i < 10; ++i) {
-        Person const updated_alice{.id = 1, .name = std::format("Alice V{}", i), .age = 30 + i};
+        Person const updated_alice{.id = 1, .name = storm::test::numbered("Alice V", i), .age = 30 + i};
         auto result = queryset.update(updated_alice).execute();
         ASSERT_TRUE(result.has_value()) << "Update iteration " << i << " should succeed";
 
         auto alice = this->getPerson(1);
         ASSERT_TRUE(alice.has_value());
-        EXPECT_EQ(alice->name, std::format("Alice V{}", i));
+        EXPECT_EQ(alice->name, storm::test::numbered("Alice V", i));
         EXPECT_EQ(alice->age, 30 + i);
     }
 

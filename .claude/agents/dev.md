@@ -54,7 +54,7 @@ When implementing features:
 - No REFL-CPP (use native C++26 reflection only)
 - Module names use underscores (compiler limitation)
 - No `std::mutex` in modules (causes compiler crashes — use per-thread connections)
-- No constexpr SQL generation (runtime `std::format` only)
+- No constexpr SQL generation (runtime `+=` appends — never `std::format`/`std::print` in `src/` or a shared test header, `scripts/ci/check_no_std_format.py`)
 - Avoid circular dependencies through careful module structuring
 
 ## Module Dependency Management

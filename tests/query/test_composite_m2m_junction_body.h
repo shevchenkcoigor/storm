@@ -81,7 +81,10 @@ constexpr std::string_view SHELF_BIN_COLS =
 // by the 1-based order inserted here.
 auto seed_tags(const auto &conn, int count) -> void {
     for (const auto *label : std::array{"audit", "review"} | std::views::take(count)) {
-        ASSERT_TRUE(conn->execute(std::format("INSERT INTO LedgerTag (label) VALUES ('{}')", label)).has_value());
+        std::string sql{"INSERT INTO LedgerTag (label) VALUES ('"};
+        sql += label;
+        sql += "')";
+        ASSERT_TRUE(conn->execute(sql).has_value());
     }
 }
 
@@ -89,7 +92,11 @@ auto seed_tags(const auto &conn, int count) -> void {
 // as raw SQL throughout the m2m suites — Storm has no junction write path.
 auto link_junction_rows(const auto &conn, std::string_view table_and_cols, auto rows) -> void {
     for (const auto *row : rows) {
-        ASSERT_TRUE(conn->execute(std::format("INSERT INTO {} VALUES {}", table_and_cols, row)).has_value());
+        std::string sql{"INSERT INTO "};
+        sql += table_and_cols;
+        sql += " VALUES ";
+        sql += row;
+        ASSERT_TRUE(conn->execute(sql).has_value());
     }
 }
 
@@ -156,11 +163,10 @@ TYPED_TEST(CompositeOwnerJunctionCreateTest, M2MEagerLoadStitchesOnFullComposite
 
     // acct-a gets BOTH tags; acct-b gets only 'review'.
     for (const auto *row : {"(1, 'acct-a', 202601, 1)", "(1, 'acct-a', 202601, 2)", "(1, 'acct-b', 202602, 2)"}) {
-        const auto link = conn->execute(
-            std::format("INSERT INTO LedgerWithTags_LedgerTag "
-                        "(LedgerWithTags_region, LedgerWithTags_account, LedgerWithTags_period, LedgerTag_id) VALUES "
-                        "{}",
-                        row));
+        std::string sql{"INSERT INTO LedgerWithTags_LedgerTag "
+                        "(LedgerWithTags_region, LedgerWithTags_account, LedgerWithTags_period, LedgerTag_id) VALUES "};
+        sql += row;
+        const auto link = conn->execute(sql);
         ASSERT_TRUE(link.has_value());
     }
 

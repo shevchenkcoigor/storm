@@ -66,7 +66,7 @@ You are a senior C++ code reviewer specializing in the Storm ORM project, with d
 
 ### 9. Compiler-Specific Constraints
 - Code works with the experimental Clang fork at `../clang-p2996/`
-- No constexpr SQL generation (runtime `std::format` only)
+- No constexpr SQL generation (runtime `+=` appends — never `std::format`/`std::print` in `src/` or a shared test header, `scripts/ci/check_no_std_format.py`)
 - The flag annotation objects (`primary`, `unique`, …) and their predicates have a single definition in the `storm_orm_field_attr` leaf module (#387/#492) — flag any re-declared copy
 
 ### 10. C++ Core Guidelines

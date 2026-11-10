@@ -275,7 +275,7 @@ TYPED_TEST(CompositeFkBulkInsertTest, BulkInsertPastParameterLimitSucceeds) {
     std::vector<LedgerEntryRef> entries;
     entries.reserve(kCompositeFkBulkRows);
     for (std::size_t i = 0; i < kCompositeFkBulkRows; ++i) {
-        entries.push_back(LedgerEntryRef{.ledger = ledger, .note = std::format("note{}", i)});
+        entries.push_back(LedgerEntryRef{.ledger = ledger, .note = storm::test::numbered("note", i)});
     }
 
     auto result =

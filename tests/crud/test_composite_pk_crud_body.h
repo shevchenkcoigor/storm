@@ -350,7 +350,7 @@ template <typename ConnType> class StockEntryTest : public CompositePkFixture<St
     static auto seed_persons() -> void {
         QuerySet<Person, ConnType> people;
         for (int i = 1; i <= 2; ++i) {
-            const Person person{.id = i, .name = std::format("W{}", i), .age = 30};
+            const Person person{.id = i, .name = storm::test::numbered("W", i), .age = 30};
             ASSERT_TRUE(people.insert(person).execute().has_value());
         }
     }
@@ -432,7 +432,10 @@ template <typename ConnType> class LargeBatchTest : public CompositePkFixture<Or
             if (i > 0) {
                 sql += ", ";
             }
-            sql += std::format("({}, {}, {}, 'n')", i, i * 2, i);
+            sql += storm::test::numbered("(", i);
+            sql += storm::test::numbered(", ", i * 2);
+            sql += storm::test::numbered(", ", i);
+            sql += ", 'n')";
         }
         this->seed(sql);
     }
@@ -492,7 +495,7 @@ template <typename ConnType> class SinglePkRegressionTest : public StormTestFixt
     auto on_after_setup(const std::shared_ptr<ConnType> & /*conn*/) -> void override {
         QuerySet<Person, ConnType> qs;
         for (int i = 1; i <= 3; ++i) {
-            const Person person{.id = i, .name = std::format("P{}", i), .age = 20 + i};
+            const Person person{.id = i, .name = storm::test::numbered("P", i), .age = 20 + i};
             ASSERT_TRUE(qs.insert(person).execute().has_value());
         }
     }

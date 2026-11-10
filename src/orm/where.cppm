@@ -12,10 +12,11 @@ export module storm_orm_where;
 import std;
 import storm_std_meta;
 
-import storm_orm_utilities;     // For ConstexprString
-import storm_orm_field_attr;    // ValidFieldInfo — gate the field-selector NTTP (#478)
-import storm_orm_relation_meta; // is_relation_field — reject m2m/reverse_fk members in Field<M> (#408)
-import storm_orm_where_operand; // normalize_operand/normalize_column_operand/ColumnIsUuid (#622)
+import storm_orm_utilities;        // For ConstexprString
+import storm_orm_field_attr;       // ValidFieldInfo — gate the field-selector NTTP (#478)
+import storm_orm_relation_meta;    // is_relation_field — reject m2m/reverse_fk members in Field<M> (#408)
+import storm_orm_where_operand;    // normalize_operand/normalize_column_operand/ColumnIsUuid (#622)
+export import storm_orm_where_ops; // CompOp/LogicalOp + their SQL spellings, with_suffix
 
 export namespace storm::orm::where {
 
@@ -35,41 +36,6 @@ export namespace storm::orm::where {
     // type at compile time. The actual Statement* conversion happens in bind_params_direct().
     using ErasedStatementPtr = void*; // NOSONAR(cpp:S5008) - type erasure requires void*
 
-    // Comparison operators
-    enum class CompOp : std::uint8_t { Equal, NotEqual, Greater, GreaterEqual, Less, LessEqual };
-
-    constexpr auto comp_op_to_sql(CompOp op) noexcept -> std::string_view {
-        using enum CompOp;
-        switch (op) {
-        case Equal:
-            return " = ";
-        case NotEqual:
-            return " != ";
-        case Greater:
-            return " > ";
-        case GreaterEqual:
-            return " >= ";
-        case Less:
-            return " < ";
-        case LessEqual:
-            return " <= ";
-        }
-        return " = "; // LCOV_EXCL_LINE - unreachable: all enum values handled above
-    }
-
-    // Logical operators
-    enum class LogicalOp : std::uint8_t { And, Or };
-
-    constexpr auto logical_op_to_sql(LogicalOp op) noexcept -> std::string_view {
-        switch (op) {
-        case LogicalOp::And:
-            return " AND ";
-        case LogicalOp::Or:
-            return " OR ";
-        }
-        return " AND "; // LCOV_EXCL_LINE - unreachable: all enum values handled above
-    }
-
     // VALUE-TYPE Comparison expression: field > value (NO VIRTUAL FUNCTIONS!)
     template <typename ValueType> struct ComparisonExpr {
         std::string field_name_;
@@ -83,7 +49,9 @@ export namespace storm::orm::where {
         }
 
         [[nodiscard]] auto to_sql_with_column(std::string_view column) const -> std::string {
-            return std::format("{}{}?", column, comp_op_to_sql(op_));
+            std::string sql = with_suffix(column, comp_op_to_sql(op_));
+            sql += '?';
+            return sql;
         }
 
         template <typename StmtType, typename ErrorType>
@@ -105,7 +73,7 @@ export namespace storm::orm::where {
         }
 
         [[nodiscard]] auto to_sql_with_column(std::string_view column) const -> std::string {
-            return is_null_ ? std::format("{} IS NULL", column) : std::format("{} IS NOT NULL", column);
+            return with_suffix(column, is_null_ ? " IS NULL" : " IS NOT NULL");
         }
 
         template <typename StmtType, typename ErrorType>
@@ -127,7 +95,7 @@ export namespace storm::orm::where {
         }
 
         [[nodiscard]] static auto to_sql_with_column(std::string_view column) -> std::string {
-            return std::format("{} LIKE ?", column);
+            return with_suffix(column, " LIKE ?");
         }
 
         template <typename StmtType, typename ErrorType>
@@ -150,7 +118,7 @@ export namespace storm::orm::where {
         }
 
         [[nodiscard]] auto to_sql_with_column(std::string_view column) const -> std::string {
-            return std::format("{} BETWEEN ? AND ?", column);
+            return with_suffix(column, " BETWEEN ? AND ?");
         }
 
         template <typename StmtType, typename ErrorType>
@@ -179,9 +147,12 @@ export namespace storm::orm::where {
             if (values_.empty()) {
                 return "1 = 0"; // SQL that always evaluates to false
             }
-            auto placeholders = std::views::repeat(std::string_view("?"), values_.size()) |
-                                std::views::join_with(std::string_view(", "));
-            return std::format("{} IN ({})", column, std::string(placeholders.begin(), placeholders.end()));
+            std::string sql = with_suffix(column, " IN (");
+            for (std::size_t i = 0; i < values_.size(); ++i) {
+                sql += (i == 0) ? "?" : ", ?";
+            }
+            sql += ')';
+            return sql;
         }
 
         template <typename StmtType, typename ErrorType>
@@ -271,7 +242,7 @@ export namespace storm::orm::where {
     // Visitor for to_sql() - called via std::visit
     struct ToSqlVisitor {
         [[nodiscard]] auto operator()(const LogicalExpr& expr) const -> std::string {
-            return std::format("({}{}{})", to_sql(*expr.left), logical_op_to_sql(expr.op), to_sql(*expr.right));
+            return parenthesised(to_sql(*expr.left), logical_op_to_sql(expr.op), to_sql(*expr.right));
         }
 
         // All other expression types have their own to_sql() method
@@ -299,11 +270,8 @@ export namespace storm::orm::where {
         ColumnQualifier qualifier;
 
         [[nodiscard]] auto operator()(const LogicalExpr& expr) const -> std::string {
-            return std::format(
-                    "({}{}{})",
-                    to_sql(*expr.left, qualifier),
-                    logical_op_to_sql(expr.op),
-                    to_sql(*expr.right, qualifier)
+            return parenthesised(
+                    to_sql(*expr.left, qualifier), logical_op_to_sql(expr.op), to_sql(*expr.right, qualifier)
             );
         }
 
@@ -311,7 +279,8 @@ export namespace storm::orm::where {
             if (expr.owner_ != qualifier.owner) {
                 return expr.to_sql();
             }
-            return expr.to_sql_with_column(std::format("{}{}", qualifier.prefix, expr.field_name_));
+            // "<prefix><column>" — with_suffix is plain concatenation, the prefix being the "name".
+            return expr.to_sql_with_column(with_suffix(qualifier.prefix, expr.field_name_));
         }
     };
 
@@ -584,7 +553,7 @@ export namespace storm::orm::where {
         std::string                       collated_name_;
 
         static auto make_collated_name(utilities::Collate col) -> std::string {
-            return std::format("{}{}", storm::meta::column_name_view<MemberInfo>, utilities::collate_to_sql(col));
+            return with_suffix(storm::meta::column_name_view<MemberInfo>, utilities::collate_to_sql(col));
         }
 
         template <typename V> auto make_comparison(CompOp op, V&& value) const -> Expr {

@@ -348,7 +348,9 @@ export namespace storm::db::postgresql {
 
         // Generate unique prepared statement names
         [[nodiscard]] auto next_stmt_name() -> std::string {
-            return std::format("_storm_{}", stmt_counter_++);
+            std::string name{"_storm_"};
+            name += std::to_string(stmt_counter_++);
+            return name;
         }
 
         // Shared body of prepare() and prepare_cached(): translates placeholders,

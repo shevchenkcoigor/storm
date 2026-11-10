@@ -40,6 +40,35 @@ TEST(UtilitiesModules, ValueBindRoundTripsTimePointThroughChronoConv) {
     EXPECT_TRUE(chrono_conv::string_to_tp(text) == tp);
 }
 
+TEST(UtilitiesModules, ZeroPaddedPadsToWidthAndNeverTruncates) {
+    EXPECT_EQ(zero_padded(0, 4), "0000");
+    EXPECT_EQ(zero_padded(7, 2), "07");
+    EXPECT_EQ(zero_padded(12345, 2), "12345");
+    EXPECT_EQ(zero_padded(42, 20), "00000000000000000042");
+    EXPECT_EQ(zero_padded(std::numeric_limits<std::uint64_t>::max(), 20), "18446744073709551615");
+}
+
+TEST(UtilitiesModules, AppendZeroPaddedAppendsAfterExistingText) {
+    std::string out{"x"};
+    append_zero_padded(out, 5, 3);
+    EXPECT_EQ(out, "x005");
+}
+
+TEST(UtilitiesModules, ChronoConvPadsSmallDateAndTimeFields) {
+    constexpr std::chrono::year_month_day ymd{std::chrono::year{5}, std::chrono::month{1}, std::chrono::day{2}};
+    EXPECT_EQ(chrono_conv::ymd_to_string(ymd), "0005-01-02");
+
+    const auto tp = std::chrono::sys_days{std::chrono::year{2026} / 1 / 2} + std::chrono::hours{1} +
+                    std::chrono::minutes{2} + std::chrono::seconds{3};
+    EXPECT_EQ(chrono_conv::tp_to_string(tp), "2026-01-02 01:02:03");
+}
+
+// The sign counts toward the 4-character year field, as std::format("{:04d}") rendered it.
+TEST(UtilitiesModules, ChronoConvKeepsTheSignOfANegativeYear) {
+    constexpr std::chrono::year_month_day ymd{std::chrono::year{-5}, std::chrono::month{1}, std::chrono::day{2}};
+    EXPECT_EQ(chrono_conv::ymd_to_string(ymd), "-005-01-02");
+}
+
 TEST(UtilitiesModules, ValueBindExposesUuidAndItsHash) {
     const auto generated = UUID::generate();
     EXPECT_TRUE(UUID::is_valid(generated.value));

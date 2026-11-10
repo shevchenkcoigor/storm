@@ -24,7 +24,6 @@
  */
 
 #include <cstdlib>
-#include <format>
 #include <gtest/gtest.h>
 #include <libpq-fe.h>
 #include <string>
@@ -71,7 +70,27 @@ namespace detail {
 // Tracks the current per-process test schema name.
 // Empty means no schema has been created yet for this process.
 inline std::string current_test_schema; // NOLINT // NOSONAR(cpp:S5421)
+
+// "<head><current test schema><tail>" — the admin DDL below. Appends rather than
+// std::format: see numbered().
+inline auto schema_sql(std::string_view head, std::string_view tail = {}) -> std::string {
+    std::string sql{head};
+    sql += current_test_schema;
+    sql += tail;
+    return sql;
+}
 } // namespace detail
+
+// "<prefix><n>" — e.g. numbered("Person", 7) == "Person7". Used instead of
+// std::format in shared test headers: one std::format call reachable from a header
+// makes every including TU generate the whole formatting stack (~0.4 s per TU).
+template <typename Integer>
+    requires std::is_integral_v<Integer>
+inline auto numbered(std::string_view prefix, Integer n) -> std::string {
+    std::string out{prefix};
+    out += std::to_string(n);
+    return out;
+}
 
 // Check if the backend is available (PG requires STORM_PG_CONNSTR set and server reachable;
 // SQLite is always available)
@@ -108,12 +127,12 @@ inline auto get_connection_string() -> std::string { return ":memory:"; }
 template <typename ConnType> auto pg_schema_init(auto &conn) -> void {
     if constexpr (std::is_same_v<ConnType, storm::db::postgresql::Connection>) {
         if (detail::current_test_schema.empty()) {
-            detail::current_test_schema = std::format("test_{}", getpid());
-            (void)conn->execute(std::format("DROP SCHEMA IF EXISTS {} CASCADE", detail::current_test_schema));
-            (void)conn->execute(std::format("CREATE SCHEMA {}", detail::current_test_schema));
+            detail::current_test_schema = numbered("test_", getpid());
+            (void)conn->execute(detail::schema_sql("DROP SCHEMA IF EXISTS ", " CASCADE"));
+            (void)conn->execute(detail::schema_sql("CREATE SCHEMA "));
         }
         // Always set search_path — each test gets a fresh connection
-        (void)conn->execute(std::format("SET search_path TO {}", detail::current_test_schema));
+        (void)conn->execute(detail::schema_sql("SET search_path TO "));
     }
 }
 
@@ -122,8 +141,8 @@ template <typename ConnType> auto pg_schema_init(auto &conn) -> void {
 template <typename ConnType> auto rollback_test_txn(const auto &conn) -> void {
     if constexpr (std::is_same_v<ConnType, storm::db::postgresql::Connection>) {
         if (!detail::current_test_schema.empty()) {
-            (void)conn->execute(std::format("DROP SCHEMA IF EXISTS {} CASCADE", detail::current_test_schema));
-            (void)conn->execute(std::format("CREATE SCHEMA {}", detail::current_test_schema));
+            (void)conn->execute(detail::schema_sql("DROP SCHEMA IF EXISTS ", " CASCADE"));
+            (void)conn->execute(detail::schema_sql("CREATE SCHEMA "));
             // DON'T clear current_test_schema — schema is recreated and ready for next test.
             // pg_schema_init will skip CREATE (schema exists) and just SET search_path.
         }

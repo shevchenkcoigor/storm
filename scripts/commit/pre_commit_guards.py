@@ -236,15 +236,32 @@ TIDY_PREREQS = Guard(
 # compiles cleanly, so nothing else catches it.
 ORM_BACKEND_IMPORTS = Guard(
     "ORM backend neutrality",
-    r"^(src/.*\.(cppm|hpp|h)|scripts/ci/(tests/test_)?check_orm_backend_imports\.py)$",
+    r"^(src/.*\.(cppm|hpp|h)|scripts/ci/(tests/test_)?check_orm_backend_imports\.py|scripts/ci/tests/fake_repo\.py)$",
     (
-        Step(r"^scripts/ci/(tests/test_)?check_orm_backend_imports\.py$",
+        Step(r"^scripts/ci/((tests/test_)?check_orm_backend_imports|tests/fake_repo)\.py$",
              script("scripts/ci/tests/test_check_orm_backend_imports.py"),
              "ORM backend-neutrality checker self-test failed"),
         Step(None, script("scripts/ci/check_orm_backend_imports.py"),
              "backend-neutral ORM module names a concrete backend"),
     ),
     "ORM backend-neutrality guard passed",
+)
+
+# --- no std::format in modules or shared test headers ---
+# One std::format/std::print call reachable from an importing or including TU makes
+# it generate the whole formatting stack (~0.4 s per TU). It compiles and passes, so
+# only this guard notices a new one in a widely included header.
+NO_STD_FORMAT = Guard(
+    "no std::format in modules and shared test headers",
+    r"^(src/.*\.(cppm|hpp|h)|tests/.*\.(cppm|hpp|h)|shared/.*\.(hpp|h)|scripts/ci/(tests/test_)?check_no_std_format\.py|scripts/ci/tests/fake_repo\.py)$",
+    (
+        Step(r"^scripts/ci/((tests/test_)?check_no_std_format|tests/fake_repo)\.py$",
+             script("scripts/ci/tests/test_check_no_std_format.py"),
+             "std::format checker self-test failed"),
+        Step(None, script("scripts/ci/check_no_std_format.py"),
+             "std::format/std::print in a module or shared test header"),
+    ),
+    "std::format guard passed",
 )
 
 # --- this runner (#688) ---
@@ -339,7 +356,8 @@ ATLAS_MIGRATION_CHECK = Guard(
 
 GUARDS = (
     AGENT_FRONTMATTER, TIDY_SKIPLIST, SWEEP_WORKFLOW, SESSION_START_HOOK, SELF_HEAL, CMAKE_FORMAT_TARGET, PYYAML_CHECK,
-    CPM_CACHE_CHECK, CPM_COLD_CACHE, COVERAGE_GATE, SMART_SKIP, TIDY_PREREQS, ORM_BACKEND_IMPORTS, PRE_COMMIT_GUARDS,
+    CPM_CACHE_CHECK, CPM_COLD_CACHE, COVERAGE_GATE, SMART_SKIP, TIDY_PREREQS, ORM_BACKEND_IMPORTS, NO_STD_FORMAT,
+    PRE_COMMIT_GUARDS,
     CI_DIGESTS, COVERAGE_PARALLEL, NINJALOG_STATS, RATIO_GATE, TIME_TRACE, SONAR_GATE, SHARED_TEST_HELPERS,
     ATLAS_MIGRATION_CHECK,
 )

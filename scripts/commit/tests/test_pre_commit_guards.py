@@ -88,6 +88,12 @@ class TriggerTest(unittest.TestCase):
                           "ninjalog stats", "self-heal configure", "SessionStart hook wiring",
                           "shared test helpers", "time-trace capture"})
 
+    def test_fake_repo_helper_triggers_every_checker_self_test_that_imports_it(self):
+        # scripts/ci/tests/fake_repo.py is imported by these checker self-tests; editing it must
+        # rerun them, or a helper regression is only found by whichever test someone runs.
+        self.assertEqual(set(names(pcg.triggered_guards(["scripts/ci/tests/fake_repo.py"]))),
+                         {"ORM backend neutrality", "no std::format in modules and shared test headers"})
+
     def test_batch_two_self_tests_trigger_their_own_guard(self):
         for staged, guard in (("scripts/commit/tests/test_cmake_format_target.py", "cmake-format target"),
                               ("scripts/coverage/tests/test_coverage_parallel.py", "coverage batch parallelism"),

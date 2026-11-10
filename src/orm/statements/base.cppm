@@ -517,15 +517,27 @@ export namespace storm::orm::statements {
             // bind_text), paid only by full_unsigned fields.
             else if constexpr (storm::meta::has_full_unsigned_attr(member)) {
                 using FieldType = std::remove_cvref_t<decltype(obj.[:member:])>;
+                // zero_padded takes uint64_t: a signed or narrower field would be silently
+                // reinterpreted (std::format("{:020}") used to print the sign instead).
+                using StoredType                           = utilities::optional_inner_type_t<FieldType>;
+                constexpr std::size_t FULL_UNSIGNED_DIGITS = 20; // "0".."18446744073709551615"
+                static_assert(
+                        std::is_unsigned_v<StoredType> && sizeof(StoredType) == sizeof(std::uint64_t),
+                        "[[= storm::full_unsigned]] is only valid on a 64-bit unsigned member (or optional of one)"
+                );
                 if constexpr (utilities::is_optional_v<FieldType>) {
                     return bind_one<ConnType>(
                             stmt, param_index, obj.[:member:]
-                                    .has_value()
-                                            ? std::optional<std::string>(std::format("{:020}", obj.[:member:].value()))
-                                            : std::nullopt
+                                    .has_value() ? std::optional<std::string>(
+                                                           utilities::zero_padded(obj.[:member:].value(),
+                                                                                                FULL_UNSIGNED_DIGITS)
+                                                   )
+                                                 : std::nullopt
                     );
                 } else {
-                    return bind_one<ConnType>(stmt, param_index, std::format("{:020}", obj.[:member:]));
+                    return bind_one<ConnType>(
+                            stmt, param_index, utilities::zero_padded(obj.[:member:], FULL_UNSIGNED_DIGITS)
+                    );
                 }
             } else {
                 return bind_optional_or_uuid_pk_field<ConnType, Index>(stmt, obj, param_index);

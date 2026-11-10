@@ -95,6 +95,7 @@ namespace {
 
     TEST_F(FieldsSqlParity, InBetweenLikeCollate) {
         using storm::orm::utilities::Collate;
+        EXPECT_EQ(qs().where(fields::Person.id.in(1)).select().sql(), expected("id IN (?)"));
         EXPECT_EQ(qs().where(fields::Person.id.in(1, 2, 3)).select().sql(), expected("id IN (?, ?, ?)"));
         EXPECT_EQ(qs().where(fields::Person.age.between(20, 40)).select().sql(), expected("age BETWEEN ? AND ?"));
         EXPECT_EQ(qs().where(fields::Person.name.like("A%")).select().sql(), expected("name LIKE ?"));

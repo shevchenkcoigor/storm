@@ -553,17 +553,17 @@ TYPED_TEST(NonFkSqlParityTest, OrderByPlainMemberSqlUnchanged) {
     const auto asc = storm::test::is_postgresql<TypeParam>() ? "ASC NULLS FIRST" : "ASC";
     const auto desc = storm::test::is_postgresql<TypeParam>() ? "DESC NULLS LAST" : "DESC";
 
-    EXPECT_EQ(qs.template order_by<fields::Person.name>().select().sql(),
-              std::format("SELECT id, name, age, salary, is_active, years_experience, department, score, nickname,"
-                          " avatar FROM Person ORDER BY name {}",
-                          asc));
+    std::string asc_sql{"SELECT id, name, age, salary, is_active, years_experience, department, score, nickname,"
+                        " avatar FROM Person ORDER BY name "};
+    asc_sql += asc;
+    EXPECT_EQ(qs.template order_by<fields::Person.name>().select().sql(), asc_sql);
     // Bound to a local first: the comma inside order_by<..., false> would be
     // parsed as a macro-argument separator by EXPECT_EQ.
     const auto desc_sql = qs.template order_by<fields::Person.age, false>().select().sql();
-    EXPECT_EQ(desc_sql,
-              std::format("SELECT id, name, age, salary, is_active, years_experience, department, score, nickname,"
-                          " avatar FROM Person ORDER BY age {}",
-                          desc));
+    std::string expected_desc_sql{"SELECT id, name, age, salary, is_active, years_experience, department, score,"
+                                  " nickname, avatar FROM Person ORDER BY age "};
+    expected_desc_sql += desc;
+    EXPECT_EQ(desc_sql, expected_desc_sql);
 }
 
 TYPED_TEST(NonFkSqlParityTest, WherePlainMemberSqlUnchanged) {

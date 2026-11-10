@@ -199,7 +199,7 @@ These rules are enforced by SonarCloud analysis. Follow them when writing new co
 |---|---|---|
 | **S125** | Never leave commented-out code. Remove migration comments, old code, data comments like `// (Alice,30), (Bob,25)` | SonarCloud flags any comment that looks like code |
 | **S3656** | Use `public:` (not `protected:`) for GTest fixture member variables | SonarCloud forbids protected members in classes |
-| **S6185** | Use `std::format("Person{}", i)` instead of `"Person" + std::to_string(i)` | Prefer std::format over string concatenation |
+| **S6185** | In a test `.cpp`, use `std::format("Person{}", i)` instead of `"Person" + std::to_string(i)`. **Not in `src/` or a test/shared header** — there `std::format`/`std::print` is forbidden (`scripts/ci/check_no_std_format.py`): one reachable call makes every importing/including TU generate the whole formatting stack, ~0.4 s per TU ([COMPILE_TIME.md](docs/internals/performance/COMPILE_TIME.md)). Build the text with `+=` appends (not an `a + b + c` chain, which is what S6185 flags), `storm::test::numbered()` or `utilities::zero_padded()` | Prefer std::format over string concatenation, except where its compile-time cost is paid by every TU |
 | **S3659** | Use `\|\|` and `&&` instead of `or` and `and` | Alternative operators forbidden |
 | **S6164** | Use `std::numbers::pi` instead of `3.14159` | Use standard math constants |
 | **S6197** | Use `std::ranges::sort(vec)` instead of `std::ranges::sort(vec.begin(), vec.end())` | Prefer range overloads |

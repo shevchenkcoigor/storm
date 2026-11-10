@@ -69,6 +69,33 @@ export namespace storm::orm::utilities {
     // Chrono / String Conversion Helpers (ISO-8601 format)
     // ============================================================================
 
+    // Append `value` in decimal, left-padded with zeros to at least `width` digits.
+    // Character arithmetic rather than std::format("{:0N}"): a single std::format call
+    // reachable from an importing TU makes that TU generate the whole formatting stack.
+    inline auto append_zero_padded(std::string& out, std::uint64_t value, std::size_t width) -> void {
+        constexpr std::size_t               MAX_UINT64_DIGITS = 20;
+        std::array<char, MAX_UINT64_DIGITS> digits{};
+        std::size_t                         count = 0;
+        for (; value != 0; value /= 10) {
+            digits[count++] = static_cast<char>('0' + (value % 10));
+        }
+        if (count == 0) { // value == 0 has no digits above; it still prints as one "0"
+            digits[count++] = '0';
+        }
+        if (count < width) {
+            out.append(width - count, '0');
+        }
+        while (count > 0) {
+            out.push_back(digits[--count]);
+        }
+    }
+
+    inline auto zero_padded(std::uint64_t value, std::size_t width) -> std::string {
+        std::string out;
+        append_zero_padded(out, value, width);
+        return out;
+    }
+
     namespace chrono_conv {
 
         inline auto parse_int(std::string_view sv) -> int {
@@ -81,12 +108,22 @@ export namespace storm::orm::utilities {
 
         // year_month_day → "YYYY-MM-DD"
         inline auto ymd_to_string(std::chrono::year_month_day ymd) -> std::string {
-            return std::format(
-                    "{:04d}-{:02d}-{:02d}",
-                    static_cast<int>(ymd.year()),
-                    static_cast<unsigned>(ymd.month()),
-                    static_cast<unsigned>(ymd.day())
+            // The sign counts toward the 4-character year field, as "{:04d}" rendered it.
+            constexpr std::size_t YEAR_WIDTH = 4;
+            const std::int64_t    year       = static_cast<int>(ymd.year());
+            const bool            negative   = year < 0;
+            std::string           out;
+            if (negative) {
+                out.push_back('-');
+            }
+            append_zero_padded(
+                    out, static_cast<std::uint64_t>(negative ? -year : year), negative ? YEAR_WIDTH - 1 : YEAR_WIDTH
             );
+            out.push_back('-');
+            append_zero_padded(out, static_cast<unsigned>(ymd.month()), 2);
+            out.push_back('-');
+            append_zero_padded(out, static_cast<unsigned>(ymd.day()), 2);
+            return out;
         }
 
         // "YYYY-MM-DD" → year_month_day
@@ -100,21 +137,20 @@ export namespace storm::orm::utilities {
 
         // system_clock::time_point → "YYYY-MM-DD HH:MM:SS"
         inline auto tp_to_string(std::chrono::system_clock::time_point tp) -> std::string {
-            auto dp            = std::chrono::floor<std::chrono::days>(tp);
-            auto ymd           = std::chrono::year_month_day{dp};
-            auto time_since_dp = std::chrono::floor<std::chrono::seconds>(tp) - dp;
-            auto h             = std::chrono::duration_cast<std::chrono::hours>(time_since_dp);
-            auto m             = std::chrono::duration_cast<std::chrono::minutes>(time_since_dp - h);
-            auto s             = time_since_dp - h - m;
-            return std::format(
-                    "{:04d}-{:02d}-{:02d} {:02d}:{:02d}:{:02d}",
-                    static_cast<int>(ymd.year()),
-                    static_cast<unsigned>(ymd.month()),
-                    static_cast<unsigned>(ymd.day()),
-                    static_cast<int>(h.count()),
-                    static_cast<int>(m.count()),
-                    static_cast<int>(s.count())
-            );
+            auto        dp            = std::chrono::floor<std::chrono::days>(tp);
+            auto        ymd           = std::chrono::year_month_day{dp};
+            auto        time_since_dp = std::chrono::floor<std::chrono::seconds>(tp) - dp;
+            auto        h             = std::chrono::duration_cast<std::chrono::hours>(time_since_dp);
+            auto        m             = std::chrono::duration_cast<std::chrono::minutes>(time_since_dp - h);
+            auto        s             = time_since_dp - h - m;
+            std::string out           = ymd_to_string(ymd);
+            out.push_back(' ');
+            append_zero_padded(out, static_cast<std::uint64_t>(h.count()), 2);
+            out.push_back(':');
+            append_zero_padded(out, static_cast<std::uint64_t>(m.count()), 2);
+            out.push_back(':');
+            append_zero_padded(out, static_cast<std::uint64_t>(s.count()), 2);
+            return out;
         }
 
         // "YYYY-MM-DD HH:MM:SS" → system_clock::time_point
@@ -274,7 +310,10 @@ export namespace storm::orm::utilities {
     [[nodiscard]] auto validate_and_bind_uuid_text(StmtType& stmt, int param_index, std::string_view uuid_value)
             -> std::expected<void, ErrorType> {
         if (!UUID::is_valid(uuid_value)) {
-            return std::unexpected(ErrorType{-1, std::format("Invalid UUID format: '{}'", uuid_value)});
+            std::string message{"Invalid UUID format: '"};
+            message += uuid_value;
+            message += '\'';
+            return std::unexpected(ErrorType{-1, std::move(message)});
         }
         return stmt.bind_text(param_index, uuid_value);
     }
