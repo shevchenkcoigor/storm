@@ -93,20 +93,17 @@ auto ids = qs.distinct().execute();
 
 **Location**: `tests/query/test_distinct.cpp`
 
-**Coverage**: 29 comprehensive unit tests covering:
-- Single-field and multi-field DISTINCT operations (17 tests)
-- Edge cases: duplicate fields, type safety, cross-struct prevention (6 tests)
-- JOIN exploration: limitations and workarounds (6 tests)
+**Coverage** (every test runs on SQLite and PostgreSQL):
+- Single-field and multi-field DISTINCT, including the default primary-key projection
+- The same field named more than once
+- Return types (`plf::hive<T>` / `plf::hive<std::tuple<...>>`)
+- DISTINCT combined with WHERE, JOIN, ORDER BY, LIMIT and OFFSET
+- `std::optional` fields (NULL is one distinct value)
+- Statement-cache reuse
+- Exact SQL text for the main shapes
+- A raw-SQL workaround for DISTINCT over a column of the *joined* table, which the ORM cannot express yet (#804)
 
-**Test scenarios**:
-- Empty table
-- Single row
-- Large datasets (10K rows)
-- Duplicate handling
-- Type verification
-- FK field behavior
-
-**Result**: All tests pass with 100% success rate
+Empty-table cases and further chain cases also live in `tests/test_cases/unified_cases.yaml` (`distinct_*`).
 
 ## Why DISTINCT Achieves 100% Efficiency
 
