@@ -309,6 +309,12 @@ export namespace storm::db {
         auto operator=(const StatementCacheState&) -> StatementCacheState& = delete;
     };
 
+    // A type whose move construction and move assignment are declared noexcept.
+    // BasicConnection<Api> defaults its moves as `noexcept` (S5018); this ties that
+    // promise to the member that can actually fail to keep it (the statement cache).
+    template <typename T>
+    concept NothrowMovable = std::is_nothrow_move_constructible_v<T> && std::is_nothrow_move_assignable_v<T>;
+
     // Identifier-character predicate (SQL word boundary): same set as `\w` in regex
     // ([A-Za-z0-9_]). Used by per-table cache invalidation to avoid clearing
     // "persons" entries when invalidating "person".

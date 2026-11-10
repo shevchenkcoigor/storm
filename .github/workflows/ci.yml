@@ -431,8 +431,8 @@ jobs:
       #   if: matrix.preset == 'ninja-release' && matrix.postgres == 17
       #   run: ./scripts/tidy/run_clang_tidy.py --all
 
-  # Reproduces commit.sh step 5 (the 100%-line-coverage gate) in CI, so the gate
-  # stops being self-reported from one developer's machine. Deliberately NOT a
+  # The 100%-line-coverage gate. It was also a commit.sh step until #793 moved it
+  # to CI only (it needs a live PostgreSQL, which a laptop often lacks). Deliberately NOT a
   # matrix entry on `test`: it needs no postgres service, runs a different build
   # target, and would otherwise be duplicated across the whole PG matrix for no
   # extra signal.
@@ -486,9 +486,9 @@ jobs:
 
     # A real PostgreSQL is REQUIRED for the 100% gate, not an optimization. The
     # PG Connection's constexpr transaction-nesting methods
-    # (postgresql_connection.cppm:171-181) and part of pool.cppm are instantiated
-    # only by a live connection — tests/mock_libpq does not reach them — so
-    # without a server this job measures ~99.8-99.9% and fails. PG 17 matches the
+    # (postgresql_connection.cppm) and part of pool.cppm are instantiated
+    # only by a live connection, and the PG error-path tests (fake libpq API
+    # policy, #787) skip without one — so without a server this job fails. PG 17 matches the
     # `test` job's primary entry; the coverage number does not vary by PG
     # version, so there is no reason to sweep the matrix here.
     services:

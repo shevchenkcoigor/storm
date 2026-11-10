@@ -1671,7 +1671,7 @@ TYPED_TEST(DistinctTest, SqlVerifyDistinctWithJoinAndWhere) {
     EXPECT_EQ(
             sql,
             "SELECT DISTINCT t1.content FROM Message t1 INNER JOIN Person t2 ON t2.id = t1.sender_id"
-            " WHERE content LIKE ?"
+            " WHERE t1.content LIKE ?"
     );
 }
 
@@ -1729,7 +1729,7 @@ TYPED_TEST(DistinctTest, SqlVerifyDistinctFullCombo) {
             sql,
             std::format(
                     "SELECT DISTINCT t1.content FROM Message t1 INNER JOIN Person t2 ON t2.id = t1.sender_id"
-                    " WHERE value > ? ORDER BY content {} LIMIT 5",
+                    " WHERE t1.value > ? ORDER BY t1.content {} LIMIT 5",
                     order_asc<TypeParam>()
             )
     );

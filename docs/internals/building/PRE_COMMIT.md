@@ -1,6 +1,6 @@
 # Pre-Commit Hook
 
-Storm's pre-commit hook (`commit.sh`) runs format → clang-tidy → tests → coverage.
+Storm's pre-commit hook (`commit.sh`) runs format → clang-tidy → tests. The 100% coverage gate and the benchmark build are CI-only (#793).
 This page documents the **clang-tidy** stage in detail, because it has three
 modes with different scopes.
 
@@ -9,8 +9,8 @@ modes with different scopes.
 Before running clang-tidy, `commit.sh` configures the release build and then
 builds clang-tidy's prerequisites, so a fresh worktree doesn't fail with
 "module BMI not found" (clang-tidy on files that `import std;`/`import storm;`
-need the BMIs) or a missing test binary later at the test stage (the test stage runs `storm_tests` and
-`storm_pq_mock_tests` directly — see
+need the BMIs) or a missing test binary later at the test stage (the test stage runs `storm_tests`
+directly — see
 [TESTING.md#local-test-suite-speed](../testing/TESTING.md#local-test-suite-speed)
 for why it doesn't use `ctest`). It similarly ensures `build/debug` is built
 before running those binaries. Both guards are file-check-and-build: a no-op
@@ -20,8 +20,8 @@ common path — it only matters the first time you commit from a new worktree.
 ### A failed self-heal configure blocks the commit with the CMake error (#674)
 
 Every self-heal `cmake --preset` — `build/release` for the clang-tidy
-prerequisites and the bench release build, `build/debug` for clang-format,
-cmake-format, tests and coverage — runs through `configure_if_missing` *inside*
+prerequisites, `build/debug` for clang-format,
+cmake-format and tests — runs through `configure_if_missing` *inside*
 the step that needs the tree. It configures only when the sentinel file is
 absent (`compile_commands.json` for clang-tidy, `build.ninja` elsewhere), so the
 warm path never runs cmake. When the configure fails, that step fails: the
@@ -52,11 +52,12 @@ PR (#708).
 
 clang-tidy replays `build/release/compile_commands.json` and only PARSES — it
 never links — so the ~110 release test TUs of `storm_tests` are pure cost to it.
-`build_tidy_prereqs()` therefore builds three things instead of the default
-target set: the `storm` library BMIs, the BMIs of the module targets CMake
+`build_tidy_prereqs()` therefore builds two things instead of the default
+target set: the `storm` library BMIs and the BMIs of the module targets CMake
 synthesizes for module *consumers* (`CMakeFiles/*@synth_N.dir/*.bmi` — these
-belong to the consumer, so `--target storm` does not produce them), and the two
-mock test binaries. Measured on a cold tree, 4 cores: **764 s → 154 s**.
+belong to the consumer, so `--target storm` does not produce them). It also built
+the mock test binaries until #784/#787 moved their tests into `storm_tests`.
+Measured on a cold tree, 4 cores (with the mock binaries): **764 s → 154 s**.
 
 The synthesized-module BMIs are the subtle part. Without them clang-tidy reports
 `module 'std' not found` and **degrades to a partial parse rather than failing**

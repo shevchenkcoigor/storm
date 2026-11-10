@@ -159,22 +159,10 @@ export namespace storm::orm::statements {
         [[nodiscard]] auto sql() -> std::string
             requires(NumOps > 0)
         {
-            std::string result;
             if (join_stmt_.has_value()) {
-                result = build_join_sql();
-            } else {
-                result = base_sql_;
+                return assemble_sql<true>(build_join_sql());
             }
-            if (where_expr_) {
-                insert_where_clause(result);
-            }
-            if constexpr (HasGroupBy) {
-                if (having_expr_) {
-                    insert_having_clause(result);
-                }
-            }
-            append_modifiers(result);
-            return result;
+            return assemble_sql<false>(base_sql_);
         }
 
         // Return the SQL with bound parameters inlined (for debugging). Builds the
@@ -213,17 +201,19 @@ export namespace storm::orm::statements {
       private:
         // ---- Compile-time SQL Generation ----
         // LCOV_EXCL_START - compile-time only
-        static consteval auto build_select_clause() {
+        // Owner = the base model for the JOIN form (#785, columns written "t1.<col>"),
+        // void for the bare non-join form.
+        template <typename Owner = void> static consteval auto build_select_clause() {
             ConstexprString<utilities::buffer_size::SQL_MEDIUM> result;
 
             if constexpr (HasGroupBy) {
                 constexpr auto group_sql =
-                        build_group_fields_sql<GroupFields>(std::make_index_sequence<NumGroupFields>{});
+                        build_group_fields_sql<GroupFields, Owner>(std::make_index_sequence<NumGroupFields>{});
                 result.append(group_sql);
                 result.append(", ");
             }
 
-            constexpr auto ops_sql = build_ops_list<Ops...>(std::make_index_sequence<NumOps>{});
+            constexpr auto ops_sql = build_owned_ops_list<Owner, Ops...>(std::make_index_sequence<NumOps>{});
             result.append(ops_sql);
             return result;
         }
@@ -246,10 +236,12 @@ export namespace storm::orm::statements {
         }
         // LCOV_EXCL_STOP
 
-        static constexpr auto sql_array_         = build_base_sql();
-        static constexpr auto select_clause_arr_ = build_select_clause();
+        static constexpr auto sql_array_ = build_base_sql();
+        // The select / GROUP BY lists below feed only build_join_sql, whose base table is
+        // aliased t1 — so T's columns are written "t1.<col>" (#785).
+        static constexpr auto select_clause_arr_ = build_select_clause<T>();
         static constexpr auto group_fields_arr_ =
-                build_group_fields_sql<GroupFields>(std::make_index_sequence<NumGroupFields>{});
+                build_group_fields_sql<GroupFields, T>(std::make_index_sequence<NumGroupFields>{});
 
         // Static string cache
         static inline const std::string base_sql_{sql_array_.data.data(), sql_array_.len};
@@ -334,25 +326,53 @@ export namespace storm::orm::statements {
         }
 
         // ---- Inline Helpers ----
-        void insert_where_clause(std::string& sql) const {
-            if constexpr (HasGroupBy) {
-                std::size_t const group_pos    = sql.find(" GROUP BY ");
-                std::string       where_clause = " WHERE ";
-                where_clause += orm::where::to_sql(*where_expr_);
-                sql.insert(group_pos, where_clause);
+        // Joined = the SQL is the JOIN form, whose base table is aliased t1, so T's
+        // columns in WHERE / HAVING / ORDER BY are written "t1.<col>" (#785).
+        template <bool Joined> [[nodiscard]] static auto expr_sql(const orm::where::ExpressionVariant& expr) {
+            if constexpr (Joined) {
+                return Base::join_where_sql(expr);
             } else {
-                sql += " WHERE ";
-                sql += orm::where::to_sql(*where_expr_);
+                return orm::where::to_sql(expr);
             }
         }
 
-        void insert_having_clause(std::string& sql) const {
-            sql += " HAVING ";
-            sql += orm::where::to_sql(*having_expr_);
+        // sql()'s assembly — the same clause order as the execute_* paths below.
+        template <bool Joined> [[nodiscard]] auto assemble_sql(std::string result) const -> std::string {
+            if (where_expr_) {
+                insert_where_clause<Joined>(result);
+            }
+            if constexpr (HasGroupBy) {
+                if (having_expr_) {
+                    insert_having_clause<Joined>(result);
+                }
+            }
+            append_modifiers<Joined>(result);
+            return result;
         }
 
-        void append_modifiers(std::string& sql) const {
-            Base::template append_order_by<ConnType>(sql, order_by_wrapper_);
+        template <bool Joined> void insert_where_clause(std::string& sql) const {
+            if constexpr (HasGroupBy) {
+                std::size_t const group_pos    = sql.find(" GROUP BY ");
+                std::string       where_clause = " WHERE ";
+                where_clause += expr_sql<Joined>(*where_expr_);
+                sql.insert(group_pos, where_clause);
+            } else {
+                sql += " WHERE ";
+                sql += expr_sql<Joined>(*where_expr_);
+            }
+        }
+
+        template <bool Joined> void insert_having_clause(std::string& sql) const {
+            sql += " HAVING ";
+            sql += expr_sql<Joined>(*having_expr_);
+        }
+
+        template <bool Joined> void append_modifiers(std::string& sql) const {
+            if constexpr (Joined) {
+                Base::template append_join_order_by<ConnType>(sql, order_by_wrapper_);
+            } else {
+                Base::template append_order_by<ConnType>(sql, order_by_wrapper_);
+            }
             Base::template append_limit_offset<ConnType>(sql, limit_, offset_);
         }
 
@@ -481,15 +501,15 @@ export namespace storm::orm::statements {
                 const bool has_modifiers = order_by_wrapper_.has_value() || limit_.has_value() || offset_.has_value();
                 if (having_expr_) {
                     std::string sql = base_sql_;
-                    insert_having_clause(sql);
+                    insert_having_clause<false>(sql);
                     if (has_modifiers) {
-                        append_modifiers(sql);
+                        append_modifiers<false>(sql);
                     }
                     return prepare_bind_having_extract(sql);
                 }
                 if (has_modifiers) {
                     std::string sql = base_sql_;
-                    append_modifiers(sql);
+                    append_modifiers<false>(sql);
                     return prepare_and_extract(sql);
                 }
                 return prepare_and_extract(base_sql_);
@@ -514,25 +534,25 @@ export namespace storm::orm::statements {
         // SQL — but only when this aggregate is parameterised with HasGroupBy.
         // The three execute_* paths used to spell this `if constexpr / having /
         // append_modifiers` body out inline.
-        __attribute__((always_inline)) auto append_group_by_tail(std::string& sql) -> void {
+        template <bool Joined> __attribute__((always_inline)) auto append_group_by_tail(std::string& sql) -> void {
             if constexpr (HasGroupBy) {
                 if (having_expr_) {
-                    insert_having_clause(sql);
+                    insert_having_clause<Joined>(sql);
                 }
-                append_modifiers(sql);
+                append_modifiers<Joined>(sql);
             }
         }
 
         [[nodiscard]] __attribute__((hot)) auto execute_where() -> std::expected<ResultType, Error> {
             std::string sql = base_sql_;
-            insert_where_clause(sql);
-            append_group_by_tail(sql);
+            insert_where_clause<false>(sql);
+            append_group_by_tail<false>(sql);
             return prepare_bind_extract(sql);
         }
 
         [[nodiscard]] __attribute__((hot)) auto execute_join() -> std::expected<ResultType, Error> {
             std::string sql = build_join_sql();
-            append_group_by_tail(sql);
+            append_group_by_tail<true>(sql);
             if (having_expr_) {
                 return prepare_bind_having_extract(sql);
             }
@@ -541,8 +561,8 @@ export namespace storm::orm::statements {
 
         [[nodiscard]] __attribute__((hot)) auto execute_where_join() -> std::expected<ResultType, Error> {
             std::string sql = build_join_sql();
-            insert_where_clause(sql);
-            append_group_by_tail(sql);
+            insert_where_clause<true>(sql);
+            append_group_by_tail<true>(sql);
             return prepare_bind_extract(sql);
         }
 

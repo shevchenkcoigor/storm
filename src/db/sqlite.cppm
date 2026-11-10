@@ -38,7 +38,9 @@ export namespace storm::db::sqlite {
         }
     };
 
-    template <typename Api> class BasicConnection {
+    template <typename Api>
+        requires storm::db::NothrowMovable<storm::db::StatementCacheState<BasicStatement<Api>>>
+    class BasicConnection {
         using SqlitePtr = std::unique_ptr<sqlite3, SqliteDeleter>;
 
       public:
@@ -94,8 +96,8 @@ export namespace storm::db::sqlite {
         // Move semantics (smart pointer handles cleanup). cache_mutex_ is a
         // MovableSharedMutex (Issue #271) so these can stay defaulted: a moved
         // Connection gets a fresh, unlocked mutex.
-        BasicConnection(BasicConnection&&)                    = default;
-        auto operator=(BasicConnection&&) -> BasicConnection& = default;
+        BasicConnection(BasicConnection&&) noexcept                    = default;
+        auto operator=(BasicConnection&&) noexcept -> BasicConnection& = default;
 
         // Delete copy operations
         BasicConnection(const BasicConnection&)                    = delete;

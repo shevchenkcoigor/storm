@@ -54,4 +54,18 @@ export namespace storm::orm::where {
         return sql;
     }
 
+    // "(<left><op><right>)" — the one spelling of a logical node's text, shared by the plain
+    // and the JOIN-qualified visitors. Appends for the same reason as with_suffix.
+    [[nodiscard]] inline auto parenthesised(std::string_view left, std::string_view op, std::string_view right)
+            -> std::string {
+        std::string sql;
+        sql.reserve(left.size() + op.size() + right.size() + 2);
+        sql += '(';
+        sql += left;
+        sql += op;
+        sql += right;
+        sql += ')';
+        return sql;
+    }
+
 } // namespace storm::orm::where

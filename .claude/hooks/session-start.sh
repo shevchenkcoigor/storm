@@ -5,7 +5,7 @@
 # place that sets it is CMakeLists.txt, as a side effect of a successful cmake
 # configure. A session that has not configured a build (a fresh clone or
 # worktree, or a machine with no ../clang-p2996) would therefore commit with
-# commit.sh — format, clang-tidy, tests, the 100% coverage gate, and the two
+# commit.sh — format, clang-tidy, tests, and the two
 # self-tests it runs even for an otherwise no-op commit (#543, #550) — never
 # firing, with nothing in the output to say so. This hook sets it on every
 # session start.

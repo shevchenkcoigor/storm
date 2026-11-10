@@ -22,7 +22,7 @@ DETECT = REPO_ROOT / "scripts" / "ci" / "detect_changes.py"
 sys.path.insert(0, str(HELPER.parent))
 from smart_skip import decide, decide_empty  # noqa: E402
 
-ALL = ("RUN_FORMAT", "RUN_CMAKE_FORMAT", "RUN_TIDY", "RUN_TESTS", "RUN_COVERAGE", "RUN_BENCH_RELEASE")
+ALL = ("RUN_FORMAT", "RUN_CMAKE_FORMAT", "RUN_TIDY", "RUN_TESTS")
 
 
 def flags(**on):
@@ -35,14 +35,14 @@ def ran(plan):
 
 
 class DecideTest(unittest.TestCase):
-    def test_cpp_in_src_runs_everything_but_cmake_format_and_bench(self):
+    def test_cpp_in_src_runs_everything_but_cmake_format(self):
         plan, note = decide(flags(SRC=True, CPP=True))
-        self.assertEqual(ran(plan), {"RUN_FORMAT", "RUN_TIDY", "RUN_TESTS", "RUN_COVERAGE"})
+        self.assertEqual(ran(plan), {"RUN_FORMAT", "RUN_TIDY", "RUN_TESTS"})
         self.assertEqual(note, "")
 
     def test_cpp_and_cmake_runs_everything(self):
         plan, _ = decide(flags(SRC=True, CPP=True, CMAKE=True))
-        self.assertEqual(ran(plan), {"RUN_FORMAT", "RUN_CMAKE_FORMAT", "RUN_TIDY", "RUN_TESTS", "RUN_COVERAGE"})
+        self.assertEqual(ran(plan), {"RUN_FORMAT", "RUN_CMAKE_FORMAT", "RUN_TIDY", "RUN_TESTS"})
 
     def test_neither_cpp_nor_cmake_skips_all(self):
         plan, note = decide(flags())
@@ -51,28 +51,28 @@ class DecideTest(unittest.TestCase):
 
     def test_cmake_only_skips_clang_format_and_tidy(self):
         plan, note = decide(flags(CMAKE=True))
-        self.assertEqual(ran(plan), {"RUN_CMAKE_FORMAT", "RUN_TESTS", "RUN_COVERAGE"})
+        self.assertEqual(ran(plan), {"RUN_CMAKE_FORMAT", "RUN_TESTS"})
         self.assertIn("cmake-only changes", note)
 
-    def test_cpp_outside_src_tests_cmake_skips_tests_and_coverage(self):
+    def test_cpp_outside_src_tests_cmake_skips_tests(self):
         plan, note = decide(flags(CPP=True))
         self.assertEqual(ran(plan), {"RUN_FORMAT", "RUN_TIDY"})
         self.assertIn("No src/, tests/, or cmake changes", note)
 
     def test_tests_dir_cpp_runs_tests(self):
         plan, _ = decide(flags(TEST=True, CPP=True))
-        self.assertTrue(plan["RUN_TESTS"] and plan["RUN_COVERAGE"])
+        self.assertTrue(plan["RUN_TESTS"])
 
-    def test_bench_release_needs_bench_and_cpp(self):
-        self.assertTrue(decide(flags(BENCH=True, CPP=True))[0]["RUN_BENCH_RELEASE"])
-        self.assertFalse(decide(flags(BENCH=True))[0]["RUN_BENCH_RELEASE"])
-        self.assertFalse(decide(flags(CPP=True))[0]["RUN_BENCH_RELEASE"])
+    def test_coverage_and_bench_release_are_not_pre_commit_steps(self):
+        # CI owns both (#793): the 100% coverage gate and the bench release build.
+        for plan in (decide(flags(SRC=True, CPP=True, CMAKE=True, BENCH=True))[0], decide(None)[0]):
+            self.assertNotIn("RUN_COVERAGE", plan)
+            self.assertNotIn("RUN_BENCH_RELEASE", plan)
 
-    def test_no_flags_at_all_runs_every_gate_but_not_bench(self):
-        # Empty staged set (e.g. `./commit.sh` with nothing staged): the old
-        # script left every RUN_* at its default true and bench off.
+    def test_no_flags_at_all_runs_every_gate(self):
+        # Empty staged set (e.g. `./commit.sh` with nothing staged): every RUN_* stays on.
         plan, note = decide(None)
-        self.assertEqual(ran(plan), {"RUN_FORMAT", "RUN_CMAKE_FORMAT", "RUN_TIDY", "RUN_TESTS", "RUN_COVERAGE"})
+        self.assertEqual(ran(plan), {"RUN_FORMAT", "RUN_CMAKE_FORMAT", "RUN_TIDY", "RUN_TESTS"})
         self.assertEqual(note, "")
 
 
@@ -87,17 +87,17 @@ class MatrixTest(unittest.TestCase):
         return {line.split("=")[0] for line in out.splitlines() if line.endswith("=true")}
 
     def test_cpp_only(self):
-        self.assertEqual(self.steps(["src/orm/x.cppm"]), {"RUN_FORMAT", "RUN_TIDY", "RUN_TESTS", "RUN_COVERAGE"})
+        self.assertEqual(self.steps(["src/orm/x.cppm"]), {"RUN_FORMAT", "RUN_TIDY", "RUN_TESTS"})
 
     def test_cmake_only(self):
-        self.assertEqual(self.steps(["cmake/db.cmake"]), {"RUN_CMAKE_FORMAT", "RUN_TESTS", "RUN_COVERAGE"})
+        self.assertEqual(self.steps(["cmake/db.cmake"]), {"RUN_CMAKE_FORMAT", "RUN_TESTS"})
 
     def test_agent_only_and_docs_only(self):
         self.assertEqual(self.steps([".claude/agents/a.md"]), set())
         self.assertEqual(self.steps(["docs/README.md"]), set())
 
     def test_bench_only_cpp(self):
-        self.assertEqual(self.steps(["benchmarks/b.cpp"]), {"RUN_FORMAT", "RUN_TIDY", "RUN_BENCH_RELEASE"})
+        self.assertEqual(self.steps(["benchmarks/b.cpp"]), {"RUN_FORMAT", "RUN_TIDY"})
 
 
 NO_CHANGES = ("HAS_SRC_CHANGES=false\nHAS_TEST_CHANGES=false\nHAS_CPP_CHANGES=false\n"
@@ -135,7 +135,6 @@ class CliTest(unittest.TestCase):
     def test_empty_stdin_keeps_defaults(self):
         out = self.run_cli("")
         self.assertIn("RUN_TESTS=true", out)
-        self.assertIn("RUN_BENCH_RELEASE=false", out)
 
     def test_empty_stdin_with_empty_index_skips_runs_nothing(self):
         out = self.run_cli("", "--empty-index-skips")
@@ -160,7 +159,7 @@ class DecideEmptyTest(unittest.TestCase):
 
     def test_manual_run_keeps_every_gate(self):
         plan, note = decide_empty(False)
-        self.assertEqual(ran(plan), {"RUN_FORMAT", "RUN_CMAKE_FORMAT", "RUN_TIDY", "RUN_TESTS", "RUN_COVERAGE"})
+        self.assertEqual(ran(plan), {"RUN_FORMAT", "RUN_CMAKE_FORMAT", "RUN_TIDY", "RUN_TESTS"})
         self.assertEqual(note, "")
 
 

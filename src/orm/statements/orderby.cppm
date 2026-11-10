@@ -58,6 +58,34 @@ export namespace storm::orm::statements {
     using storm::orm::utilities::collate_to_sql;
     using storm::orm::utilities::ConstexprString;
 
+    // The alias prefix the JOIN SQL gives the BASE table — "FROM <Base> t1 …" for an FK,
+    // reverse-FK or m2m join (#785). Over such a join a base-table column in WHERE /
+    // ORDER BY / an aggregate / GROUP BY / HAVING must be written "t1.<col>": a bare name
+    // shared with a joined table (every model's `id`) is rejected as ambiguous. A column
+    // of a JOINED model keeps its bare spelling.
+    inline constexpr std::string_view join_base_alias_prefix = "t1.";
+
+    // True when `member` is a column of the model `Owner`. Owner = void matches nothing,
+    // which is how the non-join writers opt out. A type, not a std::meta::info NTTP: a
+    // reflection template argument forwarded into a lambda-expanded member template
+    // crashes clang-p2996 (TransformCXXReflectExpr).
+    template <typename Owner> consteval auto is_column_of(std::meta::info member) -> bool {
+        if constexpr (std::is_void_v<Owner>) {
+            return false;
+        } else {
+            return std::meta::parent_of(member) == std::meta::dealias(^^Owner);
+        }
+    }
+
+    // storm::meta::append_column_name, prefixed with join_base_alias_prefix when `member`
+    // belongs to `Owner` (#785). With Owner = void it is exactly append_column_name.
+    template <typename Owner> consteval void append_owned_column_name(auto& buf, std::meta::info member) {
+        if (is_column_of<Owner>(member)) {
+            buf.append(join_base_alias_prefix);
+        }
+        storm::meta::append_column_name(buf, member);
+    }
+
     // ============================================================================
     // ORDER BY Clause - variadic pack processing (no recursive specializations)
     // ============================================================================
@@ -137,8 +165,10 @@ export namespace storm::orm::statements {
             return result;
         }
 
-        // Generate ORDER BY SQL fragment at runtime
-        static auto to_sql_runtime() -> std::string {
+        // Generate ORDER BY SQL fragment at runtime. A non-void Owner (the join's base
+        // model, #785) prefixes that model's columns with join_base_alias_prefix; the
+        // default void Owner emits the bare non-join spelling.
+        template <typename Owner = void> static auto to_sql_runtime() -> std::string {
             if constexpr (count == 0) {
                 return "";
             }
@@ -146,19 +176,22 @@ export namespace storm::orm::statements {
             std::string result = " ORDER BY ";
 
             [&]<std::size_t... Is>(std::index_sequence<Is...>) {
-                ((append_field<Is>(result, Is > 0)), ...);
+                ((append_field<Is, Owner>(result, Is > 0)), ...);
             }(std::make_index_sequence<count>{});
 
             return result;
         }
 
       private:
-        template <std::size_t I> static auto append_field(std::string& result, bool add_comma) -> void {
+        template <std::size_t I, typename Owner> static auto append_field(std::string& result, bool add_comma) -> void {
             if (add_comma) {
                 result += ", ";
             }
 
             constexpr auto field_info = fields[I].field;
+            if constexpr (is_column_of<Owner>(field_info)) {
+                result += join_base_alias_prefix;
+            }
             // #570: same derivation as the consteval writer above, so the two can
             // never disagree. column_name_view is a view over static storage, so no
             // temporary std::string is built here.
@@ -179,9 +212,16 @@ export namespace storm::orm::statements {
     // Uses function pointer to static compile-time generated SQL (zero heap allocation)
     struct OrderByWrapper {
         auto (*get_order_by_sql_fn)() -> const std::string&;
+        // The same clause with the base model's columns written "t1.<col>", for the
+        // FK / reverse-FK / m2m join SQL whose base table is aliased t1 (#785).
+        auto (*get_join_order_by_sql_fn)() -> const std::string&;
 
         [[nodiscard]] auto get_order_by_sql() const -> const std::string& {
             return get_order_by_sql_fn();
+        }
+
+        [[nodiscard]] auto get_join_order_by_sql() const -> const std::string& {
+            return get_join_order_by_sql_fn();
         }
 
         [[nodiscard]] auto empty() const -> bool {
@@ -190,13 +230,18 @@ export namespace storm::orm::statements {
     };
 
     // Helper to create OrderByWrapper from template args
-    // Each unique Args... combination gets its own static SQL string
-    template <auto... Args> inline auto make_order_by_wrapper() -> OrderByWrapper {
+    // Each unique Model + Args... combination gets its own static SQL strings. Model is
+    // the query's base model: its columns are the ones the join form qualifies (#785).
+    template <typename Model, auto... Args> inline auto make_order_by_wrapper() -> OrderByWrapper {
         // Static compile-time generated SQL (one instance per unique Args... combination)
         // Stored in .rodata section (no heap allocation)
-        static const std::string order_by_sql = OrderByClause<Args...>::to_sql_runtime();
+        static const std::string order_by_sql      = OrderByClause<Args...>::to_sql_runtime();
+        static const std::string join_order_by_sql = OrderByClause<Args...>::template to_sql_runtime<Model>();
 
-        return OrderByWrapper{.get_order_by_sql_fn = []() -> const std::string& { return order_by_sql; }};
+        return OrderByWrapper{
+                .get_order_by_sql_fn      = []() -> const std::string& { return order_by_sql; },
+                .get_join_order_by_sql_fn = []() -> const std::string& { return join_order_by_sql; }
+        };
     }
 
 } // namespace storm::orm::statements

@@ -20,7 +20,49 @@ export namespace storm::db::postgresql {
         }
     };
 
-    class Connection {
+    // Issue #787: compile-time API policy for the libpq calls a test may need to fail
+    // or fake (mirrors sqlite's RealApi, #760). Every member is a static forwarder, so
+    // BasicConnection<RealApi>/BasicStatement<RealApi> compile to the same direct PQ*
+    // calls as before (no virtual, no std::function). Calls that cannot meaningfully
+    // fail on a live handle (PQresultStatus, PQntuples, PQclear, PQfinish) and the
+    // per-column reads (PQgetvalue, PQgetlength, PQgetisnull) stay direct.
+    // The per-execute member is `template <typename = void>` on purpose: a non-template
+    // function defined in a named module is not inlined into importing TUs even with
+    // always_inline (#760 review).
+    struct RealApi {
+        [[nodiscard]] static auto connectdb(const char* conninfo) noexcept -> PGconn* {
+            return PQconnectdb(conninfo);
+        }
+        static auto status(const PGconn* conn) noexcept -> ConnStatusType {
+            return PQstatus(conn);
+        }
+        static auto error_message(const PGconn* conn) noexcept -> const char* {
+            return PQerrorMessage(conn);
+        }
+        [[nodiscard]] static auto prepare(PGconn* conn, const char* stmt_name, const char* query) noexcept
+                -> PGresult* {
+            return PQprepare(conn, stmt_name, query, 0, nullptr);
+        }
+        [[nodiscard]] static auto exec(PGconn* conn, const char* query) noexcept -> PGresult* {
+            return PQexec(conn, query);
+        }
+        template <typename = void>
+        [[nodiscard]] __attribute__((always_inline)) static auto exec_prepared(
+                PGconn*            conn,
+                const char*        stmt_name,
+                int                n_params,
+                const char* const* values,
+                const int*         lengths,
+                const int*         formats,
+                int                result_format
+        ) noexcept -> PGresult* {
+            return PQexecPrepared(conn, stmt_name, n_params, values, lengths, formats, result_format);
+        }
+    };
+
+    template <typename Api>
+        requires storm::db::NothrowMovable<storm::db::StatementCacheState<BasicStatement<Api>>>
+    class BasicConnection {
         using PGconnPtr = std::unique_ptr<PGconn, PGconnDeleter>;
 
         // Cache size constants
@@ -28,7 +70,7 @@ export namespace storm::db::postgresql {
 
       public:
         using Error     = postgresql::Error;
-        using Statement = postgresql::Statement;
+        using Statement = BasicStatement<Api>;
 
         // Dialect traits
         static constexpr bool supports_limit_all = true;
@@ -46,35 +88,35 @@ export namespace storm::db::postgresql {
 
         // Factory method with error handling
         [[nodiscard]] static auto open(std::string_view conninfo, Config config = {})
-                -> std::expected<Connection, Error> {
+                -> std::expected<BasicConnection, Error> {
             const std::string conninfo_str(conninfo); // Ensure null-termination
-            PGconn*           raw_conn = PQconnectdb(conninfo_str.c_str());
+            PGconn*           raw_conn = Api::connectdb(conninfo_str.c_str());
 
             if (raw_conn == nullptr) {
                 return std::unexpected(Error{-1, "Failed to allocate PGconn"});
             }
 
-            if (PQstatus(raw_conn) != CONNECTION_OK) {
-                const auto        status = static_cast<int>(PQstatus(raw_conn));
-                const std::string msg    = PQerrorMessage(raw_conn);
+            if (Api::status(raw_conn) != CONNECTION_OK) {
+                const auto        status = static_cast<int>(Api::status(raw_conn));
+                const std::string msg    = Api::error_message(raw_conn);
                 PQfinish(raw_conn);
                 return std::unexpected(Error{status, msg});
             }
 
-            return Connection{PGconnPtr{raw_conn}, config};
+            return BasicConnection{PGconnPtr{raw_conn}, config};
         }
 
         // Destructor - unique_ptr handles cleanup via PGconnDeleter
-        ~Connection() = default;
+        ~BasicConnection() = default;
 
         // Move semantics. cache_mutex_ is a MovableSharedMutex (Issue #271) so
         // these can stay defaulted: a moved Connection gets a fresh mutex.
-        Connection(Connection&&)                    = default;
-        auto operator=(Connection&&) -> Connection& = default;
+        BasicConnection(BasicConnection&&) noexcept                    = default;
+        auto operator=(BasicConnection&&) noexcept -> BasicConnection& = default;
 
         // Delete copy operations
-        Connection(const Connection&)                    = delete;
-        auto operator=(const Connection&) -> Connection& = delete;
+        BasicConnection(const BasicConnection&)                    = delete;
+        auto operator=(const BasicConnection&) -> BasicConnection& = delete;
 
         // Connection state
         [[nodiscard]] constexpr auto is_open() const noexcept -> bool {
@@ -146,15 +188,15 @@ export namespace storm::db::postgresql {
             }
 
             const std::string sql_str(sql); // Ensure null-termination
-            PGresult*         res = PQexec(conn_.get(), sql_str.c_str());
+            PGresult*         res = Api::exec(conn_.get(), sql_str.c_str());
 
             if (res == nullptr) {
-                return std::unexpected(Error{-1, PQerrorMessage(conn_.get())});
+                return std::unexpected(Error{-1, Api::error_message(conn_.get())});
             }
 
             const ExecStatusType status = PQresultStatus(res);
             if (status != PGRES_COMMAND_OK && status != PGRES_TUPLES_OK) {
-                const std::string msg = PQerrorMessage(conn_.get());
+                const std::string msg = Api::error_message(conn_.get());
                 PQclear(res);
                 return std::unexpected(Error{static_cast<int>(status), msg});
             }
@@ -184,7 +226,7 @@ export namespace storm::db::postgresql {
         }
 
       private:
-        explicit Connection(PGconnPtr conn_ptr, Config config) : conn_(std::move(conn_ptr)) {
+        explicit BasicConnection(PGconnPtr conn_ptr, Config config) : conn_(std::move(conn_ptr)) {
             cache_.capacity = config.statement_cache_capacity; // Issue #273
             cache_.map.reserve(STMT_CACHE_RESERVE);
         }
@@ -319,9 +361,9 @@ export namespace storm::db::postgresql {
             }
             const std::string pg_sql    = translate_placeholders(sql);
             std::string       stmt_name = next_stmt_name();
-            PGresult*         res       = PQprepare(conn_.get(), stmt_name.c_str(), pg_sql.c_str(), 0, nullptr);
+            PGresult*         res       = Api::prepare(conn_.get(), stmt_name.c_str(), pg_sql.c_str());
             if (res == nullptr || PQresultStatus(res) != PGRES_COMMAND_OK) {
-                const std::string msg = PQerrorMessage(conn_.get());
+                const std::string msg = Api::error_message(conn_.get());
                 if (res != nullptr) {
                     PQclear(res);
                 }
@@ -340,10 +382,30 @@ export namespace storm::db::postgresql {
         int txn_depth_ = 0;
     };
 
+    // The production backend: the real libpq API (issue #787). A real class, NOT
+    // `using Connection = BasicConnection<RealApi>`: a namespace-scope alias of a
+    // class-template specialization exported from a module is "ambiguous" across the
+    // PCH + `import` paths (COMPILER_ISSUES.md section 14). A class merges fine.
+    class Connection final : public BasicConnection<RealApi> {
+        using Base = BasicConnection<RealApi>;
+
+      public:
+        explicit Connection(Base&& base) : Base(std::move(base)) {}
+
+        [[nodiscard]] static auto open(std::string_view conninfo, Config config = {})
+                -> std::expected<Connection, Error> {
+            auto opened = Base::open(conninfo, config);
+            if (!opened.has_value()) {
+                return std::unexpected(opened.error());
+            }
+            return Connection{std::move(*opened)};
+        }
+    };
+
     // Verify concepts are satisfied
     static_assert(storm::db::DatabaseConnection<Connection>);
     static_assert(storm::db::CachedDatabaseConnection<Connection>);
-    static_assert(storm::db::DatabaseStatement<Statement>);
+    static_assert(storm::db::DatabaseStatement<Connection::Statement>);
     static_assert(storm::db::DatabaseError<Error>);
 
     // Dialect-support concepts (#477). PostgreSQL uses the PG dialect, declares

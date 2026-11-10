@@ -2,8 +2,8 @@
 """Tests for commit.sh's self-heal configure (issue #674, ported from bash in #767).
 
 Before a step that needs a build tree, commit.sh configures the tree when it is absent
-(#489): build/release for the clang-tidy prerequisites and the bench release build,
-build/debug for clang-format, cmake-format, tests and coverage. Those configures used to run
+(#489): build/release for the clang-tidy prerequisites,
+build/debug for clang-format, cmake-format and tests. Those configures used to run
 as `cmake --preset ... > /dev/null 2>&1` with the exit status ignored, so a failed configure
 surfaced one step later as `ninja: error: loading 'build.ninja': No such file or directory`
 - with the real CMake error logged nowhere.
@@ -64,8 +64,7 @@ args = sys.argv[1:]
 with open(os.environ["STUB_CALLS"], "a") as calls:
     calls.write("cmake " + " ".join(args) + "\\n")
 
-PRESET_DIRS = {"ninja-debug": "build/debug", "ninja-debug-coverage": "build/debug",
-               "ninja-release": "build/release"}
+PRESET_DIRS = {"ninja-debug": "build/debug", "ninja-release": "build/release"}
 
 def preset_dir(preset):
     if preset not in PRESET_DIRS:
@@ -90,15 +89,12 @@ if args[:2] == ["--build", "--preset"]:
         sys.stderr.write("ninja: error: loading 'build.ninja': No such file or directory\\n")
         sys.exit(1)
     if args[2] == "ninja-debug" and len(args) == 3:
-        for binary in ("tests/storm_tests", "tests/mock_libpq/storm_pq_mock_tests"):
+        for binary in ("tests/storm_tests",):
             path = os.path.join(directory, binary)
             os.makedirs(os.path.dirname(path), exist_ok=True)
             with open(path, "w") as script:
                 script.write("#!/bin/sh\\nexit 0\\n")
             os.chmod(path, 0o755)
-    joined = " ".join(args)
-    if "--target coverage" in joined and "coverage-clean" not in joined:
-        print("  lines.......: 100.0% (1 of 1 lines)")
     sys.exit(0)
 
 sys.stderr.write("stub cmake: unexpected invocation: %s\\n" % " ".join(args))
@@ -227,21 +223,13 @@ class SelfHealConfigureTest(unittest.TestCase):
         self.assertNotEqual(code, 0, "commit is blocked")
         self.assert_configure_error_in(output, PREREQS_STEP, "storm_tidy_bmi.log")
 
-    def test_bench_release_configure_fails(self):
-        # Cold build/release with a bench change: the bench release build.
-        self.stage("benchmarks/b.cpp")
-        code, output = self.run_commit("ninja-release")
-        self.assertNotEqual(code, 0, "commit is blocked")
-        self.assert_configure_error_in(output, "release build", "storm_release.log")
-
     def test_debug_configure_fails(self):
-        # Cold build/debug, debug configure fails: clang-format, tests and coverage each need
+        # Cold build/debug, debug configure fails: clang-format and tests each need
         # it, and each must report the CMake error itself.
         self.stage("src/a.cpp")
         code, output = self.run_commit("ninja-debug")
         self.assertNotEqual(code, 0, "commit is blocked")
-        for step, log_name in (("clang-format", "storm_format.log"), ("tests (SQLite", "storm_tests.log"),
-                               ("coverage", "storm_coverage.log")):
+        for step, log_name in (("clang-format", "storm_format.log"), ("tests (SQLite", "storm_tests.log")):
             with self.subTest(step=step):
                 self.assert_configure_error_in(output, step, log_name)
 
@@ -302,11 +290,13 @@ class SelfHealConfigureTest(unittest.TestCase):
             (self.repo / "build" / tree).mkdir(parents=True)
             (self.repo / "build" / tree / "build.ninja").touch()
         (self.repo / "build" / "release" / "compile_commands.json").touch()
-        self.stage("src/a.cpp", "benchmarks/b.cpp")
+        self.stage("src/a.cpp")
         _, output = self.run_commit("ninja-debug ninja-release")
         configures = [call for call in self.calls() if call.startswith("cmake --preset")]
         self.assertEqual(configures, [], "a configured tree ran a configure")
-        for step in ("clang-format", PREREQS_STEP, "release build", "tests (SQLite", "coverage"):
+        self.assertFalse([call for call in self.calls() if "coverage" in call],
+                         "commit.sh ran a coverage step; the gate is CI-only (#793)")
+        for step in ("clang-format", PREREQS_STEP, "tests (SQLite"):
             self.assert_step(output, "passed", step)
 
     def test_failing_smart_skip_blocks_commit(self):

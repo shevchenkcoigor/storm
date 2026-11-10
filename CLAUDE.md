@@ -86,7 +86,7 @@ Strong success criteria let you loop independently. Weak criteria ("make it work
 
 1. **NEVER delete `.git`** - Do not run `rm -rf .git`
 2. **NEVER push without approval** - Ask before `git push` (exception: user says "commit and push")
-3. **NEVER skip the pre-commit hook** - Do not use `--no-verify`; `commit.sh` enforces format, tidy, test, coverage, sonar automatically. **First, check the hook is even wired**: `git config --get core.hooksPath` must print `.githooks`. It is local config a clone never carries, no CI job can observe it, and an unwired clone commits with every check silently skipped — indistinguishable from a clone where they all passed (#651). Set it with `git config core.hooksPath .githooks`; a Claude Code session gets it from the `SessionStart` hook, and a `cmake --preset` also sets it (which is no help in a session that has no toolchain to configure with)
+3. **NEVER skip the pre-commit hook** - Do not use `--no-verify`; `commit.sh` enforces format, tidy and tests automatically (the 100% coverage gate, sanitizers, benchmarks and SonarCloud are CI-only, #793). **First, check the hook is even wired**: `git config --get core.hooksPath` must print `.githooks`. It is local config a clone never carries, no CI job can observe it, and an unwired clone commits with every check silently skipped — indistinguishable from a clone where they all passed (#651). Set it with `git config core.hooksPath .githooks`; a Claude Code session gets it from the `SessionStart` hook, and a `cmake --preset` also sets it (which is no help in a session that has no toolchain to configure with)
 4. **NEVER work directly on `develop` for issue-linked tasks** - Always create `feature/<N>-<description>` branch first (see [Branching Rules](#branching-rules))
 5. **ALWAYS show files before commit** - Run `git status --short`, get user approval, then commit
 6. **ALWAYS benchmark after code changes** - Use Release builds; revert if ANY slowdown
@@ -97,7 +97,7 @@ Strong success criteria let you loop independently. Weak criteria ("make it work
 10. **SonarCloud gate MUST pass before merging** - Zero issues on new code; no exceptions, even for minor issues (see [SonarCloud Gate](#sonarcloud-gate-mandatory-before-merge))
 11. **NEVER use `throw` for compile-time errors in `consteval` functions** - Use `requires` constraints instead. Define a concept that checks the condition and constrain the template. The `throw "string literal"` trick works but fires late with a poor error message. `requires` fires at the call site with a clear constraint violation. Use `std::unreachable()` after the loop body if needed to satisfy the return type.
 12. **NEVER close an issue without verifying all subtasks** - Before closing, read the issue body and confirm every "Definition of done" checkbox was genuinely completed. Only check off items that were delivered. If some are intentionally skipped, ask the user first.
-13. **ALWAYS run the relevant reviewer agent(s) before every commit that touches code** - After staging (`git add`) and BEFORE `git commit`, dispatch the reviewer(s) matching the staged diff and address their findings. The pre-commit hook checks mechanics (format, tidy, tests, coverage); the reviewer agents check design and correctness. Applies to ALL code commits, including inline fixes and SonarCloud-fix commits; docs-only commits are exempt.
+13. **ALWAYS run the relevant reviewer agent(s) before every commit that touches code** - After staging (`git add`) and BEFORE `git commit`, dispatch the reviewer(s) matching the staged diff and address their findings. The pre-commit hook checks mechanics (format, tidy, tests); the reviewer agents check design and correctness. Applies to ALL code commits, including inline fixes and SonarCloud-fix commits; docs-only commits are exempt.
     - `storm-code-reviewer` - any `src/`, `tests/`, or other C++ change. Dispatch on every code commit. Reviews the **C++** — RAII, concepts, module structure, hot-path patterns.
     - `storm-sql-reviewer` - any `src/orm/statements/**`, `src/orm/schema.cppm`, or `src/db/*_statement.cppm` change. Dispatch alongside `storm-code-reviewer`. Reviews the **generated SQL text and bind sequence** (text↔bind agreement, column-name derivation, set semantics, sizer↔writer agreement, dialect matrix) — a blind spot `storm-code-reviewer` structurally cannot see since that code compiles cleanly and looks idiomatic even when the SQL it emits is wrong (#501, #506, #500).
     - `storm-buildsystem-reviewer` - any `cmake/**`, `CMakePresets.json`, `.github/workflows/**`, `commit.sh`, `.githooks/**`, or `scripts/**` change. Reviews CMake + presets + CI + hooks as one coupled system (cross-file consistency, cold-path correctness) — runs **alongside**, not instead of, `storm-code-reviewer` when a commit touches both.
@@ -226,14 +226,13 @@ These rules are enforced by SonarCloud analysis. Follow them when writing new co
 git status --short           # Show files
 # Get user approval
 git add -A && git commit -m "message"
-# Pre-commit hook (commit.sh): clang-format (C++) + cmake-format → clang-tidy → tests → coverage
-# Smart skips: no C++/cmake → skip all; cmake-only → tests+coverage+cmake-format; C++ only-bench → skip tests/coverage
+# Pre-commit hook (commit.sh): clang-format (C++) + cmake-format → clang-tidy → tests (coverage is CI-only, #793)
+# Smart skips: no C++/cmake → skip all; cmake-only → tests+cmake-format; C++ outside src/tests/cmake → skip tests
 # Nothing staged (`--allow-empty`): the git hook skips everything (.githooks/pre-commit sets STORM_PRE_COMMIT_HOOK=1, #706); a manual ./commit.sh keeps the full suite; empty is relative to HEAD, so a reword-only `--amend` skips too
 # Self-heal (#489/#557): commit.sh configures build/release, then builds just what
-#   clang-tidy needs (storm BMIs + synthesized-module BMIs + the two mock binaries)
-#   (BMIs + mock binaries, so no missing compile_commands.json / std.pcm) and
-#   build/debug before running the test binaries directly (so neither of the two
-#   — storm_tests, storm_pq_mock_tests — is missing). No-op on
+#   clang-tidy needs (storm BMIs + synthesized-module BMIs, so no missing
+#   compile_commands.json / std.pcm) and build/debug before running storm_tests
+#   directly (the only test binary since #787, so it is never missing). No-op on
 #   the warm path; covers both the git-hook path and a manual ./commit.sh on a
 #   fresh worktree. Each configure runs INSIDE the step that needs it, so a
 #   failed configure fails that step with the CMake error in its log (#674).
@@ -246,7 +245,7 @@ git push
 # See: https://github.com/spiritEcosse/storm/issues/113
 ```
 
-**If the hook fails on a later step (tidy/tests/coverage):** the tree is
+**If the hook fails on a later step (tidy/tests):** the tree is
 already reformatted and staged by that point (format runs first, step 1-2).
 Just fix the reported failure and re-run `git commit -m "message"` — no need
 to `git add -A` again unless you touched more files.
@@ -280,7 +279,7 @@ cmake --preset ninja-release && cmake --build --preset ninja-release
 # ninja-debug has coverage enabled by default
 cmake --preset ninja-debug && cmake --build --preset ninja-debug
 
-# Console summary (quick) — ninja-debug-coverage unsets STORM_PG_CONNSTR (SQLite + mock PG only)
+# Console summary (quick) — ninja-debug-coverage unsets STORM_PG_CONNSTR; the coverage script then defaults it per OS
 cmake --build --preset ninja-debug-coverage --target coverage
 
 # HTML report (detailed)
@@ -291,17 +290,16 @@ cmake --build --preset ninja-debug-coverage --target coverage-html
 **Enforced in CI, not just locally (#528)**: the `coverage` job in `.github/workflows/ci.yml`
 runs `ninja-debug-coverage` on the same `changes`-job gate as the sanitizer builds above (rule 7
 — `src/`, `tests/`, cmake, or CI plumbing; its build/coverage **steps** skipped only when a PR touches none of them — the job itself always runs on a PR, and is skipped outright on the post-merge push to `develop` (#700), see rule 7 and #638) and fails below **100% line
-coverage** — the same gate
-`commit.sh` step 5 applies, so the threshold is independently reproduced rather than self-reported
-from one machine. It parses the **line** row specifically (functions ~81%, branches ~92% are not
+coverage** — the only place the gate runs
+(`commit.sh` dropped its copy in #793). It parses the **line** row specifically (functions ~81%, branches ~92% are not
 gated) and uploads the HTML report as a `coverage-html` artifact on pass and failure alike.
 The 100% is of the **filtered** set — 24 files / 8613 lines, `LCOV_EXCL` markers excluded from the
 denominator — not of every line in the tree.
 
 **⚠️ Coverage requires a running PostgreSQL** — the PG `Connection`'s `constexpr` transaction-nesting
-methods and part of `pool.cppm` are instantiated only by a live connection (the libpq mock does not
-reach them). Without a server the tree measures **~99.8-99.9%** and the gate fails; function coverage
-dropping from 80.6% to **48.7%** is the tell, and the run prints a `WARN: PostgreSQL unreachable`
+methods and part of `pool.cppm` are instantiated only by a live connection, and the PG error-path tests
+(fake libpq API policy, #787) skip without one — so without a server the gate fails, well below 100%;
+a sharp drop in function coverage (about 82% with PG) is the tell, and the run prints a `WARN: PostgreSQL unreachable`
 line. `scripts/coverage/coverage-run-batched.sh` (and `commit.sh`) default `STORM_PG_CONNSTR` per host OS via
 `scripts/coverage/coverage_gate.py pg-connstr` — `host=/var/run/postgresql` on Linux, `host=/tmp` on macOS (Homebrew),
 anything else fails loudly; an exported value wins, which is how CI targets its `postgres` service container. Note the
@@ -899,7 +897,7 @@ Every new feature or modification MUST include thorough tests covering these cat
 
 #### Error Handling
 - Invalid inputs where applicable
-- Error paths tested via mock (test_orm_mock_errors.cpp pattern)
+- Error paths tested via the fake C-API policies (`tests/db/test_sqlite_fake_errors.cpp` / `test_pq_fake_errors.cpp` pattern, #784/#787)
 
 #### Cross-Backend
 - Tests use TYPED_TEST with DatabaseTypes to run on both SQLite and PostgreSQL

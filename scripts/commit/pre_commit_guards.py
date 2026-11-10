@@ -194,7 +194,7 @@ CPM_COLD_CACHE = Guard(
 # GNU-only grep flag in the old parser broke the gate on macOS BSD grep while CI stayed
 # green) and owns the per-OS PostgreSQL socket default (a wrong branch silently skips every
 # PG test and leaves the gate stuck at ~99.8%). The self-test also runs commit.sh's real
-# gate/default text under /bin/bash and scans commit.sh and coverage-run-batched.sh for
+# STORM_PG_CONNSTR default text under /bin/bash and scans commit.sh and coverage-run-batched.sh for
 # bash-4-only constructs (#689), so staging any of them triggers it.
 COVERAGE_GATE = Guard(
     "coverage gate",

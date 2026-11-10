@@ -22,16 +22,15 @@ You will execute and analyze tests for the Storm ORM project, which uses cutting
 
 ### Full Test Suite
 ```bash
-# Fast path: run the gtest binaries directly (~33s). ctest re-launches the
+# Fast path: run the gtest binary directly (~33s). ctest re-launches the
 # whole storm_tests binary per individual test case (gtest_discover_tests
 # PRE_TEST), which measured ~260s (7.8x slower) — see
 # docs/internals/testing/TESTING.md#local-test-suite-speed. Use `ctest --preset
 # ninja-debug` instead only when you need its -R/-N filtering/listing (that preset
-# pins the Linux socket, so on macOS stay with the direct binaries).
+# pins the Linux socket, so on macOS stay with the direct binary).
 # The socket below is Linux's; macOS (Homebrew PostgreSQL) uses host=/tmp.
 STORM_PG_CONNSTR="host=/var/run/postgresql dbname=storm_db user=storm_db" \
-    ./build/debug/tests/storm_tests \
-    && ./build/debug/tests/mock_libpq/storm_pq_mock_tests
+    ./build/debug/tests/storm_tests
 ```
 
 ### Specific Test Patterns
@@ -145,8 +144,7 @@ For any non-trivial change, run all three test tiers:
 # this runs the binaries directly instead of `ctest --preset ninja-debug`
 # (Linux socket shown; macOS Homebrew PostgreSQL uses host=/tmp)
 STORM_PG_CONNSTR="host=/var/run/postgresql dbname=storm_db user=storm_db" \
-    ./build/debug/tests/storm_tests \
-    && ./build/debug/tests/mock_libpq/storm_pq_mock_tests
+    ./build/debug/tests/storm_tests
 
 # 2. ASAN + UBSAN (memory safety + undefined behavior)
 cmake --preset ninja-asan-ubsan && cmake --build --preset ninja-asan-ubsan

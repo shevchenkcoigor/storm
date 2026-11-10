@@ -62,8 +62,8 @@ open build/debug/coverage/html-filtered/index.html      # macOS
 
 The `coverage` job in `.github/workflows/ci.yml` runs on every PR and nightly on
 `develop` (not on the post-merge push — #700). It builds `ninja-debug`, runs the `coverage` target, and **fails the
-job below 100% line coverage** — the same gate `commit.sh` applies locally, so
-the threshold is no longer self-reported from one developer's machine (#528).
+job below 100% line coverage** — the only automated place the gate runs (`commit.sh` dropped its copy in #793; run the
+`coverage` target by hand to check locally).
 
 The job parses the **line** row of the lcov summary specifically. Function
 coverage (~81%) and branch coverage (~92%) are not gated; anchoring on the wrong
@@ -91,9 +91,10 @@ CI. This is not an optimization or a nice-to-have.
 Three `constexpr` transaction-nesting methods on the PG `Connection`
 (`postgresql_connection.cppm` — `in_transaction`, `enter_transaction`,
 `leave_transaction`) and part of `pool.cppm` are instantiated only by a live
-connection. `tests/mock_libpq/` does not reach them. With PG absent the tree
-measures **~99.8-99.9%**, and function coverage drops from **80.6% to 48.7%** —
-that second number is the quickest way to recognize this situation.
+connection, and the PostgreSQL error-path tests (`tests/db/test_pq_fake_errors.cpp`) skip without
+one. With PG absent the gate fails, well below 100% of lines, and function
+coverage drops sharply from its ~82% with PG — that drop is the quickest way to
+recognize this situation.
 
 `scripts/coverage/coverage-run-batched.sh` (and `commit.sh`) default `STORM_PG_CONNSTR` to the
 local unix socket, chosen per host OS by `scripts/coverage/coverage_gate.py pg-connstr`:
@@ -178,8 +179,7 @@ build/debug/coverage/
 
 ### Line Coverage
 
-- **100% is required** — enforced by the `commit.sh` pre-commit hook locally and
-  by the `coverage` CI job on every PR (#528)
+- **100% is required** — enforced by the `coverage` CI job on every PR (#528)
 - The figure is 100% of the **filtered** set — 24 files / 8613 lines, after
   `LCOV_EXCL` markers are removed from the denominator (56 markers across 11
   files in `src/`). It is not 100% of every line in the tree
@@ -187,7 +187,7 @@ build/debug/coverage/
 
 ### Uncovered Code Categories
 
-1. **Error paths** (`[[unlikely]]`) - Test via mock tests, or exclude with `LCOV_EXCL_LINE`
+1. **Error paths** (`[[unlikely]]`) - Test via the fake C-API policies (see Error-Path Tests below), or exclude with `LCOV_EXCL_LINE`
 2. **Compile-time code** (`consteval`, `constexpr`) - Exclude with `LCOV_EXCL_*`
 3. **`if constexpr` branches** - Only one branch instantiated per template type, exclude other
 4. **Template instantiation artifacts** - Some instantiations instrumented, others not
@@ -204,17 +204,15 @@ For example, `EraseStatement` has 8 methods × ~9 model types = ~52 "functions" 
 
 ### Error-Path Tests
 
-SQLite error-handling paths are tested in `tests/db/test_sqlite_fake_errors.cpp`, which runs inside
-`storm_tests`: a fake `sqlite3_*` API policy (`tests/db/fake_sqlite_api.hpp`, #760/#784) injects failures at
-compile time, so no separate binary or `LD_PRELOAD` is involved and the tests also run on macOS.
+Backend error-handling paths are tested inside `storm_tests` on compile-time API policies: the
+connection and statement templates take the C API as a type parameter, and a test substitutes a fake
+that forwards to the real library and injects a failure only where armed. No separate binary is
+involved, and the tests also run on macOS.
 
-PostgreSQL error paths still use the `LD_PRELOAD` libpq mock (`tests/mock_libpq/`) until `PQ*` gets the same
-policy treatment.
-
-```bash
-# Run the PG mock tests separately
-cmake --build --preset ninja-debug --target coverage-run-pg-mock
-```
+| Backend | Tests | Fake | Needs |
+|---|---|---|---|
+| SQLite | `tests/db/test_sqlite_fake_errors.cpp` | `tests/db/fake_sqlite_api.hpp` (#760/#784) | nothing |
+| PostgreSQL | `tests/db/test_pq_fake_errors.cpp` | `tests/db/fake_pq_api.hpp` (#787) | a live server (`STORM_PG_CONNSTR`); skips without one |
 
 ## Batched Test Execution
 

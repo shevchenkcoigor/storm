@@ -93,7 +93,7 @@ TYPED_TEST(SqlVerifyTest, SelectWithJoinAndWhere) {
             sql,
             "SELECT t1.id, t1.content, t1.value, t2.id, t2.name, t2.age, t2.salary,"
             " t2.is_active, t2.years_experience, t2.department, t2.score, t2.nickname, t2.avatar"
-            " FROM Message t1 INNER JOIN Person t2 ON t2.id = t1.sender_id WHERE value > ?"
+            " FROM Message t1 INNER JOIN Person t2 ON t2.id = t1.sender_id WHERE t1.value > ?"
     );
 }
 
@@ -161,7 +161,7 @@ TYPED_TEST(SqlVerifyTest, SelectFullCombo) {
                     "SELECT t1.id, t1.content, t1.value, t2.id, t2.name, t2.age, t2.salary,"
                     " t2.is_active, t2.years_experience, t2.department, t2.score, t2.nickname, t2.avatar"
                     " FROM Message t1 INNER JOIN Person t2 ON t2.id = t1.sender_id"
-                    " WHERE value > ? ORDER BY content {} LIMIT 5 OFFSET 2",
+                    " WHERE t1.value > ? ORDER BY t1.content {} LIMIT 5 OFFSET 2",
                     order_asc<TypeParam>()
             )
     );
@@ -404,7 +404,7 @@ TYPED_TEST(SqlVerifyTest, AggregateCountWithJoin) {
 TYPED_TEST(SqlVerifyTest, AggregateCountWithJoinAndWhere) {
     QuerySet<Message, TypeParam> qs;
     auto sql = qs.template join<fields::Message.sender>().where(fields::Message.value > 10).count().sql();
-    EXPECT_EQ(sql, "SELECT COUNT(*) FROM Message t1 INNER JOIN Person t2 ON t2.id = t1.sender_id WHERE value > ?");
+    EXPECT_EQ(sql, "SELECT COUNT(*) FROM Message t1 INNER JOIN Person t2 ON t2.id = t1.sender_id WHERE t1.value > ?");
 }
 
 // ============================================================================
@@ -486,8 +486,8 @@ TYPED_TEST(SqlVerifyTest, GroupByWithJoin) {
                        .sql();
     EXPECT_EQ(
             sql,
-            "SELECT content, COUNT(*) FROM Message t1 INNER JOIN Person t2 ON t2.id = t1.sender_id"
-            " GROUP BY content"
+            "SELECT t1.content, COUNT(*) FROM Message t1 INNER JOIN Person t2 ON t2.id = t1.sender_id"
+            " GROUP BY t1.content"
     );
 }
 

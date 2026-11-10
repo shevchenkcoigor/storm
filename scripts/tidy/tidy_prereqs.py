@@ -2,7 +2,7 @@
 """Do clang-tidy's module prerequisites exist for the staged files? (#557, #688)
 
 clang-tidy replays build/release/compile_commands.json and only PARSES, so
-commit.sh builds just the BMIs and the PG mock binary it needs instead of the full
+commit.sh builds just the BMIs it needs instead of the full
 release target set (~90% of a cold full build is test TUs clang-tidy never
 opens). This answers whether that targeted build was enough.
 

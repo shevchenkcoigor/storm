@@ -25,6 +25,9 @@ Object compiles only, ninja edges deduplicated (a C++ module edge emits both
 | YAML corpus TUs | 4 | 159 | **5.3%** | 39.7s |
 | mock test binaries | 6 | 54 | 1.8% | 9.0s |
 
+The `mock test binaries` rows in this file predate #787, which removed the
+preloaded libpq mock and its two binaries; later measurements have no such bucket.
+
 Total ≈ **3003 s** of compile CPU. Release is ~32% more expensive again (3954 s)
 despite Debug carrying coverage instrumentation — `-O2` over this much template
 instantiation costs more than the instrumentation does.
@@ -693,6 +696,48 @@ cost +1.64 s; the other ten models and five proxies together cost +0.50 s, about
 Since every test TU needs at least one model, a per-model split cannot touch the
 intercept. It can only recover the slope, and only for TUs that need one model.
 
+> **Update (#796): the intercept figures above are stale.** The +0.65 s / +0.99 s
+> (B + 1 model + proxy: +1.64 s) predate #670 / #682 / #686 / #694. Re-measured on
+> `develop` at 20d3971 — replaying the real compile command of
+> `tests/crud/test_conditional_update.cpp` on empty-body probes, `-ftime-trace`,
+> min of 3, serial, `ninja-debug`, macOS arm64 — entering the reflection machinery
+> costs **+0.11 s**, not ~1.6 s. The table above is kept as history.
+>
+> | probe (empty body) | sec | Δ |
+> |---|---:|---:|
+> | baseline: gtest (PCH) + `import storm;` + `import std;` | 0.43 | — |
+> | + plain `Person` struct (no annotations) | 0.44 | +0.01 |
+> | + `primary`/`unique`/`indexed` annotations | 0.45 | +0.01 |
+> | + `storm_indexes` tuple | 0.45 | +0.00 |
+> | + `fields::Person` proxy (`define_aggregate`) | 0.54 | +0.09 |
+> | real `shared/models/person.h` | 0.53 | +0.11 |
+>
+> What is still paid is first *use*, not declaration (Δ vs `person.h`):
+>
+> | body added on top of `person.h` | sec | Δ |
+> |---|---:|---:|
+> | `QuerySet<Person>().where().order_by().limit().select()` | 1.63 | +1.10 |
+> | `count().execute()` | 2.13 | +1.60 |
+> | `SchemaStatement<Person>::create_table_if_not_exists` | 1.81 | +1.28 |
+> | all three | 2.87 | +2.34 |
+>
+> The three alone sum to +3.98 s but cost +2.34 s together, so roughly 1-1.6 s is a
+> shared fixed cost of the first statement instantiation for a model.
+> `-ftime-trace` shows no single hotspot: `BasicQuerySet<Person,…>` 0.18 s,
+> `BasicSelectStatement<Person,…>` 0.16 s, constant evaluation 0.11 s, then many
+> instantiations of ≤0.06 s.
+>
+> **Caveats.** Different host from the numbers above — read the delta, not the
+> absolute seconds. Empty-body probes, one model, one backend; min-of-3 with
+> ~0.05-0.1 s noise. **Which change closed the gap was not bisected**;
+> #670/#682/#686/#694 are the likely candidates, nothing more.
+>
+> **Inconclusive, not a recommendation:** per-TU `-g` costs 12-21% of compile time in
+> a serial replay (2.81 s `-g` → 2.48 `-g1`/`-gline-tables-only` → 2.22 `-g0`;
+> coverage flags ≈ 0), but a full cold `storm_tests` build did not show it — 183 s
+> (`-g`), 183 s (`-gline-tables-only`), 218 s (`-g` again); the 19% run-to-run
+> spread exceeds the effect.
+
 **With a real body it recovers even less.** The probes above have trivial bodies;
 a real TU calls `QuerySet<Person>` and `fields::Person`, which instantiates the
 same machinery the intercept pays for. Same probes, body one `where().order_by()
@@ -1137,7 +1182,7 @@ restores the full cost for every TU that includes it, and nothing else would not
 | the test bodies themselves | ≤13% of a TU, not recommended | **Closed by measurement.** Of an average TU the bodies are ~41-45% and the fixture another ~37-41% ([above](#what-one-average-tu-is-made-of)). Inside the bodies the only levers are merging every `TYPED_TEST` into one block and neutering the assertions — together worth 12.9% in one session and 5.5% in another, so ≤13% is a ceiling, not a value. Both keep full coverage but cost failure granularity and diagnostic quality respectively. The rest is the distinct query shapes, i.e. the checklist's coverage. |
 | `ExpressionVariant`'s 28 alternatives | ~100 s, unmeasured | The variant-visitation machinery is 6.7% of a TU, and it scales with the ALTERNATIVE COUNT — which is a design choice, since `ComparisonExpr<T>`/`BetweenExpr<T>`/`InExpression<T>` each contribute one per value type. Replacing `std::visit` with a `switch` does **not** reach it ([measured and reverted](#stdvisit-over-expressionvariant--swapped-for-a-switch-no-reproducible-effect)); nesting the value variant inside one node type to make the outer variant ~5-wide might, at the cost of a refactor of every node's `to_sql`/`bind_impl`. Measure a prototype before opening it as work. |
 | the fixture + registration layer | ~0 reachable | **Closed by measurement.** Split into its axes [above](#inside-the-fixture-layer--and-why-its-biggest-item-cannot-be-moved): gtest's typed-test machinery is only ~10% of it, and the largest single item — 0.85 s per TU of `std::format` instantiation in `tests/test_db_helpers.h` — cannot be removed, moved, or reduced without the textual/modular `std` reconciliation collapsing in unrelated TUs. What remains is storm's `QuerySet` statics (~0.7 s) and its DDL generator (~0.9 s), both of which a test genuinely uses. |
-| the reflection intercept itself | unmeasured | What the row above leaves on the table: ~1.6 s per TU to enter the machinery (first annotated struct +0.65 s, first `define_aggregate`/`FieldRef` proxy +0.99 s). Library-side, so it would benefit users and not only tests — but it is the cost of the reflection a querying TU needs anyway, so whether *any* of it is removable is unknown. Measure before opening it as work. |
+| first use of a model in a statement | ~1.1-1.6 s per TU, shared across operations | **The remaining open surface (#796).** Declaring a model is now cheap — struct, annotations, indexes and `fields::` proxy together are **+0.11 s**; the ~1.6 s "reflection intercept" this row used to carry no longer reproduces ([above](#splitting-sharedmodelsh-per-model-634--rejected-on-probes-adopted-on-measurement)). What is still paid is the first statement instantiation for a model: +1.10 s for a `select()` chain, +1.60 s for `count()`, +1.28 s for `create_table_if_not_exists`, but only +2.34 s for all three together, so ~1-1.6 s is a fixed cost shared between them. `-ftime-trace` shows no single hotspot. Library-side, so it would benefit users and not only tests. Caveats: empty-body probes, one model, one backend, ±0.05-0.1 s; which change closed the old gap was not bisected. Measure a prototype before opening it as work. |
 | `storm_orm_schema`'s BMI serialization | ~2-7 s per library build, unmeasured as a saving | `WriteAST` is ~70% of building `schema.cppm`'s BMI; its frontend is ~1 s ([above](#the-schema-module-under--ftime-trace-670)). Paid once per library rebuild, not per test TU, so it bounds incremental rebuilds after a schema edit rather than the full build. Whether it is this module's own declarations or the imported ones it references (it imports `storm_orm_statements_base` and five more, re-exporting none) that dominate is not yet split. In the consumers, the largest remaining `SchemaStatement` instantiation is `create_index_sql`/`build_all_index_sql` (~1 s for `Person`) — single-dialect already, so laziness does not reach it. |
 | clang's bytecode constant interpreter | unmeasured; blocked | `-fexperimental-new-constant-interpreter` runs plain consteval ~3.7x faster (calibration 6.77 → 1.84 s), and constant evaluation is ~44% of the heaviest TU. **Blocked (#693):** it cannot evaluate `<meta>` yet, so 33 of 44 modules fail to build with it (`value_bind` also on `std::format`); the 11 that pass save ~0.3 s once per library build. Per-module flags would not reach the cost anyway, which lands in the TUs that instantiate templates over models. Re-test on each toolchain bump. Independent of [#694](#memoised-reflection-lookups-694), which cuts the number of evaluations rather than their speed, so they would stack. |
 

@@ -70,7 +70,7 @@ This will:
 ## SonarCloud Dashboard
 
 View the full dashboard at:
-https://sonarcloud.io/dashboard?id=spiritEcosse_storm
+https://sonarcloud.io/dashboard?id=shevchenkcoigor_storm
 
 ## Troubleshooting
 
@@ -87,7 +87,7 @@ https://sonarcloud.io/dashboard?id=spiritEcosse_storm
 ### "No data returned"
 - Your project may not be set up on SonarCloud yet
 - Make sure the GitHub Actions workflow has run at least once
-- Check that the project key is `spiritEcosse_storm`
+- Check that the project key is `shevchenkcoigor_storm`
 
 ## Security Note
 

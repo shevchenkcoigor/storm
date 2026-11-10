@@ -109,7 +109,10 @@ export namespace storm::orm::statements {
     // ============================================================================
 
     // LCOV_EXCL_START - compile-time only
-    template <typename Op> consteval auto build_single_op_sql() {
+    // Owner (#785): the JOIN form passes the base model, whose operand columns are then
+    // written "t1.<col>" (append_owned_column_name); the default void Owner emits the
+    // bare non-join spelling, byte-identical to before.
+    template <typename Op, typename Owner = void> consteval auto build_single_op_sql() {
         constexpr auto agg_name = get_agg_function_name(Op::agg_type);
 
         ConstexprString<utilities::buffer_size::SQL_SMALL> result;
@@ -124,7 +127,7 @@ export namespace storm::orm::statements {
         if constexpr (Op::agg_type == AggregateType::COUNT_DISTINCT) {
             result.append("DISTINCT ");
             static_assert(Op::field_count == 1, "COUNT(DISTINCT) requires exactly one field");
-            storm::meta::append_column_name(result, Op::field_infos[0]);
+            append_owned_column_name<Owner>(result, Op::field_infos[0]);
         } else if constexpr (Op::field_count == 0) {
             result.append("*");
         } else {
@@ -132,7 +135,7 @@ export namespace storm::orm::statements {
                 if (i > 0) {
                     result.append(" + ");
                 }
-                storm::meta::append_column_name(result, Op::field_infos[i]);
+                append_owned_column_name<Owner>(result, Op::field_infos[i]);
             }
         }
 
@@ -140,20 +143,21 @@ export namespace storm::orm::statements {
         return result;
     }
 
-    template <typename... Ops, std::size_t... Is> consteval auto build_ops_list(std::index_sequence<Is...> /*unused*/) {
+    template <typename Owner, typename... Ops, std::size_t... Is>
+    consteval auto build_owned_ops_list(std::index_sequence<Is...> /*unused*/) {
         ConstexprString<utilities::buffer_size::SQL_MEDIUM> result;
         (([&result]() {
              if constexpr (Is > 0) {
                  result.append(", ");
              }
-             constexpr auto op_sql = build_single_op_sql<std::tuple_element_t<Is, std::tuple<Ops...>>>();
+             constexpr auto op_sql = build_single_op_sql<std::tuple_element_t<Is, std::tuple<Ops...>>, Owner>();
              result.append(op_sql);
          }()),
          ...);
         return result;
     }
 
-    template <typename GroupFields, std::size_t... Is>
+    template <typename GroupFields, typename Owner = void, std::size_t... Is>
     consteval auto build_group_fields_sql(std::index_sequence<Is...> /*unused*/) {
         ConstexprString<utilities::buffer_size::SQL_SMALL> result;
         (([&result]() {
@@ -168,7 +172,7 @@ export namespace storm::orm::statements {
              // to exist, so the gate has to sit at the call site rather than rely
              // on that extractor staying incomplete. This list is emitted TWICE
              // per query (SELECT prefix and GROUP BY tail).
-             storm::meta::append_column_name(result, GroupFields::template at<Is>());
+             append_owned_column_name<Owner>(result, GroupFields::template at<Is>());
          }()),
          ...);
         return result;

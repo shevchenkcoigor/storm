@@ -1,6 +1,6 @@
 ---
 name: storm-build-helper
-description: Use this agent for CMake build system tasks in the Storm project — modifying cmake/*.cmake files, managing CPM dependencies, updating CMakePresets.json, configuring coverage/sanitizer/benchmark targets, adding new test sub-targets (mock binaries), or diagnosing link errors. NOT for compiler crashes or module discovery issues (use clang-cpp26-compiler-specialist). NOT for ORM feature implementation (use storm-orm-developer). NOTE: adding a src/ .cppm or any tests/ .cpp requires NO CMake changes (GLOB auto-discovery); a tests/ .cppm module must be added by hand to storm_tests\' cxx_modules FILE_SET and its SKIP_PRECOMPILE_HEADERS list in tests/CMakeLists.txt.
+description: Use this agent for CMake build system tasks in the Storm project — modifying cmake/*.cmake files, managing CPM dependencies, updating CMakePresets.json, configuring coverage/sanitizer/benchmark targets, adding new test sub-targets, or diagnosing link errors. NOT for compiler crashes or module discovery issues (use clang-cpp26-compiler-specialist). NOT for ORM feature implementation (use storm-orm-developer). NOTE: adding a src/ .cppm or any tests/ .cpp requires NO CMake changes (GLOB auto-discovery); a tests/ .cppm module must be added by hand to storm_tests\' cxx_modules FILE_SET and its SKIP_PRECOMPILE_HEADERS list in tests/CMakeLists.txt.
 model: haiku
 tools: [Read, Write, Edit, Glob, Grep, Bash]
 ---
@@ -31,8 +31,7 @@ cmake/
 ├── bench.cmake              # add_subdirectory(benchmarks)
 ├── sanitizers.cmake         # USE_SANITIZER option
 └── format.cmake             # clang-format/cmake-format targets
-tests/CMakeLists.txt         # Test binary, mock sub-targets
-tests/mock_libpq/CMakeLists.txt
+tests/CMakeLists.txt         # Test binary (storm_tests — the only one since #787)
 benchmarks/CMakeLists.txt
 CMakePresets.json            # ninja-debug, ninja-release, ninja-prod presets
 ```
@@ -48,7 +47,7 @@ CMakePresets.json            # ninja-debug, ninja-release, ninja-prod presets
 1. **CPM dependency changes** — adding/updating packages in `cmake/cpm.cmake` or `cmake/cmake-scripts.cmake`
 2. **cmake/*.cmake modifications** — coverage flags, sanitizer options, format targets, db backend helpers
 3. **CMakePresets.json** — adding presets, modifying cache variables, test/build preset configuration
-4. **New test sub-targets** — when a new mock binary or specialized test executable is needed (new `add_subdirectory` + its own `CMakeLists.txt`)
+4. **New test sub-targets** — when a specialized test executable is genuinely needed (new `add_subdirectory` + its own `CMakeLists.txt`). Backend error paths do NOT need one: they run in `storm_tests` on the fake C-API policies (`tests/db/fake_sqlite_api.hpp`, `tests/db/fake_pq_api.hpp`, #784/#787)
 5. **Link errors** — diagnosing missing `target_link_libraries`, wrong target names, library not found
 6. **Build option wiring** — connecting new `option()` declarations to the right cmake includes
 
