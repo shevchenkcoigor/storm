@@ -206,8 +206,10 @@ TYPED_TEST(M2MBaseTest, JunctionTableIsCreatedAndWritable) {
     auto course_id = (InsertStatement<Course, TypeParam>{}).query(Course{.title = "C"}).execute();
     ASSERT_TRUE(course_id.has_value()) << course_id.error().message();
 
-    const std::string pair = std::format("INSERT INTO Student_Course (Student_id, Course_id) VALUES ({}, {})",
-                                         student_id.value(), course_id.value());
+    std::string pair =
+        storm::test::numbered("INSERT INTO Student_Course (Student_id, Course_id) VALUES (", student_id.value());
+    pair += storm::test::numbered(", ", course_id.value());
+    pair += ')';
 
     // The fixture ran create_table_if_not_exists<Student> — the junction must exist.
     auto ins = conn->execute(pair);

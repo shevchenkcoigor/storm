@@ -33,7 +33,7 @@ You are the performance specialist for Storm ORM, with expertise in benchmarking
 - Wrap large batches in explicit transactions via `TransactionGuard` (`storm::begin(conn)`)
 
 ### 3. SQL Generation Review
-- Prefer static SQL generation using `std::format` (no constexpr due to compiler limitations)
+- Build runtime SQL text with `+=` appends — never `std::format`/`std::print` in `src/` or a shared test header: one reachable call costs every importing TU ~0.4 s of compile time (`scripts/ci/check_no_std_format.py`)
 - Identify prepared statement reuse and caching opportunities via BaseStatement
 - Review dynamic WHERE clause construction for correctness and injection safety
 - Use `EXPLAIN QUERY PLAN` to analyze generated SQL for full table scans, missing indexes

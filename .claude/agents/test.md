@@ -110,7 +110,7 @@ When tests fail, systematically check:
 - Batch operation adaptive thresholds (999/field_count for bulk SQL; FALLBACK_BATCH_SIZE=50 is a minimum constant, not the primary cutoff)
 - Upsert (#205/#458) `on_conflict<Target...>().update<Cols...>()`/`.nothing()`: test both DO UPDATE (`std::expected<int64_t, Error>`) and DO NOTHING (`std::expected<std::optional<int64_t>, Error>`, nullopt on existing row); conflict on a `storm::unique` field vs a `UniqueIndex<...>` vs the full composite-PK column set (#503, both resolve to `std::expected<void, Error>` there, and a strict-subset target is a negative-compile assert on `ConflictTargetUnique` directly); insert-new vs conflict paths; unlisted `auto_update` cols still stamped; cross-backend via TYPED_TEST
 - Transaction management in BaseStatement utilities
-- SQL generation with runtime std::format
+- SQL generation with runtime `+=` appends (no `std::format` in `src/` or shared test headers; a test `.cpp` may still use it)
 - Statement caching and prepared statement lifecycle
 
 ## Test Result Interpretation

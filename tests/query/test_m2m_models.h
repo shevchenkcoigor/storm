@@ -132,8 +132,9 @@ template <typename ConnType> inline auto seed_students() -> void {
 
     auto conn = DefaultConnection<ConnType>::get();
     for (const auto *pair : {"(1, 1)", "(1, 2)", "(2, 1)"}) {
-        ASSERT_TRUE(conn->execute(std::format("INSERT INTO Student_Course (Student_id, Course_id) VALUES {}", pair))
-                        .has_value());
+        std::string sql{"INSERT INTO Student_Course (Student_id, Course_id) VALUES "};
+        sql += pair;
+        ASSERT_TRUE(conn->execute(sql).has_value());
     }
 }
 
@@ -152,12 +153,14 @@ template <typename ConnType> inline auto seed_members() -> void {
 
     auto conn = DefaultConnection<ConnType>::get();
     for (const auto *pair : {"(1, 1)", "(1, 2)", "(2, 1)"}) {
-        ASSERT_TRUE(
-            conn->execute(std::format("INSERT INTO Member_Course (Member_id, Course_id) VALUES {}", pair)).has_value());
+        std::string sql{"INSERT INTO Member_Course (Member_id, Course_id) VALUES "};
+        sql += pair;
+        ASSERT_TRUE(conn->execute(sql).has_value());
     }
     for (const auto *pair : {"(1, 1)", "(3, 1)", "(3, 2)"}) {
-        ASSERT_TRUE(
-            conn->execute(std::format("INSERT INTO Member_Club (Member_id, Club_id) VALUES {}", pair)).has_value());
+        std::string sql{"INSERT INTO Member_Club (Member_id, Club_id) VALUES "};
+        sql += pair;
+        ASSERT_TRUE(conn->execute(sql).has_value());
     }
 }
 

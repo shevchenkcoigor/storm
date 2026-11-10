@@ -107,7 +107,7 @@ class UnifiedYamlBody : public UnifiedYamlFixture<Tag, ConnType> {
             std::vector<Person> seed;
             seed.reserve(static_cast<std::size_t>(tc.bench.dataset_size));
             for (int i = 1; i <= tc.bench.dataset_size; ++i) {
-                seed.emplace_back(Person{.id = 0, .name = std::format("P{}", i), .age = 20 + i});
+                seed.emplace_back(Person{.id = 0, .name = storm::test::numbered("P", i), .age = 20 + i});
             }
             ASSERT_TRUE((storm::test::batch_insert<Person, ConnType>(seed)));
         }

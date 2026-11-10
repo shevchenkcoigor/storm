@@ -49,7 +49,7 @@ export namespace storm::db {
             auto& s = slot();
             // LCOV_EXCL_START — aborts the process; not reachable from a test
             if (!s) [[unlikely]] {
-                std::println(stderr, "storm: default connection not set on this thread");
+                std::fputs("storm: default connection not set on this thread\n", stderr);
                 std::abort();
             }
             // LCOV_EXCL_STOP

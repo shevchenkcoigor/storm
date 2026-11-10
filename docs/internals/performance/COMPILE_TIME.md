@@ -1076,6 +1076,58 @@ tried separately on develop, took the full-header TU from 2.49 to 2.16 s (its ow
 machine state than the table above), but only with the `std` module built without it; it was not
 combined with this change.
 
+### No `std::format` in modules or shared test headers
+
+A cumulative probe ladder (the exact command of `tests/query/test_where.cpp`, gtest PCH, min of 4)
+put the first real query at +1.1 s over a TU that only declares the model:
+
+| rung | sec | step |
+|---|---:|---:|
+| `import storm;` + gtest + `person.h`, small gtest body | 0.59 | |
+| + `QuerySet<Person> qs;` | 1.27 | +0.68 |
+| + `.where(...)` | 1.67 | +0.40 |
+| + `.order_by().limit().select()` | 1.69 | +0.02 |
+
+Almost none of it is constant evaluation (+0.13 s for the whole query). It is code generation:
+`-ftime-trace` counts 2161 more `CodeGen Function` events, each then run through the backend and
+given debug info. Two groups account for nearly all of them:
+
+- **~470 functions of `std::format` machinery (~0.45 s).** The bare `QuerySet<Person>` declaration
+  reached one `std::println` — the abort message in `DefaultConnection::get()` — and that alone
+  instantiated the formatting stack (float formatting and Unicode tables included) in the importing
+  TU. A probe with nothing but `std::format("{}", 1)` costs the same 0.47 s.
+- **676 `std::variant` functions (~0.40 s)** for `ExpressionVariant`, on the first `where()` — the
+  per-alternative cost already recorded [above](#stdvisit-over-expressionvariant--swapped-for-a-switch-no-reproducible-effect).
+
+Removing the `println` alone changed only the probe: real TUs still generated the stack, first from
+the `std::format` calls that build clause text in `where.cppm` / `value_bind.cppm` /
+`statements/base.cppm`, and — once those were gone — from `tests/test_db_helpers.h`, which 99 test
+files include. Only with **every** reachable call removed does a TU stop paying:
+
+| TU | before | `src/` format-free | + test headers format-free | format fns |
+|---|---:|---:|---:|---:|
+| probe: full query | 1.69 | 1.22 | 1.21 | 459 → 0 |
+| `test_where.cpp` | 5.33 | 5.20 | 4.96 | 558 → 0 |
+| `test_ddl_execution_audit.cpp` | 9.69 | 9.76 | 9.26 | 473 → 0 |
+| `test_aggregate.cpp` (formats in its own body) | 5.72 | 5.58 | 5.53 | still present |
+| `test_distinct.cpp` (formats in its own body) | 7.90 | 7.86 | 7.74 | still present |
+
+Seconds are min of 4, same HEAD; an unchanged tree re-measured within 0.3 s on the real TUs, so
+only the two format-free rows are a claimed win (−0.37 s and −0.43 s, 4-7%). The function counts
+are deterministic. After the change 92 of 126 test objects contain no formatting code (`nm`); the
+other 34 call `std::format` in their own `.cpp`, where it costs only that TU. Projected over the 92
+that is ~35 s of CPU per clean build — an estimate; no clean-build A/B was run.
+
+All 14 library call sites and the 34 in ten test headers were plain concatenation or zero-padded
+integers, now `+=` appends, `utilities::zero_padded()` and `storm::test::numbered()`. The emitted
+text is unchanged: the padding helper and the date/time conversions are pinned by
+`test_utilities_modules.cpp` (negative years included), the WHERE text by the existing
+`test_fields_sql_parity.cpp` literals, and `full_unsigned` by the suite's round-trip tests.
+`full_unsigned` on anything but a 64-bit unsigned member is now a compile error, because
+`zero_padded` takes `uint64_t` and `std::format` used to print a signed value's sign. This deliberately departs from SonarCloud S6185 for those files.
+`scripts/ci/check_no_std_format.py` keeps it that way: one new call in a widely included header
+restores the full cost for every TU that includes it, and nothing else would notice.
+
 ## Remaining levers
 
 | lever | ceiling | note |

@@ -16,7 +16,6 @@ import std;
 import storm_std_meta;
 
 import storm_orm_statements_base;
-import storm_orm_statements_field_names;
 import storm_orm_utilities;
 
 export namespace storm::orm::statements {
@@ -32,7 +31,7 @@ export namespace storm::orm::statements {
             using utilities::sql_len::SELECT;
             std::size_t size = 0;
             size += SELECT; // "SELECT "
-            size += FieldNameGrammar<Base>::calculate_field_names_size();
+            size += Base::field_names_array_.len;
             size += FROM; // " FROM "
             size += Base::table_name_.size();
             size += 1; // null terminator
@@ -45,7 +44,7 @@ export namespace storm::orm::statements {
             ConstexprString<sql_size> result;
 
             result.append("SELECT ");
-            result.append(FieldNameGrammar<Base>::build_all_field_names_list());
+            result.append(Base::field_names_array_);
             result.append(" FROM ");
             result.append(Base::table_name_);
 

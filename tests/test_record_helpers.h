@@ -11,6 +11,11 @@
  * IMPORTANT: Include AFTER `import storm;` — the model headers below require it.
  */
 
+#ifndef STORM_TESTS_TEST_DB_HELPERS_H
+#error                                                                                                                 \
+    "test_record_helpers.h: #include \"test_db_helpers.h\" BEFORE `import storm;` (it declares storm::test::numbered)"
+#endif
+
 #include "../shared/models/message.h"
 #include "../shared/models/person.h"
 #include "../shared/models/simple_record.h"
@@ -19,25 +24,23 @@ namespace storm::test {
 
 template <typename Model> auto make_record(int i) -> Model = delete;
 template <> inline auto make_record<Person>(int i) -> Person {
-    return {.name = std::format("P{}", i + 1),
+    return {.name = numbered("P", i + 1),
             .age = 20 + (i % 50),
             .salary = 1000.0 * (i + 1),
             .is_active = (i % 2 == 0),
             .years_experience = i % 30};
 }
-template <> inline auto make_record<SimpleRecord>(int i) -> SimpleRecord { return {0, std::format("R{}", i), i}; }
-template <> inline auto make_record<Message>(int i) -> Message {
-    return {.content = std::format("M{}", i), .value = i};
-}
+template <> inline auto make_record<SimpleRecord>(int i) -> SimpleRecord { return {0, numbered("R", i), i}; }
+template <> inline auto make_record<Message>(int i) -> Message { return {.content = numbered("M", i), .value = i}; }
 
 template <typename Model> auto make_updated_record(const Model &) -> Model = delete;
 template <> inline auto make_updated_record<Person>(const Person &p) -> Person {
     Person u = p;
-    u.name = std::format("Updated{}", p.id);
+    u.name = numbered("Updated", p.id);
     return u;
 }
 template <> inline auto make_updated_record<SimpleRecord>(const SimpleRecord &r) -> SimpleRecord {
-    return {r.id, std::format("Updated{}", r.id), r.value * 2};
+    return {r.id, numbered("Updated", r.id), r.value * 2};
 }
 
 template <typename Model> auto is_original_record(const Model &) -> bool = delete;
