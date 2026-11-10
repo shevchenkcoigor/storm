@@ -14,8 +14,10 @@ import os
 import pathlib
 import subprocess
 import sys
-import tempfile
 import unittest
+
+sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
+from fake_repo import FakeRepoBase  # noqa: E402
 
 REPO_ROOT = pathlib.Path(__file__).resolve().parents[3]
 CHECKER = REPO_ROOT / "scripts" / "ci" / "check_orm_backend_imports.py"
@@ -24,11 +26,11 @@ SQLITE_IMPORT = "import storm_db_sqlite;"
 CLEAN_MESSAGE = "names no concrete database backend"
 
 
-class FakeRepoTest(unittest.TestCase):
+class FakeRepoTest(FakeRepoBase):
+    CHECKER = CHECKER
+
     def setUp(self):
-        tmp = tempfile.TemporaryDirectory()
-        self.addCleanup(tmp.cleanup)
-        self.root = pathlib.Path(tmp.name)
+        super().setUp()
         self.write("src/orm/queryset.cppm", "export module storm_orm_queryset;\nimport storm_db_concept;\n")
         self.write("src/orm/statements/select.cppm", "export module storm_orm_statements_select;\n")
         self.write("src/db/default_connection.cppm",
@@ -37,28 +39,6 @@ class FakeRepoTest(unittest.TestCase):
         self.write("src/storm_model.cppm", "export module storm_model;\n")
         # A backend module may of course name itself - it is not checked.
         self.write("src/db/sqlite.cppm", "export module storm_db_sqlite;\nnamespace storm::db::sqlite {}\n")
-
-    def write(self, relative, text):
-        path = self.root / relative
-        path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_text(text)
-
-    def append(self, relative, line):
-        with open(str(self.root / relative), "a") as handle:
-            handle.write(line + "\n")
-
-    def run_checker(self, root=None, env=None):
-        environment = dict(os.environ)
-        environment.pop("GITHUB_ACTIONS", None)
-        environment.update(env or {})
-        return subprocess.run([sys.executable, str(CHECKER), str(root if root is not None else self.root)],
-                              capture_output=True, text=True, env=environment)
-
-    def assert_fails(self, text, proc=None):
-        proc = proc or self.run_checker()
-        self.assertEqual(proc.returncode, 1, proc.stdout + proc.stderr)
-        self.assertIn(text, proc.stderr)
-        return proc
 
 
 class ScenarioTest(FakeRepoTest):

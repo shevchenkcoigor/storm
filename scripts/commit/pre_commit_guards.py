@@ -236,9 +236,9 @@ TIDY_PREREQS = Guard(
 # compiles cleanly, so nothing else catches it.
 ORM_BACKEND_IMPORTS = Guard(
     "ORM backend neutrality",
-    r"^(src/.*\.(cppm|hpp|h)|scripts/ci/(tests/test_)?check_orm_backend_imports\.py)$",
+    r"^(src/.*\.(cppm|hpp|h)|scripts/ci/(tests/test_)?check_orm_backend_imports\.py|scripts/ci/tests/fake_repo\.py)$",
     (
-        Step(r"^scripts/ci/(tests/test_)?check_orm_backend_imports\.py$",
+        Step(r"^scripts/ci/((tests/test_)?check_orm_backend_imports|tests/fake_repo)\.py$",
              script("scripts/ci/tests/test_check_orm_backend_imports.py"),
              "ORM backend-neutrality checker self-test failed"),
         Step(None, script("scripts/ci/check_orm_backend_imports.py"),
@@ -253,9 +253,9 @@ ORM_BACKEND_IMPORTS = Guard(
 # only this guard notices a new one in a widely included header.
 NO_STD_FORMAT = Guard(
     "no std::format in modules and shared test headers",
-    r"^(src/.*\.(cppm|hpp|h)|tests/.*\.(cppm|hpp|h)|shared/.*\.(hpp|h)|scripts/ci/(tests/test_)?check_no_std_format\.py)$",
+    r"^(src/.*\.(cppm|hpp|h)|tests/.*\.(cppm|hpp|h)|shared/.*\.(hpp|h)|scripts/ci/(tests/test_)?check_no_std_format\.py|scripts/ci/tests/fake_repo\.py)$",
     (
-        Step(r"^scripts/ci/(tests/test_)?check_no_std_format\.py$",
+        Step(r"^scripts/ci/((tests/test_)?check_no_std_format|tests/fake_repo)\.py$",
              script("scripts/ci/tests/test_check_no_std_format.py"),
              "std::format checker self-test failed"),
         Step(None, script("scripts/ci/check_no_std_format.py"),

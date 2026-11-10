@@ -9,12 +9,13 @@ which must pass. Stdlib unittest only, no syntax newer than Python 3.9.
 
     python3 scripts/ci/tests/test_check_no_std_format.py
 """
-import os
 import pathlib
 import subprocess
 import sys
-import tempfile
 import unittest
+
+sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
+from fake_repo import FakeRepoBase  # noqa: E402
 
 REPO_ROOT = pathlib.Path(__file__).resolve().parents[3]
 CHECKER = REPO_ROOT / "scripts" / "ci" / "check_no_std_format.py"
@@ -23,41 +24,20 @@ CLEAN_MESSAGE = "no std::format/std::print"
 FORMAT_CALL = 'auto s = std::format("{}", 1);'
 
 
-class FakeRepoTest(unittest.TestCase):
+class FakeRepoTest(FakeRepoBase):
+    CHECKER = CHECKER
+
     def setUp(self):
-        tmp = tempfile.TemporaryDirectory()
-        self.addCleanup(tmp.cleanup)
-        self.root = pathlib.Path(tmp.name)
+        super().setUp()
         self.write("src/orm/where.cppm", "export module storm_orm_where;\n")
         self.write("tests/test_db_helpers.h", "#include <string>\n")
         self.write("tests/query/test_where.cpp", "import storm;\n")
         self.write("shared/models/person.h", "struct Person {};\n")
 
-    def write(self, relative, text):
-        path = self.root / relative
-        path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_text(text)
-
-    def append(self, relative, line):
-        with open(str(self.root / relative), "a") as handle:
-            handle.write(line + "\n")
-
-    def run_checker(self, root=None, env=None):
-        environment = dict(os.environ)
-        environment.pop("GITHUB_ACTIONS", None)
-        environment.update(env or {})
-        return subprocess.run([sys.executable, str(CHECKER), str(root if root is not None else self.root)],
-                              capture_output=True, text=True, env=environment)
-
     def assert_passes(self):
         proc = self.run_checker()
         self.assertEqual(proc.returncode, 0, proc.stdout + proc.stderr)
         self.assertIn(CLEAN_MESSAGE, proc.stdout)
-
-    def assert_fails(self, text, proc=None):
-        proc = proc or self.run_checker()
-        self.assertEqual(proc.returncode, 1, proc.stdout + proc.stderr)
-        self.assertIn(text, proc.stderr)
 
     def test_clean_tree_passes(self):
         self.assert_passes()
