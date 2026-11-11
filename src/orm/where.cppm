@@ -89,13 +89,23 @@ export namespace storm::orm::where {
         std::string pattern_;
         // Owning model (#785); see ColumnQualifier. Empty for a hand-built node.
         std::string_view owner_;
+        // ilike() (#814): `lower(col) LIKE lower(?)`. The expression layer has no dialect, so one
+        // portable spelling stands in for PostgreSQL's ILIKE. A flag, not a new ExpressionVariant
+        // alternative: each alternative costs compile time in every TU.
+        bool case_insensitive_ = false;
 
         [[nodiscard]] __attribute__((always_inline)) auto to_sql() const -> std::string {
             return to_sql_with_column(field_name_);
         }
 
-        [[nodiscard]] static auto to_sql_with_column(std::string_view column) -> std::string {
-            return with_suffix(column, " LIKE ?");
+        [[nodiscard]] auto to_sql_with_column(std::string_view column) const -> std::string {
+            if (!case_insensitive_) {
+                return with_suffix(column, " LIKE ?");
+            }
+            std::string sql = "lower(";
+            sql += column;
+            sql += ") LIKE lower(?)";
+            return sql;
         }
 
         template <typename StmtType, typename ErrorType>
@@ -390,11 +400,15 @@ export namespace storm::orm::where {
     // Build a LikeExpr for `field_name LIKE pattern`. Shared by Field::like and
     // CollatedField::like so the two bodies cannot drift (same rationale as make_in_expr's
     // #578 note).
-    [[nodiscard]] inline auto make_like_expr(std::string field_name, std::string_view pattern, std::string_view owner)
-            -> Expr {
+    [[nodiscard]] inline auto make_like_expr(
+            std::string field_name, std::string_view pattern, std::string_view owner, bool case_insensitive = false
+    ) -> Expr {
         return Expr(
                 std::make_shared<ExpressionVariant>(LikeExpr{
-                        .field_name_ = std::move(field_name), .pattern_ = std::string(pattern), .owner_ = owner
+                        .field_name_       = std::move(field_name),
+                        .pattern_          = std::string(pattern),
+                        .owner_            = owner,
+                        .case_insensitive_ = case_insensitive
                 })
         );
     }
@@ -629,6 +643,8 @@ export namespace storm::orm::where {
         auto operator==(std::nullopt_t /*unused*/)  const -> Expr requires (NullableField<FieldType> && storm::meta::SingleColumnMember<MemberInfo>) { return is_null(); }
         auto operator!=(std::nullopt_t /*unused*/)  const -> Expr requires (NullableField<FieldType> && storm::meta::SingleColumnMember<MemberInfo>) { return is_not_null(); }
         [[nodiscard]] auto like(std::string_view pattern) const -> Expr requires storm::meta::SingleColumnMember<MemberInfo> { return where::make_like_expr(std::string(field_name_sv), pattern, owner_sv); }
+        // Case-insensitive on every backend (#814); like() keeps the backend's own case rule.
+        [[nodiscard]] auto ilike(std::string_view pattern) const -> Expr requires storm::meta::SingleColumnMember<MemberInfo> { return where::make_like_expr(std::string(field_name_sv), pattern, owner_sv, true); }
         // clang-format on
 
         template <typename V>
