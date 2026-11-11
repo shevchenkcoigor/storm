@@ -24,7 +24,8 @@ struct FSTag {
     std::string label;
 };
 
-// Carries a relation member — the generated struct MUST omit `tags`.
+// Carries a relation member — the generated struct exposes `tags` as a RelationRef (joinable,
+// never filterable), see test_fields_selector.cpp.
 struct FSArticle {
     [[= primary]] int id{};
     std::string title;

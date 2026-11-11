@@ -217,6 +217,32 @@ TYPED_TEST(BatchInsertReturningPersonTest, BatchWithAllFieldTypes) {
     for (const auto id : result.value()) {
         EXPECT_GT(id, 0);
     }
+
+    // Read each row back by its returned id: every field type must have round-tripped, and the
+    // ids must map to the rows in insertion order.
+    auto alice = (SelectStatement<Person, TypeParam>{}).where(fields::Person.id == result.value()[0]).execute();
+    ASSERT_TRUE(alice.has_value()) << alice.error().message();
+    ASSERT_EQ(alice->size(), 1U);
+    const Person& a = *alice->begin();
+    EXPECT_EQ(a.name, "Alice");
+    EXPECT_EQ(a.age, 30);
+    EXPECT_DOUBLE_EQ(a.salary, 75000.0);
+    EXPECT_TRUE(a.is_active);
+    EXPECT_EQ(a.department, "Eng");
+    EXPECT_EQ(a.score, std::optional<int>(95));
+    EXPECT_EQ(a.nickname, std::optional<std::string>("Ali"));
+
+    auto bob = (SelectStatement<Person, TypeParam>{}).where(fields::Person.id == result.value()[1]).execute();
+    ASSERT_TRUE(bob.has_value()) << bob.error().message();
+    ASSERT_EQ(bob->size(), 1U);
+    const Person& b = *bob->begin();
+    EXPECT_EQ(b.name, "Bob");
+    EXPECT_EQ(b.age, 25);
+    EXPECT_DOUBLE_EQ(b.salary, 50000.0);
+    EXPECT_FALSE(b.is_active);
+    EXPECT_EQ(b.department, "Sales");
+    EXPECT_FALSE(b.score.has_value());
+    EXPECT_FALSE(b.nickname.has_value());
 }
 
 // IDs are in insertion order

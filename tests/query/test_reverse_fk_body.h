@@ -314,15 +314,18 @@ TYPED_TEST(ReverseFKTest, LeftJoinGroupByOnSharedIdIsQualified) {
 template <typename ConnType> class ReverseFKDisambigTest : public StormTestFixture<RfReporter, ConnType, RfBug> {
   public:
     void on_after_setup(const std::shared_ptr<ConnType> &conn) override {
-        std::vector<RfReporter> const reporters = {{.name = "Rita"}, {.name = "Sam"}};
+        std::vector<RfReporter> const reporters = {
+            {.name = "Rita"}, {.name = "Sam"}, {.name = "Tess"}, {.name = "Uma"}};
         ASSERT_TRUE((InsertStatement<RfReporter, ConnType>{})
                         .query(std::span<const RfReporter>(reporters))
                         .execute()
                         .has_value());
 
-        // Bug1 authored by Rita(1), reviewed by Sam(2); Bug2 authored by Sam(2), reviewed by Rita(1).
+        // ASYMMETRIC on purpose: Rita authored both bugs and reviewed none; Sam and Tess each
+        // reviewed one; Uma is on neither side. A selector that silently used the wrong FK column
+        // would produce the other column's counts in the test below.
         std::vector<RfBug> const bugs = {{.summary = "B1", .author = {.id = 1}, .reviewer = {.id = 2}},
-                                         {.summary = "B2", .author = {.id = 2}, .reviewer = {.id = 1}}};
+                                         {.summary = "B2", .author = {.id = 1}, .reviewer = {.id = 3}}};
         ASSERT_TRUE((InsertStatement<RfBug, ConnType>{}).query(std::span<const RfBug>(bugs)).execute().has_value());
         (void)conn;
     }
@@ -331,18 +334,31 @@ template <typename ConnType> class ReverseFKDisambigTest : public StormTestFixtu
 TYPED_TEST_SUITE(ReverseFKDisambigTest, STORM_SPLIT_TYPES, STORM_SPLIT_TYPE_NAMES);
 
 // Cross-model FK selector disambiguates between the owner's two FKs back at the
-// base: counting over RfBug::author vs RfBug::reviewer keys on different columns
-// (here both have 2 rows, but the selector picks distinct FK columns in the SQL).
+// base. Seed: 4 reporters, 2 bugs — both authored by Rita, reviewed by Sam and Tess.
+//   INNER JOIN: every bug has exactly one author and one reviewer -> 2 either way.
+//   LEFT JOIN:  author side   = Rita x2 + Sam + Tess + Uma = 5
+//               reviewer side = Rita(none) + Sam + Tess + Uma = 4
+// so only the LEFT JOIN counts tell the two selectors apart (and pin which column each uses).
 TYPED_TEST(ReverseFKDisambigTest, SelectorDisambiguatesFkInAggregate) {
     auto by_author =
         (SelectStatement<RfReporter, TypeParam>{}).all().template join<fields::RfBug.author>().count().execute();
     ASSERT_TRUE(by_author.has_value()) << by_author.error().message();
-    EXPECT_EQ(*by_author, 2); // two bugs, each with an author
+    EXPECT_EQ(*by_author, 2);
 
     auto by_reviewer =
         (SelectStatement<RfReporter, TypeParam>{}).all().template join<fields::RfBug.reviewer>().count().execute();
     ASSERT_TRUE(by_reviewer.has_value()) << by_reviewer.error().message();
-    EXPECT_EQ(*by_reviewer, 2); // two bugs, each with a reviewer
+    EXPECT_EQ(*by_reviewer, 2);
+
+    auto left_by_author =
+        (SelectStatement<RfReporter, TypeParam>{}).all().template left_join<fields::RfBug.author>().count().execute();
+    ASSERT_TRUE(left_by_author.has_value()) << left_by_author.error().message();
+    EXPECT_EQ(*left_by_author, 5);
+
+    auto left_by_reviewer =
+        (SelectStatement<RfReporter, TypeParam>{}).all().template left_join<fields::RfBug.reviewer>().count().execute();
+    ASSERT_TRUE(left_by_reviewer.has_value()) << left_by_reviewer.error().message();
+    EXPECT_EQ(*left_by_reviewer, 4);
 }
 
 // NOLINTEND(misc-const-correctness)

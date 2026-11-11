@@ -237,6 +237,12 @@ TYPED_TEST(CompositeUpsertTest, CompositeConflictTarget) {
                           .execute();
     ASSERT_TRUE(second.has_value()) << second.error().message();
     EXPECT_EQ(second.value(), first.value());
+
+    // The composite (name, department) target collided: one row remains, carrying the new age.
+    auto rows = qs.select().execute();
+    ASSERT_TRUE(rows.has_value()) << rows.error().message();
+    ASSERT_EQ(rows->size(), 1U);
+    EXPECT_EQ(rows->begin()->age, 21);
 }
 
 // DO UPDATE with multiple SET columns.
@@ -268,6 +274,9 @@ TYPED_TEST(UpsertTest, ToSqlInlinesParams) {
     auto                        r = qs.insert(rec).template on_conflict<fields::Person.name>().nothing().to_sql();
     ASSERT_TRUE(r.has_value());
     EXPECT_NE(r.value().find("ON CONFLICT (name) DO NOTHING"), std::string::npos) << r.value();
+    // The bound text values are rendered inline (name and department of the record), not as `?` / `$n`.
+    EXPECT_NE(r.value().find("'Eve'"), std::string::npos) << r.value();
+    EXPECT_NE(r.value().find("'X'"), std::string::npos) << r.value();
 }
 
 // auto_update (#209) is re-stamped on a DO UPDATE upsert. The unique name

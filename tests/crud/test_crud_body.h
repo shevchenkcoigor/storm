@@ -349,9 +349,11 @@ TYPED_TEST(TransactionTest, MultiRowUpdateInTransaction) {
 
     auto verify_result = this->qs->select().execute();
     ASSERT_TRUE(verify_result.has_value());
+    std::map<std::string, int> values;
     for (const auto &p : verify_result.value()) {
-        EXPECT_GT(p.value, 100);
+        values.emplace(p.name, p.value);
     }
+    EXPECT_EQ(values, (std::map<std::string, int>{{"P1", 101}, {"P2", 102}, {"P3", 103}}));
 }
 
 TYPED_TEST(TransactionTest, EmptyBatchOperations) {
@@ -419,7 +421,18 @@ TYPED_TEST(QueryResetTest, ResetClearsAllState) {
 
     auto result1 = filtered.template order_by<fields::Person.name>().limit(2).offset(1).select().execute();
     ASSERT_TRUE(result1.has_value());
-    EXPECT_LE(result1.value().size(), 2);
+    // age > 25 by name: Bob, Charlie, Diana, ... — OFFSET 1 / LIMIT 2 leaves Charlie, Diana.
+    std::vector<std::string> names;
+    for (const auto &p : result1.value()) {
+        names.push_back(p.name);
+    }
+    EXPECT_EQ(names, (std::vector<std::string>{"Charlie", "Diana"}));
+
+    // reset() drops the WHERE: all 25 rows come back, not the 20 with age > 25.
+    filtered.reset();
+    auto after_reset = filtered.select().execute();
+    ASSERT_TRUE(after_reset.has_value());
+    EXPECT_EQ(after_reset.value().size(), 25);
 
     // Original qs is unaffected — no reset needed
     auto result2 = this->qs->select().execute();

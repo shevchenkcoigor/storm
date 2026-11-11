@@ -168,7 +168,12 @@ TYPED_TEST(SetOpTest, UnionWithOrderByAndLimit) {
                           .limit(3)
                           .execute();
     ASSERT_TRUE(result.has_value()) << result.error().message();
-    EXPECT_EQ(result->size(), 3);
+    // Engineering + Sales by name: Alice Bob Eve Frank Ivy Karen Leo Olivia Quinn Tina Victor.
+    std::vector<std::string> names;
+    for (const auto& p : *result) {
+        names.push_back(p.name);
+    }
+    EXPECT_EQ(names, (std::vector<std::string>{"Alice", "Bob", "Eve"}));
 }
 
 // ============================================================================
@@ -186,7 +191,12 @@ TYPED_TEST(SetOpTest, UnionWithOrderByLimitOffset) {
                           .offset(2)
                           .execute();
     ASSERT_TRUE(result.has_value()) << result.error().message();
-    EXPECT_EQ(result->size(), 3);
+    // Same ordering as above; OFFSET 2 skips Alice and Bob.
+    std::vector<std::string> names;
+    for (const auto& p : *result) {
+        names.push_back(p.name);
+    }
+    EXPECT_EQ(names, (std::vector<std::string>{"Eve", "Frank", "Ivy"}));
 }
 
 // ============================================================================

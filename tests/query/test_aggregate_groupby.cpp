@@ -124,13 +124,18 @@ TYPED_TEST(AggregateTest, GroupByWithJoinAndSum) {
                           .template sum<fields::Message.value>()
                           .execute();
     ASSERT_TRUE(result.has_value()) << "JOIN + GROUP BY + SUM failed: " << result.error().message();
-    EXPECT_EQ(result.value().size(), 6);
 
-    std::int64_t total_sum = 0; // NOLINT(misc-const-correctness) - modified in loop
+    // One message per content, so each group's SUM is that message's value.
+    std::map<std::string, std::int64_t> actual;
     for (const auto& [content, value_sum] : result.value()) {
-        total_sum += value_sum;
+        actual.emplace(content, value_sum);
     }
-    EXPECT_EQ(total_sum, 210);
+    EXPECT_EQ(
+            actual,
+            (std::map<std::string, std::int64_t>{
+                    {"Hello", 10}, {"World", 20}, {"Hi", 30}, {"There", 40}, {"Foo", 50}, {"Bar", 60}
+            })
+    );
 }
 
 TYPED_TEST(AggregateTest, GroupByRepeatedQueries) {
@@ -173,7 +178,17 @@ TYPED_TEST(AggregateTest, GroupByFullChain_SumAndAvg) {
                               .template sum<fields::Message.value>()
                               .execute();
     ASSERT_TRUE(sum_result.has_value()) << "Full chain SUM failed: " << sum_result.error().message();
-    EXPECT_EQ(sum_result.value().size(), 7);
+    // value < 50 keeps A1..A3 and C1..C4; B1/B2/D1 (50, 70, 100) are filtered out.
+    std::map<std::string, std::int64_t> actual_sums;
+    for (const auto& [content, value_sum] : sum_result.value()) {
+        actual_sums.emplace(content, value_sum);
+    }
+    EXPECT_EQ(
+            actual_sums,
+            (std::map<std::string, std::int64_t>{
+                    {"A1", 10}, {"A2", 20}, {"A3", 30}, {"C1", 5}, {"C2", 15}, {"C3", 25}, {"C4", 35}
+            })
+    );
 
     (*this->msg_qs).reset();
 
@@ -183,11 +198,15 @@ TYPED_TEST(AggregateTest, GroupByFullChain_SumAndAvg) {
                               .template avg<fields::Message.value>()
                               .execute();
     ASSERT_TRUE(avg_result.has_value()) << "Full chain AVG failed: " << avg_result.error().message();
-    EXPECT_EQ(avg_result.value().size(), 8);
+    // 10 <= value <= 70 drops only 5 and 100. Every group holds one row, so AVG == its key; the
+    // load-bearing assertion is the exact key set (the WHERE bounds), not the AVG itself.
+    std::set<int> keys;
     for (const auto& [value, avg_val] : avg_result.value()) {
         ASSERT_TRUE(avg_val.has_value());
         EXPECT_NEAR(avg_val.value(), static_cast<double>(value), 0.01);
+        keys.insert(value);
     }
+    EXPECT_EQ(keys, (std::set<int>{10, 15, 20, 25, 30, 35, 50, 70}));
 }
 
 // =============================================================================
@@ -210,6 +229,19 @@ TYPED_TEST(AggregateTest, CountDistinctWithDuplicates) {
 
 TYPED_TEST(AggregateTest, CountDistinctWithJoin) {
     this->insert_join_test_data();
+    // The seed has 6 distinct values, which would pass even with DISTINCT dropped. Add a seventh
+    // message that repeats value 10 (sender id 1 = Alice) so COUNT(*) is 7 but COUNT(DISTINCT) is 6.
+    QuerySet<Person, TypeParam> pqs;
+    auto                        alice = pqs.where(fields::Person.name == "Alice").select().execute();
+    ASSERT_TRUE(alice.has_value()) << alice.error().message();
+    ASSERT_EQ(alice->size(), 1U);
+    ASSERT_TRUE((storm::test::batch_insert<Message, TypeParam>(
+            std::vector<Message>{{.content = "Dup", .value = 10, .sender = {.id = alice->begin()->id}}}
+    )));
+
+    auto joined_rows = this->msg_qs->template join<fields::Message.sender>().count().execute();
+    ASSERT_TRUE(joined_rows.has_value());
+    EXPECT_EQ(joined_rows.value(), 7); // the duplicate survives the join, so 6 != 7 is meaningful
 
     auto result = this->msg_qs->template join<fields::Message.sender>()
                           .template count_distinct<fields::Message.value>()

@@ -23,25 +23,6 @@ TYPED_TEST_SUITE(ValuesTest, DatabaseTypes);
 // Single-Field Projection Tests
 // ============================================================================
 
-// Test: values() on age field — returns all rows including duplicate ages
-TYPED_TEST(ValuesTest, SingleFieldNameWithDuplicates) {
-    QuerySet<Person, TypeParam> queryset;
-
-    std::vector<Person> people =
-            {{1, "Alice", 30}, {2, "Bob", 25}, {3, "Carol", 30}, {4, "Charlie", 25}, {5, "Dan", 28}};
-
-    auto insert_result = queryset.insert(std::span<const Person>(people)).execute();
-    ASSERT_TRUE(insert_result.has_value()) << "INSERT failed: " << insert_result.error().message();
-
-    // SELECT age (no DISTINCT — should return ALL rows including duplicates)
-    auto result = queryset.template values<fields::Person.age>().execute();
-    ASSERT_TRUE(result.has_value()) << "SELECT values failed: " << result.error().message();
-
-    const auto& ages = result.value();
-    // Key difference from DISTINCT: should return 5 rows (duplicate ages preserved)
-    EXPECT_EQ(ages.size(), 5) << "Expected all 5 rows (duplicates preserved)";
-}
-
 // Test: values() on age field
 TYPED_TEST(ValuesTest, SingleFieldAgeWithDuplicates) {
     QuerySet<Person, TypeParam> queryset;
@@ -55,22 +36,9 @@ TYPED_TEST(ValuesTest, SingleFieldAgeWithDuplicates) {
     auto result = queryset.template values<fields::Person.age>().execute();
     ASSERT_TRUE(result.has_value());
 
-    const auto& ages = result.value();
-    EXPECT_EQ(ages.size(), 4) << "Expected all 4 rows (duplicates preserved)";
-
-    // Count occurrences of each age
-    int count_25 = 0;
-    int count_30 = 0;
-    for (const auto& age : ages) {
-        if (age == 25) {
-            count_25++;
-        }
-        if (age == 30) {
-            count_30++;
-        }
-    }
-    EXPECT_EQ(count_25, 2);
-    EXPECT_EQ(count_30, 2);
+    std::vector<int> ages(result.value().begin(), result.value().end());
+    std::ranges::sort(ages);
+    EXPECT_EQ(ages, (std::vector<int>{25, 25, 30, 30})) << "Expected all 4 rows (duplicates preserved)";
 }
 
 // Test: values() on empty table
@@ -297,15 +265,9 @@ TYPED_TEST(ValuesTest, WithJoinAndWhere) {
                           .execute();
     ASSERT_TRUE(result.has_value()) << "values with JOIN and WHERE failed: " << result.error().message();
 
-    const auto& contents = result.value();
-    EXPECT_GE(contents.size(), 3); // At least Hello, World, Goodbye
-}
-
-// Test: FK field projection not supported (same limitation as DISTINCT)
-// FK fields are complex objects — extract_column_value doesn't support them
-// Workaround: use raw SQL or JOIN to access FK columns
-TYPED_TEST(ValuesTest, ForeignKeyFieldNotSupported) {
-    SUCCEED() << "FK object field projection not supported (by design)";
+    std::vector<std::string> contents(result.value().begin(), result.value().end());
+    std::ranges::sort(contents);
+    EXPECT_EQ(contents, (std::vector<std::string>{"Goodbye", "Hello", "World"})); // "Hi there"/"Test" have no 'o'
 }
 
 // ============================================================================

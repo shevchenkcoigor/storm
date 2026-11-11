@@ -25,7 +25,6 @@ import std;
 #include "test_fixture.h"
 #include "test_seed_helpers.h"
 #include "test_select_runner.h"
-using storm::db::DefaultConnection;
 using storm::orm::statements::EraseStatement;
 using storm::orm::statements::InsertStatement;
 using storm::orm::statements::SelectStatement;
@@ -58,13 +57,6 @@ template <typename ConnType> class OrderByTest : public StormTestFixture<Person,
 };
 
 TYPED_TEST_SUITE(OrderByTest, DatabaseTypes);
-
-// ============================================================================
-// Basic ORDER BY Tests (single-field asc/desc migrated to order_by_cases.yaml)
-// ============================================================================
-
-// SingleFieldDefaultAsc, SingleFieldExplicitAsc, SingleFieldDesc,
-// StringFieldAsc, StringFieldDesc: migrated to order_by_cases.yaml → OrderByYamlTest.
 
 // ============================================================================
 // Multiple Fields ORDER BY Tests
@@ -122,8 +114,6 @@ TYPED_TEST(OrderByTest, MultipleFieldsAllDesc) {
 // Combined with WHERE Tests
 // ============================================================================
 
-// WithWhereClause: migrated to order_by_cases.yaml → OrderByYamlTest.
-
 TYPED_TEST(OrderByTest, WhereWithMultipleOrderBy) {
     // Filter age >= 30 and order by age ASC, name DESC
     auto result = (SelectStatement<Person, TypeParam>{})
@@ -135,10 +125,26 @@ TYPED_TEST(OrderByTest, WhereWithMultipleOrderBy) {
     auto people = result.value();
     ASSERT_EQ(people.size(), 16);
 
-    // Verify age filter
-    for (const auto& person : people) {
-        EXPECT_GE(person.age, 30);
-    }
+    // age ASC, then name DESC inside each age.
+    this->verify_order(
+            people,
+            {{30, "Quinn"},
+             {30, "Ivy"},
+             {30, "Bob"},
+             {33, "Uma"},
+             {33, "Henry"},
+             {35, "Nick"},
+             {35, "Charlie"},
+             {36, "Rachel"},
+             {38, "Xander"},
+             {38, "Jack"},
+             {40, "Sam"},
+             {40, "Eve"},
+             {42, "Leo"},
+             {45, "Victor"},
+             {45, "Frank"},
+             {48, "Olivia"}}
+    );
 }
 
 // ============================================================================
@@ -227,16 +233,9 @@ TYPED_TEST(OrderByTest, ChainedWithMultipleClauses) {
     auto people = result.value();
     ASSERT_EQ(people.size(), 5);
 
-    // Verify ordering maintained with all clauses
-    auto prev_it = people.begin();
-    auto it      = std::ranges::next(prev_it);
-    for (; it != people.end(); ++prev_it, ++it) {
-        if (prev_it->age == it->age) {
-            EXPECT_LE(prev_it->name, it->name);
-        } else {
-            EXPECT_LE(prev_it->age, it->age);
-        }
-    }
+    // age >= 25 ordered by (age, name): Alice, Grace, Karen (25), Tina (27), Diana, Mia (28), ...
+    // OFFSET 1 skips Alice; LIMIT 5 takes the next five.
+    this->verify_order(people, {{25, "Grace"}, {25, "Karen"}, {27, "Tina"}, {28, "Diana"}, {28, "Mia"}});
 }
 
 // ============================================================================
@@ -378,7 +377,6 @@ TYPED_TEST(OrderByNullableTest, NullableFieldWithSecondarySort) {
 
 TYPED_TEST(OrderByNullableTest, AllNullValues) {
     // Create a new table with only NULL values
-    const auto& conn = DefaultConnection<TypeParam>::get();
     (void)(EraseStatement<Person, TypeParam>{}).query_all().execute();
 
     std::vector<Person> const all_nulls = {
@@ -494,6 +492,8 @@ TYPED_TEST(OrderByBlobTest, BlobFieldDesc) {
 
 TYPED_TEST(OrderByBlobTest, BlobWithSecondarySort) {
     // Order by BLOB ASC, then name ASC
+    insert_test_data<TypeParam>({{.id = 7, .name = "0tie", .avatar = {0x01, 0x00}}});
+
     auto result = (SelectStatement<Person, TypeParam>{})
                           .all()
                           .template order_by<fields::Person.avatar, true, fields::Person.name, true>()
@@ -501,15 +501,19 @@ TYPED_TEST(OrderByBlobTest, BlobWithSecondarySort) {
     ASSERT_TRUE(result.has_value());
 
     auto items = result.value();
-    ASSERT_EQ(items.size(), 6);
+    ASSERT_EQ(items.size(), 7);
 
-    // Verify ordering is consistent
-    EXPECT_EQ(items.begin()->name, "Empty"); // Empty BLOB first
+    // "0tie" shares the BLOB {0x01, 0x00} with "A" but was inserted AFTER it and sorts BEFORE it by
+    // name, so only a working secondary key puts it first (insertion order would put "A" first).
+    std::vector<std::string> names;
+    for (const auto& item : items) {
+        names.push_back(item.name);
+    }
+    EXPECT_EQ(names, (std::vector<std::string>{"Empty", "A_short", "0tie", "A", "A2", "B", "C"}));
 }
 
 TYPED_TEST(OrderByBlobTest, EmptyBlobsOnly) {
     // Test with only empty BLOBs
-    const auto& conn = DefaultConnection<TypeParam>::get();
     (void)(EraseStatement<Person, TypeParam>{}).query_all().execute();
 
     std::vector<Person> const empty_blobs = {
