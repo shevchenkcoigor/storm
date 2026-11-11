@@ -116,11 +116,16 @@ template <typename ConnType> auto verify_group_by_counts(QuerySet<Person, ConnTy
 // in the result and in `expected` must hold a value matching within tolerance.
 template <typename Hive>
 auto verify_optional_agg_groups(const Hive& rows, const std::map<int, double>& expected) -> void {
+    std::map<int, double> actual;
     for (const auto& [ye, v] : rows) {
-        if (auto it = expected.find(ye); it != expected.end()) {
-            ASSERT_TRUE(v.has_value());
-            EXPECT_NEAR(v.value(), it->second, 0.01);
-        }
+        ASSERT_TRUE(v.has_value()) << "NULL aggregate for group " << ye;
+        actual.emplace(ye, v.value());
+    }
+    // A missing group must fail: iterate the EXPECTED keys, not whichever keys came back.
+    ASSERT_EQ(actual.size(), expected.size());
+    for (const auto& [ye, want] : expected) {
+        ASSERT_TRUE(actual.contains(ye)) << "missing group " << ye;
+        EXPECT_NEAR(actual.at(ye), want, 0.01) << "group " << ye;
     }
 }
 
@@ -133,11 +138,11 @@ template <typename ConnType> auto verify_group_by_sum_avg_min_max(QuerySet<Perso
     qs.reset();
     auto sum = qs.template group_by<fields::Person.years_experience>().template sum<fields::Person.age>().execute();
     ASSERT_TRUE(sum.has_value());
+    std::map<int, std::int64_t> actual_sum;
     for (const auto& [ye, v] : sum.value()) {
-        if (auto it = exp_sum.find(ye); it != exp_sum.end()) {
-            EXPECT_EQ(v, it->second);
-        }
+        actual_sum.emplace(ye, v);
     }
+    EXPECT_EQ(actual_sum, exp_sum);
 
     qs.reset();
     auto avg = qs.template group_by<fields::Person.years_experience>().template avg<fields::Person.age>().execute();
@@ -240,17 +245,30 @@ TYPED_TEST(AggregateTest, GroupByMultipleFields) {
     auto result = this->qs->template group_by<fields::Person.age, fields::Person.years_experience>().count().execute();
     ASSERT_TRUE(result.has_value()) << "Multi-field GROUP BY failed: " << result.error().message();
 
-    std::int64_t total = 0; // NOLINT(misc-const-correctness) - modified in loop
+    // (age, years_experience) -> head-count over PEOPLE_25: 16 groups summing to 25 people.
+    const std::map<std::pair<int, int>, std::int64_t> expected{
+            {{22, 5}, 2},
+            {{25, 5}, 3},
+            {{27, 5}, 1},
+            {{28, 5}, 2},
+            {{29, 10}, 1},
+            {{30, 5}, 1},
+            {{30, 10}, 2},
+            {{33, 10}, 2},
+            {{35, 15}, 2},
+            {{36, 5}, 1},
+            {{38, 15}, 2},
+            {{40, 10}, 1},
+            {{40, 15}, 1},
+            {{42, 10}, 1},
+            {{45, 15}, 2},
+            {{48, 10}, 1}
+    };
+    std::map<std::pair<int, int>, std::int64_t> actual;
     for (const auto& [age, years_exp, count_val] : result.value()) {
-        total += count_val;
+        actual.emplace(std::pair{age, years_exp}, count_val);
     }
-    EXPECT_EQ(total, 25);
-
-    for (const auto& [age, years_exp, count_val] : result.value()) {
-        if (age == 25 && years_exp == 5) {
-            EXPECT_EQ(count_val, 3) << "Group (25, 5) should have 3 people";
-        }
-    }
+    EXPECT_EQ(actual, expected);
 }
 
 TYPED_TEST(AggregateTest, GroupByMultipleFieldsWithOrderByLimit) {
@@ -268,7 +286,14 @@ TYPED_TEST(AggregateTest, GroupByMultipleFieldsWithOrderByLimit) {
                           .count()
                           .execute();
     ASSERT_TRUE(result.has_value()) << "Multi-field GROUP BY + ORDER BY + LIMIT failed";
-    EXPECT_EQ(result.value().size(), 2) << "Should return only 2 groups due to LIMIT";
+
+    // ORDER BY age + LIMIT 2: age 25 has exactly two groups, so they are the two that survive
+    // (ties inside an age are unordered, but the age-30 groups must not displace them).
+    std::map<std::pair<int, int>, std::int64_t> actual;
+    for (const auto& [age, years_exp, count_val] : result.value()) {
+        actual.emplace(std::pair{age, years_exp}, count_val);
+    }
+    EXPECT_EQ(actual, (std::map<std::pair<int, int>, std::int64_t>{{{25, 5}, 2}, {{25, 10}, 1}}));
 }
 
 // NOLINTEND(misc-use-anonymous-namespace)

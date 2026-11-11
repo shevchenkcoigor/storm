@@ -222,10 +222,28 @@ TYPED_TEST(OptionalAggregateTest, MinMaxAvgOverEmptySetVsRealZeroAreDistinguisha
     ASSERT_TRUE(real_min.value().has_value()) << "MIN over a present 0 must hold a value";
     EXPECT_DOUBLE_EQ(real_min.value().value(), 0.0);
 
+    auto real_max = this->qs->where(fields::Person.age == 0).template max<fields::Person.age>().execute();
+    ASSERT_TRUE(real_max.has_value()) << real_max.error().message();
+    ASSERT_TRUE(real_max.value().has_value()) << "MAX over a present 0 must hold a value";
+    EXPECT_DOUBLE_EQ(real_max.value().value(), 0.0);
+
+    auto real_avg = this->qs->where(fields::Person.age == 0).template avg<fields::Person.age>().execute();
+    ASSERT_TRUE(real_avg.has_value()) << real_avg.error().message();
+    ASSERT_TRUE(real_avg.value().has_value()) << "AVG over a present 0 must hold a value";
+    EXPECT_DOUBLE_EQ(real_avg.value().value(), 0.0);
+
     // Empty set: no rows -> nullopt, NOT a real 0.
     auto empty_min = this->qs->where(fields::Person.age > 9999).template min<fields::Person.age>().execute();
     ASSERT_TRUE(empty_min.has_value()) << empty_min.error().message();
     EXPECT_FALSE(empty_min.value().has_value());
+
+    auto empty_max = this->qs->where(fields::Person.age > 9999).template max<fields::Person.age>().execute();
+    ASSERT_TRUE(empty_max.has_value()) << empty_max.error().message();
+    EXPECT_FALSE(empty_max.value().has_value());
+
+    auto empty_avg = this->qs->where(fields::Person.age > 9999).template avg<fields::Person.age>().execute();
+    ASSERT_TRUE(empty_avg.has_value()) << empty_avg.error().message();
+    EXPECT_FALSE(empty_avg.value().has_value());
 }
 
 TYPED_TEST(OptionalAggregateTest, SumOverEmptySetKeepsZeroConvention) {
@@ -250,7 +268,7 @@ TYPED_TEST(OptionalAggregateTest, CountOverEmptySetIsZero) {
 
 // GROUP BY: an aggregate can be NULL within a group whose agg column is all-NULL.
 TYPED_TEST(OptionalAggregateTest, GroupByAvgOfAllNullColumnInGroupIsNullopt) {
-    // Two rows share department-less grouping key (name), score all NULL -> AVG(score) is NULL per group.
+    // One row whose score is NULL, grouped by name -> AVG(score) is NULL for that group.
     ASSERT_TRUE((storm::test::batch_insert<Person, TypeParam>(std::vector<Person>{
         {.name = "Solo", .salary = 50000.0, .score = std::nullopt},
     })));

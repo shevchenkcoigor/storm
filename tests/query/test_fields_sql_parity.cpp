@@ -267,11 +267,17 @@ namespace {
         return result.value_or(std::string{});
     }
 
+    // Literal SQL, not a self-comparison: a regression in the shared builder must change the
+    // expected text, not both sides at once. to_sql() on a write path inlines the bound values.
+    static constexpr std::string_view upsert_prefix =
+            "INSERT INTO Person (name, age, salary, is_active, years_experience, department, score, nickname, avatar) "
+            "VALUES ('Ann', 30, 0.0, 0, 0, '', NULL, NULL, NULL) ";
+
     TEST_F(FieldsSqlParity, UpsertOnConflictDoUpdate) {
         const Person p{.id = 1, .name = "Ann", .age = 30};
         EXPECT_EQ(
                 sql_of(qs().insert(p).on_conflict<fields::Person.name>().update<fields::Person.age>()),
-                sql_of(qs().insert(p).on_conflict<fields::Person.name>().update<fields::Person.age>())
+                std::string{upsert_prefix} + "ON CONFLICT (name) DO UPDATE SET age=excluded.age RETURNING id"
         );
     }
 
@@ -279,7 +285,7 @@ namespace {
         const Person p{.id = 1, .name = "Ann", .age = 30};
         EXPECT_EQ(
                 sql_of(qs().insert(p).on_conflict<fields::Person.name>().nothing()),
-                sql_of(qs().insert(p).on_conflict<fields::Person.name>().nothing())
+                std::string{upsert_prefix} + "ON CONFLICT (name) DO NOTHING RETURNING id"
         );
     }
 
@@ -289,9 +295,8 @@ namespace {
                 sql_of(qs().insert(p)
                                .on_conflict<fields::Person.name>()
                                .update<fields::Person.age, fields::Person.salary>()),
-                sql_of(qs().insert(p)
-                               .on_conflict<fields::Person.name>()
-                               .update<fields::Person.age, fields::Person.salary>())
+                std::string{upsert_prefix} +
+                        "ON CONFLICT (name) DO UPDATE SET age=excluded.age, salary=excluded.salary RETURNING id"
         );
     }
 

@@ -19,6 +19,15 @@ import std;
 #include "test_person_seed_fixture.h"
 #include "test_seed_helpers.h"
 
+static auto sorted_names(const auto& people) -> std::vector<std::string> {
+    std::vector<std::string> names;
+    for (const auto& p : people) {
+        names.push_back(p.name);
+    }
+    std::ranges::sort(names);
+    return names;
+}
+
 template <typename ConnType> class ComplexWhereTest : public PersonSeedFixture<ConnType> {};
 
 TYPED_TEST_SUITE(ComplexWhereTest, DatabaseTypes);
@@ -31,7 +40,11 @@ TYPED_TEST(ComplexWhereTest, OrWithAnd) {
 
     auto result = this->qs->where(combined).select().execute();
     ASSERT_TRUE(result.has_value()) << "Complex OR/AND should work";
-    EXPECT_GE(result.value().size(), 1);
+    // age < 26: Alice, Grace, Karen, Paul, Yara.  age > 35 && Marketing: Sam (40), Xander (38).
+    EXPECT_EQ(
+            sorted_names(result.value()),
+            (std::vector<std::string>{"Alice", "Grace", "Karen", "Paul", "Sam", "Xander", "Yara"})
+    );
 }
 
 TYPED_TEST(ComplexWhereTest, NestedAndOr) {
@@ -40,5 +53,6 @@ TYPED_TEST(ComplexWhereTest, NestedAndOr) {
 
     auto result = this->qs->where(eng_young || sales_old).select().execute();
     ASSERT_TRUE(result.has_value());
-    EXPECT_GE(result.value().size(), 1);
+    // Engineering && age < 30: Alice.  Sales && age > 29: Bob (30), Frank (45), Olivia (48).
+    EXPECT_EQ(sorted_names(result.value()), (std::vector<std::string>{"Alice", "Bob", "Frank", "Olivia"}));
 }

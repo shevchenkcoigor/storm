@@ -33,6 +33,22 @@ using SqliteTypes = ::testing::Types<storm::db::sqlite::Connection>;
 // Test Fixture — inserts mixed-case names for COLLATE testing
 // ============================================================================
 
+// Names in result order. `fold` lower-cases them so a NOCASE ordering can be compared without
+// depending on how SQLite orders rows that tie under NOCASE (alice / Alice / ALICE).
+static auto names_of(const auto& items, bool fold = false) -> std::vector<std::string> {
+    std::vector<std::string> names;
+    for (const auto& item : items) {
+        std::string name = item.name;
+        if (fold) {
+            std::ranges::transform(name, name.begin(), [](unsigned char c) {
+                return static_cast<char>(std::tolower(c));
+            });
+        }
+        names.push_back(std::move(name));
+    }
+    return names;
+}
+
 template <typename ConnType> class CollateTest : public StormTestFixture<Person, ConnType> {
   public:
     auto on_after_setup(const std::shared_ptr<ConnType>&) -> void override {
@@ -131,6 +147,14 @@ TYPED_TEST(CollateTest, OrderByRTrim) {
 
     auto items = result.value();
     ASSERT_EQ(items.size(), 8);
+
+    // department COLLATE RTRIM: "HR  " ties with "HR", so the secondary key (name, BINARY) decides
+    // between ids 8 and 3 — "  bob" sorts before "BOB". Without RTRIM, "HR" < "HR  " flips them.
+    // Binary department order otherwise: ENG < Eng < HR < Sales < eng < hr < sales.
+    EXPECT_EQ(
+            names_of(items),
+            (std::vector<std::string>{"ALICE", "Alice", "  bob", "BOB", "Charlie", "alice", "bob", "charlie"})
+    );
 }
 
 TYPED_TEST(CollateTest, OrderByCollateWithBoolDirection) {
@@ -141,6 +165,10 @@ TYPED_TEST(CollateTest, OrderByCollateWithBoolDirection) {
                           .execute();
     ASSERT_TRUE(result.has_value());
     ASSERT_EQ(result.value().size(), 8);
+    EXPECT_EQ(
+            names_of(result.value(), true),
+            (std::vector<std::string>{"charlie", "charlie", "bob", "bob", "alice", "alice", "alice", "  bob"})
+    );
 }
 
 TYPED_TEST(CollateTest, OrderByBoolThenCollate) {
@@ -151,6 +179,11 @@ TYPED_TEST(CollateTest, OrderByBoolThenCollate) {
                           .execute();
     ASSERT_TRUE(result.has_value());
     ASSERT_EQ(result.value().size(), 8);
+    // name NOCASE DESC (case-folded; ties inside a case-insensitive group are unordered).
+    EXPECT_EQ(
+            names_of(result.value(), true),
+            (std::vector<std::string>{"charlie", "charlie", "bob", "bob", "alice", "alice", "alice", "  bob"})
+    );
 }
 
 TYPED_TEST(CollateTest, OrderByMultipleFieldsWithCollate) {
@@ -163,6 +196,12 @@ TYPED_TEST(CollateTest, OrderByMultipleFieldsWithCollate) {
 
     auto items = result.value();
     ASSERT_EQ(items.size(), 8);
+
+    // name NOCASE ASC, then age DESC inside each case-insensitive group.
+    EXPECT_EQ(
+            names_of(items),
+            (std::vector<std::string>{"  bob", "ALICE", "Alice", "alice", "bob", "BOB", "charlie", "Charlie"})
+    );
 }
 
 // ============================================================================
@@ -307,7 +346,8 @@ TYPED_TEST(CollateTest, OrderByCollateWithLimit) {
                           .limit(3)
                           .execute();
     ASSERT_TRUE(result.has_value());
-    EXPECT_EQ(result.value().size(), 3);
+    // Smallest three under NOCASE: "  bob", then two of the three alice variants.
+    EXPECT_EQ(names_of(result.value(), true), (std::vector<std::string>{"  bob", "alice", "alice"}));
 }
 
 TYPED_TEST(CollateTest, OrderByCollateWithLimitOffset) {
@@ -318,7 +358,8 @@ TYPED_TEST(CollateTest, OrderByCollateWithLimitOffset) {
                           .offset(3)
                           .execute();
     ASSERT_TRUE(result.has_value());
-    EXPECT_EQ(result.value().size(), 2);
+    // NOCASE order: "  bob", alice x3, bob x2, charlie x2 — positions 3..4 are the last alice and first bob.
+    EXPECT_EQ(names_of(result.value(), true), (std::vector<std::string>{"alice", "bob"}));
 }
 
 // ============================================================================

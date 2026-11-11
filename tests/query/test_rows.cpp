@@ -69,8 +69,7 @@ TYPED_TEST(RowsTest, WhereFilter) {
         EXPECT_GT(result.value().age, 35);
         ++count;
     }
-    EXPECT_GT(count, 0);
-    EXPECT_LT(count, 25);
+    EXPECT_EQ(count, 9); // ages 36, 38x2, 40x2, 42, 45x2, 48
 }
 
 TYPED_TEST(RowsTest, WhereComplex) {
@@ -81,7 +80,7 @@ TYPED_TEST(RowsTest, WhereComplex) {
         ASSERT_TRUE(result.has_value());
         ++count;
     }
-    EXPECT_GT(count, 0);
+    EXPECT_EQ(count, 14); // 13 people older than 30, plus Alice (25)
 }
 
 TYPED_TEST(RowsTest, WithLimit) {
@@ -107,11 +106,14 @@ TYPED_TEST(RowsTest, WithLimitOffset) {
 TYPED_TEST(RowsTest, WithOrderBy) {
     QuerySet<Person, TypeParam> qs;
     int                         prev_age = -1;
+    int                         count    = 0;
     for (auto&& result : qs.template order_by<fields::Person.age>().rows()) {
         ASSERT_TRUE(result.has_value());
         EXPECT_GE(result.value().age, prev_age);
         prev_age = result.value().age;
+        ++count;
     }
+    EXPECT_EQ(count, 25); // zero rows would pass the ordering check vacuously
 }
 
 TYPED_TEST(RowsTest, WithAllModifiers) {
@@ -288,7 +290,7 @@ TYPED_TEST(RowsJoinTest, WithJoinAndWhere) {
         EXPECT_GT(result.value().value, 30);
         ++count;
     }
-    EXPECT_GT(count, 0);
+    EXPECT_EQ(count, 5); // values 40, 50, 60, 70, 80
 }
 
 // Static checks: generator satisfies range and view concepts
@@ -324,8 +326,7 @@ TYPED_TEST(RowsTest, ViewsFilterCount) {
         EXPECT_GT(result.value().age, 35);
         ++count;
     }
-    EXPECT_GT(count, 0);
-    EXPECT_LT(count, 25);
+    EXPECT_EQ(count, 9);
 }
 
 TYPED_TEST(RowsTest, ViewsFilterWhereTransformCollect) {
@@ -336,8 +337,7 @@ TYPED_TEST(RowsTest, ViewsFilterWhereTransformCollect) {
                       }) | std::views::transform([](auto&& r) { return r.value().age; })) {
         ages.push_back(age);
     }
-    EXPECT_GT(ages.size(), 0);
-    EXPECT_LE(ages.size(), 25);
+    EXPECT_EQ(ages.size(), 16U); // 16 of the 25 seeded people are active
 }
 
 // NOLINTEND(misc-const-correctness)

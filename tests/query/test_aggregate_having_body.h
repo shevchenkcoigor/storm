@@ -51,11 +51,32 @@ static auto check_ye10_count3(const auto &result) -> void {
     EXPECT_EQ(count_val, 3);
 }
 
-static auto check_age_between_20_40(const auto &result_set) -> void {
-    for (const auto &[age, count] : result_set) {
-        EXPECT_GT(age, 20);
-        EXPECT_LT(age, 40);
+using AgeCounts = std::map<int, std::int64_t>;
+
+// PEOPLE_25 head-count per age (the seed insert_test_data() writes).
+inline const AgeCounts kPeopleAgeCounts{{22, 2}, {25, 3}, {27, 1}, {28, 2}, {29, 1}, {30, 3}, {33, 2},
+                                        {35, 2}, {36, 1}, {38, 2}, {40, 2}, {42, 1}, {45, 2}, {48, 1}};
+
+template <typename K, typename V = std::int64_t> auto groups_of(const auto &rows) -> std::map<K, V> {
+    std::map<K, V> out;
+    for (const auto &[key, value] : rows) {
+        out.emplace(key, value);
     }
+    return out;
+}
+
+template <typename K, typename V = std::int64_t> auto group_list_of(const auto &rows) -> std::vector<std::pair<K, V>> {
+    std::vector<std::pair<K, V>> out;
+    for (const auto &[key, value] : rows) {
+        out.emplace_back(key, value);
+    }
+    return out;
+}
+
+// Ages 20 < age < 40 — every group of PEOPLE_25 except 40/42/45/48.
+static auto check_age_between_20_40(const auto &result_set) -> void {
+    EXPECT_EQ(groups_of<int>(result_set),
+              (AgeCounts{{22, 2}, {25, 3}, {27, 1}, {28, 2}, {29, 1}, {30, 3}, {33, 2}, {35, 2}, {36, 1}, {38, 2}}));
 }
 
 template <typename ConnType> auto insert_5_people_ye() -> void {
@@ -152,68 +173,79 @@ TYPED_TEST(AggregateTest, HavingWithWhereAndJoin) {
 }
 
 // ----- HAVING with all ExpressionVariant types -----
+// Each test seeds PEOPLE_25 and asserts the exact surviving groups — an empty table (or a
+// predicate that filters nothing / everything) must fail, not pass vacuously.
+//
+// PEOPLE_25 age -> head-count: 22:2 25:3 27:1 28:2 29:1 30:3 33:2 35:2 36:1 38:2 40:2 42:1 45:2 48:1
 
 TYPED_TEST(AggregateTest, HavingWithNotEqual) {
+    this->insert_test_data();
     auto result = this->qs->template group_by<fields::Person.age>().having(fields::Person.age != 30).count().execute();
     ASSERT_TRUE(result.has_value()) << "HAVING != failed: " << result.error().message();
-    for (const auto &[age, count] : result.value()) {
-        EXPECT_NE(age, 30);
-    }
+    EXPECT_EQ(groups_of<int>(result.value()), (AgeCounts{{22, 2},
+                                                         {25, 3},
+                                                         {27, 1},
+                                                         {28, 2},
+                                                         {29, 1},
+                                                         {33, 2},
+                                                         {35, 2},
+                                                         {36, 1},
+                                                         {38, 2},
+                                                         {40, 2},
+                                                         {42, 1},
+                                                         {45, 2},
+                                                         {48, 1}}));
 }
 
 TYPED_TEST(AggregateTest, HavingWithLessThan) {
+    this->insert_test_data();
     auto result = this->qs->template group_by<fields::Person.age>().having(fields::Person.age < 30).count().execute();
     ASSERT_TRUE(result.has_value()) << "HAVING < failed: " << result.error().message();
-    for (const auto &[age, count] : result.value()) {
-        EXPECT_LT(age, 30);
-    }
+    EXPECT_EQ(groups_of<int>(result.value()), (AgeCounts{{22, 2}, {25, 3}, {27, 1}, {28, 2}, {29, 1}}));
 }
 
 TYPED_TEST(AggregateTest, HavingWithLessEqual) {
+    this->insert_test_data();
     auto result = this->qs->template group_by<fields::Person.age>().having(fields::Person.age <= 30).count().execute();
     ASSERT_TRUE(result.has_value()) << "HAVING <= failed: " << result.error().message();
-    for (const auto &[age, count] : result.value()) {
-        EXPECT_LE(age, 30);
-    }
+    EXPECT_EQ(groups_of<int>(result.value()), (AgeCounts{{22, 2}, {25, 3}, {27, 1}, {28, 2}, {29, 1}, {30, 3}}));
 }
 
 TYPED_TEST(AggregateTest, HavingWithGreaterEqual) {
+    this->insert_test_data();
     auto result = this->qs->template group_by<fields::Person.age>().having(fields::Person.age >= 30).count().execute();
     ASSERT_TRUE(result.has_value()) << "HAVING >= failed: " << result.error().message();
-    for (const auto &[age, count] : result.value()) {
-        EXPECT_GE(age, 30);
-    }
+    EXPECT_EQ(groups_of<int>(result.value()),
+              (AgeCounts{{30, 3}, {33, 2}, {35, 2}, {36, 1}, {38, 2}, {40, 2}, {42, 1}, {45, 2}, {48, 1}}));
 }
 
 TYPED_TEST(AggregateTest, HavingWithIn) {
+    this->insert_test_data();
     auto result =
         this->qs->template group_by<fields::Person.age>().having(fields::Person.age.in(25, 30, 35)).count().execute();
     ASSERT_TRUE(result.has_value()) << "HAVING IN failed: " << result.error().message();
-    for (const auto &[age, count] : result.value()) {
-        EXPECT_TRUE(age == 25 || age == 30 || age == 35) << "HAVING IN: unexpected age " << age;
-    }
+    EXPECT_EQ(groups_of<int>(result.value()), (AgeCounts{{25, 3}, {30, 3}, {35, 2}}));
 }
 
 TYPED_TEST(AggregateTest, HavingWithBetween) {
+    this->insert_test_data();
     auto result =
         this->qs->template group_by<fields::Person.age>().having(fields::Person.age.between(25, 35)).count().execute();
     ASSERT_TRUE(result.has_value()) << "HAVING BETWEEN failed: " << result.error().message();
-    for (const auto &[age, count] : result.value()) {
-        EXPECT_GE(age, 25);
-        EXPECT_LE(age, 35);
-    }
+    EXPECT_EQ(groups_of<int>(result.value()),
+              (AgeCounts{{25, 3}, {27, 1}, {28, 2}, {29, 1}, {30, 3}, {33, 2}, {35, 2}}));
 }
 
 TYPED_TEST(AggregateTest, HavingWithLike) {
+    this->insert_test_data();
     auto result =
         this->qs->template group_by<fields::Person.name>().having(fields::Person.name.like("A%")).count().execute();
     ASSERT_TRUE(result.has_value()) << "HAVING LIKE failed: " << result.error().message();
-    for (const auto &[name, count] : result.value()) {
-        EXPECT_TRUE(name.starts_with('A')) << "HAVING LIKE 'A%': unexpected name " << name;
-    }
+    EXPECT_EQ(groups_of<std::string>(result.value()), (std::map<std::string, std::int64_t>{{"Alice", 1}}));
 }
 
 TYPED_TEST(AggregateTest, HavingWithLogicalAnd) {
+    this->insert_test_data();
     auto result = this->qs->template group_by<fields::Person.age>()
                       .having(fields::Person.age > 20 && fields::Person.age < 40)
                       .count()
@@ -223,53 +255,54 @@ TYPED_TEST(AggregateTest, HavingWithLogicalAnd) {
 }
 
 TYPED_TEST(AggregateTest, HavingWithLogicalOr) {
+    this->insert_test_data();
     auto result = this->qs->template group_by<fields::Person.age>()
                       .having(fields::Person.age < 25 || fields::Person.age > 35)
                       .count()
                       .execute();
     ASSERT_TRUE(result.has_value()) << "HAVING OR failed: " << result.error().message();
-    for (const auto &[age, count] : result.value()) {
-        EXPECT_TRUE(age < 25 || age > 35) << "HAVING OR: unexpected age " << age;
-    }
+    EXPECT_EQ(groups_of<int>(result.value()),
+              (AgeCounts{{22, 2}, {36, 1}, {38, 2}, {40, 2}, {42, 1}, {45, 2}, {48, 1}}));
 }
 
 TYPED_TEST(AggregateTest, HavingWithComplexLogical) {
+    this->insert_test_data();
+    // The `|| age == 50` arm matches nothing in the seed: the result is exactly the AND arm.
     auto result = this->qs->template group_by<fields::Person.age>()
                       .having((fields::Person.age >= 25 && fields::Person.age <= 35) || fields::Person.age == 50)
                       .count()
                       .execute();
     ASSERT_TRUE(result.has_value()) << "HAVING complex logical failed: " << result.error().message();
-    for (const auto &[age, count] : result.value()) {
-        EXPECT_TRUE((age >= 25 && age <= 35) || age == 50) << "HAVING complex: unexpected age " << age;
-    }
+    EXPECT_EQ(groups_of<int>(result.value()),
+              (AgeCounts{{25, 3}, {27, 1}, {28, 2}, {29, 1}, {30, 3}, {33, 2}, {35, 2}}));
 }
 
 TYPED_TEST(AggregateTest, HavingWithWhereAndIn) {
+    this->insert_test_data();
+    // WHERE salary > 50000 drops Karen (age 25, salary exactly 50000): 25 -> 2, not 3.
     auto result = this->qs->where(fields::Person.salary > 50000.0)
                       .template group_by<fields::Person.age>()
                       .having(fields::Person.age.in(25, 30, 35))
                       .count()
                       .execute();
     ASSERT_TRUE(result.has_value()) << "WHERE + HAVING IN failed: " << result.error().message();
-    for (const auto &[age, count] : result.value()) {
-        EXPECT_TRUE(age == 25 || age == 30 || age == 35) << "WHERE + HAVING IN: unexpected age " << age;
-    }
+    EXPECT_EQ(groups_of<int>(result.value()), (AgeCounts{{25, 2}, {30, 3}, {35, 2}}));
 }
 
 TYPED_TEST(AggregateTest, HavingWithWhereAndBetween) {
+    this->insert_test_data();
+    // Every salary is > 30000; only years_experience 5 falls in 3..8 (10 people).
     auto result = this->qs->where(fields::Person.salary > 30000.0)
                       .template group_by<fields::Person.years_experience>()
                       .having(fields::Person.years_experience.between(3, 8))
                       .count()
                       .execute();
     ASSERT_TRUE(result.has_value()) << "WHERE + HAVING BETWEEN failed: " << result.error().message();
-    for (const auto &[years, count] : result.value()) {
-        EXPECT_GE(years, 3);
-        EXPECT_LE(years, 8);
-    }
+    EXPECT_EQ(groups_of<int>(result.value()), (AgeCounts{{5, 10}}));
 }
 
 TYPED_TEST(AggregateTest, HavingWithWhereAndLogicalAnd) {
+    this->insert_test_data();
     auto result = this->qs->where(fields::Person.salary > 30000.0)
                       .template group_by<fields::Person.age>()
                       .having(fields::Person.age > 20 && fields::Person.age < 40)
@@ -280,35 +313,50 @@ TYPED_TEST(AggregateTest, HavingWithWhereAndLogicalAnd) {
 }
 
 TYPED_TEST(AggregateTest, HavingInOnAggregateStatement) {
+    this->insert_test_data();
     auto result =
         this->qs->template group_by<fields::Person.age>().count().having(fields::Person.age.in(25, 30)).execute();
     ASSERT_TRUE(result.has_value()) << "HAVING IN on AggregateStatement failed: " << result.error().message();
-    for (const auto &[age, count] : result.value()) {
-        EXPECT_TRUE(age == 25 || age == 30) << "HAVING IN on AggregateStatement: unexpected age " << age;
-    }
+    EXPECT_EQ(groups_of<int>(result.value()), (AgeCounts{{25, 3}, {30, 3}}));
 }
 
 TYPED_TEST(AggregateTest, HavingBetweenOnAggregateStatement) {
+    this->insert_test_data();
     auto result = this->qs->template group_by<fields::Person.age>()
                       .template sum<fields::Person.salary>()
                       .having(fields::Person.age.between(25, 35))
                       .execute();
     ASSERT_TRUE(result.has_value()) << "HAVING BETWEEN on AggregateStatement failed: " << result.error().message();
-    for (const auto &[age, sum_salary] : result.value()) {
-        EXPECT_GE(age, 25);
-        EXPECT_LE(age, 35);
-    }
+    EXPECT_EQ((groups_of<int, double>(result.value())), (std::map<int, double>{{25, 157000.0},
+                                                                               {27, 44000.0},
+                                                                               {28, 94000.0},
+                                                                               {29, 58000.0},
+                                                                               {30, 194000.0},
+                                                                               {33, 139000.0},
+                                                                               {35, 150000.0}}));
 }
 
 TYPED_TEST(AggregateTest, HavingLogicalOnAggregateStatement) {
+    this->insert_test_data();
     auto result = this->qs->template group_by<fields::Person.age>()
                       .template avg<fields::Person.salary>()
                       .having(fields::Person.age >= 25 && fields::Person.age <= 40)
                       .execute();
     ASSERT_TRUE(result.has_value()) << "HAVING AND on AggregateStatement failed: " << result.error().message();
+
+    // age -> AVG(salary) = group salary sum / head-count
+    const std::map<int, double> expected{{25, 157000.0 / 3}, {27, 44000.0}, {28, 47000.0}, {29, 58000.0},
+                                         {30, 194000.0 / 3}, {33, 69500.0}, {35, 75000.0}, {36, 76000.0},
+                                         {38, 83500.0},      {40, 91000.0}};
+    std::map<int, double> actual;
     for (const auto &[age, avg_salary] : result.value()) {
-        EXPECT_GE(age, 25);
-        EXPECT_LE(age, 40);
+        ASSERT_TRUE(avg_salary.has_value()) << "age " << age;
+        actual.emplace(age, *avg_salary);
+    }
+    ASSERT_EQ(actual.size(), expected.size());
+    for (const auto &[age, avg] : expected) {
+        ASSERT_TRUE(actual.contains(age)) << "missing group age " << age;
+        EXPECT_NEAR(actual.at(age), avg, 1e-6) << "age " << age;
     }
 }
 
@@ -389,8 +437,10 @@ TYPED_TEST(GroupByOrderByTest, GroupByWithDifferentAggregatesSequentially) {
 // ============================================================================
 // HAVING + ORDER BY/LIMIT combined tests
 // ============================================================================
+// HAVING age > 25 keeps 12 groups: 27:1 28:2 29:1 30:3 33:2 35:2 36:1 38:2 40:2 42:1 45:2 48:1
 
 TYPED_TEST(AggregateTest, HavingWithOrderByAndLimit) {
+    this->insert_test_data();
     auto result = this->qs->template order_by<fields::Person.age>()
                       .limit(3)
                       .template group_by<fields::Person.age>()
@@ -399,18 +449,13 @@ TYPED_TEST(AggregateTest, HavingWithOrderByAndLimit) {
                       .execute();
     ASSERT_TRUE(result.has_value()) << "HAVING + ORDER BY + LIMIT failed: " << result.error().message();
 
-    const auto &groups = result.value();
-    EXPECT_LE(groups.size(), 3);
-
-    int prev_age = 0;
-    for (const auto &[age, count] : groups) {
-        EXPECT_GT(age, 25);
-        EXPECT_GE(age, prev_age);
-        prev_age = age;
-    }
+    // ORDER BY age ASC then LIMIT 3 keeps the three lowest surviving groups, in order.
+    const std::vector<std::pair<int, std::int64_t>> expected{{27, 1}, {28, 2}, {29, 1}};
+    EXPECT_EQ(group_list_of<int>(result.value()), expected);
 }
 
 TYPED_TEST(AggregateTest, HavingWithOrderByOnly) {
+    this->insert_test_data();
     auto result = this->qs->template order_by<fields::Person.age, false>()
                       .template group_by<fields::Person.age>()
                       .having(fields::Person.age > 30)
@@ -418,26 +463,40 @@ TYPED_TEST(AggregateTest, HavingWithOrderByOnly) {
                       .execute();
     ASSERT_TRUE(result.has_value()) << "HAVING + ORDER BY failed: " << result.error().message();
 
-    const auto &groups = result.value();
-    int prev_age = 100;
-    for (const auto &[age, count] : groups) {
-        EXPECT_GT(age, 30);
-        EXPECT_LE(age, prev_age);
-        prev_age = age;
-    }
+    const std::vector<std::pair<int, std::int64_t>> expected{{48, 1}, {45, 2}, {42, 1}, {40, 2},
+                                                             {38, 2}, {36, 1}, {35, 2}, {33, 2}};
+    EXPECT_EQ(group_list_of<int>(result.value()), expected);
 }
 
 TYPED_TEST(AggregateTest, HavingWithLimitOnly) {
+    this->insert_test_data();
     auto result =
         this->qs->limit(2).template group_by<fields::Person.age>().having(fields::Person.age > 25).count().execute();
     ASSERT_TRUE(result.has_value()) << "HAVING + LIMIT failed: " << result.error().message();
-    EXPECT_LE(result.value().size(), 2);
+
+    // No ORDER BY, so which two of the 12 groups come back is unspecified — but there are exactly
+    // two, each satisfies HAVING, and each carries its true head-count.
+    const auto groups = group_list_of<int>(result.value());
+    EXPECT_EQ(groups.size(), 2U);
+    for (const auto &[age, count] : groups) {
+        EXPECT_GT(age, 25);
+        EXPECT_EQ(count, kPeopleAgeCounts.at(age)) << "age " << age;
+    }
 }
 
 TYPED_TEST(AggregateTest, HavingWithOffsetOnly) {
+    this->insert_test_data();
     auto result =
         this->qs->offset(1).template group_by<fields::Person.age>().having(fields::Person.age > 25).count().execute();
     ASSERT_TRUE(result.has_value()) << "HAVING + OFFSET failed: " << result.error().message();
+
+    // 12 groups survive HAVING; OFFSET 1 skips one (which one is unspecified without ORDER BY).
+    const auto groups = group_list_of<int>(result.value());
+    EXPECT_EQ(groups.size(), 11U);
+    for (const auto &[age, count] : groups) {
+        EXPECT_GT(age, 25);
+        EXPECT_EQ(count, kPeopleAgeCounts.at(age)) << "age " << age;
+    }
 }
 
 // NOLINTEND(misc-use-anonymous-namespace)
