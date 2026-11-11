@@ -301,6 +301,29 @@ TYPED_TEST(InNullableTest, EmptyInMatchesNothing) {
     EXPECT_EQ(result.value().size(), 0U);
 }
 
+// The same empty list on integer columns — a non-null one (the PK) and a nullable one. The
+// `1 = 0` fold is shared, but this is the int arm, not the string arm above (upstream: SQLAlchemy
+// test_empty_set_against_integer_direct, #811).
+TYPED_TEST(InNullableTest, EmptyInOnIntegerColumnsMatchesNothing) {
+    storm::QuerySet<InNullableRow, TypeParam> qs;
+    auto                                      by_pk = qs.where(fields::InNullableRow.id.in()).select().execute();
+    ASSERT_TRUE(by_pk.has_value()) << by_pk.error().message();
+    EXPECT_EQ(by_pk.value().size(), 0U);
+
+    auto by_nullable = qs.where(fields::InNullableRow.score.in()).select().execute();
+    ASSERT_TRUE(by_nullable.has_value()) << by_nullable.error().message();
+    EXPECT_EQ(by_nullable.value().size(), 0U);
+}
+
+// Two empty INs ANDed: each folds to `1 = 0`, so the conjunction must still parse and match
+// nothing (upstream: SQLAlchemy test_multiple_empty_sets_direct, #811).
+TYPED_TEST(InNullableTest, TwoEmptyInsAndedMatchNothing) {
+    storm::QuerySet<InNullableRow, TypeParam> qs;
+    auto result = qs.where(fields::InNullableRow.score.in() && fields::InNullableRow.nickname.in()).select().execute();
+    ASSERT_TRUE(result.has_value()) << result.error().message();
+    EXPECT_EQ(result.value().size(), 0U);
+}
+
 // Nullability must leave no trace in the emitted text — the column's NULL-ness is row data the
 // DB evaluates, never something Storm binds or spells.
 TYPED_TEST(InNullableTest, NullableColumnEmitsPlainInText) {
