@@ -319,7 +319,12 @@ TYPED_TEST(InNullableTest, EmptyInOnIntegerColumnsMatchesNothing) {
 // nothing (upstream: SQLAlchemy test_multiple_empty_sets_direct, #811).
 TYPED_TEST(InNullableTest, TwoEmptyInsAndedMatchNothing) {
     storm::QuerySet<InNullableRow, TypeParam> qs;
-    auto result = qs.where(fields::InNullableRow.score.in() && fields::InNullableRow.nickname.in()).select().execute();
+    auto query = qs.where(fields::InNullableRow.score.in() && fields::InNullableRow.nickname.in()).select();
+    // A literal `IN ()` is accepted by SQLite but rejected by PostgreSQL; pin the text so SQLite catches it too.
+    const auto sql = query.sql();
+    EXPECT_TRUE(sql.contains("1 = 0")) << sql;
+    EXPECT_FALSE(sql.contains("IN (")) << sql;
+    auto result = query.execute();
     ASSERT_TRUE(result.has_value()) << result.error().message();
     EXPECT_EQ(result.value().size(), 0U);
 }
