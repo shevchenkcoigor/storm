@@ -85,7 +85,7 @@ of hard-erroring inside the variant construction, and adding an arm needs no cha
 | `short`, `unsigned` (`short`/`int`/`long`/…), `char`, `signed`/`unsigned char` | ✅ | all 6, `BETWEEN`, `IN` | Fold to `int` / `int64_t` (like enums) |
 | `double`, `float` | ✅ | all 6, `BETWEEN`, `IN` | |
 | `bool` | ✅ | `==`, `!=`, `IN` | `IN` added in #625 — degenerate over a two-value domain (always reducible to `==`/`!=`), but there was no reason for the gap: `ComparisonExpr<bool>` was an arm and `InExpression<bool>` simply was not, so `.in()` hard-errored rather than being rejected. **The operand must be spelled `bool`**: unlike every other target type, `bool` is constructible from essentially every scalar and pointer, so `.in("yes", nullptr, 3.7)` would otherwise compile and bind `1, 0, 1` — discarding the string's contents. `InOperandFor` rejects those at compile time. Implementation note: `values_` is then the `std::vector<bool>` bitset specialization, whose proxy references are not `BindableType`, so `InExpression::bind_impl` iterates with a typed `const ValueType&` loop variable (each proxy converts once to a lifetime-extended `bool`; every other arm binds the existing reference unchanged) |
-| `std::string`, `std::string_view` | ✅ | all 6, `BETWEEN`, `IN`, `LIKE`, `COLLATE` | |
+| `std::string`, `std::string_view` | ✅ | all 6, `BETWEEN`, `IN`, `LIKE`, `ILIKE` (#814), `COLLATE` | `like()` case sensitivity is backend-defined; `ilike()` is not |
 | enum | ✅ | all 6, `IN` | Folds to underlying `int` |
 | `std::chrono::year_month_day` | ✅ | all 6, `BETWEEN`, `IN` | Compared as `"YYYY-MM-DD"` TEXT (lexicographic == chronological) |
 | `std::chrono::system_clock::time_point` | ✅ | all 6, `BETWEEN`, `IN` | Compared as `"YYYY-MM-DD HH:MM:SS"` TEXT |
@@ -147,6 +147,37 @@ auto results = QuerySet<Person>()
     .where(fields::Person.name.like("Al%"))
     .select();
 ```
+
+The `_` wildcard matches exactly one character.
+
+**`like()` passes through to the database, so its case sensitivity is backend-defined**: SQLite
+matches ASCII letters case-insensitively, PostgreSQL is case-sensitive. `like("one")` returns
+`one`, `ONE` and `OnE` on SQLite but only `one` on PostgreSQL.
+
+### ILIKE (case-insensitive LIKE)
+
+`ilike()` matches regardless of case on **both** backends:
+
+```cpp
+// WHERE lower(name) LIKE lower('one')  -> one, ONE, OnE on SQLite and PostgreSQL
+auto results = QuerySet<Person>()
+    .where(fields::Person.name.ilike("one"))
+    .select();
+```
+
+It is emitted as `lower(col) LIKE lower(?)` on both backends, because the expression layer has no
+dialect to branch on. Tradeoffs:
+
+- Neither backend can use a plain index on the column for this form (it would need an index on
+  `lower(col)`), so `ilike()` on a large table scans.
+- SQLite's `lower()` folds ASCII only, like its own `LIKE`; PostgreSQL's `lower()` follows the
+  database locale. Non-ASCII letters may therefore compare differently across backends.
+- Only plain fields have `ilike()`; a `collate(...)` field does not. On SQLite `LIKE` ignores the
+  collation (its case rule comes from `PRAGMA case_sensitive_like` alone), so
+  `collate(Collate::NoCase).like(...)` behaves exactly like `like()` there, and `ilike()` is the only
+  form that stays case-insensitive under that pragma.
+- `ilike()` inherits `like()`'s escaping rules: there is no `ESCAPE` clause, so a literal `%` or `_`
+  cannot be matched.
 
 ### BETWEEN range queries
 

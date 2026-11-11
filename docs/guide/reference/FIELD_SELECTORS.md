@@ -75,7 +75,7 @@ qs.where(fields::Person.age > 30 && fields::Person.department == "Eng")
 ```
 
 In a `where()` clause a selector supports the full comparison surface:
-`==`, `!=`, `<`, `<=`, `>`, `>=`, plus `.in(...)`, `.between(a, b)`, `.like(...)`,
+`==`, `!=`, `<`, `<=`, `>`, `>=`, plus `.in(...)`, `.between(a, b)`, `.like(...)`, `.ilike(...)`,
 `.is_null()`, `.is_not_null()` and `.collate(...)`.
 
 ---
