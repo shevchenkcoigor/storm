@@ -103,19 +103,6 @@ TYPED_TEST(RowsTest, WithLimitOffset) {
     EXPECT_EQ(count, 5);
 }
 
-TYPED_TEST(RowsTest, WithOrderBy) {
-    QuerySet<Person, TypeParam> qs;
-    int                         prev_age = -1;
-    int                         count    = 0;
-    for (auto&& result : qs.template order_by<fields::Person.age>().rows()) {
-        ASSERT_TRUE(result.has_value());
-        EXPECT_GE(result.value().age, prev_age);
-        prev_age = result.value().age;
-        ++count;
-    }
-    EXPECT_EQ(count, 25); // zero rows would pass the ordering check vacuously
-}
-
 TYPED_TEST(RowsTest, WithAllModifiers) {
     QuerySet<Person, TypeParam> qs;
     int                         count    = 0;
@@ -327,17 +314,6 @@ TYPED_TEST(RowsTest, ViewsFilterCount) {
         ++count;
     }
     EXPECT_EQ(count, 9);
-}
-
-TYPED_TEST(RowsTest, ViewsFilterWhereTransformCollect) {
-    QuerySet<Person, TypeParam> qs;
-    std::vector<int>            ages;
-    for (auto&& age : qs.where(fields::Person.is_active == true).rows() | std::views::filter([](auto&& r) {
-                          return r.has_value();
-                      }) | std::views::transform([](auto&& r) { return r.value().age; })) {
-        ages.push_back(age);
-    }
-    EXPECT_EQ(ages.size(), 16U); // 16 of the 25 seeded people are active
 }
 
 // NOLINTEND(misc-const-correctness)

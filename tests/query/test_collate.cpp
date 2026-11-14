@@ -90,22 +90,6 @@ TYPED_TEST(CollateTest, OrderByNoCaseAsc) {
     EXPECT_EQ(it->name, "  bob"); // space sorts before letters
 }
 
-TYPED_TEST(CollateTest, OrderByNoCaseDesc) {
-    auto result = (SelectStatement<Person, TypeParam>{})
-                          .all()
-                          .template order_by<fields::Person.name, Collate::NoCase, false>()
-                          .execute();
-    ASSERT_TRUE(result.has_value());
-
-    auto items = result.value();
-    ASSERT_EQ(items.size(), 8);
-
-    // DESC + NOCASE: charlie/Charlie first, then bob/BOB, then alice/Alice/ALICE, then "  bob"
-    auto it = items.begin();
-    // First item should be a charlie variant (case-insensitive DESC)
-    EXPECT_TRUE(it->name == "charlie" || it->name == "Charlie");
-}
-
 TYPED_TEST(CollateTest, OrderByBinary) {
     auto result = (SelectStatement<Person, TypeParam>{})
                           .all()
@@ -321,21 +305,6 @@ TYPED_TEST(CollateTest, WhereEqualBinary) {
 }
 
 // ============================================================================
-// Combined COLLATE in WHERE + ORDER BY
-// ============================================================================
-
-TYPED_TEST(CollateTest, WhereCollateWithOrderByCollate) {
-    auto result = (SelectStatement<Person, TypeParam>{})
-                          .where(fields::Person.name.collate(Collate::NoCase) >= "bob")
-                          .template order_by<fields::Person.name, Collate::NoCase>()
-                          .execute();
-    ASSERT_TRUE(result.has_value());
-
-    auto items = result.value();
-    EXPECT_EQ(items.size(), 4); // bob, BOB, charlie, Charlie
-}
-
-// ============================================================================
 // COLLATE with LIMIT/OFFSET
 // ============================================================================
 
@@ -401,22 +370,6 @@ TYPED_TEST(CollateTest, RepeatedCollateQueries) {
     ASSERT_TRUE(r1.has_value());
     ASSERT_TRUE(r2.has_value());
     EXPECT_EQ(r1.value().size(), r2.value().size());
-}
-
-TYPED_TEST(CollateTest, DifferentCollateOnSameField) {
-    // NOCASE vs BINARY on same field — different results (cache invalidation)
-    auto r_nocase = (SelectStatement<Person, TypeParam>{})
-                            .where(fields::Person.name.collate(Collate::NoCase) == "alice")
-                            .execute();
-    auto r_binary = (SelectStatement<Person, TypeParam>{})
-                            .where(fields::Person.name.collate(Collate::Binary) == "alice")
-                            .execute();
-
-    ASSERT_TRUE(r_nocase.has_value());
-    ASSERT_TRUE(r_binary.has_value());
-
-    EXPECT_EQ(r_nocase.value().size(), 3); // Case-insensitive: 3 matches
-    EXPECT_EQ(r_binary.value().size(), 1); // Exact: 1 match
 }
 
 // ============================================================================

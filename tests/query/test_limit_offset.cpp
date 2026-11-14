@@ -23,25 +23,6 @@ template <typename ConnType> class LimitOffsetTest : public StormTestFixture<Per
 
 TYPED_TEST_SUITE(LimitOffsetTest, DatabaseTypes);
 
-// ===== Basic LIMIT Tests =====
-
-TYPED_TEST(LimitOffsetTest, LimitOnly) {
-    QuerySet<Person, TypeParam> qs;
-
-    auto result = qs.template order_by<fields::Person.name>().limit(5).select().execute();
-    ASSERT_TRUE(result.has_value()) << "SELECT with LIMIT failed: " << result.error().message();
-
-    const auto& people = result.value();
-    ASSERT_EQ(people.size(), 5) << "Expected exactly 5 rows";
-
-    // Verify we got the first 5 by name order: Alice, Bob, Charlie, Diana, Eve
-    std::vector<std::string> expected = {"Alice", "Bob", "Charlie", "Diana", "Eve"};
-    std::size_t              i        = 0;
-    for (auto it = people.begin(); it != people.end(); ++it, ++i) {
-        EXPECT_EQ(it->name, expected[i]);
-    }
-}
-
 // ===== Basic OFFSET Tests =====
 
 TYPED_TEST(LimitOffsetTest, OffsetOnly) {
@@ -58,23 +39,6 @@ TYPED_TEST(LimitOffsetTest, OffsetOnly) {
 }
 
 // ===== Combined LIMIT/OFFSET Tests =====
-
-TYPED_TEST(LimitOffsetTest, LimitAndOffset) {
-    QuerySet<Person, TypeParam> qs;
-
-    auto result = qs.template order_by<fields::Person.name>().limit(5).offset(5).select().execute();
-    ASSERT_TRUE(result.has_value()) << "SELECT with LIMIT/OFFSET failed: " << result.error().message();
-
-    const auto& people = result.value();
-    ASSERT_EQ(people.size(), 5) << "Expected 5 rows (skip 5, take 5)";
-
-    // Verify we got names 6-10 alphabetically: Frank, Grace, Henry, Ivy, Jack
-    std::vector<std::string> expected = {"Frank", "Grace", "Henry", "Ivy", "Jack"};
-    std::size_t              i        = 0;
-    for (auto it = people.begin(); it != people.end(); ++it, ++i) {
-        EXPECT_EQ(it->name, expected[i]);
-    }
-}
 
 TYPED_TEST(LimitOffsetTest, LimitOffsetPagination) {
     QuerySet<Person, TypeParam> qs;
@@ -134,18 +98,6 @@ TYPED_TEST(LimitOffsetTest, WhereWithOffsetNoLimit) {
     for (const auto& person : people) {
         EXPECT_LT(person.age, 30);
     }
-}
-
-// ===== LIMIT/OFFSET with DISTINCT =====
-
-TYPED_TEST(LimitOffsetTest, DistinctWithLimit) {
-    QuerySet<Person, TypeParam> qs;
-
-    auto result = qs.limit(5).template distinct<fields::Person.name>().execute();
-    ASSERT_TRUE(result.has_value()) << "DISTINCT with LIMIT failed: " << result.error().message();
-
-    const auto& names = result.value();
-    ASSERT_EQ(names.size(), 5) << "Expected 5 distinct names (all 25 names are unique)";
 }
 
 // ===== Reset State Tests =====

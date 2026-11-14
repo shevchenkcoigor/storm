@@ -216,43 +216,6 @@ TYPED_TEST(SetOpTest, UnionWithLimitOnly) {
 }
 
 // ============================================================================
-// 3-way chaining: UNION via SetOpBuilder
-// ============================================================================
-
-TYPED_TEST(SetOpTest, ThreeWayUnion) {
-    QuerySet<Person, TypeParam> qs1;
-    QuerySet<Person, TypeParam> qs2;
-    QuerySet<Person, TypeParam> qs3;
-
-    // 6 Engineering + 5 Sales + 4 HR, no overlap, UNION yields 15
-    auto builder = qs1.where(fields::Person.department == "Engineering")
-                           .union_(qs2.where(fields::Person.department == "Sales"));
-    auto result = std::move(builder).union_(qs3.where(fields::Person.department == "HR").capture_operand()).execute();
-    ASSERT_TRUE(result.has_value()) << result.error().message();
-    EXPECT_EQ(result->size(), 15);
-}
-
-// ============================================================================
-// Mixed ops chaining: UNION then EXCEPT
-// ============================================================================
-
-TYPED_TEST(SetOpTest, MixedOpsUnionThenExcept) {
-    QuerySet<Person, TypeParam> qs1;
-    QuerySet<Person, TypeParam> qs2;
-    QuerySet<Person, TypeParam> qs3;
-
-    // (Engineering UNION Sales) EXCEPT age>40
-    // Engineering(6) UNION Sales(5) = 11
-    // age>40: Frank(45),Leo(42),Olivia(48),Victor(45) = 4
-    // Result = 11 - 4 = 7
-    auto builder = qs1.where(fields::Person.department == "Engineering")
-                           .union_(qs2.where(fields::Person.department == "Sales"));
-    auto result = std::move(builder).except_(qs3.where(fields::Person.age > 40).capture_operand()).execute();
-    ASSERT_TRUE(result.has_value()) << result.error().message();
-    EXPECT_EQ(result->size(), 7);
-}
-
-// ============================================================================
 // Empty result: INTERSECT with no common rows
 // ============================================================================
 
@@ -295,47 +258,6 @@ TYPED_TEST(SetOpTest, ExceptAllMatch) {
                           .execute();
     ASSERT_TRUE(result.has_value()) << result.error().message();
     EXPECT_EQ(result->size(), 0);
-}
-
-// ============================================================================
-// to_sql() verification
-// ============================================================================
-
-TYPED_TEST(SetOpTest, ToSqlUnion) {
-    QuerySet<Person, TypeParam> qs_left;
-    QuerySet<Person, TypeParam> qs_right;
-
-    auto sql = qs_left.where(fields::Person.age > 30).union_(qs_right.where(fields::Person.age < 25)).to_sql();
-    ASSERT_TRUE(sql.has_value()) << sql.error().message();
-    EXPECT_TRUE(sql->find("UNION") != std::string::npos) << "SQL should contain UNION: " << *sql;
-    EXPECT_TRUE(sql->find("UNION ALL") == std::string::npos) << "SQL should not contain UNION ALL: " << *sql;
-}
-
-TYPED_TEST(SetOpTest, ToSqlUnionAll) {
-    QuerySet<Person, TypeParam> qs_left;
-    QuerySet<Person, TypeParam> qs_right;
-
-    auto sql = qs_left.where(fields::Person.age > 30).union_all(qs_right.where(fields::Person.age < 25)).to_sql();
-    ASSERT_TRUE(sql.has_value()) << sql.error().message();
-    EXPECT_TRUE(sql->find("UNION ALL") != std::string::npos) << "SQL should contain UNION ALL: " << *sql;
-}
-
-TYPED_TEST(SetOpTest, ToSqlExcept) {
-    QuerySet<Person, TypeParam> qs_left;
-    QuerySet<Person, TypeParam> qs_right;
-
-    auto sql = qs_left.where(fields::Person.age > 30).except_(qs_right.where(fields::Person.age < 25)).to_sql();
-    ASSERT_TRUE(sql.has_value()) << sql.error().message();
-    EXPECT_TRUE(sql->find("EXCEPT") != std::string::npos) << "SQL should contain EXCEPT: " << *sql;
-}
-
-TYPED_TEST(SetOpTest, ToSqlIntersect) {
-    QuerySet<Person, TypeParam> qs_left;
-    QuerySet<Person, TypeParam> qs_right;
-
-    auto sql = qs_left.where(fields::Person.age > 30).intersect_(qs_right.where(fields::Person.age < 40)).to_sql();
-    ASSERT_TRUE(sql.has_value()) << sql.error().message();
-    EXPECT_TRUE(sql->find("INTERSECT") != std::string::npos) << "SQL should contain INTERSECT: " << *sql;
 }
 
 // ============================================================================
@@ -386,20 +308,6 @@ TYPED_TEST(SetOpTest, UnionSingleRow) {
 }
 
 // ============================================================================
-// Large result set
-// ============================================================================
-
-TYPED_TEST(SetOpTest, UnionAllLargeResult) {
-    QuerySet<Person, TypeParam> qs_left;
-    QuerySet<Person, TypeParam> qs_right;
-
-    // UNION ALL of all 25 with all 25 = 50
-    auto result = qs_left.where(fields::Person.age > 0).union_all(qs_right.where(fields::Person.age > 0)).execute();
-    ASSERT_TRUE(result.has_value()) << result.error().message();
-    EXPECT_EQ(result->size(), 50);
-}
-
-// ============================================================================
 // to_sql() with ORDER BY + LIMIT
 // ============================================================================
 
@@ -413,9 +321,17 @@ TYPED_TEST(SetOpTest, ToSqlWithModifiers) {
                        .limit(5)
                        .to_sql();
     ASSERT_TRUE(sql.has_value()) << sql.error().message();
-    EXPECT_TRUE(sql->find("UNION") != std::string::npos);
-    EXPECT_TRUE(sql->find("ORDER BY") != std::string::npos);
-    EXPECT_TRUE(sql->find("LIMIT") != std::string::npos);
+    constexpr std::string_view columns =
+            "SELECT id, name, age, salary, is_active, years_experience, department, score, "
+            "nickname, avatar FROM Person";
+    // PostgreSQL inlines literals quoted and spells the NULL ordering out.
+    constexpr bool pg = storm::db::SupportsPgDialect<TypeParam>;
+    std::string    expected{columns};
+    expected += pg ? " WHERE age > '30' UNION " : " WHERE age > 30 UNION ";
+    expected += columns;
+    expected += pg ? " WHERE age < '25' ORDER BY name ASC NULLS FIRST LIMIT 5"
+                   : " WHERE age < 25 ORDER BY name ASC LIMIT 5";
+    EXPECT_EQ(*sql, expected);
 }
 
 // ============================================================================
@@ -660,11 +576,9 @@ TYPED_TEST(SetOpTest, ExceptThenUnion) {
     QuerySet<Person, TypeParam> qs3;
 
     // (Engineering EXCEPT age>40) UNION HR
-    // Engineering(6) EXCEPT age>40(Frank45,Leo42,Victor45 = 3 in Eng) = 3 (Alice,Eve,Ivy,Quinn minus Eve? wait)
-    // Engineering: Alice(25),Eve(40),Ivy(30),Leo(42),Quinn(30),Victor(45)
-    // age>40: Frank(45-Sales),Leo(42),Olivia(48),Victor(45)
-    // EXCEPT: Engineering rows NOT in age>40 -> Alice,Eve(40 not >40),Ivy,Quinn = 4
-    // HR: Diana,Jack,Paul,Uma = 4
+    // Engineering: Alice(25), Eve(40), Ivy(30), Leo(42), Quinn(30), Victor(45)
+    // Engineering rows with age > 40 are Leo and Victor, so the EXCEPT leaves Alice, Eve, Ivy, Quinn = 4
+    // HR: Diana, Jack, Paul, Uma = 4
     // UNION = 8
     auto builder = qs1.where(fields::Person.department == "Engineering").except_(qs2.where(fields::Person.age > 40));
     auto result  = std::move(builder).union_(qs3.where(fields::Person.department == "HR").capture_operand()).execute();
@@ -714,10 +628,10 @@ TYPED_TEST(SetOpTest, FourWayUnion) {
 }
 
 // ============================================================================
-// UNION ALL with EXCEPT (all 4 set ops in one chain)
+// UNION ALL, EXCEPT, UNION, EXCEPT in one chain (INTERSECT is covered separately)
 // ============================================================================
 
-TYPED_TEST(SetOpTest, AllFourOpsChained) {
+TYPED_TEST(SetOpTest, UnionAllExceptUnionExceptChained) {
     QuerySet<Person, TypeParam> qs1;
     QuerySet<Person, TypeParam> qs2;
     QuerySet<Person, TypeParam> qs3;

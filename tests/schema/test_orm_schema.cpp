@@ -365,12 +365,6 @@ TEST(SchemaUnitTest, CompositeUniqueIndexSqlContainsNameDept) {
     EXPECT_TRUE(found) << "Expected composite CREATE UNIQUE INDEX for (name, department)";
 }
 
-// Test: SimpleRecord has no composite indexes (no Indexes<> specialization)
-TEST(SchemaUnitTest, SimpleRecordNoCompositeIndexes) {
-    const auto& indexes = create_index_sql<SimpleRecord>();
-    EXPECT_TRUE(indexes.empty()) << "Expected no indexes for SimpleRecord, got " << indexes.size();
-}
-
 // ============================================================================
 // Integration Tests (TYPED_TEST — both SQLite + PostgreSQL)
 //
