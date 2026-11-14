@@ -118,8 +118,8 @@ struct LedgerWithTags {
 // exists (above) as a plain composite-PK model but was never used as an FK
 // target anywhere, so no test exercised the JOIN ON-clause AND-chain past
 // N=2 parts. LedgerEntryRef is a single such FK (3 parts, deficit 6 bytes
-// under the pre-fix sizer) — kept as the minimal round-trip/JOIN-execution
-// fixture. It is NOT wide enough on its own to overflow the stacked
+// under the pre-fix sizer) — kept as the minimal bulk-insert round-trip
+// and DDL-audit fixture. It is NOT wide enough on its own to overflow the stacked
 // SMALL_BUFFER slack (calculate_complete_sql_size / calculate_join_sql_size /
 // calculate_select_fields_size each add their own 10-byte pad, so ~30 bytes of
 // slack absorb a single 6-byte deficit) — see LedgerEntryRefWide below for the

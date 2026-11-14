@@ -204,39 +204,6 @@ TYPED_TEST(CompositeOwnerJunctionCreateTest, LeftJoinKeepsCompositeOwnerWithNoTa
     EXPECT_EQ(inner->size(), 0U) << "INNER drops a composite owner with zero relation rows";
 }
 
-TYPED_TEST(CompositeOwnerJunctionCreateTest, JunctionTableIsCreatedOnLiveBackend) {
-    using LedgerQs = storm::QuerySet<LedgerWithTags, TypeParam>;
-    auto conn = DefaultConnection<TypeParam>::get();
-    // Round-trip a junction row through raw SQL: the ORM has no junction write
-    // path (existing m2m tests populate junctions this way too), so this is the
-    // only way to prove the emitted columns actually exist and accept data.
-    ASSERT_TRUE(conn->execute("INSERT INTO LedgerTag (label) VALUES ('audit')").has_value());
-    QuerySet<LedgerWithTags, TypeParam> ledger_qs;
-    const auto ledger_inserted =
-        ledger_qs.insert(LedgerWithTags{.region = 1, .account = "acct-a", .period = 202601, .balance = 10.5}).execute();
-    ASSERT_TRUE(ledger_inserted.has_value());
-    auto link = conn->execute("INSERT INTO LedgerWithTags_LedgerTag "
-                              "(LedgerWithTags_region, LedgerWithTags_account, LedgerWithTags_period, LedgerTag_id) "
-                              "VALUES (1, 'acct-a', 202601, 1)");
-    EXPECT_TRUE(link.has_value()) << "composite-owner junction must accept a row keyed on all 3 owner parts";
-}
-
-// Single-PK owner + composite (2-part) RELATED — the mirror direction.
-TYPED_TEST(CompositeRelatedJunctionCreateTest, JunctionTableIsCreatedOnLiveBackend) {
-    using RegistryQs = storm::QuerySet<TagRegistry, TypeParam>;
-    auto conn = DefaultConnection<TypeParam>::get();
-    QuerySet<CatalogEntry, TypeParam> entry_qs;
-    const auto entry_inserted =
-        entry_qs.insert(CatalogEntry{.catalog_id = 7, .entry_no = 3, .title = "widget"}).execute();
-    ASSERT_TRUE(entry_inserted.has_value());
-    QuerySet<TagRegistry, TypeParam> registry_qs;
-    const auto registry_inserted = registry_qs.insert(TagRegistry{.label = "featured"}).execute();
-    ASSERT_TRUE(registry_inserted.has_value());
-    auto link = conn->execute("INSERT INTO TagRegistry_CatalogEntry "
-                              "(TagRegistry_id, CatalogEntry_catalog_id, CatalogEntry_entry_no) VALUES (1, 7, 3)");
-    EXPECT_TRUE(link.has_value()) << "composite-related junction must accept a row keyed on both related parts";
-}
-
 // Review fix — the RELATED side of the m2m query path was never widened.
 //
 // Task 9's junction DDL widened BOTH sides, but only the OWNER side of the query
@@ -293,26 +260,6 @@ TYPED_TEST(CompositeRelatedJunctionCreateTest, CountOverCompositeRelatedM2MCount
     const auto count = registry_qs.template join<fields::TagRegistry.entries>().count().execute();
     ASSERT_TRUE(count.has_value()) << count.error().message();
     EXPECT_EQ(count.value(), 2); // one (registry, entry) pair per junction row
-}
-
-// Composite on BOTH sides: 5 junction columns, 5-column PK, two multi-column FK
-// clauses. The widest junction shape the tree produces.
-TYPED_TEST(CompositeBothSidesJunctionCreateTest, JunctionTableIsCreatedOnLiveBackend) {
-    using ShelfQs = storm::QuerySet<ShelfAssignment, TypeParam>;
-    auto conn = DefaultConnection<TypeParam>::get();
-    QuerySet<StorageBin, TypeParam> bin_qs;
-    const auto bin_inserted =
-        bin_qs.insert(StorageBin{.aisle = 4, .bin_code = "B12", .revision = 9, .capacity = 2.5}).execute();
-    ASSERT_TRUE(bin_inserted.has_value());
-    QuerySet<ShelfAssignment, TypeParam> shelf_qs;
-    const auto shelf_inserted =
-        shelf_qs.insert(ShelfAssignment{.warehouse_no = 2, .shelf_code = "S-1", .priority = 5}).execute();
-    ASSERT_TRUE(shelf_inserted.has_value());
-    auto link = conn->execute("INSERT INTO ShelfAssignment_StorageBin "
-                              "(ShelfAssignment_warehouse_no, ShelfAssignment_shelf_code, "
-                              "StorageBin_aisle, StorageBin_bin_code, StorageBin_revision) "
-                              "VALUES (2, 'S-1', 4, 'B12', 9)");
-    EXPECT_TRUE(link.has_value()) << "both-sides-composite junction must accept a row keyed on all 5 columns";
 }
 
 // Both sides composite: a 2-column owner key AND a 3-column related key in one

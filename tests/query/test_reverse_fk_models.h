@@ -47,7 +47,8 @@ struct RfTask {
     [[= storm::fk<>]] RfPerson assignee;
 };
 
-// shared_ptr container coverage: RfBoard collects the notes pinned to it.
+// shared_ptr container shape: RfBoard collects the notes pinned to it. Compile-time only
+// (static_asserts in test_reverse_fk_body.h) — there is no runtime eager-load test for it.
 struct RfNote;
 
 struct RfBoard {

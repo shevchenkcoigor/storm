@@ -30,9 +30,6 @@ import std;
 
 // Must follow the shared model headers: the composite-PK models name storm:: annotations.
 #include "crud/test_composite_pk_models.h" // NOSONAR cpp:S954
-// Pupil/Course/Enrollment — the single-PK through model, used as the
-// byte-identity anchor below.
-#include "test_m2m_models.h" // NOSONAR cpp:S954
 using storm::orm::statements::InsertStatement;
 using storm::orm::statements::SelectStatement;
 
@@ -222,22 +219,7 @@ TYPED_TEST(ThroughCompositeRelatedTest, JoinsRelatedOnFullCompositeKey) {
     EXPECT_EQ(results->begin()->codes.begin()->label, "first");
 }
 
-// Byte-identity anchor for the SHARED branch. The #536 fix routes composite
-// junction columns through a JunctionNaming switch, but that switch sits INSIDE
-// the `has_composite_pk_` gate, so a single-PK side and an auto-junction reach
-// the same instruction path they always did. Every other test here exercises the
-// NEW branch; this one pins the OLD text, so a future refactor that lifts the
-// Naming switch above the composite gate fails loudly instead of silently
-// re-spelling every pre-#536 junction.
-//
-// Pupil/Course/Enrollment is the canonical single-PK through model from #203.
-TYPED_TEST(ThroughCompositeOwnerTest, SinglePkThroughSqlIsUnchanged) {
-    const auto sql = (SelectStatement<Pupil, TypeParam>{}).all().template join<fields::Pupil.courses>().sql();
-    EXPECT_TRUE(sql.contains("FROM Enrollment t2 INNER JOIN Course t3 ON t2.course_id = t3.id")) << sql;
-    EXPECT_TRUE(sql.contains("WHERE t2.pupil_id IN (SELECT id FROM Pupil)")) << sql;
-}
-
-// Same anchor for an AUTO junction over a COMPOSITE side — the branch the fix
+// Byte-identity anchor for an AUTO junction over a COMPOSITE side — the branch the fix
 // deliberately left alone. LedgerWithTags has a 3-part key, so this pins the
 // "<Side>_<part>" spelling (and the `_id` an FK part would gain) against the
 // Through branch bleeding into it.

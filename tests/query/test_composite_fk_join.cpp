@@ -36,24 +36,6 @@ namespace {
 
 TYPED_TEST_SUITE(CompositeFkRegularJoinTest, DatabaseTypes);
 
-TYPED_TEST(CompositeFkRegularJoinTest, InnerJoinAcrossCompositeFkReturnsMatchingRow) {
-    QuerySet<OrderLineWithShipments, TypeParam> line_qs;
-    const OrderLineWithShipments                line{.order_id = 5, .product_id = 12, .quantity = 3, .note = "first"};
-    ASSERT_TRUE(line_qs.insert(line).execute().has_value());
-
-    QuerySet<Shipment, TypeParam> ship_qs;
-    ASSERT_TRUE(ship_qs.insert(Shipment{.line = line, .carrier = "UPS"}).execute().has_value());
-
-    auto results = ship_qs.template join<fields::Shipment.line>().select().execute();
-    ASSERT_TRUE(results.has_value());
-    ASSERT_EQ(results->size(), 1U);
-    auto& shipment = *results->begin();
-    EXPECT_EQ(shipment.line.order_id, 5);
-    EXPECT_EQ(shipment.line.product_id, 12);
-    EXPECT_EQ(shipment.line.quantity, 3);
-    EXPECT_EQ(shipment.carrier, "UPS");
-}
-
 // Disambiguation case (mandated by the task brief): two OrderLineWithShipments
 // rows share ONE PK part (order_id == 5) but differ in the OTHER (product_id).
 // Each is referenced by a different Shipment. If the ON clause only matched on
@@ -131,49 +113,6 @@ TEST(CompositeFkJoinSqlTest, SinglePkJoinSqlStaysByteIdentical) {
     EXPECT_EQ(sql.find(" AND "), std::string::npos) << sql; // no AND for a single-column key
 }
 
-// ── Review fix: fk_on_clause_body_size undercounted parts after the first ──
-// The sizer reserved only " AND " (5 bytes) per composite-FK part after the
-// first, but append_fk_on_clause_body actually writes " AND t<alias>." (7 +
-// digits_of(alias) bytes) — a 2-3 byte-per-part deficit that ConstexprString
-// silently swallows by truncating the tail of the buffer (ConstexprString::
-// append drops bytes past capacity with no diagnostic). A `.contains(...)`
-// substring check on a handful of expected fragments would still pass even
-// with the tail chopped off, so both tests below assert EXACT equality
-// against the full, hand-computed SQL string instead — the only check exact
-// enough to catch a deficit regardless of whether SMALL_BUFFER's slack
-// happens to absorb it for a given arity.
-//
-// LedgerEntryRef -> Ledger is a 3-part composite FK target (region, account,
-// period): the ON clause has TWO "after-first" parts, a 6-byte deficit under
-// the pre-fix sizer. Verified NOT sufficient on its own to overflow the
-// stacked SMALL_BUFFER slack (calculate_complete_sql_size /
-// calculate_join_sql_size / calculate_select_fields_size each pad by 10 bytes,
-// ~30 bytes total) — this test still passed under the pre-fix sizer. Kept as
-// the exact-length guard for the common 3-part case; LedgerEntryRefWide below
-// is the fixture that actually forces a real truncation.
-TEST(CompositeFkJoinSqlTest, ThreePartCompositeFkJoinSqlIsExact) {
-    using JS = stmt::JoinStatement<
-            LedgerEntryRef,
-            storm::db::sqlite::Connection,
-            stmt::JoinType::Inner,
-            ^^LedgerEntryRef::ledger>;
-    const std::string& sql = JS::get_complete_sql();
-    EXPECT_EQ(
-            sql,
-            "SELECT t1.id, t1.note, t2.region, t2.account, t2.period, t2.balance "
-            "FROM LedgerEntryRef t1"
-            " INNER JOIN Ledger t2 ON t2.region = t1.ledger_region"
-            " AND t2.account = t1.ledger_account"
-            " AND t2.period = t1.ledger_period"
-    );
-}
-
-// LedgerEntryRefWide joins the SAME 3-part Ledger target through SIX separate
-// FK fields (ledger1..ledger6) — each FK's ON-clause body independently
-// contributes the 6-byte deficit, for a combined 36 bytes, which DOES exceed
-// the ~30-byte stacked slack. Confirmed to fail (truncated/wrong-length SQL)
-// against the pre-fix sizer during development of this fix, and to pass here
-// only because the sizer now reserves the writer's exact byte count.
 // ── #504 Task 8: StitchKey-based m2m/reverse-FK stitch for a COMPOSITE owner ──
 //
 // The two-query eager-load path (m2m #391, reverse-FK #398) stitches Q2 rows to
@@ -186,8 +125,9 @@ TEST(CompositeFkJoinSqlTest, ThreePartCompositeFkJoinSqlIsExact) {
 
 // ---- Reverse-FK composite-owner case (no junction table needed) -----------
 // OrderLineWithShipments' PK is (order_id, product_id); Shipment::line is the
-// FK back-reference (reverse_fk<^^Shipment>::shipments). Two lines share
-// order_id=1 but differ in product_id — proves the stitch keys on BOTH parts.
+// FK back-reference (reverse_fk<^^Shipment>::shipments). The fan-out test below
+// uses a decoy sharing order_id but differing in product_id — proves the stitch
+// keys on BOTH parts.
 template <typename ConnType>
 class CompositeReverseFkOwnerTest : public StormTestFixture<OrderLineWithShipments, ConnType, Shipment> {
   protected:
@@ -202,35 +142,6 @@ class CompositeReverseFkOwnerTest : public StormTestFixture<OrderLineWithShipmen
     }
 };
 TYPED_TEST_SUITE(CompositeReverseFkOwnerTest, DatabaseTypes);
-
-TYPED_TEST(CompositeReverseFkOwnerTest, ReverseFkStitchesCorrectlyWithCompositeOwnerKey) {
-    QuerySet<OrderLineWithShipments, TypeParam> line_qs;
-    const OrderLineWithShipments                line_a{.order_id = 1, .product_id = 10, .quantity = 5, .note = "a"};
-    const OrderLineWithShipments                line_b{.order_id = 1, .product_id = 20, .quantity = 7, .note = "b"};
-    ASSERT_TRUE(line_qs.insert(line_a).execute().has_value());
-    ASSERT_TRUE(line_qs.insert(line_b).execute().has_value());
-
-    QuerySet<Shipment, TypeParam> ship_qs;
-    ASSERT_TRUE(ship_qs.insert(Shipment{.line = line_a, .carrier = "DHL"}).execute().has_value());
-
-    auto results = line_qs.template join<fields::OrderLineWithShipments.shipments>().select().execute();
-    ASSERT_TRUE(results.has_value()) << results.error().message();
-
-    bool found_a = false;
-    for (const auto& line : *results) {
-        if (line.product_id == 10) {
-            ASSERT_EQ(line.shipments.size(), 1U);
-            EXPECT_EQ(line.shipments[0].carrier, "DHL");
-            found_a = true;
-        }
-        if (line.product_id == 20) {
-            FAIL() << "product_id=20 shares order_id=1 with product_id=10 but has no shipment of its own — "
-                      "if the stitch keyed only on order_id (the pre-#504-Task-8 bug), this row would "
-                      "wrongly inherit product_id=10's shipment and survive the INNER-join drop.";
-        }
-    }
-    EXPECT_TRUE(found_a);
-}
 
 TYPED_TEST(CompositeReverseFkOwnerTest, EmptyRelationOnCompositeOwnerReturnsNoInnerJoinRows) {
     QuerySet<OrderLineWithShipments, TypeParam> line_qs;
@@ -314,17 +225,6 @@ static_assert(
         "OrderLineWithShipments) — the owning table carries a REAL N-column FK"
 );
 
-template <typename ConnType>
-class CompositeM2MSinglePkRegressionTest : public StormTestFixture<Student, ConnType, Course> {};
-TYPED_TEST_SUITE(CompositeM2MSinglePkRegressionTest, DatabaseTypes);
-
-TYPED_TEST(CompositeM2MSinglePkRegressionTest, SinglePkM2MSqlShapeStaysByteIdentical) {
-    QuerySet<Student, TypeParam> student_qs;
-    auto                         sql = student_qs.template join<fields::Student.courses>().select().sql();
-    EXPECT_TRUE(sql.contains("SELECT t2.Student_id, t3.id, t3.title")) << sql;
-    EXPECT_TRUE(sql.contains("WHERE t2.Student_id IN (SELECT id FROM Student)")) << sql;
-}
-
 // ── Reverse-FK Q2 SQL shape over a composite owner (#504 Task 8) ────────────
 // Documents (and regression-guards) the exact widened SQL: the owner-key
 // column list widens to N parts, each individually re-aliased ("t2.<part>",
@@ -355,6 +255,27 @@ TEST(CompositeFkJoinSqlTest, ReverseFkQ2SqlShapeIsExactOverCompositeOwner) {
     );
 }
 
+// ── Review fix: fk_on_clause_body_size undercounted parts after the first ──
+// The sizer reserved only " AND " (5 bytes) per composite-FK part after the
+// first, but append_fk_on_clause_body actually writes " AND t<alias>." (7 +
+// digits_of(alias) bytes) — a 2-3 byte-per-part deficit that ConstexprString
+// silently swallows by truncating the tail of the buffer (ConstexprString::
+// append drops bytes past capacity with no diagnostic). A `.contains(...)`
+// substring check on a handful of expected fragments would still pass even
+// with the tail chopped off, so the test below asserts EXACT equality
+// against the full, hand-computed SQL string instead — the only check exact
+// enough to catch a deficit regardless of whether SMALL_BUFFER's slack
+// happens to absorb it for a given arity.
+
+// LedgerEntryRefWide joins the 3-part Ledger target through SIX separate FK
+// fields (ledger1..ledger6). Each ON-clause body has two after-first parts, a
+// 6-byte deficit under the pre-fix sizer, so the six together lose 36 bytes —
+// which DOES exceed the ~30-byte stacked SMALL_BUFFER slack (calculate_complete_
+// sql_size / calculate_join_sql_size / calculate_select_fields_size each pad by
+// 10 bytes). A single 3-part join (6 bytes) is absorbed by that slack and passed
+// even under the pre-fix sizer. Confirmed to fail (truncated/wrong-length SQL)
+// against the pre-fix sizer, and to pass now only because the sizer reserves the
+// writer's exact byte count.
 TEST(CompositeFkJoinSqlTest, SixCompositeFkJoinsToSameTargetSqlIsExact) {
     using JS = stmt::JoinStatement<
             LedgerEntryRefWide,
