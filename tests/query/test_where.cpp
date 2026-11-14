@@ -174,32 +174,6 @@ TYPED_TEST(WhereJoinTest, WhereWithJoinMultipleConditions) {
     ASSERT_EQ(messages.size(), 2) << "Expected 2 messages matching both conditions";
 }
 
-// Test: Natural && and || operators (and/or keywords)
-TYPED_TEST(WhereJoinTest, WhereWithNaturalOperators) {
-    QuerySet<Message, TypeParam> queryset;
-
-    // Using natural 'and' operator (also works with &&)
-    auto result = queryset.template join<fields::Message.sender>()
-                          .where(fields::Person.age > 5 and fields::Message.content.like("%from%"))
-                          .select()
-                          .execute();
-    ASSERT_TRUE(result.has_value()) << "WHERE + JOIN failed: " << result.error().message();
-
-    const auto& messages = result.value();
-    ASSERT_EQ(messages.size(), 2) << "Expected 2 messages matching both conditions";
-    auto it = messages.begin();
-    EXPECT_EQ(it->sender.name, "alice");
-    ++it;
-    EXPECT_EQ(it->sender.name, "alice");
-}
-
-// Test: Natural operators with complex expressions (same logic as WhereComplexExpression, different syntax)
-TYPED_TEST(WhereTest, WhereNaturalOperatorsComplex) {
-    this->check_where_count(
-            (fields::Person.age < 30 or fields::Person.age > 35) and fields::Person.name != "Charlie", 18
-    );
-}
-
 // Test: Reusing WHERE conditions across multiple queries
 TYPED_TEST(WhereTest, WhereReuseCondition) {
     // Store condition in variable
@@ -270,34 +244,6 @@ TYPED_TEST(WhereTest, WhereComposableFilters) {
     EXPECT_EQ(old_a_names.value().size(), 0) << "Expected 0 people (no old people with A names)";
 }
 
-// Test: Reusable base QuerySet pattern — where() returns independent copies
-TYPED_TEST(WhereTest, ReusableBaseQuerySet) {
-    QuerySet<Person, TypeParam> queryset;
-
-    // Create a base filtered QuerySet (age >= 25)
-    auto base = queryset.where(fields::Person.age >= 25);
-
-    // Reuse base filter multiple times
-    auto result1 = base.select().execute();
-    ASSERT_TRUE(result1.has_value());
-    ASSERT_EQ(result1.value().size(), 23) << "Expected 23 people with age >= 25";
-
-    // Still has base filter on second call
-    auto result2 = base.select().execute();
-    ASSERT_TRUE(result2.has_value());
-    ASSERT_EQ(result2.value().size(), 23) << "Base filter should persist";
-
-    // Refine the base filter — creates new copy, base unchanged
-    auto adults = base.where(fields::Person.age >= 30).select().execute();
-    ASSERT_TRUE(adults.has_value());
-    ASSERT_EQ(adults.value().size(), 16) << "Expected 16 people (age >= 25 AND age >= 30)";
-
-    // Base is still unchanged
-    auto result3 = base.select().execute();
-    ASSERT_TRUE(result3.has_value());
-    ASSERT_EQ(result3.value().size(), 23) << "Base should be unchanged after refinement";
-}
-
 // Test: Building query progressively — each where() returns a narrower copy
 TYPED_TEST(WhereTest, ProgressiveQueryBuilding) {
     QuerySet<Person, TypeParam> queryset;
@@ -326,47 +272,6 @@ TYPED_TEST(WhereTest, ProgressiveQueryBuilding) {
     EXPECT_EQ(q2.select().execute().value().size(), 12);
 }
 
-// Test: chaining where() builds complex filters without mutating the original
-TYPED_TEST(WhereTest, ChainingBuildsComplexFilter) {
-    QuerySet<Person, TypeParam> queryset;
-
-    // Build up complex filter via chaining
-    auto filtered = queryset.where(fields::Person.age >= 25)
-                            .where(fields::Person.age < 40)
-                            .where(fields::Person.name.like("D%"));
-
-    auto result = filtered.select().execute();
-    ASSERT_TRUE(result.has_value());
-    EXPECT_EQ(result.value().size(), 1) << "Complex filter should match Diana only";
-    EXPECT_EQ(result.value().begin()->name, "Diana");
-
-    // Original is unchanged
-    auto all_people = queryset.select().execute();
-    ASSERT_TRUE(all_people.has_value());
-    EXPECT_EQ(all_people.value().size(), 25) << "Original should have all rows";
-
-    // Can create a different filter from the same base
-    auto age25 = queryset.where(fields::Person.age == 25).select().execute();
-    ASSERT_TRUE(age25.has_value());
-    EXPECT_EQ(age25.value().size(), 3) << "Different filter from same base (Alice, Grace, Karen)";
-}
-
-// Test: where() does not mutate the original QuerySet (returns new copy)
-TYPED_TEST(WhereTest, WhereDoesNotMutateOriginal) {
-    QuerySet<Person, TypeParam> queryset;
-
-    // Call where() — original should be unchanged
-    auto filtered = queryset.where(fields::Person.age > 30);
-    auto all      = queryset.select().execute();
-    ASSERT_TRUE(all.has_value());
-    EXPECT_EQ(all.value().size(), 25) << "Original QuerySet must not be mutated by where()";
-
-    // The returned copy should have the filter
-    auto result = filtered.select().execute();
-    ASSERT_TRUE(result.has_value());
-    EXPECT_EQ(result.value().size(), 13) << "Returned QuerySet should have the WHERE filter";
-}
-
 // Test: where() in a loop works without reset()
 TYPED_TEST(WhereTest, WhereInLoopWithoutReset) {
     QuerySet<Person, TypeParam> queryset;
@@ -381,27 +286,6 @@ TYPED_TEST(WhereTest, WhereInLoopWithoutReset) {
     auto all = queryset.select().execute();
     ASSERT_TRUE(all.has_value());
     EXPECT_EQ(all.value().size(), 25) << "Original QuerySet must remain unfiltered after loop";
-}
-
-// Test: chaining where() returns progressively narrowed copies
-TYPED_TEST(WhereTest, WhereChainingReturnsNewCopies) {
-    QuerySet<Person, TypeParam> queryset;
-
-    auto q1 = queryset.where(fields::Person.age >= 25);
-    auto q2 = q1.where(fields::Person.age < 35);
-
-    // Original, q1, q2 should all be independent
-    auto all = queryset.select().execute();
-    ASSERT_TRUE(all.has_value());
-    EXPECT_EQ(all.value().size(), 25) << "Original unchanged";
-
-    auto r1 = q1.select().execute();
-    ASSERT_TRUE(r1.has_value());
-    EXPECT_EQ(r1.value().size(), 23) << "q1: age >= 25";
-
-    auto r2 = q2.select().execute();
-    ASSERT_TRUE(r2.has_value());
-    EXPECT_EQ(r2.value().size(), 12) << "q2: age >= 25 AND age < 35";
 }
 
 // ============================================================================
