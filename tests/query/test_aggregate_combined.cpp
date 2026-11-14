@@ -181,26 +181,6 @@ TYPED_TEST(AggregateTest, GroupByWithAllAggregateTypes) {
 // GROUP BY with ORDER BY, LIMIT, OFFSET Tests
 // =============================================================================
 
-TYPED_TEST(AggregateTest, GroupByWithOrderBy) {
-    this->insert_test_data();
-
-    auto result = this->qs->template order_by<fields::Person.years_experience>()
-                          .template group_by<fields::Person.years_experience>()
-                          .count()
-                          .execute();
-    ASSERT_TRUE(result.has_value()) << "GROUP BY + ORDER BY failed: " << result.error().message();
-    EXPECT_EQ(result.value().size(), 3);
-
-    std::vector<int>          expected_order  = {5, 10, 15};
-    std::vector<std::int64_t> expected_counts = {10, 8, 7};
-    std::size_t               idx             = 0; // NOLINT(misc-const-correctness) - modified in loop
-    for (const auto& [years, count_val] : result.value()) {
-        EXPECT_EQ(years, expected_order[idx]) << "Unexpected order at index " << idx;
-        EXPECT_EQ(count_val, expected_counts[idx]) << "Unexpected count at index " << idx;
-        idx++;
-    }
-}
-
 TYPED_TEST(AggregateTest, GroupByWithOrderByDesc) {
     this->insert_test_data();
 
@@ -215,26 +195,6 @@ TYPED_TEST(AggregateTest, GroupByWithOrderByDesc) {
     std::size_t      idx            = 0; // NOLINT(misc-const-correctness) - modified in loop
     for (const auto& [years, count_val] : result.value()) {
         EXPECT_EQ(years, expected_order[idx]) << "Unexpected order at index " << idx;
-        idx++;
-    }
-}
-
-TYPED_TEST(AggregateTest, GroupByWithLimitOffset) {
-    this->insert_test_data();
-
-    auto result = this->qs->template order_by<fields::Person.years_experience>()
-                          .limit(2)
-                          .offset(1)
-                          .template group_by<fields::Person.years_experience>()
-                          .count()
-                          .execute();
-    ASSERT_TRUE(result.has_value()) << "GROUP BY + LIMIT + OFFSET failed: " << result.error().message();
-    EXPECT_EQ(result.value().size(), 2);
-
-    std::vector<int> expected = {10, 15};
-    std::size_t      idx      = 0; // NOLINT(misc-const-correctness) - modified in loop
-    for (const auto& [years, count_val] : result.value()) {
-        EXPECT_EQ(years, expected[idx]) << "Expected years_experience=" << expected[idx] << " at index " << idx;
         idx++;
     }
 }

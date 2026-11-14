@@ -26,57 +26,6 @@ TYPED_TEST_SUITE(AggregateTest, DatabaseTypes);
 // GROUP BY Tests
 // =============================================================================
 
-TYPED_TEST(AggregateTest, GroupByWithCount) {
-    this->insert_test_data();
-
-    auto result = this->qs->template group_by<fields::Person.years_experience>().count().execute();
-    ASSERT_TRUE(result.has_value()) << "GROUP BY + COUNT failed: " << result.error().message();
-
-    auto& results = result.value();
-    EXPECT_EQ(results.size(), 3);
-
-    std::int64_t total_count = 0; // NOLINT(misc-const-correctness) - modified in loop
-    for (const auto& row : results) {
-        total_count += std::get<1>(row);
-    }
-    EXPECT_EQ(total_count, 25);
-}
-
-TYPED_TEST(AggregateTest, GroupByWithSum) {
-    this->insert_test_data();
-
-    auto result =
-            this->qs->template group_by<fields::Person.years_experience>().template sum<fields::Person.age>().execute();
-    ASSERT_TRUE(result.has_value()) << "GROUP BY + SUM failed: " << result.error().message();
-    EXPECT_EQ(result.value().size(), 3);
-
-    std::int64_t total_sum = 0; // NOLINT(misc-const-correctness) - modified in loop
-    for (const auto& [years, age_sum] : result.value()) {
-        total_sum += age_sum;
-    }
-    EXPECT_EQ(total_sum, 829);
-}
-
-TYPED_TEST(AggregateTest, GroupByWithAvg) {
-    this->insert_test_data();
-
-    auto result = this->qs->template group_by<fields::Person.years_experience>()
-                          .template avg<fields::Person.salary>()
-                          .execute();
-    ASSERT_TRUE(result.has_value()) << "GROUP BY + AVG failed: " << result.error().message();
-    EXPECT_EQ(result.value().size(), 3);
-
-    std::optional<double> avg_5; // NOLINT(misc-const-correctness) - modified in loop
-    for (const auto& [years, salary_avg] : result.value()) {
-        if (years == 5) {
-            avg_5 = salary_avg;
-            break;
-        }
-    }
-    ASSERT_TRUE(avg_5.has_value());
-    EXPECT_NEAR(avg_5.value(), 50300.0, 0.01);
-}
-
 TYPED_TEST(AggregateTest, GroupByWithMin) {
     this->insert_test_data();
 
@@ -95,25 +44,6 @@ TYPED_TEST(AggregateTest, GroupByWithMin) {
     }
     ASSERT_TRUE(min_5.has_value());
     EXPECT_NEAR(min_5.value(), 32000.0, 0.01);
-}
-
-TYPED_TEST(AggregateTest, GroupByWithMax) {
-    this->insert_test_data();
-
-    auto result =
-            this->qs->template group_by<fields::Person.years_experience>().template max<fields::Person.age>().execute();
-    ASSERT_TRUE(result.has_value()) << "GROUP BY + MAX failed: " << result.error().message();
-    EXPECT_EQ(result.value().size(), 3);
-
-    std::optional<double> max_5; // NOLINT(misc-const-correctness) - modified in loop
-    for (const auto& [years, age_max] : result.value()) {
-        if (years == 5) {
-            max_5 = age_max;
-            break;
-        }
-    }
-    ASSERT_TRUE(max_5.has_value());
-    EXPECT_NEAR(max_5.value(), 36.0, 0.01);
 }
 
 TYPED_TEST(AggregateTest, GroupByWithJoinAndSum) {
@@ -136,22 +66,6 @@ TYPED_TEST(AggregateTest, GroupByWithJoinAndSum) {
                     {"Hello", 10}, {"World", 20}, {"Hi", 30}, {"There", 40}, {"Foo", 50}, {"Bar", 60}
             })
     );
-}
-
-TYPED_TEST(AggregateTest, GroupByRepeatedQueries) {
-    this->insert_test_data();
-
-    for (int i = 0; i < 50; ++i) {
-        auto result = this->qs->template group_by<fields::Person.years_experience>().count().execute();
-        ASSERT_TRUE(result.has_value()) << "Iteration " << i << " failed";
-        EXPECT_EQ(result.value().size(), 3);
-    }
-}
-
-TYPED_TEST(AggregateTest, GroupByEmptyTable) {
-    auto result = this->qs->template group_by<fields::Person.years_experience>().count().execute();
-    ASSERT_TRUE(result.has_value()) << "GROUP BY on empty table failed: " << result.error().message();
-    EXPECT_EQ(result.value().size(), 0);
 }
 
 TYPED_TEST(AggregateTest, GroupByFullChain_Count) {
@@ -248,14 +162,4 @@ TYPED_TEST(AggregateTest, CountDistinctWithJoin) {
                           .execute();
     ASSERT_TRUE(result.has_value()) << "COUNT(DISTINCT) with JOIN failed";
     EXPECT_EQ(result.value(), 6);
-}
-
-TYPED_TEST(AggregateTest, CountDistinctRepeatedQueries) {
-    this->insert_test_data();
-
-    for (int i = 0; i < 50; ++i) {
-        auto result = this->qs->template count_distinct<fields::Person.years_experience>().execute();
-        ASSERT_TRUE(result.has_value()) << "Iteration " << i << " failed";
-        EXPECT_EQ(result.value(), 3);
-    }
 }

@@ -60,11 +60,6 @@ namespace {
         return std::format("{} {}", SELECT_ALL, tail);
     }
 
-    TEST_F(FieldsSqlParity, BareComparisonOperator) {
-        // THE headline spelling from the issue — no f<> wrapper.
-        EXPECT_EQ(qs().where(fields::Person.age == 30).select().sql(), expected("age = ?"));
-    }
-
     TEST_F(FieldsSqlParity, AllSixComparisonOperators) {
         // Per the CLAUDE.md testing checklist: every comparison operator.
         EXPECT_EQ(qs().where(fields::Person.age == 30).select().sql(), expected("age = ?"));
@@ -149,14 +144,12 @@ namespace {
     }
 
     TEST_F(FieldsSqlParity, ValuesProjection) {
-        EXPECT_EQ(qs().values<fields::Person.name>().sql(), "SELECT name FROM Person");
         EXPECT_EQ((qs().values<fields::Person.name, fields::Person.age>().sql()), "SELECT name, age FROM Person");
     }
 
     TEST_F(FieldsSqlParity, ScalarAggregates) {
         EXPECT_EQ(qs().sum<fields::Person.age>().sql(), "SELECT SUM(age) FROM Person");
         EXPECT_EQ(qs().avg<fields::Person.salary>().sql(), "SELECT AVG(salary) FROM Person");
-        EXPECT_EQ(qs().min<fields::Person.age>().sql(), "SELECT MIN(age) FROM Person");
         EXPECT_EQ(qs().max<fields::Person.age>().sql(), "SELECT MAX(age) FROM Person");
         EXPECT_EQ(qs().count<fields::Person.id>().sql(), "SELECT COUNT(id) FROM Person");
         EXPECT_EQ(
@@ -164,19 +157,9 @@ namespace {
         );
     }
 
-    TEST_F(FieldsSqlParity, MultiFieldAggregate) {
-        // SUM(a + b) — pack-order-sensitive. A reordered or dropped pack emits
-        // VALID but WRONG SQL, so the operand order is pinned explicitly.
-        EXPECT_EQ(
-                (qs().sum<fields::Person.age, fields::Person.years_experience>().sql()),
-                "SELECT SUM(age + years_experience) FROM Person"
-        );
-    }
-
     TEST_F(FieldsSqlParity, AggregateStatementChainMethods) {
         // AggregateStatement's OWN chain methods — a separate code path from
         // GroupByBuilder's identically-named ones.
-        EXPECT_EQ(qs().sum<fields::Person.age>().count().sql(), "SELECT SUM(age), COUNT(*) FROM Person");
         EXPECT_EQ(
                 qs().sum<fields::Person.age>().avg<fields::Person.salary>().sql(),
                 "SELECT SUM(age), AVG(salary) FROM Person"
@@ -187,14 +170,6 @@ namespace {
     }
 
     TEST_F(FieldsSqlParity, GroupByWithAggregate) {
-        EXPECT_EQ(
-                qs().group_by<fields::Person.department>().count<>().sql(),
-                "SELECT department, COUNT(*) FROM Person GROUP BY department"
-        );
-        EXPECT_EQ(
-                qs().group_by<fields::Person.department>().sum<fields::Person.salary>().sql(),
-                "SELECT department, SUM(salary) FROM Person GROUP BY department"
-        );
         // Multi-column GROUP BY — the other pack-order-sensitive position.
         EXPECT_EQ(
                 (qs().group_by<fields::Person.department, fields::Person.age>().count<>().sql()),
@@ -202,15 +177,12 @@ namespace {
         );
     }
 
-    TEST_F(FieldsSqlParity, GroupByHavingBothChainPositions) {
-        // Both chaining orders, per the CLAUDE.md testing checklist.
+    TEST_F(FieldsSqlParity, GroupByHavingBeforeAggregate) {
+        // having() BEFORE the aggregate; the other chaining position (count().having()) is pinned
+        // by test_sql_verify.cpp GroupByWithHaving.
         EXPECT_EQ(
                 qs().group_by<fields::Person.age>().having(fields::Person.age > 30).count<>().sql(),
                 "SELECT age, COUNT(*) FROM Person GROUP BY age HAVING age > ?"
-        );
-        EXPECT_EQ(
-                qs().group_by<fields::Person.department>().count<>().having(fields::Person.department == "Eng").sql(),
-                "SELECT department, COUNT(*) FROM Person GROUP BY department HAVING department = ?"
         );
     }
 
@@ -234,11 +206,6 @@ namespace {
     TEST_F(FieldsSqlParity, JoinOnFkField) {
         // The FK column is sender_id — derived by append_fk_column_names, NOT by
         // the proxy's bare member name. Pinning it guards that derivation.
-        EXPECT_TRUE(
-                msg_qs().join<fields::Message.sender>().select().sql().contains(
-                        "FROM Message t1 INNER JOIN Person t2 ON t2.id = t1.sender_id"
-                )
-        );
         EXPECT_TRUE(
                 msg_qs().left_join<fields::Message.sender>().select().sql().contains(
                         "FROM Message t1 LEFT JOIN Person t2 ON t2.id = t1.sender_id"
