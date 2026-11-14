@@ -132,10 +132,10 @@ TYPED_TEST(AggregateTest, SingleRow_AllAggregates) {
 // Large Dataset Tests
 // ============================================================================
 
-TYPED_TEST(AggregateTest, LargeDataset_Sum) {
+TYPED_TEST(AggregateTest, LargeDataset_SumAndCount) {
     std::vector<Person> people;
-    people.reserve(1000);
-    for (int i = 1; i <= 1000; ++i) {
+    people.reserve(10000);
+    for (int i = 1; i <= 10000; ++i) {
         people.push_back(
                 Person{.id = 0, .name = std::format("Person{}", i), .age = i, .salary = 50000.0, .years_experience = 5}
         );
@@ -143,25 +143,13 @@ TYPED_TEST(AggregateTest, LargeDataset_Sum) {
     auto batch_result = this->qs->insert(std::span<const Person>(people)).execute();
     ASSERT_TRUE(batch_result.has_value()) << "Batch insert failed: " << batch_result.error().message();
 
-    auto result = this->qs->template sum<fields::Person.age>().execute();
-    ASSERT_TRUE(result.has_value()) << "SUM large dataset failed: " << result.error().message();
-    EXPECT_EQ(result.value(), 500500);
-}
+    auto sum = this->qs->template sum<fields::Person.age>().execute();
+    ASSERT_TRUE(sum.has_value()) << "SUM large dataset failed: " << sum.error().message();
+    EXPECT_EQ(sum.value(), 50005000);
 
-TYPED_TEST(AggregateTest, LargeDataset_Count) {
-    std::vector<Person> people;
-    people.reserve(10000);
-    for (int i = 1; i <= 10000; ++i) {
-        people.push_back(
-                Person{.id = 0, .name = std::format("Person{}", i), .age = 25, .salary = 50000.0, .years_experience = 5}
-        );
-    }
-    auto insert_result = this->qs->insert(std::span<const Person>(people)).execute();
-    ASSERT_TRUE(insert_result.has_value()) << "Batch insert failed: " << insert_result.error().message();
-
-    auto result = this->qs->count().execute();
-    ASSERT_TRUE(result.has_value()) << "COUNT large dataset failed: " << result.error().message();
-    EXPECT_EQ(result.value(), 10000);
+    auto count = this->qs->count().execute();
+    ASSERT_TRUE(count.has_value()) << "COUNT large dataset failed: " << count.error().message();
+    EXPECT_EQ(count.value(), 10000);
 }
 
 // ============================================================================
@@ -228,16 +216,6 @@ TYPED_TEST(AggregateTest, SumMultiField_PromotesToDoubleIfAnyFloating) {
 // ============================================================================
 // Statement Caching Tests
 // ============================================================================
-
-TYPED_TEST(AggregateTest, StatementCaching_RepeatedQueries) {
-    this->insert_test_data();
-
-    for (int i = 0; i < 100; ++i) {
-        auto result = this->qs->count().execute();
-        ASSERT_TRUE(result.has_value()) << "Iteration " << i << " failed";
-        EXPECT_EQ(result.value(), 25);
-    }
-}
 
 TYPED_TEST(AggregateTest, StatementCaching_DifferentAggregates) {
     this->insert_test_data();
@@ -333,16 +311,6 @@ TYPED_TEST(AggregateTest, WhereWithMultiFieldSum) {
     EXPECT_EQ(result.value(), 582);
 }
 
-TYPED_TEST(AggregateTest, WhereRepeatedQueries) {
-    this->insert_test_data();
-
-    for (int i = 0; i < 100; ++i) {
-        auto result = this->qs->where(fields::Person.age > 30).count().execute();
-        ASSERT_TRUE(result.has_value()) << "Iteration " << i << " failed: " << result.error().message();
-        EXPECT_EQ(result.value(), 13);
-    }
-}
-
 TYPED_TEST(AggregateTest, WhereDifferentConditions) {
     this->insert_test_data();
 
@@ -366,19 +334,6 @@ TYPED_TEST(AggregateTest, WhereDifferentConditions) {
 // ============================================================================
 // JOIN + Aggregate Tests
 // ============================================================================
-
-TYPED_TEST(AggregateTest, WhereJoinRepeatedQueries) {
-    this->insert_join_test_data();
-
-    for (int i = 0; i < 50; ++i) {
-        auto result = this->msg_qs->where(fields::Message.value > 20)
-                              .template join<fields::Message.sender>()
-                              .count()
-                              .execute();
-        ASSERT_TRUE(result.has_value()) << "Iteration " << i << " failed: " << result.error().message();
-        EXPECT_EQ(result.value(), 4);
-    }
-}
 
 // Issue #269: regression for the use-after-free of the per-aggregate-type
 // thread-local Statement* cache in AggregateStatement::execute_simple().

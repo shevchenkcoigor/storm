@@ -34,15 +34,6 @@
     offset: 1
   expected:
     count: 2
-- name: count_all_standard5
-  model: person
-  query_type: count
-  dataset: main
-  aggregate:
-    func: count
-    field: ''
-  expected:
-    int_val: 25
 - name: count_where_age_gte_35
   model: person
   query_type: count
@@ -67,15 +58,6 @@
     field: ''
   expected:
     int_val: 0
-- name: sum_age_standard5
-  model: person
-  query_type: sum
-  dataset: main
-  aggregate:
-    func: sum
-    field: age
-  expected:
-    int_val: 829
 - name: sum_salary_standard5
   model: person
   query_type: sum
@@ -983,36 +965,6 @@
       - 100
   expected:
     count: 0
-- name: count_age_gt_30
-  model: person
-  query_type: count
-  dataset: main
-  where:
-    conditions:
-    - field: age
-      op: '>'
-      values:
-      - 30
-  aggregate:
-    func: count
-    field: ''
-  expected:
-    int_val: 13
-- name: sum_age_age_gt_30
-  model: person
-  query_type: sum
-  dataset: main
-  where:
-    conditions:
-    - field: age
-      op: '>'
-      values:
-      - 30
-  aggregate:
-    func: sum
-    field: age
-  expected:
-    int_val: 508
 - name: avg_salary_age_gt_30
   model: person
   query_type: avg

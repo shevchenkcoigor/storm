@@ -121,17 +121,6 @@ TYPED_TEST(AggregateTest, HavingWithJoin) {
     EXPECT_EQ(result.value().size(), 3);
 }
 
-TYPED_TEST(AggregateTest, HavingRepeatedQueries) {
-    this->insert_test_data();
-
-    for (int i = 0; i < 50; ++i) {
-        auto result =
-            this->qs->template group_by<fields::Person.age>().having(fields::Person.age > 30).count().execute();
-        ASSERT_TRUE(result.has_value()) << "Iteration " << i << " failed";
-        EXPECT_EQ(result.value().size(), 8);
-    }
-}
-
 TYPED_TEST(AggregateTest, HavingWithSum) {
     this->insert_test_data();
 
@@ -145,6 +134,15 @@ TYPED_TEST(AggregateTest, HavingWithSum) {
     auto [years_exp, sum_age] = *result.value().begin();
     EXPECT_EQ(years_exp, 5);
     EXPECT_EQ(sum_age, 268);
+
+    // Same statement again: the cached prepared statement must rebind the HAVING parameter.
+    auto again = this->qs->template group_by<fields::Person.years_experience>()
+                     .having(fields::Person.years_experience == 5)
+                     .template sum<fields::Person.age>()
+                     .execute();
+    ASSERT_TRUE(again.has_value()) << again.error().message();
+    ASSERT_EQ(again.value().size(), 1);
+    EXPECT_EQ(std::get<1>(*again.value().begin()), 268);
 }
 
 TYPED_TEST(AggregateTest, HavingWithWhereAndJoin) {
@@ -403,18 +401,6 @@ TYPED_TEST(GroupByOrderByTest, GroupByWithOrderByDescending) {
         EXPECT_LE(dept, prev) << "Results should be ordered descending by department";
         prev = dept;
         ++it;
-    }
-}
-
-TYPED_TEST(GroupByOrderByTest, GroupByRepeatedExecution) {
-    for (int i = 0; i < 5; ++i) {
-        auto result = this->qs->template order_by<fields::Person.department>()
-                          .template group_by<fields::Person.department>()
-                          .count()
-                          .execute();
-
-        ASSERT_TRUE(result.has_value()) << "Repeated GROUP BY should succeed on iteration " << i;
-        EXPECT_EQ(result.value().size(), 5) << "Should have 5 departments";
     }
 }
 

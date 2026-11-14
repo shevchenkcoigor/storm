@@ -41,17 +41,11 @@ namespace {
             "t3.id WHERE t2.Student_id IN (SELECT id FROM Student)";
 
     TEST_F(FieldsRelationJoin, AutoJunctionM2MJoin) {
-        EXPECT_EQ(
-                student_qs().join<fields::Student.courses>().select().sql(),
-                std::format("SELECT id, name, age FROM Student; {}", STUDENT_Q2)
-        );
-    }
-
-    TEST_F(FieldsRelationJoin, AutoJunctionM2MLeftJoin) {
-        EXPECT_EQ(
-                student_qs().left_join<fields::Student.courses>().select().sql(),
-                std::format("SELECT id, name, age FROM Student; {}", STUDENT_Q2)
-        );
+        // INNER and LEFT render byte-identical SQL: the difference only shows in how the
+        // stitched rows are filtered, not in the two statements.
+        const std::string expected_sql = std::format("SELECT id, name, age FROM Student; {}", STUDENT_Q2);
+        EXPECT_EQ(student_qs().join<fields::Student.courses>().select().sql(), expected_sql);
+        EXPECT_EQ(student_qs().left_join<fields::Student.courses>().select().sql(), expected_sql);
     }
 
     TEST_F(FieldsRelationJoin, ThroughModelM2MJoin) {

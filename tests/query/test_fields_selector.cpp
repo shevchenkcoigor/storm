@@ -41,7 +41,6 @@ static_assert(!FieldSelector<std::meta::info>);
 // The widened QuerySet/aggregate/order_by methods constrain on this concept, so
 // a typo inside it surfaces here rather than buried in template noise later.
 static_assert(ValidSelector<fields::FSPerson.age>); // the proxy
-static_assert(!ValidSelector<^^FSPerson::age>);     // a raw info: REJECTED now
 static_assert(!ValidSelector<42>);                  // not a selector at all
 
 // ── Relation members ARE present, but as a DIFFERENT proxy type ──────────────

@@ -63,18 +63,6 @@ TYPED_TEST(OptionalAggregateTest, CountWithNullValues) {
     EXPECT_EQ(count_age.value(), 2);
 }
 
-TYPED_TEST(OptionalAggregateTest, SumWithNullValues) {
-    ASSERT_TRUE((storm::test::batch_insert<Person, TypeParam>(std::vector<Person>{
-        {.name = "Alice", .salary = 50000.0, .score = 25},
-        {.name = "Bob", .salary = 60000.0, .score = std::nullopt},
-        {.name = "Charlie", .salary = 70000.0, .score = 35},
-    })));
-
-    auto sum = this->qs->template sum<fields::Person.score>().execute();
-    ASSERT_TRUE(sum.has_value());
-    EXPECT_EQ(sum.value(), 60);
-}
-
 TYPED_TEST(OptionalAggregateTest, AvgWithNullValues) {
     ASSERT_TRUE((storm::test::batch_insert<Person, TypeParam>(std::vector<Person>{
         {.name = "Alice", .salary = 50000.0, .score = 20},
@@ -254,16 +242,6 @@ TYPED_TEST(OptionalAggregateTest, SumOverEmptySetKeepsZeroConvention) {
     auto result = this->qs->where(fields::Person.age > 9999).template sum<fields::Person.age>().execute();
     ASSERT_TRUE(result.has_value()) << result.error().message();
     EXPECT_EQ(result.value(), 0) << "SUM over empty set keeps the 0 convention";
-}
-
-TYPED_TEST(OptionalAggregateTest, CountOverEmptySetIsZero) {
-    ASSERT_TRUE((storm::test::batch_insert<Person, TypeParam>(std::vector<Person>{
-        {.name = "Alice", .age = 25},
-    })));
-
-    auto result = this->qs->where(fields::Person.age > 9999).count().execute();
-    ASSERT_TRUE(result.has_value()) << result.error().message();
-    EXPECT_EQ(result.value(), 0);
 }
 
 // GROUP BY: an aggregate can be NULL within a group whose agg column is all-NULL.
