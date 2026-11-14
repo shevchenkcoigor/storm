@@ -282,12 +282,12 @@ TYPED_TEST(M2MBaseTest, M2MJoinSqlMultiFieldOrderByQualifiesAllFields) {
     }
 }
 
-TYPED_TEST(M2MBaseTest, M2MLeftJoinSqlShape) {
-    auto sql = (SelectStatement<Student, TypeParam>{}).all().template left_join<fields::Student.courses>().sql();
-    // Q2 is always an INNER junction⋈related join — LEFT vs INNER is a post-stitch
-    // filter (LEFT keeps zero-relation entities), never an SQL difference.
-    EXPECT_TRUE(sql.contains("SELECT id, name, age FROM Student; ")) << sql;
-    EXPECT_TRUE(sql.contains("FROM Student_Course t2 INNER JOIN Course t3")) << sql;
+TYPED_TEST(M2MBaseTest, LeftJoinEmitsSameSqlAsInnerJoin) {
+    // LEFT vs INNER is a post-stitch filter (LEFT keeps zero-relation entities),
+    // never an SQL difference: Q2 is always an INNER junction⋈related join.
+    auto inner = (SelectStatement<Student, TypeParam>{}).all().template join<fields::Student.courses>().sql();
+    auto left = (SelectStatement<Student, TypeParam>{}).all().template left_join<fields::Student.courses>().sql();
+    EXPECT_EQ(left, inner);
 }
 
 // ============================================================================

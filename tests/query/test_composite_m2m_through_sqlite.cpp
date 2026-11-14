@@ -1,6 +1,5 @@
 #include <gtest/gtest.h>
 #include <meta>
-#include <plf_hive/plf_hive.h> // NOSONAR cpp:S954 — must precede `import std;` (see test_m2m_models.h)
 
 #include "test_db_helpers.h"
 

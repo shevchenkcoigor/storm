@@ -261,8 +261,8 @@ TYPED_TEST(ReverseFKTest, LimitBoundsBaseEntities) {
     EXPECT_EQ(rows->begin()->tasks.size(), 2U);
 }
 
-// Aggregate over the cross-model FK selector: tasks-per-person including zeros.
-TYPED_TEST(ReverseFKTest, LeftJoinAggregateCountIncludesZeroGroups) {
+// COUNT over a LEFT join through the cross-model FK selector: Carol (no tasks) still contributes a row.
+TYPED_TEST(ReverseFKTest, LeftJoinCountIncludesRowForOwnerWithoutTasks) {
     auto total =
         (SelectStatement<RfPerson, TypeParam>{}).all().template left_join<fields::RfTask.assignee>().count().execute();
     ASSERT_TRUE(total.has_value()) << total.error().message();

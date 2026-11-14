@@ -104,6 +104,10 @@ TYPED_TEST_SUITE(FkColumnNameTest, STORM_SPLIT_TYPES, STORM_SPLIT_TYPE_NAMES);
 // The core reproduction: before the fix this emitted `WHERE sender = ?` and
 // failed to prepare ("no such column: sender") on both backends.
 TYPED_TEST(FkColumnNameTest, WhereFkMemberEqualsExecutes) {
+    // The SQL must name the FK column, not the bare member (a regression emitting both would still execute).
+    const auto sql = QuerySet<Message, TypeParam>{}.where(fields::Message.sender == 1).select().sql();
+    EXPECT_TRUE(sql.contains("WHERE sender_id = ?")) << "Emitted SQL: " << sql;
+    EXPECT_FALSE(sql.contains("WHERE sender ")) << "Emitted SQL: " << sql;
     QuerySet<Message, TypeParam> qs;
     auto result = qs.where(fields::Message.sender == this->person_ids_[0]).select().execute();
     ASSERT_TRUE(result.has_value()) << "WHERE == on an FK member failed: " << result.error().message();
@@ -123,15 +127,6 @@ TYPED_TEST(FkColumnNameTest, WhereFkMemberNotEqualsExecutes) {
     for (const auto &m : *result) {
         EXPECT_NE(m.sender.id, this->person_ids_[0]);
     }
-}
-
-TYPED_TEST(FkColumnNameTest, WhereFkMemberSqlNamesFkColumn) {
-    QuerySet<Message, TypeParam> qs;
-    const auto sql = qs.where(fields::Message.sender == 1).select().sql();
-    EXPECT_TRUE(sql.contains("WHERE sender_id = ?")) << "Emitted SQL: " << sql;
-    // Negative half: a regression that emitted BOTH the correct and the bare column would
-    // still pass the positive assertion above.
-    EXPECT_FALSE(sql.contains("WHERE sender ")) << "Emitted SQL: " << sql;
 }
 
 // The remaining comparison/pattern operators share field_name_sv with == above, so they are
@@ -159,6 +154,9 @@ TYPED_TEST(FkColumnNameTest, WhereFkMemberRemainingOperatorsSqlNameFkColumn) {
 // #610: in() on a single-column FK member routes the operand through the target's
 // primary-key type and emits `sender_id IN (?, ?)`.
 TYPED_TEST(FkColumnNameTest, WhereFkMemberInExecutes) {
+    const auto sql = QuerySet<Message, TypeParam>{}.where(fields::Message.sender.in(1, 2)).select().sql();
+    EXPECT_TRUE(sql.contains("WHERE sender_id IN (?, ?)")) << "Emitted SQL: " << sql;
+    EXPECT_FALSE(sql.contains("WHERE sender ")) << "Emitted SQL: " << sql;
     QuerySet<Message, TypeParam> qs;
     auto result = qs.where(fields::Message.sender.in(this->person_ids_[0], this->person_ids_[1])).select().execute();
     ASSERT_TRUE(result.has_value()) << "WHERE IN on an FK member failed: " << result.error().message();
@@ -167,15 +165,6 @@ TYPED_TEST(FkColumnNameTest, WhereFkMemberInExecutes) {
     for (const auto &m : *result) {
         EXPECT_TRUE(m.sender.id == this->person_ids_[0] || m.sender.id == this->person_ids_[1]);
     }
-}
-
-TYPED_TEST(FkColumnNameTest, WhereFkMemberInSqlNamesFkColumn) {
-    QuerySet<Message, TypeParam> qs;
-    const auto sql = qs.where(fields::Message.sender.in(1, 2)).select().sql();
-    EXPECT_TRUE(sql.contains("WHERE sender_id IN (?, ?)")) << "Emitted SQL: " << sql;
-    // Negative half: a regression that emitted BOTH the correct and the bare column would
-    // still pass the positive assertion above (same rationale as the == test's negative half).
-    EXPECT_FALSE(sql.contains("WHERE sender ")) << "Emitted SQL: " << sql;
 }
 
 // #610: make_in_expr must accept an operand WIDER than the FK target's PK type — the natural
@@ -246,6 +235,11 @@ class NullableSenderMessageTest : public StormTestFixture<Person, ConnType, Null
 TYPED_TEST_SUITE(NullableSenderMessageTest, STORM_SPLIT_TYPES, STORM_SPLIT_TYPE_NAMES);
 
 TYPED_TEST(NullableSenderMessageTest, WhereFkMemberIsNullExecutes) {
+    const auto sql = QuerySet<NullableSenderMessage, TypeParam>{}
+                         .where(fields::NullableSenderMessage.sender.is_null())
+                         .select()
+                         .sql();
+    EXPECT_TRUE(sql.contains("WHERE sender_id IS NULL")) << "Emitted SQL: " << sql;
     QuerySet<Person, TypeParam> person_qs;
     Person const alice{.name = "Alice", .age = 30};
     auto alice_result = person_qs.insert(alice).execute();
@@ -270,17 +264,13 @@ TYPED_TEST(NullableSenderMessageTest, WhereFkMemberIsNullExecutes) {
     EXPECT_EQ(not_null_result->begin()->content, "has sender");
 }
 
-TYPED_TEST(NullableSenderMessageTest, WhereFkMemberIsNullSqlNamesFkColumn) {
-    QuerySet<NullableSenderMessage, TypeParam> qs;
-    const auto sql = qs.where(fields::NullableSenderMessage.sender.is_null()).select().sql();
-    EXPECT_TRUE(sql.contains("WHERE sender_id IS NULL")) << "Emitted SQL: " << sql;
-}
-
 // ── ORDER BY on an FK member ────────────────────────────────────────────────
 
 // The core reproduction: before the fix this emitted `ORDER BY sender` and
 // failed to prepare ("no such column: sender") on both backends.
 TYPED_TEST(FkColumnNameTest, OrderByFkMemberExecutes) {
+    const auto sql = QuerySet<Message, TypeParam>{}.template order_by<fields::Message.sender>().select().sql();
+    EXPECT_TRUE(sql.contains("ORDER BY sender_id")) << "Emitted SQL: " << sql;
     QuerySet<Message, TypeParam> qs;
     auto result = qs.template order_by<fields::Message.sender>().select().execute();
     ASSERT_TRUE(result.has_value()) << "ORDER BY on an FK member failed: " << result.error().message();
@@ -327,18 +317,12 @@ TYPED_TEST(FkColumnNameTest, OrderByMixedFkAndPlainMemberExecutes) {
     EXPECT_EQ(it->sender.id, this->person_ids_[0]);
 }
 
-// SQL text: the emitted ORDER BY names sender_id, and nothing spells the bare
-// `sender` as a column. (Execution above is the real gate; this pins the text.)
-TYPED_TEST(FkColumnNameTest, OrderByFkMemberSqlNamesFkColumn) {
-    QuerySet<Message, TypeParam> qs;
-    const auto sql = qs.template order_by<fields::Message.sender>().select().sql();
-    EXPECT_TRUE(sql.contains("ORDER BY sender_id")) << "Emitted SQL: " << sql;
-}
-
 // ── COUNT(DISTINCT <fk>) ────────────────────────────────────────────────────
 
 // Before the fix: "no such column: sender".
 TYPED_TEST(FkColumnNameTest, CountDistinctFkMemberExecutes) {
+    const auto sql = QuerySet<Message, TypeParam>{}.template count_distinct<fields::Message.sender>().sql();
+    EXPECT_TRUE(sql.contains("COUNT(DISTINCT sender_id)")) << "Emitted SQL: " << sql;
     QuerySet<Message, TypeParam> qs;
     auto result = qs.template count_distinct<fields::Message.sender>().execute();
     ASSERT_TRUE(result.has_value()) << "COUNT(DISTINCT fk) failed: " << result.error().message();
@@ -352,12 +336,6 @@ TYPED_TEST(FkColumnNameTest, CountDistinctFkMemberWithWhereExecutes) {
     ASSERT_TRUE(result.has_value()) << "COUNT(DISTINCT fk) + WHERE failed: " << result.error().message();
     // Messages m3 (p2), m4 (p2), m5 (p3) survive → 2 distinct senders.
     EXPECT_EQ(*result, 2);
-}
-
-TYPED_TEST(FkColumnNameTest, CountDistinctFkMemberSqlNamesFkColumn) {
-    QuerySet<Message, TypeParam> qs;
-    const auto sql = qs.template count_distinct<fields::Message.sender>().sql();
-    EXPECT_TRUE(sql.contains("COUNT(DISTINCT sender_id)")) << "Emitted SQL: " << sql;
 }
 
 // ── GROUP BY over an FK member (aggregate_grammar.hpp build_group_fields_sql — the third writer) ───
