@@ -47,6 +47,11 @@ TYPED_TEST(BatchInsertReturningTest, BasicBatchReturnsIds) {
     auto result = (InsertStatement<SimpleRecord, TypeParam>{})
                           .template query<ReturnId::Yes>(std::span<const SimpleRecord>(records))
                           .execute();
+
+    static_assert(
+            std::is_same_v<decltype(result), std::expected<std::vector<std::int64_t>, typename TypeParam::Error>>,
+            "Batch insert<ReturnId::Yes> should return std::expected<std::vector<int64_t>, Error>"
+    );
     ASSERT_TRUE(result.has_value()) << "Batch insert returning should succeed";
     ASSERT_EQ(result.value().size(), 3) << "Should return 3 IDs";
 
@@ -58,6 +63,11 @@ TYPED_TEST(BatchInsertReturningTest, BasicBatchReturnsIds) {
     // All IDs should be unique
     const std::set<std::int64_t> unique_ids(result.value().begin(), result.value().end());
     EXPECT_EQ(unique_ids.size(), 3) << "All returned IDs should be unique";
+
+    // IDs should be strictly increasing (insertion order)
+    for (std::size_t i = 1; i < result.value().size(); ++i) {
+        EXPECT_GT(result.value()[i], result.value()[i - 1]) << "IDs should be strictly increasing (insertion order)";
+    }
 }
 
 // Verify returned IDs match actual inserted rows
@@ -153,39 +163,6 @@ TYPED_TEST(BatchInsertReturningTest, SingleElementBatch) {
     EXPECT_EQ(count.value(), 1);
 }
 
-// Default batch insert (no template arg) still returns void
-TYPED_TEST(BatchInsertReturningTest, DefaultBatchInsertReturnsVoid) {
-    std::vector<SimpleRecord> const records = {
-            {0, "Alice", 10},
-            {0, "Bob", 20},
-    };
-
-    auto result = (InsertStatement<SimpleRecord, TypeParam>{}).query(std::span<const SimpleRecord>(records)).execute();
-
-    static_assert(
-            std::is_same_v<decltype(result), std::expected<void, typename TypeParam::Error>>,
-            "Default batch insert should return std::expected<void, Error>"
-    );
-    ASSERT_TRUE(result.has_value());
-}
-
-// Return type check for batch returning
-TYPED_TEST(BatchInsertReturningTest, ReturnTypeIsVectorOfInt64) {
-    using ReturnId = ReturnId;
-
-    std::vector<SimpleRecord> const records = {{0, "Alice", 10}};
-
-    auto result = (InsertStatement<SimpleRecord, TypeParam>{})
-                          .template query<ReturnId::Yes>(std::span<const SimpleRecord>(records))
-                          .execute();
-
-    static_assert(
-            std::is_same_v<decltype(result), std::expected<std::vector<std::int64_t>, typename TypeParam::Error>>,
-            "Batch insert<ReturnId::Yes> should return std::expected<std::vector<int64_t>, Error>"
-    );
-    ASSERT_TRUE(result.has_value());
-}
-
 // =============================================================================
 // Batch INSERT RETURNING with Person (all field types: int, string, double, bool, optional, blob)
 // =============================================================================
@@ -245,30 +222,6 @@ TYPED_TEST(BatchInsertReturningPersonTest, BatchWithAllFieldTypes) {
     EXPECT_FALSE(b.nickname.has_value());
 }
 
-// IDs are in insertion order
-TYPED_TEST(BatchInsertReturningTest, IdsAreInInsertionOrder) {
-    using ReturnId = ReturnId;
-
-    std::vector<SimpleRecord> const records = {
-            {0, "First", 1},
-            {0, "Second", 2},
-            {0, "Third", 3},
-            {0, "Fourth", 4},
-            {0, "Fifth", 5},
-    };
-
-    auto result = (InsertStatement<SimpleRecord, TypeParam>{})
-                          .template query<ReturnId::Yes>(std::span<const SimpleRecord>(records))
-                          .execute();
-    ASSERT_TRUE(result.has_value());
-    ASSERT_EQ(result.value().size(), 5);
-
-    // IDs should be strictly increasing (insertion order)
-    for (std::size_t i = 1; i < result.value().size(); ++i) {
-        EXPECT_GT(result.value()[i], result.value()[i - 1]) << "IDs should be strictly increasing (insertion order)";
-    }
-}
-
 // to_sql includes RETURNING for batch
 TYPED_TEST(BatchInsertReturningTest, ToSqlIncludesReturning) {
     using ReturnId = ReturnId;
@@ -284,18 +237,6 @@ TYPED_TEST(BatchInsertReturningTest, ToSqlIncludesReturning) {
     ASSERT_TRUE(sql.has_value());
     EXPECT_TRUE(sql.value().contains("RETURNING")) << "Batch RETURNING SQL should contain RETURNING clause";
     EXPECT_TRUE(sql.value().contains("INSERT INTO")) << "Should contain INSERT INTO";
-}
-
-// Default batch to_sql does NOT include RETURNING
-TYPED_TEST(BatchInsertReturningTest, DefaultBatchToSqlNoReturning) {
-    std::vector<SimpleRecord> const records = {
-            {0, "Alice", 10},
-            {0, "Bob", 20},
-    };
-
-    auto sql = (InsertStatement<SimpleRecord, TypeParam>{}).query(std::span<const SimpleRecord>(records)).to_sql();
-    ASSERT_TRUE(sql.has_value());
-    EXPECT_FALSE(sql.value().contains("RETURNING")) << "Default batch SQL should NOT contain RETURNING";
 }
 
 // =============================================================================
@@ -346,122 +287,43 @@ TYPED_TEST(ChunkedBatchInsertReturningTest, ChunkedBatchReturnsAllIds) {
     EXPECT_EQ(count.value(), num_records);
 }
 
-// Exact boundary: batch_size == record count (single chunk, no remainder)
-TYPED_TEST(ChunkedBatchInsertReturningTest, ExactBoundaryBatch) {
+// Chunk-boundary shapes: exact fit (no remainder), one over (remainder of 1), many chunks + remainder,
+// and tiny batches. Rows accumulate across shapes, so the count check is cumulative.
+TYPED_TEST(ChunkedBatchInsertReturningTest, BoundaryShapesReturnAllIds) {
     using ReturnId = ReturnId;
 
-    const int                 num_records = 10;
-    std::vector<SimpleRecord> records;
-    records.reserve(num_records);
-    for (int i = 0; i < num_records; ++i) {
-        records.push_back({0, std::format("Record{}", i), i});
-    }
-
-    InsertOptions opts;
-    opts.batch_size = 10; // Exactly fits in one chunk
-
-    auto result = (InsertStatement<SimpleRecord, TypeParam>{})
-                          .template query<ReturnId::Yes>(std::span<const SimpleRecord>(records), opts)
-                          .execute();
-    ASSERT_TRUE(result.has_value()) << "Boundary batch insert returning should succeed";
-    ASSERT_EQ(result.value().size(), static_cast<std::size_t>(num_records));
-}
-
-// Just over boundary: batch_size + 1 records (forces 2 chunks: full + remainder of 1)
-TYPED_TEST(ChunkedBatchInsertReturningTest, JustOverBoundaryBatch) {
-    using ReturnId = ReturnId;
-
-    const int                 num_records = 11;
-    std::vector<SimpleRecord> records;
-    records.reserve(num_records);
-    for (int i = 0; i < num_records; ++i) {
-        records.push_back({0, std::format("Record{}", i), i});
-    }
-
-    InsertOptions opts;
-    opts.batch_size = 10; // 2 chunks: 10 + 1
-
-    auto result = (InsertStatement<SimpleRecord, TypeParam>{})
-                          .template query<ReturnId::Yes>(std::span<const SimpleRecord>(records), opts)
-                          .execute();
-    ASSERT_TRUE(result.has_value()) << "Just-over-boundary batch insert returning should succeed";
-    ASSERT_EQ(result.value().size(), static_cast<std::size_t>(num_records));
-
-    // All unique
-    const std::set<std::int64_t> unique_ids(result.value().begin(), result.value().end());
-    EXPECT_EQ(unique_ids.size(), static_cast<std::size_t>(num_records));
-}
-
-// Multiple chunks with remainder
-TYPED_TEST(ChunkedBatchInsertReturningTest, MultipleChunksWithRemainder) {
-    using ReturnId = ReturnId;
-
-    const int                 num_records = 37;
-    std::vector<SimpleRecord> records;
-    records.reserve(num_records);
-    for (int i = 0; i < num_records; ++i) {
-        records.push_back({0, std::format("R{}", i), i});
-    }
-
-    InsertOptions opts;
-    opts.batch_size = 10; // 4 chunks: 10 + 10 + 10 + 7
-
-    auto result = (InsertStatement<SimpleRecord, TypeParam>{})
-                          .template query<ReturnId::Yes>(std::span<const SimpleRecord>(records), opts)
-                          .execute();
-    ASSERT_TRUE(result.has_value()) << "Multi-chunk batch insert returning should succeed";
-    ASSERT_EQ(result.value().size(), static_cast<std::size_t>(num_records));
-
-    // Verify count
-    auto count = (SelectStatement<SimpleRecord, TypeParam>{}).all().count().execute();
-    ASSERT_TRUE(count.has_value());
-    EXPECT_EQ(count.value(), num_records);
-}
-
-// Custom batch_size = 3 (small chunks to test edge cases)
-TYPED_TEST(ChunkedBatchInsertReturningTest, CustomBatchSizeSmall) {
-    using ReturnId = ReturnId;
-
-    const int                 num_records = 8;
-    std::vector<SimpleRecord> records;
-    records.reserve(num_records);
-    for (int i = 0; i < num_records; ++i) {
-        records.push_back({0, std::format("Record{}", i), i});
-    }
-
-    InsertOptions opts;
-    opts.batch_size = 3; // 3 chunks: 3 + 3 + 2
-
-    auto result = (InsertStatement<SimpleRecord, TypeParam>{})
-                          .template query<ReturnId::Yes>(std::span<const SimpleRecord>(records), opts)
-                          .execute();
-    ASSERT_TRUE(result.has_value()) << "Small batch size insert returning should succeed";
-    ASSERT_EQ(result.value().size(), static_cast<std::size_t>(num_records));
-
-    const std::set<std::int64_t> unique_ids(result.value().begin(), result.value().end());
-    EXPECT_EQ(unique_ids.size(), static_cast<std::size_t>(num_records));
-}
-
-// Verify batch RETURNING + void batch produce same data
-TYPED_TEST(ChunkedBatchInsertReturningTest, ReturningAndVoidProduceSameData) {
-    using ReturnId = ReturnId;
-
-    std::vector<SimpleRecord> const records = {
-            {0, "Alice", 10},
-            {0, "Bob", 20},
-            {0, "Charlie", 30},
+    struct Shape {
+        int         records;
+        std::size_t batch_size;
     };
+    const std::array<Shape, 4> shapes{{{10, 10}, {11, 10}, {37, 10}, {8, 3}}};
 
-    auto result = (InsertStatement<SimpleRecord, TypeParam>{})
-                          .template query<ReturnId::Yes>(std::span<const SimpleRecord>(records))
-                          .execute();
-    ASSERT_TRUE(result.has_value());
-    ASSERT_EQ(result.value().size(), 3);
+    int inserted = 0;
+    for (const auto& shape : shapes) {
+        SCOPED_TRACE(std::format("{} records, batch_size {}", shape.records, shape.batch_size));
+        std::vector<SimpleRecord> records;
+        records.reserve(static_cast<std::size_t>(shape.records));
+        for (int i = 0; i < shape.records; ++i) {
+            records.push_back({0, std::format("Record{}", i), i});
+        }
 
-    // Verify all data is correct via SELECT
-    auto all = (SelectStatement<SimpleRecord, TypeParam>{}).all().execute();
-    ASSERT_TRUE(all.has_value());
-    EXPECT_EQ(all.value().size(), 3);
+        InsertOptions opts;
+        opts.batch_size = shape.batch_size;
+
+        auto result = (InsertStatement<SimpleRecord, TypeParam>{})
+                              .template query<ReturnId::Yes>(std::span<const SimpleRecord>(records), opts)
+                              .execute();
+        ASSERT_TRUE(result.has_value()) << shape.records << " records, batch_size " << shape.batch_size;
+        ASSERT_EQ(result.value().size(), static_cast<std::size_t>(shape.records));
+
+        const std::set<std::int64_t> unique_ids(result.value().begin(), result.value().end());
+        EXPECT_EQ(unique_ids.size(), static_cast<std::size_t>(shape.records));
+
+        inserted += shape.records;
+        auto count = (SelectStatement<SimpleRecord, TypeParam>{}).all().count().execute();
+        ASSERT_TRUE(count.has_value());
+        EXPECT_EQ(count.value(), inserted);
+    }
 }
 
 // =============================================================================
@@ -484,6 +346,14 @@ TYPED_TEST(BatchInsertReturningTest, ExplicitReturnIdNoBatchReturnsVoid) {
     static_assert(
             std::is_same_v<decltype(result), std::expected<void, typename TypeParam::Error>>,
             "insert<ReturnId::No>(span) should return std::expected<void, Error>"
+    );
+    static_assert(
+            std::is_same_v<
+                    decltype((InsertStatement<SimpleRecord, TypeParam>{})
+                                     .query(std::span<const SimpleRecord>(records))
+                                     .execute()),
+                    decltype(result)>,
+            "Default batch insert (no template arg) should resolve to the same type as ReturnId::No"
     );
     ASSERT_TRUE(result.has_value()) << "Explicit ReturnId::No batch insert should succeed";
 

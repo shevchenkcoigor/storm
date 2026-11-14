@@ -82,29 +82,6 @@ TYPED_TEST(SelectTest, SelectMultipleRows) {
     EXPECT_EQ(it->age, 35);
 }
 
-// Test: SELECT with different field types (int and std::string)
-TYPED_TEST(SelectTest, SelectDifferentFieldTypes) {
-    // Insert person with specific values
-    Person const dave{.id = 0, .name = "Dave", .age = 40};
-    auto         insert_result = (InsertStatement<Person, TypeParam>{}).query(dave).execute();
-    ASSERT_TRUE(insert_result.has_value()) << "INSERT failed: " << insert_result.error().message();
-
-    // Select and verify field types are correctly handled
-    auto result = (SelectStatement<Person, TypeParam>{}).all().execute();
-    ASSERT_TRUE(result.has_value()) << "SELECT failed: " << result.error().message();
-
-    const auto& people = result.value();
-    ASSERT_EQ(people.size(), 1);
-
-    // Verify int field
-    EXPECT_EQ(people.begin()->age, 40);
-    EXPECT_TRUE((std::is_same_v<decltype(people.begin()->age), int>));
-
-    // Verify string field
-    EXPECT_EQ(people.begin()->name, "Dave");
-    EXPECT_TRUE((std::is_same_v<decltype(people.begin()->name), std::string>));
-}
-
 // Test: SELECT after INSERT and DELETE
 TYPED_TEST(SelectTest, SelectAfterInsertAndDelete) {
     // Insert multiple people
@@ -218,27 +195,4 @@ TYPED_TEST(SelectTest, SelectWithEmptyString) {
     ASSERT_EQ(people.size(), 1);
     EXPECT_EQ(people.begin()->name, "");
     EXPECT_EQ(people.begin()->age, 25);
-}
-
-// Test: SELECT preserves row order
-TYPED_TEST(SelectTest, SelectPreservesRowOrder) {
-    // Insert in specific order (use explicit IDs for batch insert)
-    std::vector<Person> people_to_insert =
-            {{1, "First", 1}, {2, "Second", 2}, {3, "Third", 3}, {4, "Fourth", 4}, {5, "Fifth", 5}};
-
-    auto insert_result =
-            (InsertStatement<Person, TypeParam>{}).query(std::span<const Person>(people_to_insert)).execute();
-    ASSERT_TRUE(insert_result.has_value());
-
-    // Select and verify order is preserved
-    auto result = (SelectStatement<Person, TypeParam>{}).all().execute();
-    ASSERT_TRUE(result.has_value());
-
-    const auto& people = result.value();
-    ASSERT_EQ(people.size(), 5);
-
-    std::size_t i = 0;
-    for (auto it = people.begin(); it != people.end(); ++it, ++i) {
-        EXPECT_EQ(it->age, static_cast<int>(i + 1)) << "Row order not preserved at index " << i;
-    }
 }

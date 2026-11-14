@@ -24,10 +24,9 @@ using storm::orm::statements::SelectStatement;
 // dangles. Capacity 1 makes the eviction deterministic: the remainder insert
 // always displaces the full-chunk entry. The use-after-free is reported by ASAN
 // in CI (rule 7); on an unsanitized build it surfaces as a bind/step error on the
-// finalized handle. On SQLite BEGIN/COMMIT also take a cache slot, so capacity 2
-// holds BEGIN plus the full-chunk entry and which one the remainder evicts depends
-// on unordered_map iteration order: capacity 1 is the deterministic guard, the
-// capacity-2 cases only add coverage on this standard library.
+// finalized handle. On SQLite BEGIN/COMMIT also take a cache slot, so at capacity 2
+// which entry the remainder evicts depends on unordered_map iteration order: capacity 1
+// is the only deterministic guard, so it is the only capacity exercised here.
 namespace {
 
     constexpr std::size_t kFullChunk    = 799; // EraseGrammar<Person>::MAX_CHUNK_ROWS (single-column PK)
@@ -93,10 +92,8 @@ INSTANTIATE_TEST_SUITE_P(
         ChunkedEraseCacheEvictionTest,
         ::testing::Values(
                 EvictionCase{.rows = 1000, .cache_capacity = 1},
-                EvictionCase{.rows = 1000, .cache_capacity = 2},
                 EvictionCase{.rows = 2 * kFullChunk, .cache_capacity = 1},
                 EvictionCase{.rows = 1650, .cache_capacity = 1},
-                EvictionCase{.rows = 1650, .cache_capacity = 2},
                 EvictionCase{.rows = 3 * kFullChunk + 3, .cache_capacity = 1}
         ),
         case_name
