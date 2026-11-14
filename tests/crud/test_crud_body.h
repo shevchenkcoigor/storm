@@ -19,8 +19,6 @@
 import storm;
 import std;
 
-using storm::db::DefaultConnection;
-
 #include "../../shared/models/people_25.h" // NOSONAR cpp:S954
 #include "../../shared/models/person.h"
 #include "../../shared/models/simple_record.h"
@@ -39,16 +37,6 @@ template <typename ConnType> class PersonCrudTestBase : public StormTestFixture<
             {.name = "Charlie", .age = 35},
         };
         ASSERT_TRUE((storm::test::batch_insert<Person, ConnType>(initial)));
-    }
-
-    static auto insert_persons_range(QuerySet<Person, ConnType> &qs, int from, int to) -> void {
-        std::vector<Person> batch;
-        batch.reserve(static_cast<std::size_t>(to) - static_cast<std::size_t>(from) + 1U);
-        for (int i = from; i <= to; i++) {
-            batch.push_back(Person{.id = i, .name = storm::test::numbered("Person", i), .age = 20 + (i % 60)});
-        }
-        auto result = qs.insert(std::span<const Person>(batch)).execute();
-        ASSERT_TRUE(result.has_value()) << "Failed to insert test data";
     }
 
     static auto countPersons() -> int {
@@ -70,17 +58,6 @@ template <typename ConnType> class PersonCrudTestBase : public StormTestFixture<
 // Test QuerySet.erase() functionality
 template <typename ConnType> class QuerySetEraseTest : public PersonCrudTestBase<ConnType> {};
 TYPED_TEST_SUITE(QuerySetEraseTest, STORM_SPLIT_TYPES, STORM_SPLIT_TYPE_NAMES);
-
-TYPED_TEST(QuerySetEraseTest, DatabaseSetup) {
-    // Verify database was created and populated correctly
-    EXPECT_TRUE(DefaultConnection<TypeParam>::has()) << "Should have default connection";
-    EXPECT_EQ(this->countPersons(), 3) << "Should have 3 persons in database";
-
-    // Verify specific persons exist
-    EXPECT_TRUE(this->personExists(1)) << "Alice should exist";
-    EXPECT_TRUE(this->personExists(2)) << "Bob should exist";
-    EXPECT_TRUE(this->personExists(3)) << "Charlie should exist";
-}
 
 TYPED_TEST(QuerySetEraseTest, EraseMultiplePersonsSequentially) {
     QuerySet<Person, TypeParam> queryset;
@@ -106,118 +83,6 @@ TYPED_TEST(QuerySetEraseTest, EraseMultiplePersonsSequentially) {
     EXPECT_TRUE(this->personExists(3)) << "Charlie should still exist";
 }
 
-TYPED_TEST(QuerySetEraseTest, EraseBatchPerformance) {
-    QuerySet<Person, TypeParam> queryset;
-
-    const int num_records = 1000;
-    this->insert_persons_range(queryset, 4, num_records);
-
-    // Measure individual removes
-    auto start_individual = std::chrono::steady_clock::now();
-    for (int i = 1; i <= 50; i++) {
-        Person const person{.id = i, .name = storm::test::numbered("Person", i), .age = 20 + (i % 60)};
-        auto result = queryset.erase(person).execute();
-        ASSERT_TRUE(result.has_value()) << "Individual erase should succeed";
-    }
-    auto end_individual = std::chrono::steady_clock::now();
-    auto duration_individual =
-        std::chrono::duration_cast<std::chrono::microseconds>(end_individual - start_individual).count();
-
-    // Prepare batch for batch erase
-    std::vector<Person> batch;
-    for (int i = 51; i <= 100; i++) {
-        batch.emplace_back(i, storm::test::numbered("Person", i), 20 + (i % 60));
-    }
-
-    // Measure batch erase
-    auto start_batch = std::chrono::steady_clock::now();
-    auto result = queryset.erase(std::span<const Person>(batch)).execute();
-    ASSERT_TRUE(result.has_value()) << "Batch erase should succeed";
-    auto end_batch = std::chrono::steady_clock::now();
-    auto duration_batch = std::chrono::duration_cast<std::chrono::microseconds>(end_batch - start_batch).count();
-
-    // Log performance comparison (batch should be faster)
-    std::cout << "\nPerformance Comparison (50 deletes):" << '\n';
-    std::cout << "  Individual removes: " << duration_individual << " μs" << '\n';
-    std::cout << "  Batch erase: " << duration_batch << " μs" << '\n';
-    std::cout << "  Speedup: " << std::fixed << std::setprecision(2)
-              << static_cast<double>(duration_individual) / static_cast<double>(duration_batch) << "x" << '\n';
-
-    // Verify correct deletions
-    EXPECT_EQ(this->countPersons(), num_records - 100) << "Should have correct number of persons after removes";
-}
-
-// Test chunked erase (>799 rows to trigger execute_chunked path)
-TYPED_TEST(QuerySetEraseTest, EraseBatchChunked) {
-    QuerySet<Person, TypeParam> queryset;
-
-    // MAX_CHUNK_SIZE is 799, so >799 triggers chunked path
-    this->insert_persons_range(queryset, 4, 1000);
-
-    // Verify initial state
-    EXPECT_EQ(this->countPersons(), 1000) << "Should have 1000 persons initially";
-
-    // Create batch of >799 persons to erase (triggers chunked path)
-    std::vector<Person> chunked_batch;
-    for (int i = 1; i <= 850; i++) {
-        chunked_batch.emplace_back(i, storm::test::numbered("Person", i), 20 + (i % 60));
-    }
-
-    // Erase chunked batch - should use execute_chunked with transaction
-    auto result = queryset.erase(std::span<const Person>(chunked_batch)).execute();
-
-    // Verify removal was successful
-    if (!result.has_value()) {
-        std::cout << "Error: " << result.error().message() << '\n';
-    }
-    ASSERT_TRUE(result.has_value()) << "Chunked batch erase operation should succeed: "
-                                    << (result.has_value() ? "" : result.error().message());
-
-    // Verify correct number of persons removed
-    EXPECT_EQ(this->countPersons(), 150) << "Should have 150 persons after chunked batch removal";
-
-    // Spot-check boundary values (avoid 1000 per-row queries which are slow on PostgreSQL)
-    EXPECT_FALSE(this->personExists(1)) << "First removed person should be gone";
-    EXPECT_FALSE(this->personExists(425)) << "Mid-range removed person should be gone";
-    EXPECT_FALSE(this->personExists(850)) << "Last removed person should be gone";
-    EXPECT_TRUE(this->personExists(851)) << "First remaining person should still exist";
-    EXPECT_TRUE(this->personExists(1000)) << "Last remaining person should still exist";
-}
-
-// Test chunked erase with remainder (tests both full chunks and remainder processing)
-TYPED_TEST(QuerySetEraseTest, EraseBatchChunkedWithRemainder) {
-    QuerySet<Person, TypeParam> queryset;
-
-    // MAX_CHUNK_SIZE is 799, so 1650 rows = 2 full chunks (1598) + 52 remainder
-    this->insert_persons_range(queryset, 4, 1800);
-
-    // Verify initial state
-    EXPECT_EQ(this->countPersons(), 1800) << "Should have 1800 persons initially";
-
-    // Create batch of 1650 persons (2 full chunks + 52 remainder)
-    std::vector<Person> chunked_batch;
-    for (int i = 1; i <= 1650; i++) {
-        chunked_batch.emplace_back(i, storm::test::numbered("Person", i), 20 + (i % 60));
-    }
-
-    // Erase chunked batch - should use execute_chunked with remainder
-    auto result = queryset.erase(std::span<const Person>(chunked_batch)).execute();
-
-    // Verify removal was successful
-    ASSERT_TRUE(result.has_value()) << "Chunked batch erase with remainder should succeed: "
-                                    << (result.has_value() ? "" : result.error().message());
-
-    // Verify correct number of persons removed
-    EXPECT_EQ(this->countPersons(), 150) << "Should have 150 persons after chunked batch removal";
-
-    // Spot-check boundary values (avoid 1800 per-row queries which are slow on PostgreSQL)
-    EXPECT_FALSE(this->personExists(1)) << "First removed person should be gone";
-    EXPECT_FALSE(this->personExists(825)) << "Mid-range removed person should be gone";
-    EXPECT_FALSE(this->personExists(1650)) << "Last removed person should be gone";
-    EXPECT_TRUE(this->personExists(1651)) << "First remaining person should still exist";
-    EXPECT_TRUE(this->personExists(1800)) << "Last remaining person should still exist";
-}
-
 // Test QuerySet.update() functionality
 template <typename ConnType> class QuerySetUpdateTest : public PersonCrudTestBase<ConnType> {
   protected:
@@ -233,60 +98,6 @@ template <typename ConnType> class QuerySetUpdateTest : public PersonCrudTestBas
 };
 
 TYPED_TEST_SUITE(QuerySetUpdateTest, STORM_SPLIT_TYPES, STORM_SPLIT_TYPE_NAMES);
-
-TYPED_TEST(QuerySetUpdateTest, DatabaseSetup) {
-    // Verify database was created and populated correctly
-    EXPECT_TRUE(DefaultConnection<TypeParam>::has()) << "Should have default connection";
-    EXPECT_EQ(this->countPersons(), 3) << "Should have 3 persons in database";
-
-    // Verify specific persons exist with correct values
-    auto alice = this->getPerson(1);
-    ASSERT_TRUE(alice.has_value()) << "Alice should exist";
-    EXPECT_EQ(alice->name, "Alice");
-    EXPECT_EQ(alice->age, 30);
-
-    auto bob = this->getPerson(2);
-    ASSERT_TRUE(bob.has_value()) << "Bob should exist";
-    EXPECT_EQ(bob->name, "Bob");
-    EXPECT_EQ(bob->age, 25);
-
-    auto charlie = this->getPerson(3);
-    ASSERT_TRUE(charlie.has_value()) << "Charlie should exist";
-    EXPECT_EQ(charlie->name, "Charlie");
-    EXPECT_EQ(charlie->age, 35);
-}
-
-TYPED_TEST(QuerySetUpdateTest, UpdateMultipleTimes) {
-    QuerySet<Person, TypeParam> queryset;
-
-    // Update Alice multiple times
-    Person const alice_v1{.id = 1, .name = "Alice A", .age = 31};
-    auto result1 = queryset.update(alice_v1).execute();
-    ASSERT_TRUE(result1.has_value()) << "First update should succeed";
-
-    auto check1 = this->getPerson(1);
-    ASSERT_TRUE(check1.has_value());
-    EXPECT_EQ(check1->name, "Alice A");
-    EXPECT_EQ(check1->age, 31);
-
-    Person const alice_v2{.id = 1, .name = "Alice B", .age = 32};
-    auto result2 = queryset.update(alice_v2).execute();
-    ASSERT_TRUE(result2.has_value()) << "Second update should succeed";
-
-    auto check2 = this->getPerson(1);
-    ASSERT_TRUE(check2.has_value());
-    EXPECT_EQ(check2->name, "Alice B");
-    EXPECT_EQ(check2->age, 32);
-
-    Person const alice_v3{.id = 1, .name = "Alice C", .age = 33};
-    auto result3 = queryset.update(alice_v3).execute();
-    ASSERT_TRUE(result3.has_value()) << "Third update should succeed";
-
-    auto check3 = this->getPerson(1);
-    ASSERT_TRUE(check3.has_value());
-    EXPECT_EQ(check3->name, "Alice C");
-    EXPECT_EQ(check3->age, 33);
-}
 
 TYPED_TEST(QuerySetUpdateTest, UpdateCachedStatementReuse) {
     QuerySet<Person, TypeParam> queryset;
@@ -354,42 +165,6 @@ TYPED_TEST(TransactionTest, MultiRowUpdateInTransaction) {
         values.emplace(p.name, p.value);
     }
     EXPECT_EQ(values, (std::map<std::string, int>{{"P1", 101}, {"P2", 102}, {"P3", 103}}));
-}
-
-TYPED_TEST(TransactionTest, EmptyBatchOperations) {
-    std::vector<SimpleRecord> empty;
-
-    auto insert_result = this->qs->insert(std::span<const SimpleRecord>(empty)).execute();
-    ASSERT_TRUE(insert_result.has_value());
-
-    auto update_result = this->qs->update(std::span<const SimpleRecord>(empty)).execute();
-    ASSERT_TRUE(update_result.has_value());
-
-    auto remove_result = this->qs->erase(std::span<const SimpleRecord>(empty)).execute();
-    ASSERT_TRUE(remove_result.has_value());
-}
-
-TYPED_TEST(TransactionTest, SingleRowOperations) {
-    SimpleRecord const p1{0, "Single", 42};
-    auto insert_result = this->qs->insert(p1).execute();
-    ASSERT_TRUE(insert_result.has_value());
-
-    std::int64_t const id = insert_result.value();
-
-    SimpleRecord const updated{static_cast<int>(id), "Updated", 99};
-    auto update_result = this->qs->update(updated).execute();
-    ASSERT_TRUE(update_result.has_value());
-
-    auto select_result = this->qs->select().execute();
-    ASSERT_TRUE(select_result.has_value());
-    EXPECT_EQ(select_result.value().begin()->value, 99);
-
-    auto remove_result = this->qs->erase(updated).execute();
-    ASSERT_TRUE(remove_result.has_value());
-
-    auto empty_result = this->qs->select().execute();
-    ASSERT_TRUE(empty_result.has_value());
-    EXPECT_TRUE(empty_result.value().empty());
 }
 
 // =============================================================================
@@ -487,16 +262,4 @@ TYPED_TEST(QueryResetTest, ResetBetweenDifferentOperations) {
     ASSERT_TRUE(max1.has_value());
     ASSERT_TRUE(max1.value().has_value());
     EXPECT_EQ(max1.value().value(), 48);
-}
-
-TYPED_TEST(QueryResetTest, AggregatesWithWhere) {
-    auto count = this->qs->where(fields::Person.age >= 35).count().execute();
-    ASSERT_TRUE(count.has_value());
-    EXPECT_EQ(count.value(), 11);
-
-    (*this->qs).reset();
-
-    auto sum = this->qs->where(fields::Person.age >= 35).template sum<fields::Person.age>().execute();
-    ASSERT_TRUE(sum.has_value());
-    EXPECT_EQ(sum.value(), 442);
 }

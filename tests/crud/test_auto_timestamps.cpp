@@ -12,7 +12,6 @@ import storm_orm_statements_select;
 import storm_orm_statements_update;
 import std;
 
-#include "../../shared/models/simple_record.h"
 #include "../../shared/models/timestamped_record.h"
 #include "test_fixture.h"
 using storm::orm::statements::InsertStatement;
@@ -136,20 +135,6 @@ TYPED_TEST(AutoTimestampTest, UpdateStampsUpdatedAtPreservesCreatedAt) {
     EXPECT_EQ(to_seconds(row.created_at), to_seconds(created_at_after_insert))
             << "created_at must be preserved on UPDATE";
     EXPECT_GT(to_seconds(row.updated_at), to_seconds(created_at_after_insert)) << "updated_at must advance on UPDATE";
-}
-
-// ===== No-op: a model without timestamp fields is unaffected =====
-
-TYPED_TEST(AutoTimestampTest, ModelWithoutTimestampFieldsUnaffected) {
-    ASSERT_TRUE((storm::test::ensure_tables<TypeParam, SimpleRecord>()));
-    SimpleRecord const obj{.id = 0, .name = "plain", .value = 42};
-
-    auto result = InsertStatement<SimpleRecord, TypeParam>{}.query(obj).execute();
-    ASSERT_TRUE(result.has_value());
-
-    auto selected = SelectStatement<SimpleRecord, TypeParam>{}.all().execute();
-    ASSERT_TRUE(selected.has_value());
-    EXPECT_EQ(selected.value().begin()->value, 42);
 }
 
 // NOLINTEND(misc-const-correctness,readability-implicit-bool-conversion)

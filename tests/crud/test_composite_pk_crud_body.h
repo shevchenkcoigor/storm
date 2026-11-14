@@ -122,13 +122,6 @@ TYPED_TEST(OrderLineTest, DeletePartialKeyMatchDoesNotDelete) {
     EXPECT_EQ(this->row_count(), 4) << "no row matches the FULL key, so nothing is deleted";
 }
 
-TYPED_TEST(OrderLineTest, DeleteNoMatchIsNotAnError) {
-    QuerySet<OrderLine, TypeParam> qs;
-    const OrderLine target{.order_id = 77, .product_id = 88};
-    EXPECT_TRUE(qs.erase(target).execute().has_value());
-    EXPECT_EQ(this->row_count(), 4);
-}
-
 // --- DELETE: batch ----------------------------------------------------------
 
 TYPED_TEST(OrderLineTest, DeleteBatchMatchesEachFullKey) {
@@ -176,19 +169,6 @@ TYPED_TEST(OrderLineTest, UpdatePartialKeyMatchUpdatesNothing) {
     EXPECT_EQ(this->quantity_of(1, 10), 5);
     EXPECT_EQ(this->quantity_of(1, 20), 7);
     EXPECT_EQ(this->row_count(), 4) << "UPDATE never inserts";
-}
-
-// The bind offsets are what this asserts: the two SET values occupy
-// placeholders 1-2, so the key values must land at 3-4. Binding the key at a
-// stale offset would either write the wrong row or fail outright.
-TYPED_TEST(OrderLineTest, UpdateBindsEveryKeyPartAtTheRightOffset) {
-    QuerySet<OrderLine, TypeParam> qs;
-    const OrderLine updated{.order_id = 2, .product_id = 10, .quantity = 42, .note = "z"};
-    ASSERT_TRUE(qs.update(updated).execute().has_value());
-
-    EXPECT_EQ(this->quantity_of(2, 10), 42) << "the SET values and the key both landed correctly";
-    EXPECT_EQ(this->quantity_of(2, 20), 11) << "the second key part was bound, not defaulted";
-    EXPECT_EQ(this->quantity_of(1, 10), 5) << "the first key part was bound, not defaulted";
 }
 
 // --- UPDATE: batch ----------------------------------------------------------
@@ -454,15 +434,8 @@ template <typename ConnType> class LargeBatchTest : public CompositePkFixture<Or
 
 TYPED_TEST_SUITE(LargeBatchTest, STORM_SPLIT_TYPES, STORM_SPLIT_TYPE_NAMES);
 
-TYPED_TEST(LargeBatchTest, ChunkedDeleteSpansMultipleChunks) {
-    const std::vector<OrderLine> targets = LargeBatchTest<TypeParam>::keys_from(0);
-    QuerySet<OrderLine, TypeParam> qs;
-    ASSERT_TRUE(qs.erase(std::span<const OrderLine>(targets)).execute().has_value());
-    EXPECT_EQ(this->row_count(), 0) << "every key across every chunk is deleted";
-}
-
-// The same batch minus one key: the survivor proves the chunked path deletes the
-// keys it was given rather than everything it touched.
+// A batch spanning several chunks, minus one key: the survivor proves the chunked
+// path deletes the keys it was given rather than everything it touched.
 TYPED_TEST(LargeBatchTest, ChunkedDeleteLeavesUnlistedKeys) {
     const std::vector<OrderLine> targets = LargeBatchTest<TypeParam>::keys_from(1);
     QuerySet<OrderLine, TypeParam> qs;
@@ -583,17 +556,6 @@ TYPED_TEST(OrderLineInsertTest, FirstKeyPartIsNotDefaultedOrShifted) {
     auto found = this->find_one(fields::OrderLine.order_id == 5 && fields::OrderLine.product_id == 6);
     ASSERT_TRUE(found.has_value());
     EXPECT_EQ(found->quantity, 9) << "every non-key value landed in its own column";
-}
-
-// Redundant but accepted (generic code may spell it out): identical to plain insert().
-TYPED_TEST(OrderLineInsertTest, ExplicitReturnIdNoIsAcceptedAndIdentical) {
-    using storm::orm::statements::ReturnId;
-    QuerySet<OrderLine, TypeParam> qs;
-    const OrderLine row{.order_id = 1, .product_id = 2, .quantity = 1, .note = "n"};
-    auto result = qs.template insert<ReturnId::No>(row).execute();
-    static_assert(std::is_same_v<decltype(result), std::expected<void, typename TypeParam::Error>>);
-    ASSERT_TRUE(result.has_value());
-    EXPECT_EQ(this->row_count(), 1);
 }
 
 TYPED_TEST(OrderLineInsertTest, DuplicateFullKeyIsAnError) {

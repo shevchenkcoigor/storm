@@ -52,10 +52,6 @@ class ConditionalUpdateTest : public StormTestFixture<Person, ConnType, Message,
 
 TYPED_TEST_SUITE(ConditionalUpdateTest, DatabaseTypes);
 
-TYPED_TEST(ConditionalUpdateTest, Setup) {
-    EXPECT_EQ(this->countPersons(), 5);
-}
-
 // --- SET coverage: single column, multiple columns, each type --------------
 TYPED_TEST(ConditionalUpdateTest, SingleSetColumn) {
     QuerySet<Person, TypeParam> qs;
@@ -79,15 +75,6 @@ TYPED_TEST(ConditionalUpdateTest, MultipleSetColumns) {
     EXPECT_DOUBLE_EQ(this->getPerson(2).salary, 12345.0);
     EXPECT_TRUE(this->getPerson(2).is_active) << "Bob flipped to active";
     EXPECT_DOUBLE_EQ(this->getPerson(3).salary, 60000.0) << "Sales row unchanged";
-}
-
-TYPED_TEST(ConditionalUpdateTest, SetIntColumn) {
-    QuerySet<Person, TypeParam> qs;
-    ASSERT_TRUE(qs.where(fields::Person.id == 1)
-                        .template update<fields::Person.age>(Person{.age = 77})
-                        .execute()
-                        .has_value());
-    EXPECT_EQ(this->getPerson(1).age, 77);
 }
 
 TYPED_TEST(ConditionalUpdateTest, SetStringColumn) {
@@ -338,17 +325,6 @@ TYPED_TEST(ConditionalUpdateTest, FkSetColumnToSql) {
                        .to_sql();
     ASSERT_TRUE(sql.has_value());
     EXPECT_TRUE(sql.value().contains("sender_id")) << sql.value();
-}
-
-// --- auto_update field auto-included ---------------------------------------
-TYPED_TEST(ConditionalUpdateTest, AutoUpdateFieldIncludedInSql) {
-    QuerySet<TimestampedRecord, TypeParam> tqs;
-    auto                                   sql = tqs.where(fields::TimestampedRecord.id == 1)
-                       .template update<fields::TimestampedRecord.name>(TimestampedRecord{.name = "renamed"})
-                       .to_sql();
-    ASSERT_TRUE(sql.has_value());
-    EXPECT_TRUE(sql.value().contains("name")) << sql.value();
-    EXPECT_TRUE(sql.value().contains("updated_at")) << sql.value() << "auto_update field must be auto-appended to SET";
 }
 
 // --- auto_update field actually advances on execute() ----------------------

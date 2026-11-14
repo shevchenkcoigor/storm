@@ -30,37 +30,6 @@ template <typename ConnType> class InsertNoReturnTest : public StormTestFixture<
 
 TYPED_TEST_SUITE(InsertNoReturnTest, DatabaseTypes);
 
-TYPED_TEST(InsertNoReturnTest, SingleInsertNoReturnSucceeds) {
-    using ReturnId = ReturnId;
-
-    Person const alice{.name = "Alice", .age = 30};
-    auto         result = (InsertStatement<Person, TypeParam>{}).template query<ReturnId::No>(alice).execute();
-
-    static_assert(
-            std::is_same_v<decltype(result), std::expected<void, typename TypeParam::Error>>,
-            "ReturnId::No should return std::expected<void, Error>"
-    );
-    ASSERT_TRUE(result.has_value()) << "insert<ReturnId::No> should succeed";
-
-    auto count = (SelectStatement<Person, TypeParam>{}).all().count().execute();
-    ASSERT_TRUE(count.has_value());
-    EXPECT_EQ(count.value(), 1) << "Should have 1 row after insert";
-}
-
-TYPED_TEST(InsertNoReturnTest, SingleInsertYesReturnsId) {
-    using ReturnId = ReturnId;
-
-    Person const alice{.name = "Alice", .age = 30};
-    auto         result = (InsertStatement<Person, TypeParam>{}).template query<ReturnId::Yes>(alice).execute();
-
-    static_assert(
-            std::is_same_v<decltype(result), std::expected<std::int64_t, typename TypeParam::Error>>,
-            "ReturnId::Yes should return std::expected<int64_t, Error>"
-    );
-    ASSERT_TRUE(result.has_value());
-    EXPECT_GT(result.value(), 0) << "Should return a valid ID";
-}
-
 TYPED_TEST(InsertNoReturnTest, DefaultInsertReturnsId) {
     Person const alice{.name = "Alice", .age = 30};
     auto         result = (InsertStatement<Person, TypeParam>{}).query(alice).execute();
@@ -78,6 +47,11 @@ TYPED_TEST(InsertNoReturnTest, InsertNoReturnDataIntegrity) {
 
     Person const alice{.name = "Alice", .age = 30, .salary = 75000.0, .is_active = true, .department = "Engineering"};
     auto         result = (InsertStatement<Person, TypeParam>{}).template query<ReturnId::No>(alice).execute();
+
+    static_assert(
+            std::is_same_v<decltype(result), std::expected<void, typename TypeParam::Error>>,
+            "ReturnId::No should return std::expected<void, Error>"
+    );
     ASSERT_TRUE(result.has_value());
 
     auto rows = (SelectStatement<Person, TypeParam>{}).all().execute();

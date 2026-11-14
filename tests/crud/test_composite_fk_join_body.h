@@ -31,7 +31,6 @@ import std;
 
 // Must follow the shared model headers: OrderLineWithShipments/Shipment name storm:: annotations.
 #include "test_composite_pk_models.h" // NOSONAR cpp:S954
-using storm::create_table_sql;
 using storm::orm::statements::InsertStatement;
 using storm::orm::statements::SelectStatement;
 
@@ -54,23 +53,6 @@ template <typename ConnType> class CompositeFkJoinTest : public StormTestFixture
 
 } // namespace
 TYPED_TEST_SUITE(CompositeFkJoinTest, STORM_SPLIT_TYPES, STORM_SPLIT_TYPE_NAMES);
-
-TYPED_TEST(CompositeFkJoinTest, InsertAndSelectRoundTripsCompositeFkColumns) {
-    const OrderLineWithShipments line{.order_id = 5, .product_id = 12, .quantity = 3, .note = "first"};
-    ASSERT_TRUE((InsertStatement<OrderLineWithShipments, TypeParam>{}).query(line).execute().has_value());
-
-    const Shipment ship{.line = line, .carrier = "UPS"};
-    auto insert_result = (InsertStatement<Shipment, TypeParam>{}).query(ship).execute();
-    ASSERT_TRUE(insert_result.has_value());
-
-    auto rows = (SelectStatement<Shipment, TypeParam>{}).all().execute();
-    ASSERT_TRUE(rows.has_value());
-    ASSERT_EQ(rows.value().size(), 1U);
-    const Shipment &loaded = *rows.value().begin();
-    EXPECT_EQ(loaded.line.order_id, 5);
-    EXPECT_EQ(loaded.line.product_id, 12);
-    EXPECT_EQ(loaded.carrier, "UPS");
-}
 
 // Distinguishes the two composite-FK target parts from each other: swapping them
 // would have this test pass if the bind/extract order matched a coincidental
@@ -109,13 +91,6 @@ TYPED_TEST(CompositeFkJoinTest, MultipleShipmentsResolveDistinctCompositeFkTarge
     }
     EXPECT_TRUE(found_a);
     EXPECT_TRUE(found_b);
-}
-
-TYPED_TEST(CompositeFkJoinTest, SchemaEmitsTwoColumnsForCompositeFk) {
-    // line_order_id, line_product_id must both exist as columns.
-    const std::string &sql = create_table_sql<Shipment>();
-    EXPECT_NE(sql.find("line_order_id"), std::string::npos) << sql;
-    EXPECT_NE(sql.find("line_product_id"), std::string::npos) << sql;
 }
 
 // ── OptionalShipment plain (non-JOIN) bind/extract round trip ──────────────

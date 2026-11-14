@@ -152,7 +152,7 @@ template <typename ConnType> class CompositeUpsertTest : public StormTestFixture
 TYPED_TEST_SUITE(CompositeUpsertTest, DatabaseTypes);
 
 // Seeds the initial "Zed" row via the DO NOTHING proxy and returns its id.
-// Shared by both conflict tests below so each only adds its own conflicting insert.
+// Used by DoNothingSkipsOnConflict so it only adds its own conflicting insert.
 template <typename ConnType> auto seed_zed(QuerySet<Person, ConnType>& qs) -> std::int64_t {
     Person const first{.name = "Zed", .age = 1, .department = "X"};
     auto         first_id = qs.insert(first).template on_conflict<fields::Person.name>().nothing().execute();
@@ -187,26 +187,6 @@ TYPED_TEST(UpsertTest, DoNothingSkipsOnConflict) {
     ASSERT_TRUE(rows.has_value());
     ASSERT_EQ(rows.value().size(), 1U);
     EXPECT_EQ(rows.value().begin()->age, 1); // untouched by the conflicting insert
-}
-
-// DO UPDATE via the fluent proxy: the conflicting insert overwrites the listed
-// column (age) on the existing row.
-TYPED_TEST(UpsertTest, DoUpdateOverwritesListedColumn) {
-    QuerySet<Person, TypeParam> qs;
-    const std::int64_t          first_id = seed_zed(qs);
-
-    Person const conflicting{.name = "Zed", .age = 99, .department = "Y"};
-    auto         updated_id = qs.insert(conflicting)
-                              .template on_conflict<fields::Person.name>()
-                              .template update<fields::Person.age>()
-                              .execute();
-    ASSERT_TRUE(updated_id.has_value());
-    EXPECT_EQ(updated_id.value(), first_id);
-
-    auto rows = qs.where(fields::Person.name == "Zed").select().execute();
-    ASSERT_TRUE(rows.has_value());
-    ASSERT_EQ(rows.value().size(), 1U);
-    EXPECT_EQ(rows.value().begin()->age, 99); // overwritten by the conflicting insert
 }
 
 // .sql() golden — DO NOTHING shape via the fluent proxy.

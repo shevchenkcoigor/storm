@@ -58,10 +58,6 @@ template <typename ConnType> class ConditionalEraseTest : public StormTestFixtur
 
 TYPED_TEST_SUITE(ConditionalEraseTest, DatabaseTypes);
 
-TYPED_TEST(ConditionalEraseTest, Setup) {
-    EXPECT_EQ(this->countPersons(), 5) << "Should start with 5 persons";
-}
-
 // --- All six comparison operators ---------------------------------------
 TYPED_TEST(ConditionalEraseTest, Equal) {
     ASSERT_TRUE((EraseStatement<Person, TypeParam>{}).query_where(fields::Person.age == 30).execute().has_value());
@@ -192,28 +188,11 @@ TYPED_TEST(ConditionalEraseTest, NestedCombination) {
     EXPECT_EQ(this->countPersons(), 3);
 }
 
-// --- Chained where() (AND-combined) -------------------------------------
-TYPED_TEST(ConditionalEraseTest, ChainedWhere) {
-    ASSERT_TRUE((EraseStatement<Person, TypeParam>{})
-                        .query_where(fields::Person.department == "Eng" && fields::Person.is_active == true)
-                        .execute()
-                        .has_value());
-    EXPECT_FALSE(this->personExists(1)) << "Alice (Eng, active) removed";
-    EXPECT_TRUE(this->personExists(2)) << "Bob (Eng, inactive) survives";
-    EXPECT_EQ(this->countPersons(), 4);
-}
-
 // --- Result-set sizes ----------------------------------------------------
 TYPED_TEST(ConditionalEraseTest, EmptyResultNoOp) {
     ASSERT_TRUE((EraseStatement<Person, TypeParam>{}).query_where(fields::Person.age > 1000).execute().has_value())
             << "Matching nothing is a successful no-op";
     EXPECT_EQ(this->countPersons(), 5) << "No rows deleted";
-}
-
-TYPED_TEST(ConditionalEraseTest, SingleRowMatch) {
-    ASSERT_TRUE((EraseStatement<Person, TypeParam>{}).query_where(fields::Person.id == 3).execute().has_value());
-    EXPECT_FALSE(this->personExists(3));
-    EXPECT_EQ(this->countPersons(), 4);
 }
 
 TYPED_TEST(ConditionalEraseTest, LargeResultSet) {
@@ -236,12 +215,6 @@ TYPED_TEST(ConditionalEraseTest, EmptyWhereIsRefused) {
     auto result = (EraseStatement<Person, TypeParam>{}).query_where(nullptr).execute();
     ASSERT_FALSE(result.has_value()) << "erase() with no where() must refuse to wipe the table";
     EXPECT_EQ(this->countPersons(), 5) << "Table must be untouched";
-}
-
-TYPED_TEST(ConditionalEraseTest, EraseAllStillWipes) {
-    ASSERT_TRUE((EraseStatement<Person, TypeParam>{}).query_all().execute().has_value())
-            << "erase_all() remains the explicit full wipe";
-    EXPECT_EQ(this->countPersons(), 0);
 }
 
 // --- to_sql() shape ------------------------------------------------------

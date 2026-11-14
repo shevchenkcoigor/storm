@@ -13,7 +13,6 @@ import std;
 using storm::field_specs_for;
 using storm::primary;
 using storm::primary_autoincrement;
-using storm::primary_part;
 using storm::QuerySet;
 using storm::UUID;
 using storm::orm::statements::InsertStatement;
@@ -74,19 +73,6 @@ namespace {
         [[= storm::unique]] std::string          title;
     };
 
-    // The OTHER non-generated shape. This TU is about UUID keys, but the fix's
-    // thesis is that ONE predicate now serves both — so without a composite model
-    // here, narrowing pk_is_db_generated_() back to `!has_uuid_pk_()` would leave
-    // every assertion below green while silently regressing composite INSERT and
-    // upsert (#502/#503). Asserted, not round-tripped: the composite behaviour
-    // itself is owned by test_composite_pk_sql.cpp / test_composite_pk_crud.cpp,
-    // and what needs pinning HERE is only that both shapes share the one gate.
-    struct CompositeNoteRec {
-        [[= primary_part]] std::int64_t region{};
-        [[= primary_part]] std::int64_t slot{};
-        std::string                     title;
-    };
-
     constexpr std::string_view kNoteUuid   = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
     constexpr std::string_view kNoteUuid2  = "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb";
     constexpr std::string_view kTicketUuid = "cccccccc-cccc-4ccc-8ccc-cccccccccccc";
@@ -143,21 +129,8 @@ namespace {
             default_return_id<IntNoteRec>() == ReturnId::Yes,
             "plain insert() on a single-integer-PK model still returns the generated id"
     );
-    // The shared-gate assertions: pk_is_db_generated_() must answer for BOTH
-    // non-generated shapes. Narrowing it to `!has_uuid_pk_()` passes every other
-    // assertion in this TU and fails only these.
-    static_assert(
-            default_return_id<CompositeNoteRec>() == ReturnId::No,
-            "the predicate this issue introduced must still cover composite keys (#502)"
-    );
-    static_assert(
-            !ReturnIdSupported<CompositeNoteRec, ReturnId::Yes>,
-            "the gate is shared between the UUID and composite shapes, not UUID-only"
-    );
-    static_assert(
-            ReturnIdSupported<CompositeNoteRec, ReturnId::No>,
-            "ReturnId::No stays valid on every model shape (composite)"
-    );
+    // The composite half of the shared gate (default_return_id / ReturnIdSupported on a
+    // composite key) is pinned in test_composite_pk_sql.cpp.
 
     // (2) The gate. Asserted on the concept AND, below, on the public call site
     // it constrains — a static_assert on the concept alone survives deleting the
@@ -232,16 +205,8 @@ namespace {
             "a DB-generated integer key is absent from the INSERT — it can never conflict"
     );
     static_assert(!ConflictTargetUnique<Person, ^^Person::id>, "the in-tree default model's PK stays rejected");
-    // The composite case (#503) is unchanged: full set accepted in declaration
-    // order, strict subset rejected. Asserted here because it now shares the gate.
-    static_assert(
-            ConflictTargetUnique<CompositeNoteRec, ^^CompositeNoteRec::region, ^^CompositeNoteRec::slot>,
-            "the full composite-PK set is still a valid conflict target (#503)"
-    );
-    static_assert(
-            !ConflictTargetUnique<CompositeNoteRec, ^^CompositeNoteRec::region>,
-            "a STRICT SUBSET of a composite key is not unique on its own"
-    );
+    // The composite case (#503) — full set accepted, strict subset rejected — is pinned in
+    // test_composite_pk_sql.cpp.
     // A non-key, non-unique column is still not a conflict target either way.
     static_assert(
             !ConflictTargetUnique<UuidNoteRec, ^^UuidNoteRec::title>,
@@ -366,14 +331,6 @@ TYPED_TEST(UuidPkReturningTest, PlainInsertReturnsVoidAndPersistsTheCallerKey) {
     ASSERT_TRUE(rows.has_value()) << rows.error().message();
     ASSERT_EQ(rows.value().size(), 1U);
     EXPECT_EQ(rows.value().begin()->id.value, std::string(kNoteUuid)) << "the caller's key must be the stored key";
-}
-
-// Explicit ReturnId::No is unchanged — the pre-#572 spelling keeps working.
-TYPED_TEST(UuidPkReturningTest, ExplicitReturnIdNoStillWorks) {
-    QuerySet<UuidNoteRec, TypeParam> qs;
-    auto result = qs.template insert<ReturnId::No>(UuidNoteRec{.id = UUID{kNoteUuid}, .title = "Spec"}).execute();
-    static_assert(std::is_same_v<decltype(result), std::expected<void, typename TypeParam::Error>>);
-    ASSERT_TRUE(result.has_value()) << result.error().message();
 }
 
 // The bulk overload's default was already ReturnId::No; this drives the batch

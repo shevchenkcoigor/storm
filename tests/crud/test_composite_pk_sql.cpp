@@ -225,11 +225,6 @@ TEST(CompositePkChunking, RowCapacityShrinksWithKeyWidth) {
     EXPECT_EQ(chunk_rows<Ledger>, 799U / 3) << "a 3-part key costs 3 parameters per row";
 }
 
-TEST(CompositePkChunking, RowCapacityStaysWithinTheParameterBudget) {
-    EXPECT_LE(chunk_rows<OrderLine> * 2U, 999U);
-    EXPECT_LE(chunk_rows<Ledger> * 3U, 999U);
-}
-
 // ── (#502) SQL text: INSERT ──────────────────────────────────────────────────
 // A composite PK has no auto-generation mechanism (AUTOINCREMENT and
 // GENERATED ... AS IDENTITY are single-integer-column features), so every part

@@ -19,7 +19,6 @@ import std;
 using storm::create_table_sql;
 using storm::field_specs_for;
 using storm::primary;
-using storm::primary_part;
 using storm::orm::schema::Dialect;
 using storm::orm::statements::InsertStatement;
 using storm::orm::statements::ReturnId;
@@ -65,21 +64,6 @@ namespace {
     struct AutoIdRec {
         [[= primary]] std::int64_t id{};
         std::string                label;
-    };
-
-    // The OTHER non-generated shape. This TU is about caller-assigned integer
-    // keys, but the fix's thesis is that ONE predicate now serves all three
-    // non-generated shapes — so without a composite model here, narrowing
-    // pk_is_db_generated_() back to `!has_caller_assigned_pk_()` would leave
-    // every assertion below green while silently regressing composite INSERT
-    // and upsert (#502/#503). Asserted, not round-tripped: the composite
-    // behaviour itself is owned by test_composite_pk_sql.cpp /
-    // test_composite_pk_crud.cpp, and what needs pinning HERE is only that all
-    // three shapes share the one gate.
-    struct CompositeNoteRec {
-        [[= primary_part]] std::int64_t region{};
-        [[= primary_part]] std::int64_t slot{};
-        std::string                     title;
     };
 
 } // namespace
@@ -129,13 +113,7 @@ namespace {
             default_return_id<AutoIdRec>() == ReturnId::Yes,
             "plain insert() on a single-integer-PK model still returns the generated id"
     );
-    // The shared-gate assertions: pk_is_db_generated_() must answer FALSE for all
-    // three non-generated shapes. Narrowing it to `!has_caller_assigned_pk_()`
-    // passes every other assertion in this TU and fails only these.
-    static_assert(
-            default_return_id<CompositeNoteRec>() == ReturnId::No,
-            "the predicate this issue introduced must still cover composite keys (#502)"
-    );
+    // The composite half of the shared gate is pinned in test_composite_pk_sql.cpp.
 
     // (2) ReturnIdSupported gate.
     static_assert(
@@ -147,10 +125,6 @@ namespace {
     );
     static_assert(ReturnIdSupported<AssignedIdRec, ReturnId::No>, "ReturnId::No stays valid on every model shape");
     static_assert(ReturnIdSupported<AutoIdRec, ReturnId::Yes>, "a single-integer-PK model keeps the RETURNING path");
-    static_assert(
-            !ReturnIdSupported<CompositeNoteRec, ReturnId::Yes>,
-            "the gate is shared between all three non-generated shapes"
-    );
 
     // (3) The gate is WIRED to the public entry points.
     template <typename Model, typename ConnType>
@@ -208,14 +182,15 @@ TEST(CallerAssignedPkSqlTest, AutoIdInsertStillReturnsId) {
 }
 
 // ============================================================================
-// Round-trip: INSERT + SELECT on a live backend
+// Round-trip: INSERT + SELECT on a live backend (the fixture below is shared by
+// the upsert and batch suites further down)
 //
 // Fixture pattern: anchor on Person (for PG schema init), create the AssignedIdRec
 // table from generated DDL in on_setup — same pattern as CompositePkFixture in
 // test_composite_pk_crud.cpp.
 // ============================================================================
 
-template <typename ConnType> class CallerAssignedPkCrudTest : public StormTestFixture<Person, ConnType> {
+template <typename ConnType> class AssignedIdTableFixture : public StormTestFixture<Person, ConnType> {
   public:
     auto on_setup(const std::shared_ptr<ConnType>& conn) -> void override {
         const std::string ddl = storm::test::is_postgresql<ConnType>()
@@ -224,6 +199,8 @@ template <typename ConnType> class CallerAssignedPkCrudTest : public StormTestFi
         ASSERT_TRUE(conn->execute(ddl).has_value()) << ddl;
     }
 };
+
+template <typename ConnType> class CallerAssignedPkCrudTest : public AssignedIdTableFixture<ConnType> {};
 
 TYPED_TEST_SUITE(CallerAssignedPkCrudTest, DatabaseTypes);
 
@@ -273,15 +250,7 @@ TYPED_TEST(CallerAssignedPkCrudTest, SecondInsertWithSameIdIsDuplicateError) {
 // it IS present in the INSERT — a duplicate really collides.
 // ============================================================================
 
-template <typename ConnType> class CallerAssignedPkUpsertTest : public StormTestFixture<Person, ConnType> {
-  public:
-    auto on_setup(const std::shared_ptr<ConnType>& conn) -> void override {
-        const std::string ddl = storm::test::is_postgresql<ConnType>()
-                                        ? create_table_sql<AssignedIdRec, Dialect::PostgreSQL>()
-                                        : create_table_sql<AssignedIdRec>();
-        ASSERT_TRUE(conn->execute(ddl).has_value()) << ddl;
-    }
-};
+template <typename ConnType> class CallerAssignedPkUpsertTest : public AssignedIdTableFixture<ConnType> {};
 
 TYPED_TEST_SUITE(CallerAssignedPkUpsertTest, DatabaseTypes);
 
@@ -333,15 +302,7 @@ TYPED_TEST(CallerAssignedPkUpsertTest, DoUpdateOverwritesOnDuplicateKey) {
 // Batch insert
 // ============================================================================
 
-template <typename ConnType> class CallerAssignedPkBatchTest : public StormTestFixture<Person, ConnType> {
-  public:
-    auto on_setup(const std::shared_ptr<ConnType>& conn) -> void override {
-        const std::string ddl = storm::test::is_postgresql<ConnType>()
-                                        ? create_table_sql<AssignedIdRec, Dialect::PostgreSQL>()
-                                        : create_table_sql<AssignedIdRec>();
-        ASSERT_TRUE(conn->execute(ddl).has_value()) << ddl;
-    }
-};
+template <typename ConnType> class CallerAssignedPkBatchTest : public AssignedIdTableFixture<ConnType> {};
 
 TYPED_TEST_SUITE(CallerAssignedPkBatchTest, DatabaseTypes);
 
