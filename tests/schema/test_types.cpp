@@ -269,6 +269,60 @@ TYPED_TEST(NullTextExtractionTest, NullTextColumnExtractsAsEmptyString) {
     EXPECT_EQ(it->value, 42);
 }
 
+// ===== NON-ASCII TEXT =====
+
+template <typename ConnType> class UnicodeTextTest : public StormTestFixture<SimpleRecord, ConnType> {
+  public:
+    // Two-, three- and four-byte UTF-8 sequences: accented Latin, typographic punctuation,
+    // and an emoji from outside the Basic Multilingual Plane.
+    static constexpr std::string_view kText =
+            "Alors vous imaginez ma 🐍 surprise, au lever du jour, quand une drôle de petite 🐍 voix m’a réveillé. "
+            "Elle disait: « S’il vous plaît… dessine-moi 🐍 un mouton! »";
+};
+
+TYPED_TEST_SUITE(UnicodeTextTest, DatabaseTypes);
+
+TYPED_TEST(UnicodeTextTest, RoundTripSingleRow) {
+    QuerySet<SimpleRecord, TypeParam> qs;
+    auto inserted = qs.insert(SimpleRecord{.name = std::string{TestFixture::kText}, .value = 1}).execute();
+    ASSERT_TRUE(inserted.has_value()) << inserted.error().message();
+
+    auto result = qs.select().execute();
+    ASSERT_TRUE(result.has_value()) << result.error().message();
+    ASSERT_EQ(result.value().size(), 1);
+    EXPECT_EQ(result.value().begin()->name, TestFixture::kText);
+}
+
+TYPED_TEST(UnicodeTextTest, RoundTripBatch) {
+    QuerySet<SimpleRecord, TypeParam> qs;
+    const std::vector<SimpleRecord>   batch(3, SimpleRecord{.name = std::string{TestFixture::kText}, .value = 1});
+    auto                              inserted = qs.insert(batch).execute();
+    ASSERT_TRUE(inserted.has_value()) << inserted.error().message();
+
+    auto result = qs.select().execute();
+    ASSERT_TRUE(result.has_value()) << result.error().message();
+    ASSERT_EQ(result.value().size(), 3);
+    for (const auto& row : result.value()) {
+        EXPECT_EQ(row.name, TestFixture::kText);
+    }
+}
+
+// The same bytes as a bound WHERE operand select the row they were stored as.
+TYPED_TEST(UnicodeTextTest, FilterByNonAsciiValue) {
+    QuerySet<SimpleRecord, TypeParam> qs;
+    const std::vector<SimpleRecord>   batch{
+              {.name = std::string{TestFixture::kText}, .value = 1},
+              {.name = "plain ascii", .value = 2},
+    };
+    auto inserted = qs.insert(batch).execute();
+    ASSERT_TRUE(inserted.has_value()) << inserted.error().message();
+
+    auto result = qs.where(fields::SimpleRecord.name == std::string{TestFixture::kText}).select().execute();
+    ASSERT_TRUE(result.has_value()) << result.error().message();
+    ASSERT_EQ(result.value().size(), 1);
+    EXPECT_EQ(result.value().begin()->value, 1);
+}
+
 // ===== OPTIONAL TYPES TESTS =====
 
 template <typename ConnType> class OptTypesInsertUpdateTest : public StormTestFixture<Person, ConnType> {};
@@ -1407,6 +1461,68 @@ TYPED_TEST(ChronoDateTest, BatchChronoInsert) {
     auto selected = qs.select().execute();
     ASSERT_TRUE(selected.has_value());
     ASSERT_EQ(selected.value().size(), 3);
+}
+
+namespace {
+
+    // Years on either side of the places date formatting and storage commonly go wrong:
+    // fewer than four digits, the 1752/1753 Gregorian switch, and the 1900 and 1970 epochs.
+    constexpr std::array kHistoricYears{1, 99, 100, 999, 1000, 1752, 1753, 1899, 1969};
+
+    // One row per historic year, with both the date and the datetime column in that year.
+    auto historic_rows() -> std::vector<ExtendedTypes> {
+        std::vector<ExtendedTypes> rows;
+        for (const int historic_year : kHistoricYears) {
+            const year_month_day date{year{historic_year}, month{7}, day{4}};
+            rows.emplace_back(
+                    ExtendedTypes{
+                            .date_field     = date,
+                            .datetime_field = sys_days{date} + hours{13} + minutes{5} + seconds{9},
+                    }
+            );
+        }
+        return rows;
+    }
+
+    // Reads every row back oldest first and compares both temporal columns. Ordering by the date
+    // column also checks that historic dates sort chronologically: kHistoricYears is ascending.
+    template <typename ConnType> auto expect_historic_rows_stored(const std::vector<ExtendedTypes>& expected) -> void {
+        auto selected = QuerySet<ExtendedTypes, ConnType>()
+                                .template order_by<fields::ExtendedTypes.date_field>()
+                                .select()
+                                .execute();
+        ASSERT_TRUE(selected.has_value()) << selected.error().message();
+        ASSERT_EQ(selected.value().size(), expected.size());
+
+        auto stored = selected.value().begin();
+        for (const auto& row : expected) {
+            EXPECT_EQ(stored->date_field, row.date_field) << "year " << static_cast<int>(row.date_field.year());
+            EXPECT_EQ(stored->datetime_field, row.datetime_field) << "year " << static_cast<int>(row.date_field.year());
+            ++stored;
+        }
+    }
+
+} // namespace
+
+TYPED_TEST(ChronoDateTest, HistoricYearsRoundTripBatch) {
+    const auto rows = historic_rows();
+
+    auto result = QuerySet<ExtendedTypes, TypeParam>().insert(rows).execute();
+    ASSERT_TRUE(result.has_value()) << result.error().message();
+
+    expect_historic_rows_stored<TypeParam>(rows);
+}
+
+// The single-row INSERT binds through a different statement than the batch one.
+TYPED_TEST(ChronoDateTest, HistoricYearsRoundTripSingleRow) {
+    const auto rows = historic_rows();
+
+    for (const auto& row : rows) {
+        auto result = QuerySet<ExtendedTypes, TypeParam>().insert(row).execute();
+        ASSERT_TRUE(result.has_value()) << result.error().message();
+    }
+
+    expect_historic_rows_stored<TypeParam>(rows);
 }
 
 // ===== FILESYSTEM PATH TESTS =====

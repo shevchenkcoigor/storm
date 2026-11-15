@@ -476,6 +476,40 @@ TYPED_TEST(DistinctTest, DistinctWithOrderByLimitOffset) {
     EXPECT_EQ(rows(*result), (std::vector<std::string>{"Charlie", "Dave"})); // skipped Alice, Bob
 }
 
+// OFFSET with no LIMIT skips DISTINCT rows, not source rows: six rows hold four distinct ages,
+// and skipping one of those leaves three. An offset applied before deduplication would only
+// drop one of the two 25s and leave all four.
+TYPED_TEST(DistinctTest, DistinctWithOrderByOffsetNoLimit) {
+    seed<TypeParam>(
+            {{0, "Alice", 25}, {0, "Bob", 30}, {0, "Charlie", 25}, {0, "Dave", 35}, {0, "Eve", 30}, {0, "Frank", 40}}
+    );
+
+    auto result = QuerySet<Person, TypeParam>()
+                          .template order_by<fields::Person.age>()
+                          .offset(1)
+                          .template distinct<fields::Person.age>()
+                          .execute();
+    ASSERT_TRUE(result.has_value()) << result.error().message();
+
+    EXPECT_EQ(rows(*result), (std::vector<int>{30, 35, 40})); // skipped 25
+}
+
+// Without ORDER BY the skipped row is unspecified, so only the count and the uniqueness of
+// what is left are fixed.
+TYPED_TEST(DistinctTest, DistinctWithOffsetNoLimitNoOrderBy) {
+    seed<TypeParam>(
+            {{0, "Alice", 25}, {0, "Bob", 30}, {0, "Charlie", 25}, {0, "Dave", 35}, {0, "Eve", 30}, {0, "Frank", 40}}
+    );
+
+    auto result = QuerySet<Person, TypeParam>().offset(1).template distinct<fields::Person.age>().execute();
+    ASSERT_TRUE(result.has_value()) << result.error().message();
+
+    const auto remaining = sorted_rows(*result);
+    EXPECT_EQ(remaining.size(), 3U);
+    EXPECT_EQ(std::ranges::adjacent_find(remaining), remaining.end()) << "duplicate age after DISTINCT + OFFSET";
+    EXPECT_TRUE(std::ranges::includes(std::vector<int>{25, 30, 35, 40}, remaining));
+}
+
 TYPED_TEST(DistinctTest, DistinctWithWhereOrderByLimit) {
     seed<TypeParam>({
             {0, "Alice", 25}, // filtered out by WHERE
