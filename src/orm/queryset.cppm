@@ -254,13 +254,15 @@ export namespace storm {
         // Update single object - returns proxy with .execute() and .to_sql()
         // (SFINAE: only accept T, not span/container)
         template <typename U = T>
-            requires std::same_as<std::remove_cvref_t<U>, T>
+            requires std::same_as<std::remove_cvref_t<U>, T> && orm::statements::ModelHasUpdatableColumn<T>
         [[nodiscard]] auto update(const U& obj [[clang::lifetimebound]]) {
             return orm::statements::BasicUpdateStatement<T, ConnType>(conn()).query(obj);
         }
 
         // Bulk update - returns proxy with .execute() and .to_sql()
-        [[nodiscard]] auto update(std::span<const T> objects [[clang::lifetimebound]]) {
+        [[nodiscard]] auto update(std::span<const T> objects [[clang::lifetimebound]])
+            requires orm::statements::ModelHasUpdatableColumn<T>
+        {
             return orm::statements::BasicUpdateStatement<T, ConnType>(conn()).query(objects);
         }
 

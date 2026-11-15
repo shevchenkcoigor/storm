@@ -422,3 +422,31 @@ itself has a composite key at the `PrimaryKeyType<T>` constraint, before such a 
 instantiate `BaseStatement`. The same constraint rejects an optional FK as a PK part, which is why
 the sibling optional-FK branch a few lines above is untouched too — both guards must move together
 if `valid_fk_key_target` is ever widened (see the warning above `valid_fk_key_target` in `model_concepts.cppm`).
+
+## #744 — composite-FK members on the aggregate and FK-join paths
+
+A composite FK spells one column per target PK part (`<fk>_<part>`), never `<fk>_id`. Four paths
+still assumed the single-column spelling; each was reproduced with a failing test first.
+
+- **Aggregate base/related column lists** (m2m `base_cols_`, m2m `append_complete_cols`, reverse-FK
+  `build_complete_sql`) looped `append_column_name`, so a composite-FK member named a `<fk>_id`
+  column the table does not have — the query failed with "no such column" on both backends. They
+  now go through the composite-aware `append_relation_columns` (`append_base_select_list` in
+  `join_grammar.cppm` for the no-leading-separator form), the same writer the Q2 column block uses.
+- **Plain FK `JoinStatement`, joined target with its own FK member**: the target's select list named
+  the bare member (`t2.line`), and extraction asked `ColumnExtractor` for a whole model struct, so it
+  did not compile. The select list, `column_offsets_` and extraction now share the
+  `append_relation_columns` / `relation_column_offset` / `extract_relation_entity` trio. **The three
+  must move together**: offsets that count members instead of columns silently misread every joined
+  table after a widened block (pinned by `TwoJoinedTargetsTest`).
+- **Whole-row `update()` on a model whose every column is a key part** emitted `SET  WHERE`. It is now
+  a compile-time error (`ModelHasUpdatableColumn<T>`) on `BasicUpdateStatement::query()` and
+  `BasicQuerySet::update()` only — INSERT/SELECT/DELETE on such a pure association table stay legal,
+  so the concept is deliberately not on the `BaseStatement` constraint list.
+- **PostgreSQL placeholder translation** treated a backslash as an escape in every quoted string. It is
+  an escape only inside `E'...'`; with `standard_conforming_strings=on` (the default) `'C:\'` is a
+  complete string. Storm's own generated SQL binds its values, so only raw caller SQL could observe it.
+
+Known, not fixed here: whole-row `UPDATE ... SET` still names a non-key composite-FK member
+`<fk>_id` (`update_grammar.cppm`), and a set-op over a plain-FK-joined operand reads its leading
+columns from the wrong positions (`setop.cppm`).

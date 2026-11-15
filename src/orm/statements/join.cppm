@@ -168,7 +168,8 @@ export namespace storm::orm::statements {
     // referenced object are the same pk-only reconstruction the single-column path
     // produces.
     template <std::meta::info Member, typename Statement>
-    auto extract_relation_fk_part(Statement* stmt, auto& fk_obj, int col) noexcept -> void {
+    __attribute__((always_inline)) auto extract_relation_fk_part(Statement* stmt, auto& fk_obj, int col) noexcept
+            -> void {
         using PartType = std::remove_cvref_t<decltype(fk_obj.[:Member:])>;
         if constexpr (meta::is_fk_field(Member)) {
             constexpr auto part_pk        = BaseStatement<PartType>::primary_key_;
@@ -183,7 +184,7 @@ export namespace storm::orm::statements {
     // columns starting at col, in declaration order (#504 Task 8) — mirrors
     // base.cppm's extract_fk_parts_impl/extract_fk_parts (protected there).
     template <typename RelatedBase, typename FieldType, typename Statement, std::size_t... Is>
-    auto extract_relation_fk_parts_impl(
+    __attribute__((always_inline)) auto extract_relation_fk_parts_impl(
             Statement* stmt, auto& fk_obj, int col, std::index_sequence<Is...> /*unused*/
     ) noexcept -> void {
         constexpr auto members = RelatedBase::template find_fk_primary_key_members<FieldType>();
@@ -191,7 +192,8 @@ export namespace storm::orm::statements {
     }
 
     template <typename RelatedBase, typename FieldType, typename Statement>
-    auto extract_relation_fk_parts(Statement* stmt, auto& fk_obj, int col) noexcept -> void {
+    __attribute__((always_inline)) auto extract_relation_fk_parts(Statement* stmt, auto& fk_obj, int col) noexcept
+            -> void {
         extract_relation_fk_parts_impl<RelatedBase, FieldType>(
                 stmt, fk_obj, col, std::make_index_sequence<RelatedBase::template fk_primary_key_count<FieldType>()>{}
         );
@@ -203,7 +205,8 @@ export namespace storm::orm::statements {
     // the composite-FK helpers); Related = that entity type; Member = its FK data
     // member. N=1 (single-column target) is the exact pre-#504 single-column path.
     template <typename RelatedBase, typename Related, typename FieldType, std::meta::info Member, typename Statement>
-    auto extract_relation_fk_column(Statement* stmt, Related& rel, int col) noexcept -> void {
+    __attribute__((always_inline)) auto extract_relation_fk_column(Statement* stmt, Related& rel, int col) noexcept
+            -> void {
         using InnerFK = utilities::optional_inner_type_t<FieldType>;
         if constexpr (utilities::is_optional_v<FieldType>) {
             if (stmt->is_null(col)) {
@@ -260,7 +263,7 @@ export namespace storm::orm::statements {
     // composite-FK member consumes a BLOCK of columns starting there (mirrors
     // plain-SELECT per-member semantics).
     template <typename RelatedBase, typename Related, int ColOffset, std::size_t I, typename Statement>
-    auto extract_relation_member(Statement* stmt, Related& rel) noexcept -> void {
+    __attribute__((always_inline)) auto extract_relation_member(Statement* stmt, Related& rel) noexcept -> void {
         constexpr auto member = RelatedBase::all_members_[I];
         constexpr int  col    = relation_column_offset<RelatedBase, Related, ColOffset, I>();
         using FieldType       = std::remove_cvref_t<decltype(rel.[:member:])>;
@@ -276,8 +279,8 @@ export namespace storm::orm::statements {
     // relation_column_offset), so this stays a flat sequence of constant-offset
     // reads even when a composite-FK member widens the row.
     template <typename RelatedBase, typename Related, int ColOffset, typename Statement, std::size_t... Is>
-    auto extract_relation_entity(Statement* stmt, Related& rel, std::index_sequence<Is...> /*unused*/) noexcept
-            -> void {
+    __attribute__((always_inline)) auto
+    extract_relation_entity(Statement* stmt, Related& rel, std::index_sequence<Is...> /*unused*/) noexcept -> void {
         ((extract_relation_member<RelatedBase, Related, ColOffset, Is>(stmt, rel)), ...);
     }
 
@@ -529,7 +532,13 @@ export namespace storm::orm::statements {
             std::size_t                        idx            = 0;
 
             [&]<std::size_t... Is>(std::index_sequence<Is...> /*unused*/) {
-                ((offsets[idx++] = current_offset, current_offset += FKBase_at<Is>::field_count_), ...);
+                // Advance by the target's real COLUMN count (#744): a composite-FK member of the
+                // joined target spans several columns, so field_count_ would drift every later offset.
+                ((offsets[idx++] = current_offset,
+                  current_offset += static_cast<std::size_t>(
+                          relation_column_offset<FKBase_at<Is>, FK_type<Is>, 0, FKBase_at<Is>::field_count_>()
+                  )),
+                 ...);
             }(std::make_index_sequence<fk_count_>{});
 
             return offsets;
@@ -635,6 +644,15 @@ export namespace storm::orm::statements {
             }(std::make_index_sequence<fk_count_>{});
         }
 
+        // "t<alias>." for the I-th joined table (alias numbering starts at t2; t1 is the base).
+        template <std::size_t I> static consteval auto alias_prefix() {
+            ConstexprString<utilities::numeric::digits_of(I + 2) + 3> prefix; // "t" + digits + "."
+            prefix.append("t");
+            prefix.append_uint(I + 2);
+            prefix.append(".");
+            return prefix;
+        }
+
         static consteval auto calculate_select_fields_size() -> std::size_t {
             std::size_t total = 0;
 
@@ -646,14 +664,10 @@ export namespace storm::orm::statements {
                 }
             }
 
-            // FK fields — each emits "t<alias>.<field>"; reserve the alias's exact digit width.
+            // FK fields — each joined target's columns, written by append_relation_columns
+            // (#744: an FK member of the target is "<fk>_id" / one column per key part).
             for_each_fk_field([&]<std::size_t I>() {
-                total += 2; // ", "
-                [&]<std::size_t... FieldIs>(std::index_sequence<FieldIs...> /*unused*/) {
-                    ((total += (FieldIs > 0 ? 2 : 0) + 2 + utilities::numeric::digits_of(I + 2) +
-                               std::meta::identifier_of(FKBase_at<I>::all_members_[FieldIs]).size()),
-                     ...);
-                }(std::make_index_sequence<FKBase_at<I>::field_count_>{});
+                total += relation_columns_size<FKBase_at<I>>(alias_prefix<I>().view());
             });
 
             return total + utilities::sql_len::SMALL_BUFFER;
@@ -677,19 +691,9 @@ export namespace storm::orm::statements {
                 }
             }
 
-            // FK fields
+            // FK fields — one ", t<alias>.<col>" per column of each joined target
             for_each_fk_field([&]<std::size_t I>() {
-                result.append(", ");
-                [&]<std::size_t... FieldIs>(std::index_sequence<FieldIs...> /*unused*/) {
-                    bool first_in_table = true;
-                    (((first_in_table ? (void)0 : result.append(", ")),
-                      result.append("t"),
-                      result.append_uint(I + 2),
-                      result.append("."),
-                      result.append(std::meta::identifier_of(FKBase_at<I>::all_members_[FieldIs])),
-                      first_in_table = false),
-                     ...);
-                }(std::make_index_sequence<FKBase_at<I>::field_count_>{});
+                append_relation_columns<FKBase_at<I>>(result, alias_prefix<I>().view());
             });
 
             return result;
@@ -763,49 +767,28 @@ export namespace storm::orm::statements {
             }
         }
 
-        template <std::size_t FKIdx, std::size_t... FieldIs>
-        __attribute__((always_inline)) static void extract_fk_fields_impl(
-                Statement*      stmt,
-                FK_type<FKIdx>& fk_obj,
-                std::size_t     col_offset,
-                std::index_sequence<FieldIs...> /*unused*/
-        ) noexcept {
-            using FKBase = FKBase_at<FKIdx>;
-            ((extract_fk_field_at<FKBase, FieldIs>(stmt, fk_obj, col_offset + FieldIs)), ...);
-        }
-
-        template <typename FKBase, std::size_t FieldIdx>
-        __attribute__((always_inline)) static void
-        extract_fk_field_at(Statement* stmt, auto& fk_obj, int col_idx) noexcept {
-            if constexpr (FieldIdx < FKBase::field_count_) {
-                constexpr auto member = FKBase::all_members_[FieldIdx];
-                using FieldType       = std::remove_cvref_t<decltype(fk_obj.[:member:])>;
-                fk_obj.[:member:]     = ColumnExtractor::template extract_column_value<FieldType>(stmt, col_idx);
-            }
-        }
-
         template <std::size_t Idx>
         __attribute__((always_inline)) static void extract_fk_at(Statement* stmt, T& obj) noexcept {
             constexpr auto FKField            = FKFields...[Idx]; // C++26 pack indexing
             using RawFKFieldType              = std::remove_cvref_t<decltype(obj.[:FKField:])>;
             constexpr std::size_t field_count = FKBase_at<Idx>::field_count_;
+            constexpr int         col_offset  = static_cast<int>(column_offsets_[Idx]);
 
             if constexpr (utilities::is_optional_v<RawFKFieldType>) {
                 // Optional FK: NULL first joined column means no match → set nullopt
-                const auto first_col = static_cast<int>(column_offsets_[Idx]);
-                if (stmt->is_null(first_col)) {
+                if (stmt->is_null(col_offset)) {
                     obj.[:FKField:] = std::nullopt;
                 } else {
                     FK_type<Idx> fk_inner{};
-                    extract_fk_fields_impl<Idx>(
-                            stmt, fk_inner, column_offsets_[Idx], std::make_index_sequence<field_count>{}
+                    extract_relation_entity<FKBase_at<Idx>, FK_type<Idx>, col_offset>(
+                            stmt, fk_inner, std::make_index_sequence<field_count>{}
                     );
                     obj.[:FKField:] = std::move(fk_inner);
                 }
             } else {
                 auto& fk_obj = obj.[:FKField:];
-                extract_fk_fields_impl<Idx>(
-                        stmt, fk_obj, column_offsets_[Idx], std::make_index_sequence<field_count>{}
+                extract_relation_entity<FKBase_at<Idx>, FK_type<Idx>, col_offset>(
+                        stmt, fk_obj, std::make_index_sequence<field_count>{}
                 );
             }
         }
@@ -1011,27 +994,18 @@ export namespace storm::orm::statements {
         // junction alias 2+2i, related alias 3+2i (relation 0 keeps t2/t3, so the
         // single-relation text is unchanged).
 
-        // base_cols_: "SELECT t1.<c1>, t1.<c2>[_id], …" — base columns only.
+        // base_cols_: "SELECT t1.<c1>, t1.<c2>[_id], …" — base columns only. Written by
+        // append_base_select_list, which expands a composite-FK member to one
+        // "t1.<fk>_<part>" per target PK part (#744) rather than a "<fk>_id" column the
+        // table does not have.
         static consteval auto calculate_base_cols_size() -> std::size_t {
-            std::size_t total = 7; // "SELECT "
-            for (std::size_t i = 0; i < Base::field_count_; ++i) {
-                total += 2 + 3 + std::meta::identifier_of(Base::all_members_[i]).size() + 3;
-            }
-            return total + utilities::sql_len::SMALL_BUFFER;
+            return 7 + base_select_list_size<Base>(join_base_alias_prefix); // "SELECT " + list
         }
 
         static consteval auto build_base_cols() {
-            ConstexprString<calculate_base_cols_size()> result;
+            ConstexprString<calculate_base_cols_size() + 1> result; // +1: NUL terminator
             result.append("SELECT ");
-            bool first = true;
-            for (std::size_t i = 0; i < Base::field_count_; ++i) {
-                if (!first) {
-                    result.append(", ");
-                }
-                result.append(join_base_alias_prefix);
-                meta::append_column_name(result, Base::all_members_[i]); // #422 — emits FK "_id"
-                first = false;
-            }
+            append_base_select_list<Base>(result, join_base_alias_prefix);
             return result;
         }
 
@@ -1136,16 +1110,27 @@ export namespace storm::orm::statements {
         }();
         static constexpr auto related_join_cols_ = slice_side_join_cols<RelatedBase>(related_join_names_.view());
 
-        struct RelatedCol {
-            std::string_view name;
-            bool             is_fk;
-        };
-        static constexpr auto related_cols_ = []() consteval {
-            std::array<RelatedCol, RelatedBase::field_count_> cols{};
-            for (std::size_t i = 0; i < RelatedBase::field_count_; ++i) {
-                cols[i] =
-                        {std::meta::identifier_of(RelatedBase::all_members_[i]),
-                         Base::is_fk_field(RelatedBase::all_members_[i])};
+        // The related entity's column names (composite-FK members expanded per target PK
+        // part, #744), written once by append_relation_columns with an empty alias prefix
+        // — ", <c1>, <c2>, …" — and sliced into views. The alias is only known per
+        // wrapper at runtime (append_complete_cols), so it is not baked in here.
+        static constexpr auto related_cols_text_ = []() consteval {
+            ConstexprString<relation_columns_size<RelatedBase>("") + 1> buf; // +1: NUL terminator
+            append_relation_columns<RelatedBase>(buf, "");
+            return buf;
+        }();
+        static constexpr std::size_t related_col_total_ = std::ranges::count(related_cols_text_.view(), ',');
+        static constexpr auto        related_cols_      = []() consteval {
+            constexpr std::string_view                       separator = ", ";
+            const std::string_view                           all       = related_cols_text_.view();
+            std::array<std::string_view, related_col_total_> cols{};
+            std::size_t                                      pos = 0;
+            for (auto& col : cols) {
+                const std::size_t start = pos + separator.size();
+                const std::size_t next  = all.find(separator, start);
+                const std::size_t end   = next == std::string_view::npos ? all.size() : next;
+                col                     = all.substr(start, end - start);
+                pos                     = end;
             }
             return cols;
         }();
@@ -1158,21 +1143,18 @@ export namespace storm::orm::statements {
             return base_from_arr_.view();
         }
 
-        // Append ", t<A>.<col>[_id]" for every related member. Runs once per
-        // wrapper type (the complete SQL is a function-local static in the
-        // factory's get_complete_sql_fn). Plain += appends — std::format inside
+        // Append ", t<A>.<col>" for every related COLUMN (a composite-FK member is several,
+        // #744). Runs once per wrapper type (the complete SQL is a function-local static in
+        // the factory's get_complete_sql_fn). Plain += appends — std::format inside
         // the module purview mis-deduces the wchar_t overload when instantiated
         // from an import-std TU (clang-p2996).
         static auto append_complete_cols(std::string& sql, std::size_t related_alias) -> void {
             const std::string alias = std::to_string(related_alias);
-            for (const auto& col : related_cols_) {
+            for (const auto col : related_cols_) {
                 sql += ", t";
                 sql += alias;
                 sql += ".";
-                sql += col.name;
-                if (col.is_fk) {
-                    sql += "_id";
-                }
+                sql += col;
             }
         }
 
@@ -1499,10 +1481,7 @@ export namespace storm::orm::statements {
         // SELECT t1.<base cols> FROM <Base> t1 <KW> <Owner> t2 ON t2.<fk>_id = t1.<pk>
         // (AND-chained per part for a composite Base PK, #504 Task 8).
         static consteval auto calculate_complete_sql_size() -> std::size_t {
-            std::size_t total = 7; // "SELECT "
-            for (std::size_t i = 0; i < Base::field_count_; ++i) {
-                total += 2 + 3 + std::meta::identifier_of(Base::all_members_[i]).size() + 3;
-            }
+            std::size_t total = 7 + base_select_list_size<Base>(join_base_alias_prefix);  // "SELECT " + list
             total += 6 + Base::table_name_.size() + 3;                                    // " FROM <Base> t1"
             total += TwoQuery::join_keyword().size() + OwnerBase::table_name_.size() + 3; // "<KW><Owner> t2"
             total += 4 + fk_on_clause_body_size();                                        // " ON " + body
@@ -1512,15 +1491,7 @@ export namespace storm::orm::statements {
         static consteval auto build_complete_sql() {
             ConstexprString<calculate_complete_sql_size()> sql;
             sql.append("SELECT ");
-            bool first = true;
-            for (std::size_t i = 0; i < Base::field_count_; ++i) {
-                if (!first) {
-                    sql.append(", ");
-                }
-                sql.append(join_base_alias_prefix);
-                meta::append_column_name(sql, Base::all_members_[i]); // #422 — emits FK "_id"
-                first = false;
-            }
+            append_base_select_list<Base>(sql, join_base_alias_prefix); // #744 — composite-FK aware
             sql.append(" FROM ");
             sql.append(Base::table_name_);
             sql.append(" t1");

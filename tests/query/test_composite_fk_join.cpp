@@ -15,6 +15,7 @@ import std;
 // Must follow the shared model headers: OrderLineWithShipments/Shipment name storm:: annotations.
 #include "crud/test_composite_pk_models.h" // NOSONAR cpp:S954
 #include "test_m2m_models.h"               // NOSONAR cpp:S954 — Student/Course (single-PK m2m regression baseline)
+#include "test_reverse_fk_models.h"        // NOSONAR cpp:S954 — RfPerson/RfTask (single-PK reverse-FK baseline)
 using storm::QuerySet;
 
 // ── #504 Task 7: regular FK JoinStatement — multi-column AND-joined ON clause ──
@@ -94,6 +95,177 @@ TYPED_TEST(OptionalCompositeFkJoinTest, LeftJoinKeepsRowWithNullCompositeFk) {
     ASSERT_TRUE(results.has_value());
     ASSERT_EQ(results->size(), 1U); // LEFT keeps the shipment even with a NULL composite FK
     EXPECT_FALSE(results->begin()->line.has_value());
+}
+
+// ── #744: m2m aggregate "complete SQL" columns for composite-FK members ─────────────
+// A composite FK spells one column per target PK part ("<member>_<part>"). The aggregate
+// path's base-column list and related-column list must do the same; "<member>_id" names a
+// column the table does not have.
+TEST(CompositeFkM2MAggregateSqlTest, BaseColsExpandCompositeFkMember) {
+    using MS = stmt::M2MJoinStatement<Parcel, storm::db::sqlite::Connection, stmt::JoinType::Inner, ^^Parcel::labels>;
+    EXPECT_EQ(MS::base_cols_view(), "SELECT t1.id, t1.line_order_id, t1.line_product_id");
+}
+
+TEST(CompositeFkM2MAggregateSqlTest, RelatedColsExpandCompositeFkMember) {
+    using MS = stmt::M2MJoinStatement<Parcel, storm::db::sqlite::Connection, stmt::JoinType::Inner, ^^Parcel::labels>;
+    std::string sql;
+    MS::append_complete_cols(sql, 3);
+    EXPECT_EQ(sql, ", t3.id, t3.line_order_id, t3.line_product_id, t3.text");
+}
+
+TEST(CompositeFkM2MAggregateSqlTest, ReverseFkBaseColsExpandCompositeFkMember) {
+    using RS = stmt::ReverseFKJoinStatement<
+            ParcelHolder,
+            storm::db::sqlite::Connection,
+            stmt::JoinType::Inner,
+            ^^ParcelNote::holder>;
+    EXPECT_TRUE(
+            RS::get_complete_sql().starts_with(
+                    "SELECT t1.id, t1.line_order_id, t1.line_product_id, t1.tag FROM ParcelHolder t1"
+            )
+    ) << RS::get_complete_sql();
+}
+
+// ── #744: a regular FK JOIN whose TARGET itself carries a composite-FK member ──────
+// ParcelNote::holder joins ParcelHolder, which has its own composite FK ("line" ->
+// OrderLine's 2-part key). The joined target's select list must spell that member as one
+// column per key part, not as a bare "line" column the table does not have; and the
+// column-offset bookkeeping must advance by the real column count so later columns still
+// line up with what the extractor reads.
+TEST(CompositeFkJoinSqlTest, JoinedTargetCompositeFkMemberExpandsInSelectList) {
+    using JS =
+            stmt::JoinStatement<ParcelNote, storm::db::sqlite::Connection, stmt::JoinType::Inner, ^^ParcelNote::holder>;
+    EXPECT_TRUE(
+            JS::get_complete_sql().starts_with(
+                    "SELECT t1.id, t1.text, t2.id, t2.line_order_id, t2.line_product_id, t2.tag FROM"
+            )
+    ) << JS::get_complete_sql();
+}
+
+namespace {
+    template <typename ConnType> class JoinedTargetCompositeFkTest : public StormTestFixture<ParcelNote, ConnType> {};
+} // namespace
+TYPED_TEST_SUITE(JoinedTargetCompositeFkTest, DatabaseTypes);
+
+TYPED_TEST(JoinedTargetCompositeFkTest, JoinHydratesTargetCompositeFkKeyAndLaterColumns) {
+    QuerySet<OrderLine, TypeParam> line_qs;
+    const OrderLine                line{.order_id = 5, .product_id = 12, .quantity = 3, .note = "n"};
+    ASSERT_TRUE(line_qs.insert(line).execute().has_value());
+
+    QuerySet<ParcelHolder, TypeParam> holder_qs;
+    ASSERT_TRUE(holder_qs.insert(ParcelHolder{.id = 1, .line = line, .tag = "cold"}).execute().has_value());
+
+    QuerySet<ParcelNote, TypeParam> note_qs;
+    ASSERT_TRUE(note_qs.insert(ParcelNote{.holder = ParcelHolder{.id = 1}, .text = "fragile"}).execute().has_value());
+
+    auto results = note_qs.template join<fields::ParcelNote.holder>().select().execute();
+    ASSERT_TRUE(results.has_value()) << results.error().message();
+    ASSERT_EQ(results->size(), 1U);
+    const auto& note = *results->begin();
+    EXPECT_EQ(note.text, "fragile");
+    EXPECT_EQ(note.holder.id, 1);
+    EXPECT_EQ(note.holder.line.order_id, 5);
+    EXPECT_EQ(note.holder.line.product_id, 12);
+    EXPECT_EQ(note.holder.tag, "cold"); // the column AFTER the widened composite-FK block
+}
+
+namespace {
+    template <typename ConnType> class TwoJoinedTargetsTest : public StormTestFixture<ParcelPair, ConnType> {};
+} // namespace
+TYPED_TEST_SUITE(TwoJoinedTargetsTest, DatabaseTypes);
+
+// The second joined table's columns begin after the first's WIDENED block (3 key columns +
+// tag, not 2 members + tag). Offsets counted per member would read the second target from
+// the wrong columns — a silent misread, not an error.
+TYPED_TEST(TwoJoinedTargetsTest, SecondJoinedTargetReadsFromItsOwnColumns) {
+    QuerySet<OrderLine, TypeParam> line_qs;
+    const OrderLine                line_a{.order_id = 5, .product_id = 12, .quantity = 1, .note = "a"};
+    const OrderLine                line_b{.order_id = 6, .product_id = 34, .quantity = 2, .note = "b"};
+    ASSERT_TRUE(line_qs.insert(line_a).execute().has_value());
+    ASSERT_TRUE(line_qs.insert(line_b).execute().has_value());
+
+    QuerySet<ParcelHolder, TypeParam> holder_qs;
+    ASSERT_TRUE(holder_qs.insert(ParcelHolder{.id = 1, .line = line_a, .tag = "first"}).execute().has_value());
+    ASSERT_TRUE(holder_qs.insert(ParcelHolder{.id = 2, .line = line_b, .tag = "second"}).execute().has_value());
+
+    QuerySet<ParcelPair, TypeParam> pair_qs;
+    ASSERT_TRUE(pair_qs.insert(ParcelPair{.first = ParcelHolder{.id = 1}, .second = ParcelHolder{.id = 2}})
+                        .execute()
+                        .has_value());
+
+    auto results = pair_qs.template join<fields::ParcelPair.first, fields::ParcelPair.second>().select().execute();
+    ASSERT_TRUE(results.has_value()) << results.error().message();
+    ASSERT_EQ(results->size(), 1U);
+    const auto& pair = *results->begin();
+    EXPECT_EQ(pair.first.id, 1);
+    EXPECT_EQ(pair.first.line.product_id, 12);
+    EXPECT_EQ(pair.first.tag, "first");
+    EXPECT_EQ(pair.second.id, 2);
+    EXPECT_EQ(pair.second.line.order_id, 6);
+    EXPECT_EQ(pair.second.line.product_id, 34);
+    EXPECT_EQ(pair.second.tag, "second");
+}
+
+// Single-PK / single-FK models must render EXACTLY as before: one "<fk>_id" per FK member.
+TEST(CompositeFkM2MAggregateSqlTest, SingleColumnFkAndPkStayByteIdentical) {
+    using MS = stmt::M2MJoinStatement<CardBox, storm::db::sqlite::Connection, stmt::JoinType::Inner, ^^CardBox::cards>;
+    EXPECT_EQ(MS::base_cols_view(), "SELECT t1.id, t1.owner_id");
+    std::string sql;
+    MS::append_complete_cols(sql, 3);
+    EXPECT_EQ(sql, ", t3.id, t3.owner_id, t3.text");
+
+    using PS =
+            stmt::M2MJoinStatement<Student, storm::db::sqlite::Connection, stmt::JoinType::Inner, ^^Student::courses>;
+    EXPECT_EQ(PS::base_cols_view(), "SELECT t1.id, t1.name, t1.age");
+}
+
+TEST(CompositeFkM2MAggregateSqlTest, ReverseFkSinglePkStaysByteIdentical) {
+    using RS = stmt::
+            ReverseFKJoinStatement<RfPerson, storm::db::sqlite::Connection, stmt::JoinType::Inner, ^^RfTask::assignee>;
+    EXPECT_TRUE(RS::get_complete_sql().starts_with("SELECT t1.id, t1.name, t1.age FROM RfPerson t1"))
+            << RS::get_complete_sql();
+}
+
+namespace {
+    template <typename ConnType>
+    class ParcelM2MAggregateTest : public StormTestFixture<Parcel, ConnType, ParcelLabel> {};
+    template <typename ConnType> class ParcelHolderAggregateTest : public StormTestFixture<ParcelNote, ConnType> {};
+} // namespace
+TYPED_TEST_SUITE(ParcelM2MAggregateTest, DatabaseTypes);
+TYPED_TEST_SUITE(ParcelHolderAggregateTest, DatabaseTypes);
+
+// The broken path was the aggregate one: its SELECT named a "line_id" column that a
+// composite FK does not have, so executing it failed ("no such column") on both backends.
+TYPED_TEST(ParcelM2MAggregateTest, CountOverM2MWithCompositeFkMembersExecutes) {
+    auto                           conn = storm::db::DefaultConnection<TypeParam>::get();
+    QuerySet<OrderLine, TypeParam> line_qs;
+    const OrderLine                line{.order_id = 5, .product_id = 12, .quantity = 1, .note = "n"};
+    ASSERT_TRUE(line_qs.insert(line).execute().has_value());
+
+    QuerySet<Parcel, TypeParam>      parcel_qs;
+    QuerySet<ParcelLabel, TypeParam> label_qs;
+    ASSERT_TRUE(parcel_qs.insert(Parcel{.id = 1, .line = line}).execute().has_value());
+    ASSERT_TRUE(label_qs.insert(ParcelLabel{.id = 1, .line = line, .text = "x"}).execute().has_value());
+    ASSERT_TRUE(conn->execute("INSERT INTO Parcel_ParcelLabel (Parcel_id, ParcelLabel_id) VALUES (1, 1)").has_value());
+
+    const auto count = parcel_qs.template join<fields::Parcel.labels>().count().execute();
+    ASSERT_TRUE(count.has_value()) << count.error().message();
+    EXPECT_EQ(count.value(), 1);
+}
+
+TYPED_TEST(ParcelHolderAggregateTest, CountOverReverseFkWithCompositeFkBaseExecutes) {
+    QuerySet<OrderLine, TypeParam> line_qs;
+    const OrderLine                line{.order_id = 5, .product_id = 12, .quantity = 1, .note = "n"};
+    ASSERT_TRUE(line_qs.insert(line).execute().has_value());
+
+    QuerySet<ParcelHolder, TypeParam> holder_qs;
+    ASSERT_TRUE(holder_qs.insert(ParcelHolder{.id = 1, .line = line, .tag = "t"}).execute().has_value());
+    QuerySet<ParcelNote, TypeParam> note_qs;
+    ASSERT_TRUE(note_qs.insert(ParcelNote{.holder = ParcelHolder{.id = 1}, .text = "n"}).execute().has_value());
+
+    const auto count = holder_qs.template join<fields::ParcelNote.holder>().count().execute();
+    ASSERT_TRUE(count.has_value()) << count.error().message();
+    EXPECT_EQ(count.value(), 1);
 }
 
 TEST(CompositeFkJoinSqlTest, JoinOnClauseAndJoinsBothCompositeKeyParts) {
