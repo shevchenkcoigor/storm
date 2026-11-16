@@ -39,8 +39,10 @@ export namespace storm::db::sqlite {
         // wrapper rather than a direct call at the use site.
         static auto reject_unknown_quoted_names(sqlite3* db) noexcept -> int {
             if (const int rc = sqlite3_db_config(db, SQLITE_DBCONFIG_DQS_DML, 0, nullptr); rc != SQLITE_OK) {
-                return rc; // LCOV_EXCL_LINE — cannot fail on a valid handle; the caller's branch is fake-tested
+                // LCOV_EXCL_START — cannot fail on a valid handle; the caller's branch is fake-tested
+                return rc;
             }
+            // LCOV_EXCL_STOP
             return sqlite3_db_config(db, SQLITE_DBCONFIG_DQS_DDL, 0, nullptr);
         }
         static auto exec(sqlite3* db, const char* sql, char** errmsg) noexcept -> int {

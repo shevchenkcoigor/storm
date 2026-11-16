@@ -405,11 +405,11 @@ export namespace storm::meta {
     inline constexpr std::string_view identifier_quote       = "\"";
     inline constexpr std::size_t      identifier_quotes_size = 2 * identifier_quote.size();
 
-    [[nodiscard]] constexpr auto is_ascii_upper(char c) noexcept -> bool {
+    [[nodiscard]] consteval auto is_ascii_upper(char c) noexcept -> bool {
         return c >= 'A' && c <= 'Z';
     }
 
-    [[nodiscard]] constexpr auto sql_lowercase(std::string_view text) -> std::string {
+    [[nodiscard]] consteval auto sql_lowercase(std::string_view text) -> std::string {
         std::string lowered;
         lowered.reserve(text.size());
         for (const char c : text) {
