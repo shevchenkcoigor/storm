@@ -171,6 +171,22 @@ want it to match the new output, or keep the old baseline if id-reuse behaviour
 must not change. Opt back into the old behaviour per-model with
 `primary_autoincrement`.
 
+### Quoted, lowercased identifiers (#828, breaking)
+
+Every table, column, index and constraint name is now emitted double-quoted and
+lowercased (`Person` → `"person"`, `idx_Person_department` → `"idx_person_department"`),
+so a reserved word such as `order` or `group` is a legal name. See
+[FIELD_TYPES.md](FIELD_TYPES.md#table-and-column-names-828).
+
+**Migration impact (breaking):** `atlas migrate diff` against a baseline created before
+this change sees every name in a different case and will propose rename or rebuild
+statements. For a database that already exists nothing needs to change at runtime:
+PostgreSQL always folded unquoted names to lowercase and SQLite compares names
+case-insensitively, so the new text names the same objects. Regenerate your migration
+baseline to match the new output. The in-repo `tests/tools/migrations/20260328195031_initial.sql`
+is deliberately left as it was: editing a versioned migration breaks `atlas.sum`, and
+`atlas migrate validate` checks integrity, not drift.
+
 ## CMake Function Reference
 
 ```cmake

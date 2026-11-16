@@ -89,14 +89,14 @@ Storm ORM uses smart thresholds based on SQLite's variable limit (999):
 
 1. **≤50 objects**: Bulk INSERT with multiple VALUES
    ```sql
-   INSERT INTO Person (name, age) VALUES (?, ?), (?, ?), ...
+   INSERT INTO "person" ("name", "age") VALUES (?, ?), (?, ?), ...
    ```
 
 2. **>50 objects**: Individual statements within a transaction
    ```sql
    BEGIN TRANSACTION;
-   INSERT INTO Person (name, age) VALUES (?, ?);
-   INSERT INTO Person (name, age) VALUES (?, ?);
+   INSERT INTO "person" ("name", "age") VALUES (?, ?);
+   INSERT INTO "person" ("name", "age") VALUES (?, ?);
    ...
    COMMIT;
    ```
@@ -130,7 +130,7 @@ if (!result) {
 
 **SQL Generated**:
 ```sql
-UPDATE Person SET name=?, age=? WHERE id=?
+UPDATE "person" SET "name"=?, "age"=? WHERE "id"=?
 ```
 
 ### Batch UPDATE
@@ -164,7 +164,7 @@ auto result = QuerySet<Person>()
 
 **SQL Generated**:
 ```sql
-UPDATE Person SET salary=?, is_active=? WHERE salary<?
+UPDATE "person" SET "salary"=?, "is_active"=? WHERE "salary"<?
 ```
 
 The SET column list is compile-time; the WHERE body reuses the full expression
@@ -247,7 +247,7 @@ auto result = queryset.erase(person).execute();
 
 **SQL Generated**:
 ```sql
-DELETE FROM Person WHERE id=?
+DELETE FROM "person" WHERE "id"=?
 ```
 
 ### Batch DELETE
@@ -264,7 +264,7 @@ auto result = queryset.erase(std::span<const Person>(people));
 
 **SQL Generated** (bulk IN clause):
 ```sql
-DELETE FROM Person WHERE id IN (?, ?, ?)
+DELETE FROM "person" WHERE "id" IN (?, ?, ?)
 ```
 
 ### Conditional DELETE (#198)
@@ -282,7 +282,7 @@ auto result = QuerySet<Person>()
 
 **SQL Generated**:
 ```sql
-DELETE FROM Person WHERE age>?
+DELETE FROM "person" WHERE "age">?
 ```
 
 The full WHERE expression system is reused, so every operator works
@@ -451,7 +451,7 @@ auto result = message_qs.update(msg).execute();
 
 **SQL Generated**:
 ```sql
-UPDATE Message SET content=?, sender_id=? WHERE id=?
+UPDATE "message" SET "content"=?, "sender_id"=? WHERE "id"=?
 ```
 
 ### DELETE with FK Fields

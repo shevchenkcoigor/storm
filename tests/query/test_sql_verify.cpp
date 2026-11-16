@@ -61,7 +61,7 @@ TYPED_TEST(SqlVerifyTest, SelectSimple) {
     auto                        sql = qs.select().sql();
     EXPECT_EQ(
             sql,
-            "SELECT id, name, age, salary, is_active, years_experience, department, score, nickname, avatar FROM Person"
+            R"(SELECT "id", "name", "age", "salary", "is_active", "years_experience", "department", "score", "nickname", "avatar" FROM "person")"
     );
 }
 
@@ -70,8 +70,8 @@ TYPED_TEST(SqlVerifyTest, SelectWithWhere) {
     auto                        sql = qs.where(fields::Person.age > 30).select().sql();
     EXPECT_EQ(
             sql,
-            "SELECT id, name, age, salary, is_active, years_experience, department, score, nickname, avatar"
-            " FROM Person WHERE age > ?"
+            R"(SELECT "id", "name", "age", "salary", "is_active", "years_experience", "department", "score", "nickname", "avatar")"
+            R"( FROM "person" WHERE "age" > ?)"
     );
 }
 
@@ -80,9 +80,9 @@ TYPED_TEST(SqlVerifyTest, SelectWithJoin) {
     auto                         sql = qs.template join<fields::Message.sender>().select().sql();
     EXPECT_EQ(
             sql,
-            "SELECT t1.id, t1.content, t1.value, t2.id, t2.name, t2.age, t2.salary,"
-            " t2.is_active, t2.years_experience, t2.department, t2.score, t2.nickname, t2.avatar"
-            " FROM Message t1 INNER JOIN Person t2 ON t2.id = t1.sender_id"
+            R"(SELECT t1."id", t1."content", t1."value", t2."id", t2."name", t2."age", t2."salary",)"
+            R"( t2."is_active", t2."years_experience", t2."department", t2."score", t2."nickname", t2."avatar")"
+            R"( FROM "message" t1 INNER JOIN "person" t2 ON t2."id" = t1."sender_id")"
     );
 }
 
@@ -91,9 +91,9 @@ TYPED_TEST(SqlVerifyTest, SelectWithJoinAndWhere) {
     auto sql = qs.template join<fields::Message.sender>().where(fields::Message.value > 10).select().sql();
     EXPECT_EQ(
             sql,
-            "SELECT t1.id, t1.content, t1.value, t2.id, t2.name, t2.age, t2.salary,"
-            " t2.is_active, t2.years_experience, t2.department, t2.score, t2.nickname, t2.avatar"
-            " FROM Message t1 INNER JOIN Person t2 ON t2.id = t1.sender_id WHERE t1.value > ?"
+            R"(SELECT t1."id", t1."content", t1."value", t2."id", t2."name", t2."age", t2."salary",)"
+            R"( t2."is_active", t2."years_experience", t2."department", t2."score", t2."nickname", t2."avatar")"
+            R"( FROM "message" t1 INNER JOIN "person" t2 ON t2."id" = t1."sender_id" WHERE t1."value" > ?)"
     );
 }
 
@@ -103,8 +103,8 @@ TYPED_TEST(SqlVerifyTest, SelectWithOrderBy) {
     EXPECT_EQ(
             sql,
             std::format(
-                    "SELECT id, name, age, salary, is_active, years_experience, department, score, nickname, avatar"
-                    " FROM Person ORDER BY name {}",
+                    R"(SELECT "id", "name", "age", "salary", "is_active", "years_experience", "department", "score", "nickname", "avatar")"
+                    R"( FROM "person" ORDER BY "name" {})",
                     order_asc<TypeParam>()
             )
     );
@@ -116,8 +116,8 @@ TYPED_TEST(SqlVerifyTest, SelectWithOrderByDesc) {
     EXPECT_EQ(
             sql,
             std::format(
-                    "SELECT id, name, age, salary, is_active, years_experience, department, score, nickname, avatar"
-                    " FROM Person ORDER BY age {}",
+                    R"(SELECT "id", "name", "age", "salary", "is_active", "years_experience", "department", "score", "nickname", "avatar")"
+                    R"( FROM "person" ORDER BY "age" {})",
                     order_desc<TypeParam>()
             )
     );
@@ -128,8 +128,8 @@ TYPED_TEST(SqlVerifyTest, SelectWithLimitOffset) {
     auto                        sql = qs.limit(10).offset(5).select().sql();
     EXPECT_EQ(
             sql,
-            "SELECT id, name, age, salary, is_active, years_experience, department, score, nickname, avatar"
-            " FROM Person LIMIT 10 OFFSET 5"
+            R"(SELECT "id", "name", "age", "salary", "is_active", "years_experience", "department", "score", "nickname", "avatar")"
+            R"( FROM "person" LIMIT 10 OFFSET 5)"
     );
 }
 
@@ -139,8 +139,8 @@ TYPED_TEST(SqlVerifyTest, SelectWithOffsetOnly) {
     EXPECT_EQ(
             sql,
             std::format(
-                    "SELECT id, name, age, salary, is_active, years_experience, department, score, nickname, avatar"
-                    " FROM Person {} OFFSET 5",
+                    R"(SELECT "id", "name", "age", "salary", "is_active", "years_experience", "department", "score", "nickname", "avatar")"
+                    R"( FROM "person" {} OFFSET 5)",
                     limit_all<TypeParam>()
             )
     );
@@ -158,10 +158,10 @@ TYPED_TEST(SqlVerifyTest, SelectFullCombo) {
     EXPECT_EQ(
             sql,
             std::format(
-                    "SELECT t1.id, t1.content, t1.value, t2.id, t2.name, t2.age, t2.salary,"
-                    " t2.is_active, t2.years_experience, t2.department, t2.score, t2.nickname, t2.avatar"
-                    " FROM Message t1 INNER JOIN Person t2 ON t2.id = t1.sender_id"
-                    " WHERE t1.value > ? ORDER BY t1.content {} LIMIT 5 OFFSET 2",
+                    R"(SELECT t1."id", t1."content", t1."value", t2."id", t2."name", t2."age", t2."salary",)"
+                    R"( t2."is_active", t2."years_experience", t2."department", t2."score", t2."nickname", t2."avatar")"
+                    R"( FROM "message" t1 INNER JOIN "person" t2 ON t2."id" = t1."sender_id")"
+                    R"( WHERE t1."value" > ? ORDER BY t1."content" {} LIMIT 5 OFFSET 2)",
                     order_asc<TypeParam>()
             )
     );
@@ -176,8 +176,8 @@ TYPED_TEST(SqlVerifyTest, FirstSimple) {
     auto                        sql = qs.first().sql();
     EXPECT_EQ(
             sql,
-            "SELECT id, name, age, salary, is_active, years_experience, department, score, nickname, avatar"
-            " FROM Person LIMIT 1"
+            R"(SELECT "id", "name", "age", "salary", "is_active", "years_experience", "department", "score", "nickname", "avatar")"
+            R"( FROM "person" LIMIT 1)"
     );
 }
 
@@ -186,8 +186,8 @@ TYPED_TEST(SqlVerifyTest, FirstWithWhere) {
     auto                        sql = qs.where(fields::Person.age > 30).first().sql();
     EXPECT_EQ(
             sql,
-            "SELECT id, name, age, salary, is_active, years_experience, department, score, nickname, avatar"
-            " FROM Person WHERE age > ? LIMIT 1"
+            R"(SELECT "id", "name", "age", "salary", "is_active", "years_experience", "department", "score", "nickname", "avatar")"
+            R"( FROM "person" WHERE "age" > ? LIMIT 1)"
     );
 }
 
@@ -196,8 +196,8 @@ TYPED_TEST(SqlVerifyTest, GetSimple) {
     auto                        sql = qs.get().sql();
     EXPECT_EQ(
             sql,
-            "SELECT id, name, age, salary, is_active, years_experience, department, score, nickname, avatar"
-            " FROM Person LIMIT 2"
+            R"(SELECT "id", "name", "age", "salary", "is_active", "years_experience", "department", "score", "nickname", "avatar")"
+            R"( FROM "person" LIMIT 2)"
     );
 }
 
@@ -206,8 +206,8 @@ TYPED_TEST(SqlVerifyTest, GetWithWhere) {
     auto                        sql = qs.where(fields::Person.id == 1).get().sql();
     EXPECT_EQ(
             sql,
-            "SELECT id, name, age, salary, is_active, years_experience, department, score, nickname, avatar"
-            " FROM Person WHERE id = ? LIMIT 2"
+            R"(SELECT "id", "name", "age", "salary", "is_active", "years_experience", "department", "score", "nickname", "avatar")"
+            R"( FROM "person" WHERE "id" = ? LIMIT 2)"
     );
 }
 
@@ -221,8 +221,8 @@ TYPED_TEST(SqlVerifyTest, InsertSingleReturning) {
     auto                        sql = qs.insert(p).sql();
     EXPECT_EQ(
             sql,
-            "INSERT INTO Person (name, age, salary, is_active, years_experience, department, score, nickname, avatar)"
-            " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?) RETURNING id"
+            R"(INSERT INTO "person" ("name", "age", "salary", "is_active", "years_experience", "department", "score", "nickname", "avatar"))"
+            R"( VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?) RETURNING "id")"
     );
 }
 
@@ -232,7 +232,7 @@ TYPED_TEST(SqlVerifyTest, InsertSingleNoReturning) {
     auto                        sql = qs.template insert<ReturnId::No>(p).sql();
     EXPECT_EQ(
             sql,
-            "INSERT INTO Person (name, age, salary, is_active, years_experience, department, score, nickname, avatar)"
+            R"(INSERT INTO "person" ("name", "age", "salary", "is_active", "years_experience", "department", "score", "nickname", "avatar"))"
             " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)"
     );
 }
@@ -244,7 +244,7 @@ TYPED_TEST(SqlVerifyTest, InsertBulk) {
     auto                          sql = qs.insert(span).sql();
     EXPECT_EQ(
             sql,
-            "INSERT INTO Person (name, age, salary, is_active, years_experience, department, score, nickname, avatar)"
+            R"(INSERT INTO "person" ("name", "age", "salary", "is_active", "years_experience", "department", "score", "nickname", "avatar"))"
             " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?), (?, ?, ?, ?, ?, ?, ?, ?, ?), (?, ?, ?, ?, ?, ?, ?, ?, ?)"
     );
 }
@@ -256,8 +256,8 @@ TYPED_TEST(SqlVerifyTest, InsertBulkReturning) {
     auto                          sql = qs.template insert<ReturnId::Yes>(span).sql();
     EXPECT_EQ(
             sql,
-            "INSERT INTO Person (name, age, salary, is_active, years_experience, department, score, nickname, avatar)"
-            " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?), (?, ?, ?, ?, ?, ?, ?, ?, ?) RETURNING id"
+            R"(INSERT INTO "person" ("name", "age", "salary", "is_active", "years_experience", "department", "score", "nickname", "avatar"))"
+            R"( VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?), (?, ?, ?, ?, ?, ?, ?, ?, ?) RETURNING "id")"
     );
 }
 
@@ -269,7 +269,7 @@ TYPED_TEST(SqlVerifyTest, InsertSimpleRecord) {
     QuerySet<SimpleRecord, TypeParam> qs;
     SimpleRecord const                r{};
     auto                              sql = qs.insert(r).sql();
-    EXPECT_EQ(sql, "INSERT INTO SimpleRecord (name, value) VALUES (?, ?) RETURNING id");
+    EXPECT_EQ(sql, R"(INSERT INTO "simplerecord" ("name", "value") VALUES (?, ?) RETURNING "id")");
 }
 
 // ============================================================================
@@ -280,7 +280,7 @@ TYPED_TEST(SqlVerifyTest, InsertMessageWithFK) {
     QuerySet<Message, TypeParam> qs;
     Message const                m{};
     auto                         sql = qs.insert(m).sql();
-    EXPECT_EQ(sql, "INSERT INTO Message (content, value, sender_id) VALUES (?, ?, ?) RETURNING id");
+    EXPECT_EQ(sql, R"(INSERT INTO "message" ("content", "value", "sender_id") VALUES (?, ?, ?) RETURNING "id")");
 }
 
 // ============================================================================
@@ -293,8 +293,8 @@ TYPED_TEST(SqlVerifyTest, UpdateSingle) {
     auto                        sql = qs.update(p).sql();
     EXPECT_EQ(
             sql,
-            "UPDATE Person SET name=?, age=?, salary=?, is_active=?, years_experience=?,"
-            " department=?, score=?, nickname=?, avatar=? WHERE id = ?"
+            R"(UPDATE "person" SET "name"=?, "age"=?, "salary"=?, "is_active"=?, "years_experience"=?,)"
+            R"( "department"=?, "score"=?, "nickname"=?, "avatar"=? WHERE "id" = ?)"
     );
 }
 
@@ -305,8 +305,8 @@ TYPED_TEST(SqlVerifyTest, UpdateBulk) {
     auto                          sql = qs.update(span).sql();
     EXPECT_EQ(
             sql,
-            "UPDATE Person SET name=?, age=?, salary=?, is_active=?, years_experience=?,"
-            " department=?, score=?, nickname=?, avatar=? WHERE id = ?"
+            R"(UPDATE "person" SET "name"=?, "age"=?, "salary"=?, "is_active"=?, "years_experience"=?,)"
+            R"( "department"=?, "score"=?, "nickname"=?, "avatar"=? WHERE "id" = ?)"
     );
 }
 
@@ -314,7 +314,7 @@ TYPED_TEST(SqlVerifyTest, UpdateMessageWithFK) {
     QuerySet<Message, TypeParam> qs;
     Message const                m{};
     auto                         sql = qs.update(m).sql();
-    EXPECT_EQ(sql, "UPDATE Message SET content=?, value=?, sender_id=? WHERE id = ?");
+    EXPECT_EQ(sql, R"(UPDATE "message" SET "content"=?, "value"=?, "sender_id"=? WHERE "id" = ?)");
 }
 
 // ============================================================================
@@ -325,7 +325,7 @@ TYPED_TEST(SqlVerifyTest, DeleteSingle) {
     QuerySet<Person, TypeParam> qs;
     Person const                p{};
     auto                        sql = qs.erase(p).sql();
-    EXPECT_EQ(sql, "DELETE FROM Person WHERE id = ?");
+    EXPECT_EQ(sql, R"(DELETE FROM "person" WHERE "id" = ?)");
 }
 
 TYPED_TEST(SqlVerifyTest, DeleteBulk) {
@@ -333,20 +333,20 @@ TYPED_TEST(SqlVerifyTest, DeleteBulk) {
     std::array<Person, 3> const   people{};
     std::span<const Person> const span{people};
     auto                          sql = qs.erase(span).sql();
-    EXPECT_EQ(sql, "DELETE FROM Person WHERE id IN (?,?,?)");
+    EXPECT_EQ(sql, R"(DELETE FROM "person" WHERE "id" IN (?,?,?))");
 }
 
 TYPED_TEST(SqlVerifyTest, DeleteAll) {
     QuerySet<Person, TypeParam> qs;
     auto                        sql = qs.erase_all().sql();
-    EXPECT_EQ(sql, "DELETE FROM Person");
+    EXPECT_EQ(sql, R"(DELETE FROM "person")");
 }
 
 TYPED_TEST(SqlVerifyTest, DeleteSimpleRecord) {
     QuerySet<SimpleRecord, TypeParam> qs;
     SimpleRecord const                r{};
     auto                              sql = qs.erase(r).sql();
-    EXPECT_EQ(sql, "DELETE FROM SimpleRecord WHERE id = ?");
+    EXPECT_EQ(sql, R"(DELETE FROM "simplerecord" WHERE "id" = ?)");
 }
 
 // ============================================================================
@@ -356,55 +356,58 @@ TYPED_TEST(SqlVerifyTest, DeleteSimpleRecord) {
 TYPED_TEST(SqlVerifyTest, AggregateCountSimple) {
     QuerySet<Person, TypeParam> qs;
     auto                        sql = qs.count().sql();
-    EXPECT_EQ(sql, "SELECT COUNT(*) FROM Person");
+    EXPECT_EQ(sql, R"(SELECT COUNT(*) FROM "person")");
 }
 
 TYPED_TEST(SqlVerifyTest, AggregateCountWithWhere) {
     QuerySet<Person, TypeParam> qs;
     auto                        sql = qs.where(fields::Person.age > 30).count().sql();
-    EXPECT_EQ(sql, "SELECT COUNT(*) FROM Person WHERE age > ?");
+    EXPECT_EQ(sql, R"(SELECT COUNT(*) FROM "person" WHERE "age" > ?)");
 }
 
 TYPED_TEST(SqlVerifyTest, AggregateSumField) {
     QuerySet<Person, TypeParam> qs;
     auto                        sql = qs.template sum<fields::Person.salary>().sql();
-    EXPECT_EQ(sql, "SELECT SUM(salary) FROM Person");
+    EXPECT_EQ(sql, R"(SELECT SUM("salary") FROM "person")");
 }
 
 TYPED_TEST(SqlVerifyTest, AggregateAvgField) {
     QuerySet<Person, TypeParam> qs;
     auto                        sql = qs.template avg<fields::Person.age>().sql();
-    EXPECT_EQ(sql, "SELECT AVG(age) FROM Person");
+    EXPECT_EQ(sql, R"(SELECT AVG("age") FROM "person")");
 }
 
 TYPED_TEST(SqlVerifyTest, AggregateMinField) {
     QuerySet<Person, TypeParam> qs;
     auto                        sql = qs.template min<fields::Person.age>().sql();
-    EXPECT_EQ(sql, "SELECT MIN(age) FROM Person");
+    EXPECT_EQ(sql, R"(SELECT MIN("age") FROM "person")");
 }
 
 TYPED_TEST(SqlVerifyTest, AggregateMaxField) {
     QuerySet<Person, TypeParam> qs;
     auto                        sql = qs.template max<fields::Person.salary>().sql();
-    EXPECT_EQ(sql, "SELECT MAX(salary) FROM Person");
+    EXPECT_EQ(sql, R"(SELECT MAX("salary") FROM "person")");
 }
 
 TYPED_TEST(SqlVerifyTest, AggregateChainedOps) {
     QuerySet<Person, TypeParam> qs;
     auto                        sql = qs.template sum<fields::Person.age>().template count<>().sql();
-    EXPECT_EQ(sql, "SELECT SUM(age), COUNT(*) FROM Person");
+    EXPECT_EQ(sql, R"(SELECT SUM("age"), COUNT(*) FROM "person")");
 }
 
 TYPED_TEST(SqlVerifyTest, AggregateCountWithJoin) {
     QuerySet<Message, TypeParam> qs;
     auto                         sql = qs.template join<fields::Message.sender>().count().sql();
-    EXPECT_EQ(sql, "SELECT COUNT(*) FROM Message t1 INNER JOIN Person t2 ON t2.id = t1.sender_id");
+    EXPECT_EQ(sql, R"(SELECT COUNT(*) FROM "message" t1 INNER JOIN "person" t2 ON t2."id" = t1."sender_id")");
 }
 
 TYPED_TEST(SqlVerifyTest, AggregateCountWithJoinAndWhere) {
     QuerySet<Message, TypeParam> qs;
     auto sql = qs.template join<fields::Message.sender>().where(fields::Message.value > 10).count().sql();
-    EXPECT_EQ(sql, "SELECT COUNT(*) FROM Message t1 INNER JOIN Person t2 ON t2.id = t1.sender_id WHERE t1.value > ?");
+    EXPECT_EQ(
+            sql,
+            R"(SELECT COUNT(*) FROM "message" t1 INNER JOIN "person" t2 ON t2."id" = t1."sender_id" WHERE t1."value" > ?)"
+    );
 }
 
 // ============================================================================
@@ -414,13 +417,13 @@ TYPED_TEST(SqlVerifyTest, AggregateCountWithJoinAndWhere) {
 TYPED_TEST(SqlVerifyTest, GroupByCount) {
     QuerySet<Person, TypeParam> qs;
     auto                        sql = qs.template group_by<fields::Person.department>().template count<>().sql();
-    EXPECT_EQ(sql, "SELECT department, COUNT(*) FROM Person GROUP BY department");
+    EXPECT_EQ(sql, R"(SELECT "department", COUNT(*) FROM "person" GROUP BY "department")");
 }
 
 TYPED_TEST(SqlVerifyTest, GroupBySum) {
     QuerySet<Person, TypeParam> qs;
     auto sql = qs.template group_by<fields::Person.department>().template sum<fields::Person.salary>().sql();
-    EXPECT_EQ(sql, "SELECT department, SUM(salary) FROM Person GROUP BY department");
+    EXPECT_EQ(sql, R"(SELECT "department", SUM("salary") FROM "person" GROUP BY "department")");
 }
 
 TYPED_TEST(SqlVerifyTest, GroupByWithWhere) {
@@ -429,7 +432,7 @@ TYPED_TEST(SqlVerifyTest, GroupByWithWhere) {
                        .template group_by<fields::Person.department>()
                        .template count<>()
                        .sql();
-    EXPECT_EQ(sql, "SELECT department, COUNT(*) FROM Person WHERE is_active = ? GROUP BY department");
+    EXPECT_EQ(sql, R"(SELECT "department", COUNT(*) FROM "person" WHERE "is_active" = ? GROUP BY "department")");
 }
 
 TYPED_TEST(SqlVerifyTest, GroupByWithHaving) {
@@ -438,7 +441,7 @@ TYPED_TEST(SqlVerifyTest, GroupByWithHaving) {
                        .template count<>()
                        .having(fields::Person.department == "Engineering")
                        .sql();
-    EXPECT_EQ(sql, "SELECT department, COUNT(*) FROM Person GROUP BY department HAVING department = ?");
+    EXPECT_EQ(sql, R"(SELECT "department", COUNT(*) FROM "person" GROUP BY "department" HAVING "department" = ?)");
 }
 
 TYPED_TEST(SqlVerifyTest, GroupByWithWhereAndHaving) {
@@ -448,7 +451,10 @@ TYPED_TEST(SqlVerifyTest, GroupByWithWhereAndHaving) {
                        .template count<>()
                        .having(fields::Person.department == "Engineering")
                        .sql();
-    EXPECT_EQ(sql, "SELECT department, COUNT(*) FROM Person WHERE age > ? GROUP BY department HAVING department = ?");
+    EXPECT_EQ(
+            sql,
+            R"(SELECT "department", COUNT(*) FROM "person" WHERE "age" > ? GROUP BY "department" HAVING "department" = ?)"
+    );
 }
 
 TYPED_TEST(SqlVerifyTest, GroupByWithOrderBy) {
@@ -460,7 +466,7 @@ TYPED_TEST(SqlVerifyTest, GroupByWithOrderBy) {
     EXPECT_EQ(
             sql,
             std::format(
-                    "SELECT department, COUNT(*) FROM Person GROUP BY department ORDER BY department {}",
+                    R"(SELECT "department", COUNT(*) FROM "person" GROUP BY "department" ORDER BY "department" {})",
                     order_asc<TypeParam>()
             )
     );
@@ -469,13 +475,13 @@ TYPED_TEST(SqlVerifyTest, GroupByWithOrderBy) {
 TYPED_TEST(SqlVerifyTest, GroupByWithLimitOffset) {
     QuerySet<Person, TypeParam> qs;
     auto sql = qs.limit(3).offset(1).template group_by<fields::Person.department>().template count<>().sql();
-    EXPECT_EQ(sql, "SELECT department, COUNT(*) FROM Person GROUP BY department LIMIT 3 OFFSET 1");
+    EXPECT_EQ(sql, R"(SELECT "department", COUNT(*) FROM "person" GROUP BY "department" LIMIT 3 OFFSET 1)");
 }
 
 TYPED_TEST(SqlVerifyTest, GroupByMultiField) {
     QuerySet<Person, TypeParam> qs;
     auto sql = qs.template group_by<fields::Person.department, fields::Person.is_active>().template count<>().sql();
-    EXPECT_EQ(sql, "SELECT department, is_active, COUNT(*) FROM Person GROUP BY department, is_active");
+    EXPECT_EQ(sql, R"(SELECT "department", "is_active", COUNT(*) FROM "person" GROUP BY "department", "is_active")");
 }
 
 TYPED_TEST(SqlVerifyTest, GroupByWithJoin) {
@@ -486,8 +492,8 @@ TYPED_TEST(SqlVerifyTest, GroupByWithJoin) {
                        .sql();
     EXPECT_EQ(
             sql,
-            "SELECT t1.content, COUNT(*) FROM Message t1 INNER JOIN Person t2 ON t2.id = t1.sender_id"
-            " GROUP BY t1.content"
+            R"(SELECT t1."content", COUNT(*) FROM "message" t1 INNER JOIN "person" t2 ON t2."id" = t1."sender_id")"
+            R"( GROUP BY t1."content")"
     );
 }
 
@@ -501,10 +507,10 @@ TYPED_TEST(SqlVerifyTest, UnionSimple) {
     auto sql = qs1.where(fields::Person.age > 40).union_(qs2.where(fields::Person.age < 25)).sql();
     EXPECT_EQ(
             sql,
-            "SELECT id, name, age, salary, is_active, years_experience, department, score, nickname, avatar"
-            " FROM Person WHERE age > ? UNION "
-            "SELECT id, name, age, salary, is_active, years_experience, department, score, nickname, avatar"
-            " FROM Person WHERE age < ?"
+            R"(SELECT "id", "name", "age", "salary", "is_active", "years_experience", "department", "score", "nickname", "avatar")"
+            R"( FROM "person" WHERE "age" > ? UNION )"
+            R"(SELECT "id", "name", "age", "salary", "is_active", "years_experience", "department", "score", "nickname", "avatar")"
+            R"( FROM "person" WHERE "age" < ?)"
     );
 }
 
@@ -514,10 +520,10 @@ TYPED_TEST(SqlVerifyTest, UnionAllSimple) {
     auto sql = qs1.where(fields::Person.age > 40).union_all(qs2.where(fields::Person.age < 25)).sql();
     EXPECT_EQ(
             sql,
-            "SELECT id, name, age, salary, is_active, years_experience, department, score, nickname, avatar"
-            " FROM Person WHERE age > ? UNION ALL "
-            "SELECT id, name, age, salary, is_active, years_experience, department, score, nickname, avatar"
-            " FROM Person WHERE age < ?"
+            R"(SELECT "id", "name", "age", "salary", "is_active", "years_experience", "department", "score", "nickname", "avatar")"
+            R"( FROM "person" WHERE "age" > ? UNION ALL )"
+            R"(SELECT "id", "name", "age", "salary", "is_active", "years_experience", "department", "score", "nickname", "avatar")"
+            R"( FROM "person" WHERE "age" < ?)"
     );
 }
 
@@ -527,10 +533,10 @@ TYPED_TEST(SqlVerifyTest, ExceptSimple) {
     auto                        sql = qs1.except_(qs2.where(fields::Person.age < 25)).sql();
     EXPECT_EQ(
             sql,
-            "SELECT id, name, age, salary, is_active, years_experience, department, score, nickname, avatar"
-            " FROM Person EXCEPT "
-            "SELECT id, name, age, salary, is_active, years_experience, department, score, nickname, avatar"
-            " FROM Person WHERE age < ?"
+            R"(SELECT "id", "name", "age", "salary", "is_active", "years_experience", "department", "score", "nickname", "avatar")"
+            R"( FROM "person" EXCEPT )"
+            R"(SELECT "id", "name", "age", "salary", "is_active", "years_experience", "department", "score", "nickname", "avatar")"
+            R"( FROM "person" WHERE "age" < ?)"
     );
 }
 
@@ -540,10 +546,10 @@ TYPED_TEST(SqlVerifyTest, IntersectSimple) {
     auto sql = qs1.where(fields::Person.age > 30).intersect_(qs2.where(fields::Person.is_active == true)).sql();
     EXPECT_EQ(
             sql,
-            "SELECT id, name, age, salary, is_active, years_experience, department, score, nickname, avatar"
-            " FROM Person WHERE age > ? INTERSECT "
-            "SELECT id, name, age, salary, is_active, years_experience, department, score, nickname, avatar"
-            " FROM Person WHERE is_active = ?"
+            R"(SELECT "id", "name", "age", "salary", "is_active", "years_experience", "department", "score", "nickname", "avatar")"
+            R"( FROM "person" WHERE "age" > ? INTERSECT )"
+            R"(SELECT "id", "name", "age", "salary", "is_active", "years_experience", "department", "score", "nickname", "avatar")"
+            R"( FROM "person" WHERE "is_active" = ?)"
     );
 }
 
@@ -558,10 +564,10 @@ TYPED_TEST(SqlVerifyTest, SetOpWithOrderByAndLimit) {
     EXPECT_EQ(
             sql,
             std::format(
-                    "SELECT id, name, age, salary, is_active, years_experience, department, score, nickname, avatar"
-                    " FROM Person WHERE age > ? UNION "
-                    "SELECT id, name, age, salary, is_active, years_experience, department, score, nickname, avatar"
-                    " FROM Person WHERE age < ? ORDER BY name {} LIMIT 10",
+                    R"(SELECT "id", "name", "age", "salary", "is_active", "years_experience", "department", "score", "nickname", "avatar")"
+                    R"( FROM "person" WHERE "age" > ? UNION )"
+                    R"(SELECT "id", "name", "age", "salary", "is_active", "years_experience", "department", "score", "nickname", "avatar")"
+                    R"( FROM "person" WHERE "age" < ? ORDER BY "name" {} LIMIT 10)",
                     order_asc<TypeParam>()
             )
     );

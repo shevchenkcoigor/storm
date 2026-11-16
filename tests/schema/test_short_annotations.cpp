@@ -83,8 +83,8 @@ namespace {
     void expect_ddl_match(std::string_view short_sql, std::string_view long_sql) {
         const std::string diag = std::format("short:\n{}\nlong:\n{}", short_sql, long_sql);
         EXPECT_EQ(
-                strip_table_name(std::string(short_sql), "ShortChild"),
-                strip_table_name(std::string(long_sql), "LongChild")
+                strip_table_name(std::string(short_sql), R"("shortchild")"),
+                strip_table_name(std::string(long_sql), R"("longchild")")
         ) << diag;
     }
 } // namespace

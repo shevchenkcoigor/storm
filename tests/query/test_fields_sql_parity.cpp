@@ -48,8 +48,8 @@ namespace {
     // EXPECT_EQ(x, x), which passes even if the proxy path is completely broken.
     // Pinning the text keeps these meaningful after f<> is gone.
     constexpr std::string_view SELECT_ALL =
-            "SELECT id, name, age, salary, is_active, years_experience, department, score, nickname, avatar FROM "
-            "Person";
+            R"(SELECT "id", "name", "age", "salary", "is_active", "years_experience", "department", "score", "nickname", "avatar" FROM )"
+            R"("person")";
 
     [[nodiscard]] auto expected(std::string_view where_clause) -> std::string {
         return std::format("{} WHERE {}", SELECT_ALL, where_clause);
@@ -62,19 +62,19 @@ namespace {
 
     TEST_F(FieldsSqlParity, AllSixComparisonOperators) {
         // Per the CLAUDE.md testing checklist: every comparison operator.
-        EXPECT_EQ(qs().where(fields::Person.age == 30).select().sql(), expected("age = ?"));
-        EXPECT_EQ(qs().where(fields::Person.age != 30).select().sql(), expected("age != ?"));
-        EXPECT_EQ(qs().where(fields::Person.age > 30).select().sql(), expected("age > ?"));
-        EXPECT_EQ(qs().where(fields::Person.age >= 30).select().sql(), expected("age >= ?"));
-        EXPECT_EQ(qs().where(fields::Person.age < 30).select().sql(), expected("age < ?"));
-        EXPECT_EQ(qs().where(fields::Person.age <= 30).select().sql(), expected("age <= ?"));
+        EXPECT_EQ(qs().where(fields::Person.age == 30).select().sql(), expected(R"("age" = ?)"));
+        EXPECT_EQ(qs().where(fields::Person.age != 30).select().sql(), expected(R"("age" != ?)"));
+        EXPECT_EQ(qs().where(fields::Person.age > 30).select().sql(), expected(R"("age" > ?)"));
+        EXPECT_EQ(qs().where(fields::Person.age >= 30).select().sql(), expected(R"("age" >= ?)"));
+        EXPECT_EQ(qs().where(fields::Person.age < 30).select().sql(), expected(R"("age" < ?)"));
+        EXPECT_EQ(qs().where(fields::Person.age <= 30).select().sql(), expected(R"("age" <= ?)"));
     }
 
     TEST_F(FieldsSqlParity, CompoundExpression) {
         // The motivating case: the model is named ONCE per field, not twice.
         EXPECT_EQ(
                 qs().where(fields::Person.department == "Eng" && fields::Person.age < 28).select().sql(),
-                expected("(department = ? AND age < ?)")
+                expected(R"(("department" = ? AND "age" < ?))")
         );
     }
 
@@ -84,32 +84,34 @@ namespace {
                            fields::Person.department == "Eng")
                         .select()
                         .sql(),
-                expected("((age > ? AND is_active = ?) OR department = ?)")
+                expected(R"((("age" > ? AND "is_active" = ?) OR "department" = ?))")
         );
     }
 
     TEST_F(FieldsSqlParity, InBetweenLikeCollate) {
         using storm::orm::utilities::Collate;
-        EXPECT_EQ(qs().where(fields::Person.id.in(1)).select().sql(), expected("id IN (?)"));
-        EXPECT_EQ(qs().where(fields::Person.id.in(1, 2, 3)).select().sql(), expected("id IN (?, ?, ?)"));
-        EXPECT_EQ(qs().where(fields::Person.age.between(20, 40)).select().sql(), expected("age BETWEEN ? AND ?"));
-        EXPECT_EQ(qs().where(fields::Person.name.like("A%")).select().sql(), expected("name LIKE ?"));
+        EXPECT_EQ(qs().where(fields::Person.id.in(1)).select().sql(), expected(R"("id" IN (?))"));
+        EXPECT_EQ(qs().where(fields::Person.id.in(1, 2, 3)).select().sql(), expected(R"("id" IN (?, ?, ?))"));
+        EXPECT_EQ(qs().where(fields::Person.age.between(20, 40)).select().sql(), expected(R"("age" BETWEEN ? AND ?)"));
+        EXPECT_EQ(qs().where(fields::Person.name.like("A%")).select().sql(), expected(R"("name" LIKE ?)"));
         EXPECT_EQ(
                 qs().where(fields::Person.name.collate(Collate::NoCase) == "bob").select().sql(),
-                expected("name COLLATE NOCASE = ?")
+                expected(R"("name" COLLATE NOCASE = ?)")
         );
     }
 
     TEST_F(FieldsSqlParity, NullChecksOnOptionalField) {
-        EXPECT_EQ(qs().where(fields::Person.score.is_null()).select().sql(), expected("score IS NULL"));
-        EXPECT_EQ(qs().where(fields::Person.nickname.is_not_null()).select().sql(), expected("nickname IS NOT NULL"));
+        EXPECT_EQ(qs().where(fields::Person.score.is_null()).select().sql(), expected(R"("score" IS NULL)"));
+        EXPECT_EQ(
+                qs().where(fields::Person.nickname.is_not_null()).select().sql(), expected(R"("nickname" IS NOT NULL)")
+        );
     }
 
     TEST_F(FieldsSqlParity, OrderBySingleAndMulti) {
-        EXPECT_EQ(qs().order_by<fields::Person.name>().select().sql(), sel("ORDER BY name ASC"));
+        EXPECT_EQ(qs().order_by<fields::Person.name>().select().sql(), sel(R"(ORDER BY "name" ASC)"));
         EXPECT_EQ(
                 (qs().order_by<fields::Person.department, fields::Person.age>().select().sql()),
-                sel("ORDER BY department ASC, age ASC")
+                sel(R"(ORDER BY "department" ASC, "age" ASC)")
         );
     }
 
@@ -117,43 +119,46 @@ namespace {
         // The bool modifier attaches to the field BEFORE it. Pinning the text is
         // what catches a shifted pairing — that emits valid SQL sorted the wrong
         // way, which no compiler and no self-comparison can detect.
-        EXPECT_EQ((qs().order_by<fields::Person.age, false>().select().sql()), sel("ORDER BY age DESC"));
+        EXPECT_EQ((qs().order_by<fields::Person.age, false>().select().sql()), sel(R"(ORDER BY "age" DESC)"));
     }
 
     TEST_F(FieldsSqlParity, OrderByWithCollateModifier) {
         using storm::orm::utilities::Collate;
         EXPECT_EQ(
                 (qs().order_by<fields::Person.name, Collate::NoCase>().select().sql()),
-                sel("ORDER BY name COLLATE NOCASE ASC")
+                sel(R"(ORDER BY "name" COLLATE NOCASE ASC)")
         );
     }
 
     TEST_F(FieldsSqlParity, OrderByCombinedWithWhereAndLimit) {
         EXPECT_EQ(
                 qs().where(fields::Person.age > 20).order_by<fields::Person.name>().limit(5).select().sql(),
-                sel("WHERE age > ? ORDER BY name ASC LIMIT 5")
+                sel(R"(WHERE "age" > ? ORDER BY "name" ASC LIMIT 5)")
         );
     }
 
     TEST_F(FieldsSqlParity, DistinctSingleAndMulti) {
-        EXPECT_EQ(qs().distinct<fields::Person.department>().sql(), "SELECT DISTINCT department FROM Person");
+        EXPECT_EQ(qs().distinct<fields::Person.department>().sql(), R"(SELECT DISTINCT "department" FROM "person")");
         EXPECT_EQ(
                 (qs().distinct<fields::Person.department, fields::Person.age>().sql()),
-                "SELECT DISTINCT department, age FROM Person"
+                R"(SELECT DISTINCT "department", "age" FROM "person")"
         );
     }
 
     TEST_F(FieldsSqlParity, ValuesProjection) {
-        EXPECT_EQ((qs().values<fields::Person.name, fields::Person.age>().sql()), "SELECT name, age FROM Person");
+        EXPECT_EQ(
+                (qs().values<fields::Person.name, fields::Person.age>().sql()), R"(SELECT "name", "age" FROM "person")"
+        );
     }
 
     TEST_F(FieldsSqlParity, ScalarAggregates) {
-        EXPECT_EQ(qs().sum<fields::Person.age>().sql(), "SELECT SUM(age) FROM Person");
-        EXPECT_EQ(qs().avg<fields::Person.salary>().sql(), "SELECT AVG(salary) FROM Person");
-        EXPECT_EQ(qs().max<fields::Person.age>().sql(), "SELECT MAX(age) FROM Person");
-        EXPECT_EQ(qs().count<fields::Person.id>().sql(), "SELECT COUNT(id) FROM Person");
+        EXPECT_EQ(qs().sum<fields::Person.age>().sql(), R"(SELECT SUM("age") FROM "person")");
+        EXPECT_EQ(qs().avg<fields::Person.salary>().sql(), R"(SELECT AVG("salary") FROM "person")");
+        EXPECT_EQ(qs().max<fields::Person.age>().sql(), R"(SELECT MAX("age") FROM "person")");
+        EXPECT_EQ(qs().count<fields::Person.id>().sql(), R"(SELECT COUNT("id") FROM "person")");
         EXPECT_EQ(
-                qs().count_distinct<fields::Person.department>().sql(), "SELECT COUNT(DISTINCT department) FROM Person"
+                qs().count_distinct<fields::Person.department>().sql(),
+                R"(SELECT COUNT(DISTINCT "department") FROM "person")"
         );
     }
 
@@ -162,10 +167,11 @@ namespace {
         // GroupByBuilder's identically-named ones.
         EXPECT_EQ(
                 qs().sum<fields::Person.age>().avg<fields::Person.salary>().sql(),
-                "SELECT SUM(age), AVG(salary) FROM Person"
+                R"(SELECT SUM("age"), AVG("salary") FROM "person")"
         );
         EXPECT_EQ(
-                qs().min<fields::Person.age>().max<fields::Person.age>().sql(), "SELECT MIN(age), MAX(age) FROM Person"
+                qs().min<fields::Person.age>().max<fields::Person.age>().sql(),
+                R"(SELECT MIN("age"), MAX("age") FROM "person")"
         );
     }
 
@@ -173,7 +179,7 @@ namespace {
         // Multi-column GROUP BY — the other pack-order-sensitive position.
         EXPECT_EQ(
                 (qs().group_by<fields::Person.department, fields::Person.age>().count<>().sql()),
-                "SELECT department, age, COUNT(*) FROM Person GROUP BY department, age"
+                R"(SELECT "department", "age", COUNT(*) FROM "person" GROUP BY "department", "age")"
         );
     }
 
@@ -182,7 +188,7 @@ namespace {
         // by test_sql_verify.cpp GroupByWithHaving.
         EXPECT_EQ(
                 qs().group_by<fields::Person.age>().having(fields::Person.age > 30).count<>().sql(),
-                "SELECT age, COUNT(*) FROM Person GROUP BY age HAVING age > ?"
+                R"(SELECT "age", COUNT(*) FROM "person" GROUP BY "age" HAVING "age" > ?)"
         );
     }
 
@@ -196,11 +202,11 @@ namespace {
         ASSERT_TRUE(upd.has_value());
         // NOTE: to_sql() on a write path renders BOUND VALUES inline, not
         // placeholders — unlike the read paths' sql(). Pinned as it actually is.
-        EXPECT_EQ(*upd, "UPDATE Person SET salary=60000.0, is_active=1 WHERE salary < 50000");
+        EXPECT_EQ(*upd, R"(UPDATE "person" SET "salary"=60000.0, "is_active"=1 WHERE "salary" < 50000)");
 
         const auto all = qs().update_all<fields::Person.department>(proto).to_sql();
         ASSERT_TRUE(all.has_value());
-        EXPECT_EQ(*all, "UPDATE Person SET department=''");
+        EXPECT_EQ(*all, R"(UPDATE "person" SET "department"='')");
     }
 
     TEST_F(FieldsSqlParity, JoinOnFkField) {
@@ -208,7 +214,7 @@ namespace {
         // the proxy's bare member name. Pinning it guards that derivation.
         EXPECT_TRUE(
                 msg_qs().left_join<fields::Message.sender>().select().sql().contains(
-                        "FROM Message t1 LEFT JOIN Person t2 ON t2.id = t1.sender_id"
+                        R"(FROM "message" t1 LEFT JOIN "person" t2 ON t2."id" = t1."sender_id")"
                 )
         );
     }
@@ -237,14 +243,14 @@ namespace {
     // Literal SQL, not a self-comparison: a regression in the shared builder must change the
     // expected text, not both sides at once. to_sql() on a write path inlines the bound values.
     static constexpr std::string_view upsert_prefix =
-            "INSERT INTO Person (name, age, salary, is_active, years_experience, department, score, nickname, avatar) "
+            R"(INSERT INTO "person" ("name", "age", "salary", "is_active", "years_experience", "department", "score", "nickname", "avatar") )"
             "VALUES ('Ann', 30, 0.0, 0, 0, '', NULL, NULL, NULL) ";
 
     TEST_F(FieldsSqlParity, UpsertOnConflictDoUpdate) {
         const Person p{.id = 1, .name = "Ann", .age = 30};
         EXPECT_EQ(
                 sql_of(qs().insert(p).on_conflict<fields::Person.name>().update<fields::Person.age>()),
-                std::string{upsert_prefix} + "ON CONFLICT (name) DO UPDATE SET age=excluded.age RETURNING id"
+                std::string{upsert_prefix} + R"(ON CONFLICT ("name") DO UPDATE SET "age"=excluded."age" RETURNING "id")"
         );
     }
 
@@ -252,7 +258,7 @@ namespace {
         const Person p{.id = 1, .name = "Ann", .age = 30};
         EXPECT_EQ(
                 sql_of(qs().insert(p).on_conflict<fields::Person.name>().nothing()),
-                std::string{upsert_prefix} + "ON CONFLICT (name) DO NOTHING RETURNING id"
+                std::string{upsert_prefix} + R"(ON CONFLICT ("name") DO NOTHING RETURNING "id")"
         );
     }
 
@@ -262,8 +268,9 @@ namespace {
                 sql_of(qs().insert(p)
                                .on_conflict<fields::Person.name>()
                                .update<fields::Person.age, fields::Person.salary>()),
-                std::string{upsert_prefix} +
-                        "ON CONFLICT (name) DO UPDATE SET age=excluded.age, salary=excluded.salary RETURNING id"
+                std::string{
+                        upsert_prefix
+                } + R"(ON CONFLICT ("name") DO UPDATE SET "age"=excluded."age", "salary"=excluded."salary" RETURNING "id")"
         );
     }
 

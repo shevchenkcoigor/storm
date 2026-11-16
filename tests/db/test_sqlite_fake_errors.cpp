@@ -753,6 +753,17 @@ namespace {
         EXPECT_EQ(conn_result.error().code(), SQLITE_ERROR);
     }
 
+    // #828: open() turns off SQLite's double-quoted-string fallback; a failure there
+    // aborts open() and reports the error.
+    TEST_F(ORMMockErrorTest, ConnectionOpenFailsWhenStrictQuotedNamesCannotBeSet) {
+        FakeSqliteConfig::strict_names_returns(SQLITE_ERROR);
+
+        auto conn_result = FakeConn::open(":memory:");
+
+        ASSERT_FALSE(conn_result.has_value());
+        EXPECT_EQ(conn_result.error().code(), SQLITE_ERROR);
+    }
+
     // Issue #410: with journal_mode = WAL, open() issues PRAGMA journal_mode=WAL via
     // sqlite3_exec(); a failure there aborts open() and reports the error.
     TEST_F(ORMMockErrorTest, ConnectionOpenFailsOnWalPragmaError) {

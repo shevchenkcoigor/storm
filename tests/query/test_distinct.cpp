@@ -705,42 +705,44 @@ template <typename ConnType> constexpr auto order_asc() -> std::string_view {
 TYPED_TEST(DistinctTest, SqlVerifyDistinctSimple) {
     QuerySet<Person, TypeParam> queryset;
     auto                        sql = queryset.template distinct<fields::Person.name>().sql();
-    EXPECT_EQ(sql, "SELECT DISTINCT name FROM Person");
+    EXPECT_EQ(sql, R"(SELECT DISTINCT "name" FROM "person")");
 }
 
 // Test: DISTINCT on integer field
 TYPED_TEST(DistinctTest, SqlVerifyDistinctIntField) {
     QuerySet<Person, TypeParam> queryset;
     auto                        sql = queryset.template distinct<fields::Person.age>().sql();
-    EXPECT_EQ(sql, "SELECT DISTINCT age FROM Person");
+    EXPECT_EQ(sql, R"(SELECT DISTINCT "age" FROM "person")");
 }
 
 // Test: DISTINCT default PK
 TYPED_TEST(DistinctTest, SqlVerifyDistinctDefaultPK) {
     QuerySet<Person, TypeParam> queryset;
     auto                        sql = queryset.distinct().sql();
-    EXPECT_EQ(sql, "SELECT DISTINCT id FROM Person");
+    EXPECT_EQ(sql, R"(SELECT DISTINCT "id" FROM "person")");
 }
 
 // Test: DISTINCT multi-field
 TYPED_TEST(DistinctTest, SqlVerifyDistinctMultiField) {
     QuerySet<Person, TypeParam> queryset;
     auto                        sql = queryset.template distinct<fields::Person.name, fields::Person.age>().sql();
-    EXPECT_EQ(sql, "SELECT DISTINCT name, age FROM Person");
+    EXPECT_EQ(sql, R"(SELECT DISTINCT "name", "age" FROM "person")");
 }
 
 // Test: DISTINCT + WHERE generates correct SQL
 TYPED_TEST(DistinctTest, SqlVerifyDistinctWithWhere) {
     QuerySet<Person, TypeParam> queryset;
     auto sql = queryset.where(fields::Person.age > 30).template distinct<fields::Person.name>().sql();
-    EXPECT_EQ(sql, "SELECT DISTINCT name FROM Person WHERE age > ?");
+    EXPECT_EQ(sql, R"(SELECT DISTINCT "name" FROM "person" WHERE "age" > ?)");
 }
 
 // Test: DISTINCT + JOIN generates projected fields with t1 prefix (the bug fix)
 TYPED_TEST(DistinctTest, SqlVerifyDistinctWithJoin) {
     QuerySet<Message, TypeParam> msg_qs;
     auto sql = msg_qs.template join<fields::Message.sender>().template distinct<fields::Message.content>().sql();
-    EXPECT_EQ(sql, "SELECT DISTINCT t1.content FROM Message t1 INNER JOIN Person t2 ON t2.id = t1.sender_id");
+    EXPECT_EQ(
+            sql, R"(SELECT DISTINCT t1."content" FROM "message" t1 INNER JOIN "person" t2 ON t2."id" = t1."sender_id")"
+    );
 }
 
 // Test: DISTINCT + JOIN + WHERE
@@ -752,8 +754,8 @@ TYPED_TEST(DistinctTest, SqlVerifyDistinctWithJoinAndWhere) {
                        .sql();
     EXPECT_EQ(
             sql,
-            "SELECT DISTINCT t1.content FROM Message t1 INNER JOIN Person t2 ON t2.id = t1.sender_id"
-            " WHERE t1.content LIKE ?"
+            R"(SELECT DISTINCT t1."content" FROM "message" t1 INNER JOIN "person" t2 ON t2."id" = t1."sender_id")"
+            R"( WHERE t1."content" LIKE ?)"
     );
 }
 
@@ -765,8 +767,8 @@ TYPED_TEST(DistinctTest, SqlVerifyDistinctJoinMultiFieldWithFK) {
                        .sql();
     EXPECT_EQ(
             sql,
-            "SELECT DISTINCT t1.content, t1.sender_id"
-            " FROM Message t1 INNER JOIN Person t2 ON t2.id = t1.sender_id"
+            R"(SELECT DISTINCT t1."content", t1."sender_id")"
+            R"( FROM "message" t1 INNER JOIN "person" t2 ON t2."id" = t1."sender_id")"
     );
 }
 
@@ -774,28 +776,28 @@ TYPED_TEST(DistinctTest, SqlVerifyDistinctJoinMultiFieldWithFK) {
 TYPED_TEST(DistinctTest, SqlVerifyValuesWithJoin) {
     QuerySet<Message, TypeParam> msg_qs;
     auto sql = msg_qs.template join<fields::Message.sender>().template values<fields::Message.content>().sql();
-    EXPECT_EQ(sql, "SELECT t1.content FROM Message t1 INNER JOIN Person t2 ON t2.id = t1.sender_id");
+    EXPECT_EQ(sql, R"(SELECT t1."content" FROM "message" t1 INNER JOIN "person" t2 ON t2."id" = t1."sender_id")");
 }
 
 // Test: VALUES simple (no JOIN)
 TYPED_TEST(DistinctTest, SqlVerifyValuesSimple) {
     QuerySet<Person, TypeParam> queryset;
     auto                        sql = queryset.template values<fields::Person.name>().sql();
-    EXPECT_EQ(sql, "SELECT name FROM Person");
+    EXPECT_EQ(sql, R"(SELECT "name" FROM "person")");
 }
 
 // Test: DISTINCT + ORDER BY
 TYPED_TEST(DistinctTest, SqlVerifyDistinctWithOrderBy) {
     QuerySet<Person, TypeParam> queryset;
     auto sql = queryset.template order_by<fields::Person.name>().template distinct<fields::Person.name>().sql();
-    EXPECT_EQ(sql, std::format("SELECT DISTINCT name FROM Person ORDER BY name {}", order_asc<TypeParam>()));
+    EXPECT_EQ(sql, std::format(R"(SELECT DISTINCT "name" FROM "person" ORDER BY "name" {})", order_asc<TypeParam>()));
 }
 
 // Test: DISTINCT + LIMIT + OFFSET
 TYPED_TEST(DistinctTest, SqlVerifyDistinctWithLimitOffset) {
     QuerySet<Person, TypeParam> queryset;
     auto                        sql = queryset.limit(10).offset(5).template distinct<fields::Person.name>().sql();
-    EXPECT_EQ(sql, "SELECT DISTINCT name FROM Person LIMIT 10 OFFSET 5");
+    EXPECT_EQ(sql, R"(SELECT DISTINCT "name" FROM "person" LIMIT 10 OFFSET 5)");
 }
 
 // Test: DISTINCT + JOIN + WHERE + ORDER BY + LIMIT (full combo)
@@ -810,8 +812,8 @@ TYPED_TEST(DistinctTest, SqlVerifyDistinctFullCombo) {
     EXPECT_EQ(
             sql,
             std::format(
-                    "SELECT DISTINCT t1.content FROM Message t1 INNER JOIN Person t2 ON t2.id = t1.sender_id"
-                    " WHERE t1.value > ? ORDER BY t1.content {} LIMIT 5",
+                    R"(SELECT DISTINCT t1."content" FROM "message" t1 INNER JOIN "person" t2 ON t2."id" = t1."sender_id")"
+                    R"( WHERE t1."value" > ? ORDER BY t1."content" {} LIMIT 5)",
                     order_asc<TypeParam>()
             )
     );

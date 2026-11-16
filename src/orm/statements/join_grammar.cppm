@@ -128,7 +128,7 @@ export namespace storm::orm::statements {
         } else {
             result.append(", ");
             result.append(sep_prefix);
-            result.append(std::meta::identifier_of(member));
+            meta::append_column_name(result, member);
         }
     }
 
@@ -237,14 +237,16 @@ export namespace storm::orm::statements {
     // ordinary composite-FK column DDL for the through model's own table.
     template <typename SideBase, JunctionNaming Naming>
     consteval auto append_junction_side_col(auto& result, std::string_view side_col, std::size_t part) -> void {
-        result.append(side_col);
+        // One identifier (#828): composed from bare parts, quoted as a whole.
+        result.append(storm::meta::identifier_quote);
+        storm::meta::append_identifier_text(result, side_col);
         if constexpr (SideBase::has_composite_pk_) {
             result.append("_");
             if constexpr (Naming == JunctionNaming::Auto) {
                 // #422 — an FK key part's column is "<name>_id", so the junction column is
                 // "<side>_<name>_id"; naming the bare member here would not match the
                 // junction DDL's own append_junction_side_column_name.
-                meta::append_column_name(result, SideBase::primary_key_members_[part]);
+                storm::meta::append_unquoted_column_name(result, SideBase::primary_key_members_[part]);
             } else {
                 // The through model's column is a plain composite-FK column: bare part
                 // identifier, no "_id" even when the part is an FK. Routing this through
@@ -259,11 +261,14 @@ export namespace storm::orm::statements {
                 // name that `side_col` has already contributed above; the shared prefix
                 // write is what the Auto branch needs too. If that helper's composite
                 // spelling ever changes, THIS line must change with it.
-                result.append(std::meta::identifier_of(SideBase::primary_key_members_[part]));
+                storm::meta::append_identifier_text(
+                        result, std::meta::identifier_of(SideBase::primary_key_members_[part])
+                );
             }
         } else {
             result.append("_id");
         }
+        result.append(storm::meta::identifier_quote);
     }
 
     // Append a junction side's whole column list, each part individually aliased with

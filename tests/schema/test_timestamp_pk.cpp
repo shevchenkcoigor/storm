@@ -228,10 +228,10 @@ namespace {
         ASSERT_NE(start, std::string::npos) << text;
         const std::string set_clause = text.substr(start, text.find(" WHERE ") - start);
 
-        EXPECT_TRUE(set_clause.contains("payload=")) << "explicit SET target must be present: " << text;
-        EXPECT_TRUE(set_clause.contains("updated_at=")) << "non-key auto_update must be stamped: " << text;
-        EXPECT_FALSE(set_clause.contains("tenant_id=")) << "key part must not be in SET: " << text;
-        EXPECT_FALSE(set_clause.contains("entry_id=")) << "key part must not be in SET: " << text;
+        EXPECT_TRUE(set_clause.contains(R"("payload"=)")) << "explicit SET target must be present: " << text;
+        EXPECT_TRUE(set_clause.contains(R"("updated_at"=)")) << "non-key auto_update must be stamped: " << text;
+        EXPECT_FALSE(set_clause.contains(R"("tenant_id"=)")) << "key part must not be in SET: " << text;
+        EXPECT_FALSE(set_clause.contains(R"("entry_id"=)")) << "key part must not be in SET: " << text;
     }
 
     // The DoD's "SQL byte-identical" clause, pinned on the emitted text rather than
@@ -254,10 +254,10 @@ namespace {
         ASSERT_TRUE(sql.has_value());
 
         const std::string& text = sql.value();
-        EXPECT_TRUE(text.starts_with("UPDATE TimestampedRecord SET name='renamed', updated_at='")) << text;
-        EXPECT_TRUE(text.ends_with("' WHERE id = 1")) << text;
+        EXPECT_TRUE(text.starts_with(R"(UPDATE "timestampedrecord" SET "name"='renamed', "updated_at"=')")) << text;
+        EXPECT_TRUE(text.ends_with(R"(' WHERE "id" = 1)")) << text;
         // The key column appears ONLY in the WHERE clause, never in SET (#511).
-        EXPECT_EQ(text.find("id="), std::string::npos) << "no key column in SET: " << text;
+        EXPECT_EQ(text.find(R"("id"=)"), std::string::npos) << "no key column in SET: " << text;
         // created_at is auto_create — INSERT only, never in an UPDATE SET clause (#209).
         EXPECT_EQ(text.find("created_at"), std::string::npos) << text;
     }

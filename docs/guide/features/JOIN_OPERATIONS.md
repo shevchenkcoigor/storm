@@ -41,9 +41,9 @@ if (result) {
 
 **SQL Generated**:
 ```sql
-SELECT t1.id, t1.content, t1.sender_id, t2.id, t2.username, t2.level
-FROM Message t1
-INNER JOIN User t2 ON t2.id = t1.sender_id
+SELECT t1."id", t1."content", t1."sender_id", t2."id", t2."username", t2."level"
+FROM "message" t1
+INNER JOIN "user" t2 ON t2."id" = t1."sender_id"
 ```
 
 **Performance**: 4.4M rows/sec (59% of raw SQLite for INNER JOIN)
@@ -71,12 +71,12 @@ if (result) {
 
 **SQL Generated**:
 ```sql
-SELECT t1.id, t1.content, t1.sender_id, t1.receiver_id,
-       t2.id, t2.username, t2.level,
-       t3.id, t3.username, t3.level
-FROM Message t1
-INNER JOIN User t2 ON t2.id = t1.sender_id
-INNER JOIN User t3 ON t3.id = t1.receiver_id
+SELECT t1."id", t1."content", t1."sender_id", t1."receiver_id",
+       t2."id", t2."username", t2."level",
+       t3."id", t3."username", t3."level"
+FROM "message" t1
+INNER JOIN "user" t2 ON t2."id" = t1."sender_id"
+INNER JOIN "user" t3 ON t3."id" = t1."receiver_id"
 ```
 
 **Performance**: 3.7M rows/sec (62% of raw SQLite for INNER JOIN)
@@ -163,12 +163,12 @@ for (const auto& s : *students) {
 **SQL Generated** (two statements, run inside one transaction):
 ```sql
 -- Q1: the base entities to load (a plain SELECT — no join, no sorter)
-SELECT id, name, age FROM Student;
+SELECT "id", "name", "age" FROM "student";
 
 -- Q2: their courses, filtered by the SAME base subquery; stitched by owner pk
-SELECT t2.Student_id, t3.id, t3.title
-FROM Student_Course t2 INNER JOIN Course t3 ON t2.Course_id = t3.id
-WHERE t2.Student_id IN (SELECT id FROM Student)
+SELECT t2."student_id", t3."id", t3."title"
+FROM "student_course" t2 INNER JOIN "course" t3 ON t2."course_id" = t3."id"
+WHERE t2."student_id" IN (SELECT "id" FROM "student")
 ```
 
 `WHERE` / `ORDER BY` / `LIMIT` / `OFFSET` are applied to Q1 **and** repeated inside
@@ -410,9 +410,9 @@ all N columns nullable together.
 Joins AND-join one equality per key part, in declaration order:
 
 ```sql
-INNER JOIN OrderLine t2
-        ON t2.order_id   = t1.line_order_id
-       AND t2.product_id = t1.line_product_id
+INNER JOIN "orderline" t2
+        ON t2."order_id"   = t1."line_order_id"
+       AND t2."product_id" = t1."line_product_id"
 ```
 
 Matching only the first part would silently join rows that share it but differ
@@ -424,18 +424,18 @@ A composite side contributes one junction column per PK part, `<Side>_<part>`.
 Composite PK is supported on **either or both** sides:
 
 ```sql
-CREATE TABLE ShelfAssignment_StorageBin (
-    ShelfAssignment_warehouse_no INTEGER NOT NULL,
-    ShelfAssignment_shelf_code TEXT NOT NULL,
-    StorageBin_aisle INTEGER NOT NULL,
-    StorageBin_bin_code TEXT NOT NULL,
-    StorageBin_revision INTEGER NOT NULL,
-    PRIMARY KEY (ShelfAssignment_warehouse_no, ShelfAssignment_shelf_code,
-                 StorageBin_aisle, StorageBin_bin_code, StorageBin_revision),
-    FOREIGN KEY (ShelfAssignment_warehouse_no, ShelfAssignment_shelf_code)
-        REFERENCES ShelfAssignment(warehouse_no, shelf_code) ON DELETE CASCADE,
-    FOREIGN KEY (StorageBin_aisle, StorageBin_bin_code, StorageBin_revision)
-        REFERENCES StorageBin(aisle, bin_code, revision) ON DELETE CASCADE
+CREATE TABLE "shelfassignment_storagebin" (
+    "shelfassignment_warehouse_no" INTEGER NOT NULL,
+    "shelfassignment_shelf_code" TEXT NOT NULL,
+    "storagebin_aisle" INTEGER NOT NULL,
+    "storagebin_bin_code" TEXT NOT NULL,
+    "storagebin_revision" INTEGER NOT NULL,
+    PRIMARY KEY ("shelfassignment_warehouse_no", "shelfassignment_shelf_code",
+                 "storagebin_aisle", "storagebin_bin_code", "storagebin_revision"),
+    FOREIGN KEY ("shelfassignment_warehouse_no", "shelfassignment_shelf_code")
+        REFERENCES "shelfassignment"("warehouse_no", "shelf_code") ON DELETE CASCADE,
+    FOREIGN KEY ("storagebin_aisle", "storagebin_bin_code", "storagebin_revision")
+        REFERENCES "storagebin"("aisle", "bin_code", "revision") ON DELETE CASCADE
 )
 ```
 
@@ -508,8 +508,8 @@ The Q2 `IN` subquery uses the row-value form:
 
 ```sql
 -- reverse-FK Q2 over a 2-part owner key
-WHERE (t2.line_order_id, t2.line_product_id)
-   IN (SELECT order_id, product_id FROM OrderLine)
+WHERE (t2."line_order_id", t2."line_product_id")
+   IN (SELECT "order_id", "product_id" FROM "orderline")
 ```
 
 Note the inner `SELECT` list is deliberately **not** parenthesized — wrapping it
@@ -683,10 +683,10 @@ auto result = message_qs.join<fields::Message.sender>()
 
 **SQL Generated**:
 ```sql
-SELECT t1.id, t1.content, t1.sender_id, t2.id, t2.username, t2.level
-FROM Message t1
-INNER JOIN User t2 ON t2.id = t1.sender_id
-WHERE (level > ? AND t1.content LIKE ?)
+SELECT t1."id", t1."content", t1."sender_id", t2."id", t2."username", t2."level"
+FROM "message" t1
+INNER JOIN "user" t2 ON t2."id" = t1."sender_id"
+WHERE ("level" > ? AND t1."content" LIKE ?)
 ```
 
 **Column qualification over a JOIN (#785)**: the join SQL aliases the base table `t1`, so

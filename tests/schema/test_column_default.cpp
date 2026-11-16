@@ -57,42 +57,42 @@ struct NoDefaultModel {
 
 TEST(ColumnDefaultSchema, SqliteIntDefault) {
     const std::string& sql = SchemaStatement<ColumnDefaultModel>::create_table_sql<Dialect::SQLite>();
-    EXPECT_NE(sql.find("priority INTEGER NOT NULL DEFAULT 1"), std::string::npos) << sql;
+    EXPECT_NE(sql.find(R"("priority" INTEGER NOT NULL DEFAULT 1)"), std::string::npos) << sql;
 }
 
 TEST(ColumnDefaultSchema, SqliteInt64Default) {
     const std::string& sql = SchemaStatement<ColumnDefaultModel>::create_table_sql<Dialect::SQLite>();
-    EXPECT_NE(sql.find("big INTEGER NOT NULL DEFAULT 1000000000000"), std::string::npos) << sql;
+    EXPECT_NE(sql.find(R"("big" INTEGER NOT NULL DEFAULT 1000000000000)"), std::string::npos) << sql;
 }
 
 TEST(ColumnDefaultSchema, SqliteNegativeIntDefault) {
     const std::string& sql = SchemaStatement<ColumnDefaultModel>::create_table_sql<Dialect::SQLite>();
-    EXPECT_NE(sql.find("neg INTEGER NOT NULL DEFAULT -5"), std::string::npos) << sql;
+    EXPECT_NE(sql.find(R"("neg" INTEGER NOT NULL DEFAULT -5)"), std::string::npos) << sql;
 }
 
 TEST(ColumnDefaultSchema, SqliteZeroDoubleDefault) {
     const std::string& sql = SchemaStatement<ColumnDefaultModel>::create_table_sql<Dialect::SQLite>();
-    EXPECT_NE(sql.find("rate REAL NOT NULL DEFAULT 0.0"), std::string::npos) << sql;
+    EXPECT_NE(sql.find(R"("rate" REAL NOT NULL DEFAULT 0.0)"), std::string::npos) << sql;
 }
 
 TEST(ColumnDefaultSchema, SqliteDoubleDefault) {
     const std::string& sql = SchemaStatement<ColumnDefaultModel>::create_table_sql<Dialect::SQLite>();
-    EXPECT_NE(sql.find("pi REAL NOT NULL DEFAULT 3.14"), std::string::npos) << sql;
+    EXPECT_NE(sql.find(R"("pi" REAL NOT NULL DEFAULT 3.14)"), std::string::npos) << sql;
 }
 
 TEST(ColumnDefaultSchema, SqliteFloatDefault) {
     const std::string& sql = SchemaStatement<ColumnDefaultModel>::create_table_sql<Dialect::SQLite>();
-    EXPECT_NE(sql.find("ratio REAL NOT NULL DEFAULT 2.5"), std::string::npos) << sql;
+    EXPECT_NE(sql.find(R"("ratio" REAL NOT NULL DEFAULT 2.5)"), std::string::npos) << sql;
 }
 
 TEST(ColumnDefaultSchema, SqliteTextDefault) {
     const std::string& sql = SchemaStatement<ColumnDefaultModel>::create_table_sql<Dialect::SQLite>();
-    EXPECT_NE(sql.find("status TEXT NOT NULL DEFAULT 'new'"), std::string::npos) << sql;
+    EXPECT_NE(sql.find(R"("status" TEXT NOT NULL DEFAULT 'new')"), std::string::npos) << sql;
 }
 
 TEST(ColumnDefaultSchema, SqliteTextDefaultEscapesQuote) {
     const std::string& sql = SchemaStatement<ColumnDefaultModel>::create_table_sql<Dialect::SQLite>();
-    EXPECT_NE(sql.find("tricky TEXT NOT NULL DEFAULT 'O''Brien'"), std::string::npos) << sql;
+    EXPECT_NE(sql.find(R"("tricky" TEXT NOT NULL DEFAULT 'O''Brien')"), std::string::npos) << sql;
 }
 
 // ============================================================================
@@ -101,17 +101,17 @@ TEST(ColumnDefaultSchema, SqliteTextDefaultEscapesQuote) {
 
 TEST(ColumnDefaultSchema, PgIntDefault) {
     const std::string& sql = SchemaStatement<ColumnDefaultModel>::create_table_sql<Dialect::PostgreSQL>();
-    EXPECT_NE(sql.find("priority INTEGER NOT NULL DEFAULT 1"), std::string::npos) << sql;
+    EXPECT_NE(sql.find(R"("priority" INTEGER NOT NULL DEFAULT 1)"), std::string::npos) << sql;
 }
 
 TEST(ColumnDefaultSchema, PgDoubleDefault) {
     const std::string& sql = SchemaStatement<ColumnDefaultModel>::create_table_sql<Dialect::PostgreSQL>();
-    EXPECT_NE(sql.find("pi DOUBLE PRECISION NOT NULL DEFAULT 3.14"), std::string::npos) << sql;
+    EXPECT_NE(sql.find(R"("pi" DOUBLE PRECISION NOT NULL DEFAULT 3.14)"), std::string::npos) << sql;
 }
 
 TEST(ColumnDefaultSchema, PgTextDefaultEscapesQuote) {
     const std::string& sql = SchemaStatement<ColumnDefaultModel>::create_table_sql<Dialect::PostgreSQL>();
-    EXPECT_NE(sql.find("tricky TEXT NOT NULL DEFAULT 'O''Brien'"), std::string::npos) << sql;
+    EXPECT_NE(sql.find(R"("tricky" TEXT NOT NULL DEFAULT 'O''Brien')"), std::string::npos) << sql;
 }
 
 // ============================================================================
@@ -120,14 +120,14 @@ TEST(ColumnDefaultSchema, PgTextDefaultEscapesQuote) {
 
 TEST(ColumnDefaultSchema, SqliteNoInitializerHasNoDefault) {
     const std::string& sql       = SchemaStatement<NoDefaultModel>::create_table_sql<Dialect::SQLite>();
-    const std::size_t  count_pos = sql.find("count INTEGER NOT NULL");
+    const std::size_t  count_pos = sql.find(R"("count" INTEGER NOT NULL)");
     ASSERT_NE(count_pos, std::string::npos) << sql;
     EXPECT_EQ(sql.substr(count_pos, 32).find("DEFAULT"), std::string::npos) << sql.substr(count_pos, 32);
 }
 
 TEST(ColumnDefaultSchema, SqliteNoInitializerTextHasNoDefault) {
     const std::string& sql       = SchemaStatement<NoDefaultModel>::create_table_sql<Dialect::SQLite>();
-    const std::size_t  label_pos = sql.find("label TEXT NOT NULL");
+    const std::size_t  label_pos = sql.find(R"("label" TEXT NOT NULL)");
     ASSERT_NE(label_pos, std::string::npos) << sql;
     EXPECT_EQ(sql.substr(label_pos, 32).find("DEFAULT"), std::string::npos) << sql.substr(label_pos, 32);
 }

@@ -78,6 +78,7 @@ For a new statement type (e.g., UPDATE, UPSERT):
 4. Design SQL generation strategy (bulk vs individual)
 5. Determine optimal batch thresholds
 6. Add module to `storm_orm_queryset` imports
+7. Emit every identifier quoted and lowercased (#828): use `Base::table_name_` / `Base::pk_name_` and `storm::meta::append_column_name` / `column_name_view` (already quoted). For a name composed from parts, build it from the unquoted parts (`Base::raw_table_name_`, `append_unquoted_column_name`, `append_identifier_text`) and quote once via `storm::meta::append_identifier(buf, parts...)`; size it with `identifier_size(parts...)` / `column_name_size`. Add the new statement path to `tests/query/test_reserved_word_identifiers.cpp` — an unquoted name only fails for a reserved-word model
 
 ## Designing New Database Backends
 

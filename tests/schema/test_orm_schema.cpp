@@ -65,7 +65,7 @@ inline constexpr std::string_view kLongIdxField =
 // Test: a ~115-char field name must produce untruncated SQLite DDL (#361)
 TEST(SchemaUnitTest, LongFieldNameNotTruncatedSqlite) {
     const std::string& sql = create_table_sql<LongFieldNameRecord>();
-    EXPECT_NE(sql.find(std::string(kLongFieldName) + " INTEGER NOT NULL"), std::string::npos)
+    EXPECT_NE(sql.find('"' + std::string(kLongFieldName) + R"(" INTEGER NOT NULL)"), std::string::npos)
             << "Long field name was truncated in:\n"
             << sql;
 }
@@ -74,24 +74,24 @@ TEST(SchemaUnitTest, LongFieldNameNotTruncatedSqlite) {
 // The PG suffix budget differs, so it is sized independently per dialect.
 TEST(SchemaUnitTest, LongFieldNameNotTruncatedPostgres) {
     const std::string& sql = create_table_sql<LongFieldNameRecord, orm::schema::Dialect::PostgreSQL>();
-    EXPECT_NE(sql.find(std::string(kLongFieldName) + " INTEGER NOT NULL"), std::string::npos)
+    EXPECT_NE(sql.find('"' + std::string(kLongFieldName) + R"(" INTEGER NOT NULL)"), std::string::npos)
             << "Long field name was truncated in:\n"
             << sql;
 }
 
 // Test: Person CREATE TABLE SQL matches expected hand-written string verbatim
 TEST(SchemaUnitTest, PersonSqlMatchesHandWritten) {
-    const std::string expected = "CREATE TABLE Person (\n"
-                                 "    id INTEGER PRIMARY KEY,\n"
-                                 "    name TEXT NOT NULL UNIQUE,\n"
-                                 "    age INTEGER NOT NULL DEFAULT 0,\n"
-                                 "    salary REAL NOT NULL DEFAULT 0.0,\n"
-                                 "    is_active INTEGER NOT NULL DEFAULT 0,\n"
-                                 "    years_experience INTEGER NOT NULL DEFAULT 0,\n"
-                                 "    department TEXT NOT NULL,\n"
-                                 "    score INTEGER,\n"
-                                 "    nickname TEXT,\n"
-                                 "    avatar BLOB\n"
+    const std::string expected = "CREATE TABLE \"person\" (\n"
+                                 "    \"id\" INTEGER PRIMARY KEY,\n"
+                                 "    \"name\" TEXT NOT NULL UNIQUE,\n"
+                                 "    \"age\" INTEGER NOT NULL DEFAULT 0,\n"
+                                 "    \"salary\" REAL NOT NULL DEFAULT 0.0,\n"
+                                 "    \"is_active\" INTEGER NOT NULL DEFAULT 0,\n"
+                                 "    \"years_experience\" INTEGER NOT NULL DEFAULT 0,\n"
+                                 "    \"department\" TEXT NOT NULL,\n"
+                                 "    \"score\" INTEGER,\n"
+                                 "    \"nickname\" TEXT,\n"
+                                 "    \"avatar\" BLOB\n"
                                  ")";
 
     const std::string& generated = create_table_sql<Person>();
@@ -100,11 +100,11 @@ TEST(SchemaUnitTest, PersonSqlMatchesHandWritten) {
 
 // Test: Message CREATE TABLE SQL matches expected hand-written string verbatim
 TEST(SchemaUnitTest, MessageSqlMatchesHandWritten) {
-    const std::string expected = "CREATE TABLE Message (\n"
-                                 "    id INTEGER PRIMARY KEY,\n"
-                                 "    content TEXT NOT NULL,\n"
-                                 "    value INTEGER NOT NULL DEFAULT 0,\n"
-                                 "    sender_id INTEGER NOT NULL REFERENCES Person(id)\n"
+    const std::string expected = "CREATE TABLE \"message\" (\n"
+                                 "    \"id\" INTEGER PRIMARY KEY,\n"
+                                 "    \"content\" TEXT NOT NULL,\n"
+                                 "    \"value\" INTEGER NOT NULL DEFAULT 0,\n"
+                                 "    \"sender_id\" INTEGER NOT NULL REFERENCES \"person\"(\"id\")\n"
                                  ")";
 
     const std::string& generated = create_table_sql<Message>();
@@ -117,7 +117,7 @@ TEST(SchemaUnitTest, MessageSqlMatchesHandWritten) {
 // guarantee at ~358 ns/insert, so it is now opt-in.
 TEST(SchemaUnitTest, PersonIdFieldIsPlainPrimaryKeyNoAutoincrement) {
     const std::string& sql = create_table_sql<Person>();
-    EXPECT_NE(sql.find("id INTEGER PRIMARY KEY,"), std::string::npos)
+    EXPECT_NE(sql.find(R"("id" INTEGER PRIMARY KEY,)"), std::string::npos)
             << "Expected plain 'id INTEGER PRIMARY KEY,' in: " << sql;
     EXPECT_EQ(sql.find("AUTOINCREMENT"), std::string::npos)
             << "Default int PK must NOT emit AUTOINCREMENT, got: " << sql;
@@ -126,42 +126,44 @@ TEST(SchemaUnitTest, PersonIdFieldIsPlainPrimaryKeyNoAutoincrement) {
 // Test: Person name field generates TEXT NOT NULL UNIQUE
 TEST(SchemaUnitTest, PersonNameFieldIsTextNotNullUnique) {
     const std::string& sql = create_table_sql<Person>();
-    EXPECT_NE(sql.find("name TEXT NOT NULL UNIQUE"), std::string::npos)
+    EXPECT_NE(sql.find(R"("name" TEXT NOT NULL UNIQUE)"), std::string::npos)
             << "Expected 'name TEXT NOT NULL UNIQUE' in: " << sql;
 }
 
 // Test: Person age field generates INTEGER NOT NULL
 TEST(SchemaUnitTest, PersonAgeFieldIsIntegerNotNull) {
     const std::string& sql = create_table_sql<Person>();
-    EXPECT_NE(sql.find("age INTEGER NOT NULL"), std::string::npos) << "Expected 'age INTEGER NOT NULL' in: " << sql;
+    EXPECT_NE(sql.find(R"("age" INTEGER NOT NULL)"), std::string::npos)
+            << "Expected 'age INTEGER NOT NULL' in: " << sql;
 }
 
 // Test: Person salary field generates REAL NOT NULL
 TEST(SchemaUnitTest, PersonSalaryFieldIsRealNotNull) {
     const std::string& sql = create_table_sql<Person>();
-    EXPECT_NE(sql.find("salary REAL NOT NULL"), std::string::npos) << "Expected 'salary REAL NOT NULL' in: " << sql;
+    EXPECT_NE(sql.find(R"("salary" REAL NOT NULL)"), std::string::npos)
+            << "Expected 'salary REAL NOT NULL' in: " << sql;
 }
 
 // Test: Person is_active field generates INTEGER NOT NULL DEFAULT 0
 // (bool maps to INTEGER; bool{} default member init → DEFAULT 0, issue #344)
 TEST(SchemaUnitTest, PersonIsActiveFieldIsIntegerNotNull) {
     const std::string& sql = create_table_sql<Person>();
-    EXPECT_NE(sql.find("is_active INTEGER NOT NULL DEFAULT 0"), std::string::npos)
+    EXPECT_NE(sql.find(R"("is_active" INTEGER NOT NULL DEFAULT 0)"), std::string::npos)
             << "Expected 'is_active INTEGER NOT NULL DEFAULT 0' in: " << sql;
 }
 
 // Test: Person years_experience field generates INTEGER NOT NULL
 TEST(SchemaUnitTest, PersonYearsExperienceFieldIsIntegerNotNull) {
     const std::string& sql = create_table_sql<Person>();
-    EXPECT_NE(sql.find("years_experience INTEGER NOT NULL"), std::string::npos)
+    EXPECT_NE(sql.find(R"("years_experience" INTEGER NOT NULL)"), std::string::npos)
             << "Expected 'years_experience INTEGER NOT NULL' in: " << sql;
 }
 
 // Test: Person score field generates INTEGER (nullable — optional<int>)
 TEST(SchemaUnitTest, PersonScoreFieldIsNullableInteger) {
     const std::string& sql = create_table_sql<Person>();
-    EXPECT_NE(sql.find("score INTEGER,"), std::string::npos) << "Expected 'score INTEGER,' (nullable) in: " << sql;
-    const std::size_t score_pos = sql.find("score INTEGER");
+    EXPECT_NE(sql.find(R"("score" INTEGER,)"), std::string::npos) << "Expected 'score INTEGER,' (nullable) in: " << sql;
+    const std::size_t score_pos = sql.find(R"("score" INTEGER)");
     ASSERT_NE(score_pos, std::string::npos);
     const std::string after_score = sql.substr(score_pos, 20);
     EXPECT_EQ(after_score.find("NOT NULL"), std::string::npos)
@@ -171,8 +173,8 @@ TEST(SchemaUnitTest, PersonScoreFieldIsNullableInteger) {
 // Test: Person nickname field generates TEXT (nullable — optional<string>)
 TEST(SchemaUnitTest, PersonNicknameFieldIsNullableText) {
     const std::string& sql = create_table_sql<Person>();
-    EXPECT_NE(sql.find("nickname TEXT,"), std::string::npos) << "Expected 'nickname TEXT,' (nullable) in: " << sql;
-    const std::size_t nick_pos = sql.find("nickname TEXT");
+    EXPECT_NE(sql.find(R"("nickname" TEXT,)"), std::string::npos) << "Expected 'nickname TEXT,' (nullable) in: " << sql;
+    const std::size_t nick_pos = sql.find(R"("nickname" TEXT)");
     ASSERT_NE(nick_pos, std::string::npos);
     const std::string after_nick = sql.substr(nick_pos, 20);
     EXPECT_EQ(after_nick.find("NOT NULL"), std::string::npos)
@@ -182,8 +184,8 @@ TEST(SchemaUnitTest, PersonNicknameFieldIsNullableText) {
 // Test: Person avatar field generates BLOB (nullable — vector<uint8_t>)
 TEST(SchemaUnitTest, PersonAvatarFieldIsBlob) {
     const std::string& sql = create_table_sql<Person>();
-    EXPECT_NE(sql.find("avatar BLOB"), std::string::npos) << "Expected 'avatar BLOB' in: " << sql;
-    const std::size_t avatar_pos = sql.find("avatar BLOB");
+    EXPECT_NE(sql.find(R"("avatar" BLOB)"), std::string::npos) << "Expected 'avatar BLOB' in: " << sql;
+    const std::size_t avatar_pos = sql.find(R"("avatar" BLOB)");
     ASSERT_NE(avatar_pos, std::string::npos);
     const std::string after_avatar = sql.substr(avatar_pos, 20);
     EXPECT_EQ(after_avatar.find("NOT NULL"), std::string::npos)
@@ -193,9 +195,9 @@ TEST(SchemaUnitTest, PersonAvatarFieldIsBlob) {
 // Test: Message FK field generates sender_id (not sender)
 TEST(SchemaUnitTest, MessageFkFieldGeneratesSenderId) {
     const std::string& sql = create_table_sql<Message>();
-    EXPECT_NE(sql.find("sender_id INTEGER NOT NULL REFERENCES Person(id)"), std::string::npos)
+    EXPECT_NE(sql.find(R"("sender_id" INTEGER NOT NULL REFERENCES "person"("id"))"), std::string::npos)
             << "Expected 'sender_id INTEGER NOT NULL REFERENCES Person(id)' in: " << sql;
-    EXPECT_EQ(sql.find(" sender "), std::string::npos) << "Should not contain bare 'sender' column, got: " << sql;
+    EXPECT_EQ(sql.find(R"( "sender" )"), std::string::npos) << "Should not contain bare 'sender' column, got: " << sql;
 }
 
 // Test: create_table_sql() returns consistent value across multiple calls (caching)
@@ -208,7 +210,8 @@ TEST(SchemaUnitTest, CreateTableSqlIsCached) {
 // Test: SQL starts with CREATE TABLE <name> (
 TEST(SchemaUnitTest, PersonSqlStartsWithCreateTable) {
     const std::string& sql = create_table_sql<Person>();
-    EXPECT_EQ(sql.substr(0, 21), "CREATE TABLE Person (") << "SQL should start with 'CREATE TABLE Person ('";
+    EXPECT_TRUE(sql.starts_with(R"(CREATE TABLE "person" ()"))
+            << "SQL should start with 'CREATE TABLE \"person\" (': " << sql;
 }
 
 // Test: SQL ends with closing paren
@@ -234,7 +237,7 @@ struct AuditRecord {
 // in the SQLite dialect.
 TEST(SchemaUnitTest, AutoincrementOptInEmitsKeywordSqlite) {
     const std::string& sql = create_table_sql<AuditRecord>();
-    EXPECT_NE(sql.find("id INTEGER PRIMARY KEY AUTOINCREMENT"), std::string::npos)
+    EXPECT_NE(sql.find(R"("id" INTEGER PRIMARY KEY AUTOINCREMENT)"), std::string::npos)
             << "Expected 'id INTEGER PRIMARY KEY AUTOINCREMENT' for opt-in model in: " << sql;
 }
 
@@ -251,7 +254,7 @@ TEST(SchemaUnitTest, AuditRecordWithoutOptInHasNoAutoincrement) {
 // which is a SQLite-only concept (#379).
 TEST(SchemaUnitTest, AutoincrementOptInUnchangedPostgres) {
     const std::string& sql = create_table_sql<AuditRecord, orm::schema::Dialect::PostgreSQL>();
-    EXPECT_NE(sql.find("id BIGINT PRIMARY KEY GENERATED BY DEFAULT AS IDENTITY"), std::string::npos)
+    EXPECT_NE(sql.find(R"("id" BIGINT PRIMARY KEY GENERATED BY DEFAULT AS IDENTITY)"), std::string::npos)
             << "PG PK DDL must be unchanged by AUTOINCREMENT opt-in, got: " << sql;
     EXPECT_EQ(sql.find("AUTOINCREMENT"), std::string::npos)
             << "PG must never emit the SQLite AUTOINCREMENT keyword, got: " << sql;
@@ -266,7 +269,7 @@ TEST(SchemaUnitTest, PersonIndexSqlContainsIndexedField) {
     const auto& indexes = create_index_sql<Person>();
     bool        found   = false;
     for (const auto& sql : indexes) {
-        if (sql.contains("CREATE INDEX IF NOT EXISTS idx_Person_department ON Person(department)")) {
+        if (sql.contains(R"(CREATE INDEX IF NOT EXISTS "idx_person_department" ON "person"("department"))")) {
             found = true;
             break;
         }
@@ -279,7 +282,7 @@ TEST(SchemaUnitTest, PersonIndexSqlContainsUniqueField) {
     const auto& indexes = create_index_sql<Person>();
     bool        found   = false;
     for (const auto& sql : indexes) {
-        if (sql.contains("CREATE UNIQUE INDEX IF NOT EXISTS idx_Person_name ON Person(name)")) {
+        if (sql.contains(R"(CREATE UNIQUE INDEX IF NOT EXISTS "idx_person_name" ON "person"("name"))")) {
             found = true;
             break;
         }
@@ -297,8 +300,9 @@ TEST(SchemaUnitTest, PersonIndexSqlCount) {
 // The index SQL exceeds the former fixed 256-byte INDEX_SQL_BUFFER.
 TEST(SchemaUnitTest, LongUniqueFieldIndexNotTruncated) {
     const auto&       indexes  = create_index_sql<LongIdxRecord>();
-    const std::string expected = std::string("CREATE UNIQUE INDEX IF NOT EXISTS idx_LongIdxRecord_") +
-                                 std::string(kLongIdxField) + " ON LongIdxRecord(" + std::string(kLongIdxField) + ")";
+    const std::string expected = std::string(R"(CREATE UNIQUE INDEX IF NOT EXISTS "idx_longidxrecord_)") +
+                                 std::string(kLongIdxField) + R"(" ON "longidxrecord"(")" + std::string(kLongIdxField) +
+                                 R"("))";
     bool found = false;
     for (const auto& sql : indexes) {
         if (sql == expected) {
@@ -315,7 +319,7 @@ TEST(SchemaUnitTest, MessageIndexSqlContainsFkField) {
     const auto& indexes = create_index_sql<Message>();
     bool        found   = false;
     for (const auto& sql : indexes) {
-        if (sql.contains("CREATE INDEX IF NOT EXISTS idx_Message_sender_id ON Message(sender_id)")) {
+        if (sql.contains(R"(CREATE INDEX IF NOT EXISTS "idx_message_sender_id" ON "message"("sender_id"))")) {
             found = true;
             break;
         }
@@ -344,7 +348,9 @@ TEST(SchemaUnitTest, CompositeIndexSqlContainsDeptAge) {
     const auto& indexes = create_index_sql<Person>();
     bool        found   = false;
     for (const auto& sql : indexes) {
-        if (sql.contains("CREATE INDEX IF NOT EXISTS idx_Person_department_age ON Person(department, age)")) {
+        if (sql.contains(
+                    R"(CREATE INDEX IF NOT EXISTS "idx_person_department_age" ON "person"("department", "age"))"
+            )) {
             found = true;
             break;
         }
@@ -357,7 +363,9 @@ TEST(SchemaUnitTest, CompositeUniqueIndexSqlContainsNameDept) {
     const auto& indexes = create_index_sql<Person>();
     bool        found   = false;
     for (const auto& sql : indexes) {
-        if (sql.contains("CREATE UNIQUE INDEX IF NOT EXISTS idx_Person_name_department ON Person(name, department)")) {
+        if (sql.contains(
+                    R"(CREATE UNIQUE INDEX IF NOT EXISTS "idx_person_name_department" ON "person"("name", "department"))"
+            )) {
             found = true;
             break;
         }
@@ -454,17 +462,17 @@ using storm::orm::schema::Dialect;
 using storm::orm::schema::SchemaStatement;
 
 TEST(PgDialectSchemaTest, PersonPgSqlMatchesHandWritten) {
-    const std::string expected = "CREATE TABLE Person (\n"
-                                 "    id BIGINT PRIMARY KEY GENERATED BY DEFAULT AS IDENTITY,\n"
-                                 "    name TEXT NOT NULL UNIQUE,\n"
-                                 "    age INTEGER NOT NULL DEFAULT 0,\n"
-                                 "    salary DOUBLE PRECISION NOT NULL DEFAULT 0.0,\n"
-                                 "    is_active BOOLEAN NOT NULL DEFAULT FALSE,\n"
-                                 "    years_experience INTEGER NOT NULL DEFAULT 0,\n"
-                                 "    department TEXT NOT NULL,\n"
-                                 "    score INTEGER,\n"
-                                 "    nickname TEXT,\n"
-                                 "    avatar BYTEA\n"
+    const std::string expected = "CREATE TABLE \"person\" (\n"
+                                 "    \"id\" BIGINT PRIMARY KEY GENERATED BY DEFAULT AS IDENTITY,\n"
+                                 "    \"name\" TEXT NOT NULL UNIQUE,\n"
+                                 "    \"age\" INTEGER NOT NULL DEFAULT 0,\n"
+                                 "    \"salary\" DOUBLE PRECISION NOT NULL DEFAULT 0.0,\n"
+                                 "    \"is_active\" BOOLEAN NOT NULL DEFAULT FALSE,\n"
+                                 "    \"years_experience\" INTEGER NOT NULL DEFAULT 0,\n"
+                                 "    \"department\" TEXT NOT NULL,\n"
+                                 "    \"score\" INTEGER,\n"
+                                 "    \"nickname\" TEXT,\n"
+                                 "    \"avatar\" BYTEA\n"
                                  ")";
 
     const std::string& generated = SchemaStatement<Person>::create_table_sql<Dialect::PostgreSQL>();
@@ -473,40 +481,41 @@ TEST(PgDialectSchemaTest, PersonPgSqlMatchesHandWritten) {
 
 TEST(PgDialectSchemaTest, PersonPgSqlHasBigintPrimaryKey) {
     const std::string& sql = SchemaStatement<Person>::create_table_sql<Dialect::PostgreSQL>();
-    EXPECT_NE(sql.find("id BIGINT PRIMARY KEY GENERATED BY DEFAULT AS IDENTITY"), std::string::npos)
+    EXPECT_NE(sql.find(R"("id" BIGINT PRIMARY KEY GENERATED BY DEFAULT AS IDENTITY)"), std::string::npos)
             << "Expected PG-style PK in: " << sql;
     EXPECT_EQ(sql.find("AUTOINCREMENT"), std::string::npos) << "Should not contain AUTOINCREMENT in PG dialect";
 }
 
 TEST(PgDialectSchemaTest, PersonPgSqlHasIntegerAge) {
     const std::string& sql = SchemaStatement<Person>::create_table_sql<Dialect::PostgreSQL>();
-    EXPECT_NE(sql.find("age INTEGER NOT NULL"), std::string::npos) << "Expected 'age INTEGER NOT NULL' in: " << sql;
+    EXPECT_NE(sql.find(R"("age" INTEGER NOT NULL)"), std::string::npos)
+            << "Expected 'age INTEGER NOT NULL' in: " << sql;
 }
 
 TEST(PgDialectSchemaTest, PersonPgSqlHasDoublePrecisionSalary) {
     const std::string& sql = SchemaStatement<Person>::create_table_sql<Dialect::PostgreSQL>();
-    EXPECT_NE(sql.find("salary DOUBLE PRECISION NOT NULL"), std::string::npos)
+    EXPECT_NE(sql.find(R"("salary" DOUBLE PRECISION NOT NULL)"), std::string::npos)
             << "Expected 'salary DOUBLE PRECISION NOT NULL' in: " << sql;
 }
 
 TEST(PgDialectSchemaTest, PersonPgSqlHasBytea) {
     const std::string& sql = SchemaStatement<Person>::create_table_sql<Dialect::PostgreSQL>();
-    EXPECT_NE(sql.find("avatar BYTEA"), std::string::npos) << "Expected 'avatar BYTEA' in: " << sql;
+    EXPECT_NE(sql.find(R"("avatar" BYTEA)"), std::string::npos) << "Expected 'avatar BYTEA' in: " << sql;
     EXPECT_EQ(sql.find("BLOB"), std::string::npos) << "Should not contain BLOB in PG dialect";
 }
 
 TEST(PgDialectSchemaTest, MessagePgSqlHasBigintFk) {
     const std::string& sql = SchemaStatement<Message>::create_table_sql<Dialect::PostgreSQL>();
-    EXPECT_NE(sql.find("sender_id BIGINT NOT NULL REFERENCES Person(id)"), std::string::npos)
+    EXPECT_NE(sql.find(R"("sender_id" BIGINT NOT NULL REFERENCES "person"("id"))"), std::string::npos)
             << "Expected 'sender_id BIGINT NOT NULL REFERENCES Person(id)' in: " << sql;
 }
 
 TEST(PgDialectSchemaTest, MessagePgSqlMatchesHandWritten) {
-    const std::string expected = "CREATE TABLE Message (\n"
-                                 "    id BIGINT PRIMARY KEY GENERATED BY DEFAULT AS IDENTITY,\n"
-                                 "    content TEXT NOT NULL,\n"
-                                 "    value INTEGER NOT NULL DEFAULT 0,\n"
-                                 "    sender_id BIGINT NOT NULL REFERENCES Person(id)\n"
+    const std::string expected = "CREATE TABLE \"message\" (\n"
+                                 "    \"id\" BIGINT PRIMARY KEY GENERATED BY DEFAULT AS IDENTITY,\n"
+                                 "    \"content\" TEXT NOT NULL,\n"
+                                 "    \"value\" INTEGER NOT NULL DEFAULT 0,\n"
+                                 "    \"sender_id\" BIGINT NOT NULL REFERENCES \"person\"(\"id\")\n"
                                  ")";
 
     const std::string& generated = SchemaStatement<Message>::create_table_sql<Dialect::PostgreSQL>();
@@ -515,7 +524,7 @@ TEST(PgDialectSchemaTest, MessagePgSqlMatchesHandWritten) {
 
 TEST(PgDialectSchemaTest, SqliteDefaultIsPlainPrimaryKey) {
     const std::string& sql = SchemaStatement<Person>::create_table_sql();
-    EXPECT_NE(sql.find("id INTEGER PRIMARY KEY,"), std::string::npos)
+    EXPECT_NE(sql.find(R"("id" INTEGER PRIMARY KEY,)"), std::string::npos)
             << "Default (SQLite) dialect should emit plain INTEGER PRIMARY KEY (#379)";
     EXPECT_EQ(sql.find("AUTOINCREMENT"), std::string::npos)
             << "Default (SQLite) dialect must not emit AUTOINCREMENT (#379)";

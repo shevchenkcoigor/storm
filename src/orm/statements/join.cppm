@@ -575,7 +575,7 @@ export namespace storm::orm::statements {
                     // alias's digit width + ".".
                     total += AND + 1 + digits_of(Is + 2) + 1;
                 }
-                total += std::meta::identifier_of(target_pk[p]).size();
+                total += storm::meta::identifier_size(std::meta::identifier_of(target_pk[p]));
                 total += 6; // " = t1."
                 total += storm::meta::fk_column_name_size_for_part(FKFields...[Is], target_pk, p);
             }
@@ -611,7 +611,7 @@ export namespace storm::orm::statements {
                     result.append_uint(Is + 2);
                     result.append(".");
                 }
-                result.append(std::meta::identifier_of(target_pk[p]));
+                storm::meta::append_identifier(result, std::meta::identifier_of(target_pk[p]));
                 result.append(" = t1.");
                 storm::meta::append_fk_column_name_for_part(result, FKFields...[Is], target_pk, p);
             }
@@ -660,7 +660,7 @@ export namespace storm::orm::statements {
             for (std::size_t i = 0; i < Base::field_count_; ++i) {
                 auto member = Base::all_members_[i];
                 if (!Base::is_fk_field(member)) {
-                    total += (total > 0 ? 2 : 0) + 3 + std::meta::identifier_of(member).size();
+                    total += (total > 0 ? 2 : 0) + 3 + storm::meta::column_name_size(member);
                 }
             }
 
@@ -686,7 +686,7 @@ export namespace storm::orm::statements {
                         result.append(", ");
                     }
                     result.append(join_base_alias_prefix);
-                    result.append(std::meta::identifier_of(member));
+                    storm::meta::append_column_name(result, member);
                     first = false;
                 }
             }
@@ -945,12 +945,14 @@ export namespace storm::orm::statements {
             std::unreachable(); // ThroughWithFKTo guarantees a match
         }
 
-        // Auto-junction table name "<Base>_<Related>" needs static storage.
+        // Auto-junction table name "<base>_<related>" needs static storage. Composed from
+        // the two RAW model names and quoted as one identifier (#828) — the same spelling
+        // schema.cppm's append_junction_sql gives the table it creates.
         static constexpr auto junction_table_arr_ = []() consteval {
-            ConstexprString<Base::table_name_.size() + RelatedBase::table_name_.size() + 2> name;
-            name.append(Base::table_name_);
-            name.append("_");
-            name.append(RelatedBase::table_name_);
+            constexpr std::size_t size =
+                    storm::meta::identifier_size(Base::raw_table_name_, "_", RelatedBase::raw_table_name_);
+            ConstexprString<size + 1> name; // +1: NUL terminator
+            storm::meta::append_identifier(name, Base::raw_table_name_, "_", RelatedBase::raw_table_name_);
             return name;
         }();
 
@@ -959,21 +961,22 @@ export namespace storm::orm::statements {
                 return junction_table_arr_.view();
             } else {
                 // ^^Through names the local alias — dealias to the model's own name
-                return std::meta::identifier_of(std::meta::dealias(^^Through));
+                return storm::meta::quoted_identifier_view<std::meta::dealias(^^Through)>;
             }
         }
 
-        // Junction column base names (the "_id" suffix is appended in the builder).
+        // Junction column base names, RAW: the builder (append_junction_side_col) appends
+        // the "_id" / "_<part>" tail and quotes the composed name as one identifier.
         static consteval auto owner_col_name() -> std::string_view {
             if constexpr (std::same_as<Through, void>) {
-                return Base::table_name_;
+                return Base::raw_table_name_;
             } else {
                 return std::meta::identifier_of(find_through_fk<T>());
             }
         }
         static consteval auto related_col_name() -> std::string_view {
             if constexpr (std::same_as<Through, void>) {
-                return RelatedBase::table_name_;
+                return RelatedBase::raw_table_name_;
             } else {
                 return std::meta::identifier_of(find_through_fk<Related>());
             }

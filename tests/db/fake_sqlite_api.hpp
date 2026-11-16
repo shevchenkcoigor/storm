@@ -17,6 +17,7 @@ namespace fake_sqlite {
         // Fixed return codes. SQLITE_OK means "forward to real SQLite".
         int open_rc         = SQLITE_OK;
         int busy_timeout_rc = SQLITE_OK;
+        int strict_names_rc = SQLITE_OK;
         int exec_rc         = SQLITE_OK;
         int prepare_rc      = SQLITE_OK;
         int step_rc         = SQLITE_OK;
@@ -69,6 +70,9 @@ namespace fake_sqlite {
         }
         static auto busy_timeout(sqlite3* db, int timeout_ms) noexcept -> int {
             return plan.busy_timeout_rc != SQLITE_OK ? plan.busy_timeout_rc : Real::busy_timeout(db, timeout_ms);
+        }
+        static auto reject_unknown_quoted_names(sqlite3* db) noexcept -> int {
+            return plan.strict_names_rc != SQLITE_OK ? plan.strict_names_rc : Real::reject_unknown_quoted_names(db);
         }
         static auto exec(sqlite3* db, const char* sql, char** errmsg) noexcept -> int {
             ++plan.exec_calls;
@@ -156,6 +160,9 @@ namespace fake_sqlite {
         }
         static auto busy_timeout_returns(int rc) -> void {
             FakeSqliteApi::plan.busy_timeout_rc = rc;
+        }
+        static auto strict_names_returns(int rc) -> void {
+            FakeSqliteApi::plan.strict_names_rc = rc;
         }
         static auto exec_returns(int rc) -> void {
             FakeSqliteApi::plan.exec_rc = rc;

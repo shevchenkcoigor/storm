@@ -103,14 +103,14 @@ TYPED_TEST(OptionalCompositeFkJoinTest, LeftJoinKeepsRowWithNullCompositeFk) {
 // column the table does not have.
 TEST(CompositeFkM2MAggregateSqlTest, BaseColsExpandCompositeFkMember) {
     using MS = stmt::M2MJoinStatement<Parcel, storm::db::sqlite::Connection, stmt::JoinType::Inner, ^^Parcel::labels>;
-    EXPECT_EQ(MS::base_cols_view(), "SELECT t1.id, t1.line_order_id, t1.line_product_id");
+    EXPECT_EQ(MS::base_cols_view(), R"(SELECT t1."id", t1."line_order_id", t1."line_product_id")");
 }
 
 TEST(CompositeFkM2MAggregateSqlTest, RelatedColsExpandCompositeFkMember) {
     using MS = stmt::M2MJoinStatement<Parcel, storm::db::sqlite::Connection, stmt::JoinType::Inner, ^^Parcel::labels>;
     std::string sql;
     MS::append_complete_cols(sql, 3);
-    EXPECT_EQ(sql, ", t3.id, t3.line_order_id, t3.line_product_id, t3.text");
+    EXPECT_EQ(sql, R"(, t3."id", t3."line_order_id", t3."line_product_id", t3."text")");
 }
 
 TEST(CompositeFkM2MAggregateSqlTest, ReverseFkBaseColsExpandCompositeFkMember) {
@@ -121,7 +121,7 @@ TEST(CompositeFkM2MAggregateSqlTest, ReverseFkBaseColsExpandCompositeFkMember) {
             ^^ParcelNote::holder>;
     EXPECT_TRUE(
             RS::get_complete_sql().starts_with(
-                    "SELECT t1.id, t1.line_order_id, t1.line_product_id, t1.tag FROM ParcelHolder t1"
+                    R"(SELECT t1."id", t1."line_order_id", t1."line_product_id", t1."tag" FROM "parcelholder" t1)"
             )
     ) << RS::get_complete_sql();
 }
@@ -137,7 +137,7 @@ TEST(CompositeFkJoinSqlTest, JoinedTargetCompositeFkMemberExpandsInSelectList) {
             stmt::JoinStatement<ParcelNote, storm::db::sqlite::Connection, stmt::JoinType::Inner, ^^ParcelNote::holder>;
     EXPECT_TRUE(
             JS::get_complete_sql().starts_with(
-                    "SELECT t1.id, t1.text, t2.id, t2.line_order_id, t2.line_product_id, t2.tag FROM"
+                    R"(SELECT t1."id", t1."text", t2."id", t2."line_order_id", t2."line_product_id", t2."tag" FROM)"
             )
     ) << JS::get_complete_sql();
 }
@@ -209,20 +209,20 @@ TYPED_TEST(TwoJoinedTargetsTest, SecondJoinedTargetReadsFromItsOwnColumns) {
 // Single-PK / single-FK models must render EXACTLY as before: one "<fk>_id" per FK member.
 TEST(CompositeFkM2MAggregateSqlTest, SingleColumnFkAndPkStayByteIdentical) {
     using MS = stmt::M2MJoinStatement<CardBox, storm::db::sqlite::Connection, stmt::JoinType::Inner, ^^CardBox::cards>;
-    EXPECT_EQ(MS::base_cols_view(), "SELECT t1.id, t1.owner_id");
+    EXPECT_EQ(MS::base_cols_view(), R"(SELECT t1."id", t1."owner_id")");
     std::string sql;
     MS::append_complete_cols(sql, 3);
-    EXPECT_EQ(sql, ", t3.id, t3.owner_id, t3.text");
+    EXPECT_EQ(sql, R"(, t3."id", t3."owner_id", t3."text")");
 
     using PS =
             stmt::M2MJoinStatement<Student, storm::db::sqlite::Connection, stmt::JoinType::Inner, ^^Student::courses>;
-    EXPECT_EQ(PS::base_cols_view(), "SELECT t1.id, t1.name, t1.age");
+    EXPECT_EQ(PS::base_cols_view(), R"(SELECT t1."id", t1."name", t1."age")");
 }
 
 TEST(CompositeFkM2MAggregateSqlTest, ReverseFkSinglePkStaysByteIdentical) {
     using RS = stmt::
             ReverseFKJoinStatement<RfPerson, storm::db::sqlite::Connection, stmt::JoinType::Inner, ^^RfTask::assignee>;
-    EXPECT_TRUE(RS::get_complete_sql().starts_with("SELECT t1.id, t1.name, t1.age FROM RfPerson t1"))
+    EXPECT_TRUE(RS::get_complete_sql().starts_with(R"(SELECT t1."id", t1."name", t1."age" FROM "rfperson" t1)"))
             << RS::get_complete_sql();
 }
 
@@ -271,8 +271,8 @@ TYPED_TEST(ParcelHolderAggregateTest, CountOverReverseFkWithCompositeFkBaseExecu
 TEST(CompositeFkJoinSqlTest, JoinOnClauseAndJoinsBothCompositeKeyParts) {
     using JS = stmt::JoinStatement<Shipment, storm::db::sqlite::Connection, stmt::JoinType::Inner, ^^Shipment::line>;
     const std::string& sql = JS::get_complete_sql();
-    EXPECT_NE(sql.find("t2.order_id = t1.line_order_id"), std::string::npos) << sql;
-    EXPECT_NE(sql.find("t2.product_id = t1.line_product_id"), std::string::npos) << sql;
+    EXPECT_NE(sql.find(R"(t2."order_id" = t1."line_order_id")"), std::string::npos) << sql;
+    EXPECT_NE(sql.find(R"(t2."product_id" = t1."line_product_id")"), std::string::npos) << sql;
     EXPECT_NE(sql.find(" AND "), std::string::npos) << sql;
 }
 
@@ -281,7 +281,7 @@ TEST(CompositeFkJoinSqlTest, JoinOnClauseAndJoinsBothCompositeKeyParts) {
 TEST(CompositeFkJoinSqlTest, SinglePkJoinSqlStaysByteIdentical) {
     using JS = stmt::JoinStatement<Message, storm::db::sqlite::Connection, stmt::JoinType::Inner, ^^Message::sender>;
     const std::string& sql = JS::get_complete_sql();
-    EXPECT_NE(sql.find("ON t2.id = t1.sender_id"), std::string::npos) << sql;
+    EXPECT_NE(sql.find(R"(ON t2."id" = t1."sender_id")"), std::string::npos) << sql;
     EXPECT_EQ(sql.find(" AND "), std::string::npos) << sql; // no AND for a single-column key
 }
 
@@ -421,9 +421,9 @@ TEST(CompositeFkJoinSqlTest, ReverseFkQ2SqlShapeIsExactOverCompositeOwner) {
     const std::string sql = JS::build_q2_sql(nullptr, std::nullopt, std::nullopt, std::nullopt);
     EXPECT_EQ(
             sql,
-            "SELECT t2.line_order_id, t2.line_product_id, t2.id, t2.line_order_id, t2.line_product_id, t2.carrier "
-            "FROM Shipment t2 WHERE (t2.line_order_id, t2.line_product_id) IN (SELECT order_id, product_id FROM "
-            "OrderLineWithShipments)"
+            R"(SELECT t2."line_order_id", t2."line_product_id", t2."id", t2."line_order_id", t2."line_product_id", t2."carrier" )"
+            R"(FROM "shipment" t2 WHERE (t2."line_order_id", t2."line_product_id") IN (SELECT "order_id", "product_id" FROM )"
+            R"("orderlinewithshipments"))"
     );
 }
 
@@ -461,16 +461,16 @@ TEST(CompositeFkJoinSqlTest, SixCompositeFkJoinsToSameTargetSqlIsExact) {
             ^^LedgerEntryRefWide::ledger6>;
     const std::string& sql = JS::get_complete_sql();
 
-    std::string expected = "SELECT t1.id";
+    std::string expected = R"(SELECT t1."id")";
     for (int i = 2; i <= 7; ++i) {
-        expected += std::format(", t{0}.region, t{0}.account, t{0}.period, t{0}.balance", i);
+        expected += std::format(R"(, t{0}."region", t{0}."account", t{0}."period", t{0}."balance")", i);
     }
-    expected += " FROM LedgerEntryRefWide t1";
+    expected += R"( FROM "ledgerentryrefwide" t1)";
     for (int i = 2, ledger_n = 1; i <= 7; ++i, ++ledger_n) {
         expected += std::format(
-                " INNER JOIN Ledger t{0} ON t{0}.region = t1.ledger{1}_region"
-                " AND t{0}.account = t1.ledger{1}_account"
-                " AND t{0}.period = t1.ledger{1}_period",
+                R"( INNER JOIN "ledger" t{0} ON t{0}."region" = t1."ledger{1}_region")"
+                R"( AND t{0}."account" = t1."ledger{1}_account")"
+                R"( AND t{0}."period" = t1."ledger{1}_period")",
                 i,
                 ledger_n
         );

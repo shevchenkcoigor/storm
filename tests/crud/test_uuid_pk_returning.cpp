@@ -223,13 +223,13 @@ namespace {
 // column IS in the INSERT (it is data, per #565).
 TEST(UuidPkReturningSql, PlainInsertEmitsNoReturningAndIncludesTheKey) {
     const std::string sql = insert_sql<UuidNoteRec>();
-    EXPECT_EQ(sql, "INSERT INTO UuidNoteRec (id, title) VALUES (?, ?)");
+    EXPECT_EQ(sql, R"(INSERT INTO "uuidnoterec" ("id", "title") VALUES (?, ?))");
     EXPECT_FALSE(sql.contains("RETURNING")) << sql;
 }
 
 TEST(UuidPkReturningSql, KeyMemberNotNamedIdIsAlsoCovered) {
     const std::string sql = insert_sql<UuidTicketRec>();
-    EXPECT_EQ(sql, "INSERT INTO UuidTicketRec (ticket_uuid, code) VALUES (?, ?)");
+    EXPECT_EQ(sql, R"(INSERT INTO "uuidticketrec" ("ticket_uuid", "code") VALUES (?, ?))");
     EXPECT_FALSE(sql.contains("RETURNING")) << sql;
 }
 
@@ -241,8 +241,8 @@ TEST(UuidPkReturningSql, ExplicitNoMatchesTheNewDefault) {
 
 // Regression anchor: the shape a DB really does generate keeps RETURNING.
 TEST(UuidPkReturningSql, SingleIntegerPkTextIsByteIdentical) {
-    EXPECT_EQ((insert_sql<IntNoteRec, ReturnId::No>()), "INSERT INTO IntNoteRec (title) VALUES (?)");
-    EXPECT_EQ(insert_sql<IntNoteRec>(), "INSERT INTO IntNoteRec (title) VALUES (?) RETURNING id");
+    EXPECT_EQ((insert_sql<IntNoteRec, ReturnId::No>()), R"(INSERT INTO "intnoterec" ("title") VALUES (?))");
+    EXPECT_EQ(insert_sql<IntNoteRec>(), R"(INSERT INTO "intnoterec" ("title") VALUES (?) RETURNING "id")");
 }
 
 // The upsert half of the same defect: DO UPDATE / DO NOTHING both echoed the
@@ -257,14 +257,14 @@ TEST(UuidPkReturningSql, UpsertOmitsReturningOnAUuidKey) {
     using storm::orm::statements::UpsertGrammar;
     EXPECT_EQ(
             UpsertGrammar<UuidTicketRec>::nothing_sql<^^UuidTicketRec::code>(),
-            "INSERT INTO UuidTicketRec (ticket_uuid, code) VALUES (?, ?) ON CONFLICT (code) DO NOTHING"
+            R"(INSERT INTO "uuidticketrec" ("ticket_uuid", "code") VALUES (?, ?) ON CONFLICT ("code") DO NOTHING)"
     );
     EXPECT_EQ(
             UpsertGrammar<UuidTicketRec>::update_sql<^^UuidTicketRec::code>(
                     UpsertGrammar<UuidTicketRec>::build_excluded_set_clause<^^UuidTicketRec::code>()
             ),
-            "INSERT INTO UuidTicketRec (ticket_uuid, code) VALUES (?, ?) "
-            "ON CONFLICT (code) DO UPDATE SET code=excluded.code"
+            R"(INSERT INTO "uuidticketrec" ("ticket_uuid", "code") VALUES (?, ?) )"
+            R"(ON CONFLICT ("code") DO UPDATE SET "code"=excluded."code")"
     );
 }
 
@@ -275,14 +275,14 @@ TEST(UuidPkReturningSql, UpsertKeepsReturningOnASingleIntegerKey) {
     using storm::orm::statements::UpsertGrammar;
     EXPECT_EQ(
             UpsertGrammar<IntNoteRec>::nothing_sql<^^IntNoteRec::title>(),
-            "INSERT INTO IntNoteRec (title) VALUES (?) ON CONFLICT (title) DO NOTHING RETURNING id"
+            R"(INSERT INTO "intnoterec" ("title") VALUES (?) ON CONFLICT ("title") DO NOTHING RETURNING "id")"
     );
     EXPECT_EQ(
             UpsertGrammar<IntNoteRec>::update_sql<^^IntNoteRec::title>(
                     UpsertGrammar<IntNoteRec>::build_excluded_set_clause<^^IntNoteRec::title>()
             ),
-            "INSERT INTO IntNoteRec (title) VALUES (?) "
-            "ON CONFLICT (title) DO UPDATE SET title=excluded.title RETURNING id"
+            R"(INSERT INTO "intnoterec" ("title") VALUES (?) )"
+            R"(ON CONFLICT ("title") DO UPDATE SET "title"=excluded."title" RETURNING "id")"
     );
 }
 
@@ -293,14 +293,14 @@ TEST(UuidPkConflictTargetSql, UuidKeyIsAValidConflictTarget) {
     using storm::orm::statements::UpsertGrammar;
     EXPECT_EQ(
             UpsertGrammar<UuidTicketRec>::nothing_sql<^^UuidTicketRec::ticket_uuid>(),
-            "INSERT INTO UuidTicketRec (ticket_uuid, code) VALUES (?, ?) ON CONFLICT (ticket_uuid) DO NOTHING"
+            R"(INSERT INTO "uuidticketrec" ("ticket_uuid", "code") VALUES (?, ?) ON CONFLICT ("ticket_uuid") DO NOTHING)"
     );
     EXPECT_EQ(
             UpsertGrammar<UuidTicketRec>::update_sql<^^UuidTicketRec::ticket_uuid>(
                     UpsertGrammar<UuidTicketRec>::build_excluded_set_clause<^^UuidTicketRec::code>()
             ),
-            "INSERT INTO UuidTicketRec (ticket_uuid, code) VALUES (?, ?) "
-            "ON CONFLICT (ticket_uuid) DO UPDATE SET code=excluded.code"
+            R"(INSERT INTO "uuidticketrec" ("ticket_uuid", "code") VALUES (?, ?) )"
+            R"(ON CONFLICT ("ticket_uuid") DO UPDATE SET "code"=excluded."code")"
     );
 }
 

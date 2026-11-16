@@ -63,8 +63,8 @@ TEST(JoinGrammarModule, PkPartListNamesEveryKeyColumn) {
         append_pk_part_list<FkPartBase>(out);
         return out;
     }();
-    EXPECT_EQ(pair.view(), "a, b");
-    EXPECT_EQ(fk_part.view(), "owner_id, sku");
+    EXPECT_EQ(pair.view(), R"("a", "b")");
+    EXPECT_EQ(fk_part.view(), R"("owner_id", "sku")");
     EXPECT_EQ(pk_part_list_size<PairBase>(), pair.view().size());
     EXPECT_EQ(pk_part_list_size<FkPartBase>(), fk_part.view().size());
 }
@@ -85,9 +85,9 @@ TEST(JoinGrammarModule, InSubqueryOpenWidensOnlyWhenAsked) {
         append_in_subquery_open<FkPartBase, true>(out);
         return out;
     }();
-    EXPECT_EQ(single.view(), " IN (SELECT id FROM JgOwner");
-    EXPECT_EQ(widened.view(), " IN (SELECT a, b FROM JgPair");
-    EXPECT_EQ(widened_fk_part.view(), " IN (SELECT owner_id, sku FROM JgFkPart");
+    EXPECT_EQ(single.view(), R"( IN (SELECT "id" FROM "jgowner")");
+    EXPECT_EQ(widened.view(), R"( IN (SELECT "a", "b" FROM "jgpair")");
+    EXPECT_EQ(widened_fk_part.view(), R"( IN (SELECT "owner_id", "sku" FROM "jgfkpart")");
     EXPECT_EQ((in_subquery_open_size<OwnerBase, false>()), single.view().size());
     EXPECT_EQ((in_subquery_open_size<PairBase, true>()), widened.view().size());
 }
@@ -98,7 +98,7 @@ TEST(JoinGrammarModule, RelationColumnsExpandCompositeFkParts) {
         append_relation_columns<ChildBase>(out, "t3.");
         return out;
     }();
-    EXPECT_EQ(columns.view(), ", t3.id, t3.parent_id, t3.pair_a, t3.pair_b, t3.qty");
+    EXPECT_EQ(columns.view(), R"(, t3."id", t3."parent_id", t3."pair_a", t3."pair_b", t3."qty")");
     EXPECT_EQ(relation_columns_size<ChildBase>("t3."), columns.view().size());
 }
 
@@ -118,9 +118,9 @@ TEST(JoinGrammarModule, JunctionSideColumnsFollowTheirNamingRule) {
         append_junction_side_col_list<FkPartBase, JunctionNaming::Through>(out, "line", "t2.");
         return out;
     }();
-    EXPECT_EQ(single.view(), "t2.JgOwner_id");
-    EXPECT_EQ(auto_junction.view(), "t2.JgFkPart_owner_id, t2.JgFkPart_sku");
-    EXPECT_EQ(through.view(), "t2.line_owner, t2.line_sku");
+    EXPECT_EQ(single.view(), R"(t2."jgowner_id")");
+    EXPECT_EQ(auto_junction.view(), R"(t2."jgfkpart_owner_id", t2."jgfkpart_sku")");
+    EXPECT_EQ(through.view(), R"(t2."line_owner", t2."line_sku")");
 }
 
 // The two naming rules agree wherever no key part is an FK: a plain composite side spells the
@@ -136,7 +136,7 @@ TEST(JoinGrammarModule, JunctionNamingRulesAgreeOnPlainCompositeParts) {
         append_junction_side_col_list<PairBase, JunctionNaming::Through>(out, "x", "t2.");
         return out;
     }();
-    EXPECT_EQ(auto_junction.view(), "t2.x_a, t2.x_b");
+    EXPECT_EQ(auto_junction.view(), R"(t2."x_a", t2."x_b")");
     EXPECT_EQ(through.view(), auto_junction.view());
 }
 
@@ -151,8 +151,8 @@ TEST(JoinGrammarModule, OwnerFkColumnListAliasesEachPart) {
         append_owner_fk_col_list(out, ^^JgChild::pair, pair_target_pk);
         return out;
     }();
-    EXPECT_EQ(single.view(), "t2.parent_id");
-    EXPECT_EQ(composite.view(), "t2.pair_a, t2.pair_b");
+    EXPECT_EQ(single.view(), R"(t2."parent_id")");
+    EXPECT_EQ(composite.view(), R"(t2."pair_a", t2."pair_b")");
     EXPECT_EQ(owner_fk_col_list_size(^^JgChild::parent, owner_target_pk), single.view().size());
     EXPECT_EQ(owner_fk_col_list_size(^^JgChild::pair, pair_target_pk), composite.view().size());
 }
@@ -169,8 +169,13 @@ TEST(JoinGrammarModule, Q2SelectHeadPrefixesOwnerKeyToRelationColumns) {
         append_q2_select_head_multi<ChildBase>(out, ^^JgChild::parent, owner_target_pk, "t2.");
         return out;
     }();
-    EXPECT_EQ(head.view(), "SELECT t2.pair_a, t2.pair_b, t2.id, t2.parent_id, t2.pair_a, t2.pair_b, t2.qty");
-    EXPECT_EQ(single_head.view(), "SELECT t2.parent_id, t2.id, t2.parent_id, t2.pair_a, t2.pair_b, t2.qty");
+    EXPECT_EQ(
+            head.view(),
+            R"(SELECT t2."pair_a", t2."pair_b", t2."id", t2."parent_id", t2."pair_a", t2."pair_b", t2."qty")"
+    );
+    EXPECT_EQ(
+            single_head.view(), R"(SELECT t2."parent_id", t2."id", t2."parent_id", t2."pair_a", t2."pair_b", t2."qty")"
+    );
     EXPECT_EQ(
             q2_select_head_multi_owner_size(^^JgChild::pair, pair_target_pk) + relation_columns_size<ChildBase>("t2."),
             head.view().size()

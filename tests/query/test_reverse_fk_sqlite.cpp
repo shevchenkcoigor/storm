@@ -38,8 +38,9 @@ TEST(ReverseFKDisambigSqlTest, DistinctFkColumnsInJoinSql) {
             ReverseFKJoinStatement<RfReporter, storm::db::sqlite::Connection, stmt::JoinType::Left, ^^RfBug::author>;
     using ReviewerJS = stmt::
             ReverseFKJoinStatement<RfReporter, storm::db::sqlite::Connection, stmt::JoinType::Left, ^^RfBug::reviewer>;
-    EXPECT_TRUE(AuthorJS::get_complete_sql().contains("t2.author_id = t1.id")) << AuthorJS::get_complete_sql();
-    EXPECT_TRUE(ReviewerJS::get_complete_sql().contains("t2.reviewer_id = t1.id")) << ReviewerJS::get_complete_sql();
+    EXPECT_TRUE(AuthorJS::get_complete_sql().contains(R"(t2."author_id" = t1."id")")) << AuthorJS::get_complete_sql();
+    EXPECT_TRUE(ReviewerJS::get_complete_sql().contains(R"(t2."reviewer_id" = t1."id")"))
+            << ReviewerJS::get_complete_sql();
 }
 
 // NOLINTEND(misc-const-correctness)

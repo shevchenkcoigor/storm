@@ -106,8 +106,8 @@ TYPED_TEST_SUITE(FkColumnNameTest, STORM_SPLIT_TYPES, STORM_SPLIT_TYPE_NAMES);
 TYPED_TEST(FkColumnNameTest, WhereFkMemberEqualsExecutes) {
     // The SQL must name the FK column, not the bare member (a regression emitting both would still execute).
     const auto sql = QuerySet<Message, TypeParam>{}.where(fields::Message.sender == 1).select().sql();
-    EXPECT_TRUE(sql.contains("WHERE sender_id = ?")) << "Emitted SQL: " << sql;
-    EXPECT_FALSE(sql.contains("WHERE sender ")) << "Emitted SQL: " << sql;
+    EXPECT_TRUE(sql.contains(R"(WHERE "sender_id" = ?)")) << "Emitted SQL: " << sql;
+    EXPECT_FALSE(sql.contains(R"(WHERE "sender" )")) << "Emitted SQL: " << sql;
     QuerySet<Message, TypeParam> qs;
     auto result = qs.where(fields::Message.sender == this->person_ids_[0]).select().execute();
     ASSERT_TRUE(result.has_value()) << "WHERE == on an FK member failed: " << result.error().message();
@@ -136,27 +136,27 @@ TYPED_TEST(FkColumnNameTest, WhereFkMemberNotEqualsExecutes) {
 TYPED_TEST(FkColumnNameTest, WhereFkMemberRemainingOperatorsSqlNameFkColumn) {
     QuerySet<Message, TypeParam> qs;
     auto sql = qs.where(fields::Message.sender > 1).select().sql();
-    EXPECT_TRUE(sql.contains("WHERE sender_id > ?")) << "Emitted SQL: " << sql;
+    EXPECT_TRUE(sql.contains(R"(WHERE "sender_id" > ?)")) << "Emitted SQL: " << sql;
     sql = qs.where(fields::Message.sender >= 1).select().sql();
-    EXPECT_TRUE(sql.contains("WHERE sender_id >= ?")) << "Emitted SQL: " << sql;
+    EXPECT_TRUE(sql.contains(R"(WHERE "sender_id" >= ?)")) << "Emitted SQL: " << sql;
     sql = qs.where(fields::Message.sender < 1).select().sql();
-    EXPECT_TRUE(sql.contains("WHERE sender_id < ?")) << "Emitted SQL: " << sql;
+    EXPECT_TRUE(sql.contains(R"(WHERE "sender_id" < ?)")) << "Emitted SQL: " << sql;
     sql = qs.where(fields::Message.sender <= 1).select().sql();
-    EXPECT_TRUE(sql.contains("WHERE sender_id <= ?")) << "Emitted SQL: " << sql;
+    EXPECT_TRUE(sql.contains(R"(WHERE "sender_id" <= ?)")) << "Emitted SQL: " << sql;
     sql = qs.where(fields::Message.sender.between(1, 2)).select().sql();
-    EXPECT_TRUE(sql.contains("WHERE sender_id BETWEEN ? AND ?")) << "Emitted SQL: " << sql;
+    EXPECT_TRUE(sql.contains(R"(WHERE "sender_id" BETWEEN ? AND ?)")) << "Emitted SQL: " << sql;
     // like() is SQL-text only here — LIKE against an integer column is nonsensical to
     // execute, but the writer must still name the right column.
     sql = qs.where(fields::Message.sender.like("1%")).select().sql();
-    EXPECT_TRUE(sql.contains("WHERE sender_id LIKE ?")) << "Emitted SQL: " << sql;
+    EXPECT_TRUE(sql.contains(R"(WHERE "sender_id" LIKE ?)")) << "Emitted SQL: " << sql;
 }
 
 // #610: in() on a single-column FK member routes the operand through the target's
 // primary-key type and emits `sender_id IN (?, ?)`.
 TYPED_TEST(FkColumnNameTest, WhereFkMemberInExecutes) {
     const auto sql = QuerySet<Message, TypeParam>{}.where(fields::Message.sender.in(1, 2)).select().sql();
-    EXPECT_TRUE(sql.contains("WHERE sender_id IN (?, ?)")) << "Emitted SQL: " << sql;
-    EXPECT_FALSE(sql.contains("WHERE sender ")) << "Emitted SQL: " << sql;
+    EXPECT_TRUE(sql.contains(R"(WHERE "sender_id" IN (?, ?))")) << "Emitted SQL: " << sql;
+    EXPECT_FALSE(sql.contains(R"(WHERE "sender" )")) << "Emitted SQL: " << sql;
     QuerySet<Message, TypeParam> qs;
     auto result = qs.where(fields::Message.sender.in(this->person_ids_[0], this->person_ids_[1])).select().execute();
     ASSERT_TRUE(result.has_value()) << "WHERE IN on an FK member failed: " << result.error().message();
@@ -190,7 +190,7 @@ TYPED_TEST(FkColumnNameTest, WhereFkMemberInAcceptsWiderIntOperand) {
 TYPED_TEST(FkColumnNameTest, WhereFkMemberCollateSqlNamesFkColumn) {
     QuerySet<Message, TypeParam> qs;
     const auto sql = qs.where(fields::Message.sender.collate(Collate::NoCase) == 1).select().sql();
-    EXPECT_TRUE(sql.contains("sender_id COLLATE NOCASE = ?")) << "Emitted SQL: " << sql;
+    EXPECT_TRUE(sql.contains(R"("sender_id" COLLATE NOCASE = ?)")) << "Emitted SQL: " << sql;
 }
 
 // #610: CollatedField::in() on an FK member — the path that drifted from Field::in in #578 —
@@ -198,7 +198,7 @@ TYPED_TEST(FkColumnNameTest, WhereFkMemberCollateSqlNamesFkColumn) {
 TYPED_TEST(FkColumnNameTest, WhereFkMemberCollateInSqlNamesFkColumn) {
     QuerySet<Message, TypeParam> qs;
     const auto sql = qs.where(fields::Message.sender.collate(Collate::NoCase).in(1, 2)).select().sql();
-    EXPECT_TRUE(sql.contains("sender_id COLLATE NOCASE IN (?, ?)")) << "Emitted SQL: " << sql;
+    EXPECT_TRUE(sql.contains(R"("sender_id" COLLATE NOCASE IN (?, ?))")) << "Emitted SQL: " << sql;
 }
 
 // COLLATE NOCASE is SQLite-only syntax (PostgreSQL has no built-in NOCASE collation — the
@@ -239,7 +239,7 @@ TYPED_TEST(NullableSenderMessageTest, WhereFkMemberIsNullExecutes) {
                          .where(fields::NullableSenderMessage.sender.is_null())
                          .select()
                          .sql();
-    EXPECT_TRUE(sql.contains("WHERE sender_id IS NULL")) << "Emitted SQL: " << sql;
+    EXPECT_TRUE(sql.contains(R"(WHERE "sender_id" IS NULL)")) << "Emitted SQL: " << sql;
     QuerySet<Person, TypeParam> person_qs;
     Person const alice{.name = "Alice", .age = 30};
     auto alice_result = person_qs.insert(alice).execute();
@@ -270,7 +270,7 @@ TYPED_TEST(NullableSenderMessageTest, WhereFkMemberIsNullExecutes) {
 // failed to prepare ("no such column: sender") on both backends.
 TYPED_TEST(FkColumnNameTest, OrderByFkMemberExecutes) {
     const auto sql = QuerySet<Message, TypeParam>{}.template order_by<fields::Message.sender>().select().sql();
-    EXPECT_TRUE(sql.contains("ORDER BY sender_id")) << "Emitted SQL: " << sql;
+    EXPECT_TRUE(sql.contains(R"(ORDER BY "sender_id")")) << "Emitted SQL: " << sql;
     QuerySet<Message, TypeParam> qs;
     auto result = qs.template order_by<fields::Message.sender>().select().execute();
     ASSERT_TRUE(result.has_value()) << "ORDER BY on an FK member failed: " << result.error().message();
@@ -322,7 +322,7 @@ TYPED_TEST(FkColumnNameTest, OrderByMixedFkAndPlainMemberExecutes) {
 // Before the fix: "no such column: sender".
 TYPED_TEST(FkColumnNameTest, CountDistinctFkMemberExecutes) {
     const auto sql = QuerySet<Message, TypeParam>{}.template count_distinct<fields::Message.sender>().sql();
-    EXPECT_TRUE(sql.contains("COUNT(DISTINCT sender_id)")) << "Emitted SQL: " << sql;
+    EXPECT_TRUE(sql.contains(R"(COUNT(DISTINCT "sender_id"))")) << "Emitted SQL: " << sql;
     QuerySet<Message, TypeParam> qs;
     auto result = qs.template count_distinct<fields::Message.sender>().execute();
     ASSERT_TRUE(result.has_value()) << "COUNT(DISTINCT fk) failed: " << result.error().message();
@@ -531,50 +531,54 @@ TYPED_TEST(NonFkSqlParityTest, OrderByPlainMemberSqlUnchanged) {
     const auto asc = storm::test::is_postgresql<TypeParam>() ? "ASC NULLS FIRST" : "ASC";
     const auto desc = storm::test::is_postgresql<TypeParam>() ? "DESC NULLS LAST" : "DESC";
 
-    std::string asc_sql{"SELECT id, name, age, salary, is_active, years_experience, department, score, nickname,"
-                        " avatar FROM Person ORDER BY name "};
+    std::string asc_sql{
+        R"(SELECT "id", "name", "age", "salary", "is_active", "years_experience", "department", "score", "nickname",)"
+        R"( "avatar" FROM "person" ORDER BY "name" )"};
     asc_sql += asc;
     EXPECT_EQ(qs.template order_by<fields::Person.name>().select().sql(), asc_sql);
     // Bound to a local first: the comma inside order_by<..., false> would be
     // parsed as a macro-argument separator by EXPECT_EQ.
     const auto desc_sql = qs.template order_by<fields::Person.age, false>().select().sql();
-    std::string expected_desc_sql{"SELECT id, name, age, salary, is_active, years_experience, department, score,"
-                                  " nickname, avatar FROM Person ORDER BY age "};
+    std::string expected_desc_sql{
+        R"(SELECT "id", "name", "age", "salary", "is_active", "years_experience", "department", "score",)"
+        R"( "nickname", "avatar" FROM "person" ORDER BY "age" )"};
     expected_desc_sql += desc;
     EXPECT_EQ(desc_sql, expected_desc_sql);
 }
 
 TYPED_TEST(NonFkSqlParityTest, WherePlainMemberSqlUnchanged) {
     QuerySet<Person, TypeParam> qs;
-    EXPECT_EQ(qs.where(fields::Person.age == 30).select().sql(),
-              "SELECT id, name, age, salary, is_active, years_experience, department, score, nickname, avatar"
-              " FROM Person WHERE age = ?");
-    EXPECT_EQ(qs.where(fields::Person.age.collate(Collate::NoCase) == 30).select().sql(),
-              "SELECT id, name, age, salary, is_active, years_experience, department, score, nickname, avatar"
-              " FROM Person WHERE age COLLATE NOCASE = ?");
+    EXPECT_EQ(
+        qs.where(fields::Person.age == 30).select().sql(),
+        R"(SELECT "id", "name", "age", "salary", "is_active", "years_experience", "department", "score", "nickname", "avatar")"
+        R"( FROM "person" WHERE "age" = ?)");
+    EXPECT_EQ(
+        qs.where(fields::Person.age.collate(Collate::NoCase) == 30).select().sql(),
+        R"(SELECT "id", "name", "age", "salary", "is_active", "years_experience", "department", "score", "nickname", "avatar")"
+        R"( FROM "person" WHERE "age" COLLATE NOCASE = ?)");
 }
 
 TYPED_TEST(NonFkSqlParityTest, AggregateOnPlainMemberSqlUnchanged) {
     QuerySet<Person, TypeParam> qs;
     EXPECT_EQ(qs.template count_distinct<fields::Person.department>().sql(),
-              "SELECT COUNT(DISTINCT department) FROM Person");
-    EXPECT_EQ(qs.template sum<fields::Person.age>().sql(), "SELECT SUM(age) FROM Person");
+              R"(SELECT COUNT(DISTINCT "department") FROM "person")");
+    EXPECT_EQ(qs.template sum<fields::Person.age>().sql(), R"(SELECT SUM("age") FROM "person")");
     // Two-field SUM: bound to a local so the comma is not a macro separator.
     const auto sum_two = qs.template sum<fields::Person.age, fields::Person.years_experience>().sql();
-    EXPECT_EQ(sum_two, "SELECT SUM(age + years_experience) FROM Person");
-    EXPECT_EQ(qs.template avg<fields::Person.salary>().sql(), "SELECT AVG(salary) FROM Person");
-    EXPECT_EQ(qs.template min<fields::Person.age>().sql(), "SELECT MIN(age) FROM Person");
-    EXPECT_EQ(qs.template max<fields::Person.age>().sql(), "SELECT MAX(age) FROM Person");
+    EXPECT_EQ(sum_two, R"(SELECT SUM("age" + "years_experience") FROM "person")");
+    EXPECT_EQ(qs.template avg<fields::Person.salary>().sql(), R"(SELECT AVG("salary") FROM "person")");
+    EXPECT_EQ(qs.template min<fields::Person.age>().sql(), R"(SELECT MIN("age") FROM "person")");
+    EXPECT_EQ(qs.template max<fields::Person.age>().sql(), R"(SELECT MAX("age") FROM "person")");
 }
 
 TYPED_TEST(NonFkSqlParityTest, GroupByPlainMemberSqlUnchanged) {
     QuerySet<Person, TypeParam> qs;
     EXPECT_EQ(qs.template group_by<fields::Person.department>().count().sql(),
-              "SELECT department, COUNT(*) FROM Person GROUP BY department");
+              R"(SELECT "department", COUNT(*) FROM "person" GROUP BY "department")");
     // Bound to a local first: the comma inside group_by<..., ...> would be
     // parsed as a macro-argument separator by EXPECT_EQ.
     const auto two_key_sql = qs.template group_by<fields::Person.department, fields::Person.age>().count().sql();
-    EXPECT_EQ(two_key_sql, "SELECT department, age, COUNT(*) FROM Person GROUP BY department, age");
+    EXPECT_EQ(two_key_sql, R"(SELECT "department", "age", COUNT(*) FROM "person" GROUP BY "department", "age")");
 }
 
 } // namespace

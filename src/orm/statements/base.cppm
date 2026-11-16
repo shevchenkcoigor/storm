@@ -334,8 +334,13 @@ export namespace storm::orm::statements {
 
         // Reflection data - made public for JOIN statement access
         static constexpr auto primary_key_ = find_primary_key_impl();
-        static constexpr auto pk_name_     = std::meta::identifier_of(primary_key_);
-        static constexpr auto table_name_  = std::meta::identifier_of(^^T);
+        // Names as SQL spells them (#828): quoted and lowercased, ready to append to a
+        // statement. raw_table_name_ is the model's identifier as declared — for COMPOSING
+        // a longer name (a junction table, an index) that is then quoted as a whole, and
+        // for comparing against another declared name; never emit it on its own.
+        static constexpr std::string_view pk_name_        = storm::meta::quoted_identifier_view<primary_key_>;
+        static constexpr std::string_view table_name_     = storm::meta::quoted_identifier_view<^^T>;
+        static constexpr std::string_view raw_table_name_ = std::meta::identifier_of(^^T);
 
         // Composite primary key (#500). primary_key_members_ is the full PK list in
         // declaration order; primary_key_ / pk_name_ above stay the FIRST element, so
@@ -1141,7 +1146,7 @@ export namespace storm::orm::statements {
         }
 
         static constexpr orm::where::ColumnQualifier join_column_qualifier_{
-                .owner = table_name_, .prefix = join_base_alias_prefix
+                .owner = raw_table_name_, .prefix = join_base_alias_prefix
         };
 
         [[nodiscard]] static auto join_where_sql(const orm::where::ExpressionVariant& expr) -> std::string {

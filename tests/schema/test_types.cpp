@@ -1782,19 +1782,19 @@ TYPED_TEST_SUITE(NewTypesSchemaTest, DatabaseTypes);
 
 TYPED_TEST(NewTypesSchemaTest, SchemaContainsNewColumns) {
     const auto& sql = create_table_sql<ExtendedTypes>();
-    EXPECT_NE(sql.find("tiny_signed INTEGER NOT NULL"), std::string::npos);
-    EXPECT_NE(sql.find("tiny_unsigned INTEGER NOT NULL"), std::string::npos);
-    EXPECT_NE(sql.find("single_char INTEGER NOT NULL"), std::string::npos);
-    EXPECT_NE(sql.find("color INTEGER NOT NULL"), std::string::npos);
-    EXPECT_NE(sql.find("date_field TEXT NOT NULL"), std::string::npos);
-    EXPECT_NE(sql.find("datetime_field TEXT NOT NULL"), std::string::npos);
-    EXPECT_NE(sql.find("duration_field INTEGER NOT NULL"), std::string::npos);
-    EXPECT_NE(sql.find("file_path TEXT NOT NULL"), std::string::npos);
-    EXPECT_NE(sql.find("raw_data BLOB"), std::string::npos);
-    EXPECT_NE(sql.find("uuid_field TEXT NOT NULL"), std::string::npos);
-    EXPECT_NE(sql.find("opt_color INTEGER"), std::string::npos);
-    EXPECT_NE(sql.find("opt_timestamp TEXT"), std::string::npos);
-    EXPECT_NE(sql.find("opt_path TEXT"), std::string::npos);
+    EXPECT_NE(sql.find(R"("tiny_signed" INTEGER NOT NULL)"), std::string::npos);
+    EXPECT_NE(sql.find(R"("tiny_unsigned" INTEGER NOT NULL)"), std::string::npos);
+    EXPECT_NE(sql.find(R"("single_char" INTEGER NOT NULL)"), std::string::npos);
+    EXPECT_NE(sql.find(R"("color" INTEGER NOT NULL)"), std::string::npos);
+    EXPECT_NE(sql.find(R"("date_field" TEXT NOT NULL)"), std::string::npos);
+    EXPECT_NE(sql.find(R"("datetime_field" TEXT NOT NULL)"), std::string::npos);
+    EXPECT_NE(sql.find(R"("duration_field" INTEGER NOT NULL)"), std::string::npos);
+    EXPECT_NE(sql.find(R"("file_path" TEXT NOT NULL)"), std::string::npos);
+    EXPECT_NE(sql.find(R"("raw_data" BLOB)"), std::string::npos);
+    EXPECT_NE(sql.find(R"("uuid_field" TEXT NOT NULL)"), std::string::npos);
+    EXPECT_NE(sql.find(R"("opt_color" INTEGER)"), std::string::npos);
+    EXPECT_NE(sql.find(R"("opt_timestamp" TEXT)"), std::string::npos);
+    EXPECT_NE(sql.find(R"("opt_path" TEXT)"), std::string::npos);
 }
 
 // ===== COMBINED ROUNDTRIP TEST =====
@@ -1878,25 +1878,25 @@ using storm::orm::schema::SchemaStatement;
 
 TEST(PgDialectTypesSchemaTest, DateFieldIsDate) {
     const std::string& sql = SchemaStatement<ExtendedTypes>::create_table_sql<Dialect::PostgreSQL>();
-    EXPECT_NE(sql.find("date_field DATE NOT NULL"), std::string::npos)
+    EXPECT_NE(sql.find(R"("date_field" DATE NOT NULL)"), std::string::npos)
             << "Expected 'date_field DATE NOT NULL' in PG SQL: " << sql;
 }
 
 TEST(PgDialectTypesSchemaTest, DatetimeFieldIsTimestamp) {
     const std::string& sql = SchemaStatement<ExtendedTypes>::create_table_sql<Dialect::PostgreSQL>();
-    EXPECT_NE(sql.find("datetime_field TIMESTAMP NOT NULL"), std::string::npos)
+    EXPECT_NE(sql.find(R"("datetime_field" TIMESTAMP NOT NULL)"), std::string::npos)
             << "Expected 'datetime_field TIMESTAMP NOT NULL' in PG SQL: " << sql;
 }
 
 TEST(PgDialectTypesSchemaTest, UuidFieldIsUuid) {
     const std::string& sql = SchemaStatement<ExtendedTypes>::create_table_sql<Dialect::PostgreSQL>();
-    EXPECT_NE(sql.find("uuid_field UUID NOT NULL"), std::string::npos)
+    EXPECT_NE(sql.find(R"("uuid_field" UUID NOT NULL)"), std::string::npos)
             << "Expected 'uuid_field UUID NOT NULL' in PG SQL: " << sql;
 }
 
 TEST(PgDialectTypesSchemaTest, DurationFieldIsBigint) {
     const std::string& sql = SchemaStatement<ExtendedTypes>::create_table_sql<Dialect::PostgreSQL>();
-    EXPECT_NE(sql.find("duration_field BIGINT NOT NULL"), std::string::npos)
+    EXPECT_NE(sql.find(R"("duration_field" BIGINT NOT NULL)"), std::string::npos)
             << "Expected 'duration_field BIGINT NOT NULL' in PG SQL: " << sql;
 }
 
@@ -1909,13 +1909,13 @@ TEST(PgDialectTypesSchemaTest, DurationFieldIsBigint) {
 
 TEST(PgDialectTypesSchemaTest, SignedCharFieldIsSmallint) {
     const std::string& sql = SchemaStatement<ExtendedTypes>::create_table_sql<Dialect::PostgreSQL>();
-    EXPECT_NE(sql.find("tiny_signed SMALLINT NOT NULL"), std::string::npos)
+    EXPECT_NE(sql.find(R"("tiny_signed" SMALLINT NOT NULL)"), std::string::npos)
             << "signed char (1-byte signed) must map to SMALLINT in PG SQL: " << sql;
 }
 
 TEST(PgDialectTypesSchemaTest, UnsignedCharFieldIsSmallint) {
     const std::string& sql = SchemaStatement<ExtendedTypes>::create_table_sql<Dialect::PostgreSQL>();
-    EXPECT_NE(sql.find("tiny_unsigned SMALLINT NOT NULL"), std::string::npos)
+    EXPECT_NE(sql.find(R"("tiny_unsigned" SMALLINT NOT NULL)"), std::string::npos)
             << "unsigned char (1-byte unsigned, 0..255 fits SMALLINT's 0..32767) must map to "
                "SMALLINT in PG SQL: "
             << sql;
@@ -1923,7 +1923,7 @@ TEST(PgDialectTypesSchemaTest, UnsignedCharFieldIsSmallint) {
 
 TEST(PgDialectTypesSchemaTest, CharFieldIsSmallint) {
     const std::string& sql = SchemaStatement<ExtendedTypes>::create_table_sql<Dialect::PostgreSQL>();
-    EXPECT_NE(sql.find("single_char SMALLINT NOT NULL"), std::string::npos)
+    EXPECT_NE(sql.find(R"("single_char" SMALLINT NOT NULL)"), std::string::npos)
             << "char (1-byte, signed or not) must map to SMALLINT in PG SQL: " << sql;
 }
 
@@ -1931,13 +1931,13 @@ TEST(PgDialectTypesSchemaTest, EnumFieldFollowsUnderlyingType) {
     const std::string& sql = SchemaStatement<ExtendedTypes>::create_table_sql<Dialect::PostgreSQL>();
     // Color's underlying type is `int` (4-byte signed) -> INTEGER, exercising the
     // std::is_enum_v branch of integer_width_of (recurses to std::underlying_type_t).
-    EXPECT_NE(sql.find("color INTEGER NOT NULL"), std::string::npos)
+    EXPECT_NE(sql.find(R"("color" INTEGER NOT NULL)"), std::string::npos)
             << "enum : int must map to INTEGER (underlying-type recursion) in PG SQL: " << sql;
 }
 
 TEST(PgDialectTypesSchemaTest, OptionalEnumFieldFollowsUnderlyingTypeNullable) {
     const std::string& sql = SchemaStatement<ExtendedTypes>::create_table_sql<Dialect::PostgreSQL>();
-    const std::size_t  pos = sql.find("opt_color INTEGER");
+    const std::size_t  pos = sql.find(R"("opt_color" INTEGER)");
     ASSERT_NE(pos, std::string::npos) << "Expected 'opt_color INTEGER' (nullable) in PG SQL: " << sql;
     const std::string after = sql.substr(pos, 30);
     EXPECT_EQ(after.find("NOT NULL"), std::string::npos) << "opt_color should be nullable, got: " << after;
@@ -1947,38 +1947,38 @@ TEST(PgDialectTypesSchemaTest, UnsignedIntFieldIsBigint) {
     const std::string& sql = SchemaStatement<ExtendedTypes>::create_table_sql<Dialect::PostgreSQL>();
     // unsigned int (4-byte unsigned, 0..4294967295) does not fit INTEGER's
     // 4-byte signed range -> promoted one class to BIGINT.
-    EXPECT_NE(sql.find("u_int BIGINT NOT NULL"), std::string::npos)
+    EXPECT_NE(sql.find(R"("u_int" BIGINT NOT NULL)"), std::string::npos)
             << "unsigned int must stay on BIGINT (promoted one class) in PG SQL: " << sql;
 }
 
 TEST(PgDialectTypesSchemaTest, LongLongFieldIsBigint) {
     const std::string& sql = SchemaStatement<ExtendedTypes>::create_table_sql<Dialect::PostgreSQL>();
-    EXPECT_NE(sql.find("ll_signed BIGINT NOT NULL"), std::string::npos)
+    EXPECT_NE(sql.find(R"("ll_signed" BIGINT NOT NULL)"), std::string::npos)
             << "long long (8-byte signed) must map to BIGINT in PG SQL: " << sql;
 }
 
 TEST(PgDialectTypesSchemaTest, Int64FieldIsBigint) {
     const std::string& sql = SchemaStatement<ExtendedTypes>::create_table_sql<Dialect::PostgreSQL>();
-    EXPECT_NE(sql.find("big_num BIGINT NOT NULL"), std::string::npos)
+    EXPECT_NE(sql.find(R"("big_num" BIGINT NOT NULL)"), std::string::npos)
             << "int64_t must stay on BIGINT in PG SQL: " << sql;
 }
 
 TEST(PgDialectTypesSchemaTest, NarrowFieldsSqliteUnchanged) {
     // SQLite has one dynamic INTEGER storage class for every width (#603 is PG-only).
     const std::string& sql = SchemaStatement<ExtendedTypes>::create_table_sql();
-    EXPECT_NE(sql.find("tiny_signed INTEGER NOT NULL"), std::string::npos) << sql;
-    EXPECT_NE(sql.find("tiny_unsigned INTEGER NOT NULL"), std::string::npos) << sql;
-    EXPECT_NE(sql.find("single_char INTEGER NOT NULL"), std::string::npos) << sql;
-    EXPECT_NE(sql.find("color INTEGER NOT NULL"), std::string::npos) << sql;
-    EXPECT_NE(sql.find("u_int INTEGER NOT NULL"), std::string::npos) << sql;
+    EXPECT_NE(sql.find(R"("tiny_signed" INTEGER NOT NULL)"), std::string::npos) << sql;
+    EXPECT_NE(sql.find(R"("tiny_unsigned" INTEGER NOT NULL)"), std::string::npos) << sql;
+    EXPECT_NE(sql.find(R"("single_char" INTEGER NOT NULL)"), std::string::npos) << sql;
+    EXPECT_NE(sql.find(R"("color" INTEGER NOT NULL)"), std::string::npos) << sql;
+    EXPECT_NE(sql.find(R"("u_int" INTEGER NOT NULL)"), std::string::npos) << sql;
     EXPECT_EQ(sql.find("SMALLINT"), std::string::npos) << "SQLite must never emit SMALLINT: " << sql;
 }
 
 TEST(PgDialectTypesSchemaTest, OptionalTimestampIsTimestamp) {
     const std::string& sql = SchemaStatement<ExtendedTypes>::create_table_sql<Dialect::PostgreSQL>();
-    EXPECT_NE(sql.find("opt_timestamp TIMESTAMP"), std::string::npos)
+    EXPECT_NE(sql.find(R"("opt_timestamp" TIMESTAMP)"), std::string::npos)
             << "Expected 'opt_timestamp TIMESTAMP' (nullable) in PG SQL: " << sql;
-    const std::size_t pos = sql.find("opt_timestamp TIMESTAMP");
+    const std::size_t pos = sql.find(R"("opt_timestamp" TIMESTAMP)");
     ASSERT_NE(pos, std::string::npos);
     const std::string after = sql.substr(pos, 30);
     EXPECT_EQ(after.find("NOT NULL"), std::string::npos) << "opt_timestamp should be nullable, got: " << after;
@@ -1986,26 +1986,26 @@ TEST(PgDialectTypesSchemaTest, OptionalTimestampIsTimestamp) {
 
 TEST(PgDialectTypesSchemaTest, FilePathIsText) {
     const std::string& sql = SchemaStatement<ExtendedTypes>::create_table_sql<Dialect::PostgreSQL>();
-    EXPECT_NE(sql.find("file_path TEXT NOT NULL"), std::string::npos)
+    EXPECT_NE(sql.find(R"("file_path" TEXT NOT NULL)"), std::string::npos)
             << "Expected 'file_path TEXT NOT NULL' (unchanged) in PG SQL: " << sql;
 }
 
 TEST(PgDialectTypesSchemaTest, BlobIsBytea) {
     const std::string& sql = SchemaStatement<ExtendedTypes>::create_table_sql<Dialect::PostgreSQL>();
-    EXPECT_NE(sql.find("raw_data BYTEA"), std::string::npos) << "Expected 'raw_data BYTEA' in PG SQL: " << sql;
+    EXPECT_NE(sql.find(R"("raw_data" BYTEA)"), std::string::npos) << "Expected 'raw_data BYTEA' in PG SQL: " << sql;
 }
 
 TEST(PgDialectTypesSchemaTest, OptPathIsText) {
     const std::string& sql = SchemaStatement<ExtendedTypes>::create_table_sql<Dialect::PostgreSQL>();
-    EXPECT_NE(sql.find("opt_path TEXT"), std::string::npos)
+    EXPECT_NE(sql.find(R"("opt_path" TEXT)"), std::string::npos)
             << "Expected 'opt_path TEXT' (unchanged) in PG SQL: " << sql;
 }
 
 TEST(PgDialectTypesSchemaTest, SqliteDialectUnchanged) {
     const std::string& sql = SchemaStatement<ExtendedTypes>::create_table_sql();
-    EXPECT_NE(sql.find("date_field TEXT NOT NULL"), std::string::npos)
+    EXPECT_NE(sql.find(R"("date_field" TEXT NOT NULL)"), std::string::npos)
             << "SQLite dialect should use TEXT for date: " << sql;
-    EXPECT_NE(sql.find("uuid_field TEXT NOT NULL"), std::string::npos)
+    EXPECT_NE(sql.find(R"("uuid_field" TEXT NOT NULL)"), std::string::npos)
             << "SQLite dialect should use TEXT for UUID: " << sql;
 }
 
@@ -2014,19 +2014,19 @@ TEST(PgDialectTypesSchemaTest, BoolFieldIsBoolean) {
     EXPECT_EQ(sql.find("BOOLEAN"), std::string::npos)
             << "ExtendedTypes has no bool field, should not contain BOOLEAN: " << sql;
     const std::string& person_sql = SchemaStatement<Person>::create_table_sql<Dialect::PostgreSQL>();
-    EXPECT_NE(person_sql.find("is_active BOOLEAN NOT NULL DEFAULT FALSE"), std::string::npos)
+    EXPECT_NE(person_sql.find(R"("is_active" BOOLEAN NOT NULL DEFAULT FALSE)"), std::string::npos)
             << "Expected 'is_active BOOLEAN NOT NULL DEFAULT FALSE' in PG SQL: " << person_sql;
 }
 
 TEST(PgDialectTypesSchemaTest, FloatFieldIsReal) {
     const std::string& sql = SchemaStatement<ExtendedTypes>::create_table_sql<Dialect::PostgreSQL>();
-    EXPECT_NE(sql.find("approx REAL NOT NULL"), std::string::npos)
+    EXPECT_NE(sql.find(R"("approx" REAL NOT NULL)"), std::string::npos)
             << "Expected 'approx REAL NOT NULL' for float in PG SQL: " << sql;
 }
 
 TEST(PgDialectTypesSchemaTest, DoubleFieldIsDoublePrecision) {
     const std::string& sql = SchemaStatement<ExtendedTypes>::create_table_sql<Dialect::PostgreSQL>();
-    EXPECT_NE(sql.find("precise DOUBLE PRECISION NOT NULL"), std::string::npos)
+    EXPECT_NE(sql.find(R"("precise" DOUBLE PRECISION NOT NULL)"), std::string::npos)
             << "Expected 'precise DOUBLE PRECISION NOT NULL' for double in PG SQL: " << sql;
 }
 
@@ -2040,33 +2040,34 @@ struct PgOptionalSpecialTypes {
 
 TEST(PgDialectTypesSchemaTest, OptionalDateIsPgDate) {
     const std::string& sql = SchemaStatement<PgOptionalSpecialTypes>::create_table_sql<Dialect::PostgreSQL>();
-    EXPECT_NE(sql.find("opt_date DATE"), std::string::npos) << "Expected 'opt_date DATE' in PG SQL: " << sql;
-    const std::size_t pos = sql.find("opt_date DATE");
+    EXPECT_NE(sql.find(R"("opt_date" DATE)"), std::string::npos) << "Expected 'opt_date DATE' in PG SQL: " << sql;
+    const std::size_t pos = sql.find(R"("opt_date" DATE)");
     ASSERT_NE(pos, std::string::npos);
     EXPECT_EQ(sql.substr(pos, 20).find("NOT NULL"), std::string::npos) << "opt_date should be nullable";
 }
 
 TEST(PgDialectTypesSchemaTest, OptionalUuidIsPgUuid) {
     const std::string& sql = SchemaStatement<PgOptionalSpecialTypes>::create_table_sql<Dialect::PostgreSQL>();
-    EXPECT_NE(sql.find("opt_uuid UUID"), std::string::npos) << "Expected 'opt_uuid UUID' in PG SQL: " << sql;
-    const std::size_t pos = sql.find("opt_uuid UUID");
+    EXPECT_NE(sql.find(R"("opt_uuid" UUID)"), std::string::npos) << "Expected 'opt_uuid UUID' in PG SQL: " << sql;
+    const std::size_t pos = sql.find(R"("opt_uuid" UUID)");
     ASSERT_NE(pos, std::string::npos);
     EXPECT_EQ(sql.substr(pos, 20).find("NOT NULL"), std::string::npos) << "opt_uuid should be nullable";
 }
 
 TEST(PgDialectTypesSchemaTest, OptionalBoolIsBoolean) {
     const std::string& sql = SchemaStatement<PgOptionalSpecialTypes>::create_table_sql<Dialect::PostgreSQL>();
-    EXPECT_NE(sql.find("opt_bool BOOLEAN"), std::string::npos) << "Expected 'opt_bool BOOLEAN' in PG SQL: " << sql;
-    const std::size_t pos = sql.find("opt_bool BOOLEAN");
+    EXPECT_NE(sql.find(R"("opt_bool" BOOLEAN)"), std::string::npos) << "Expected 'opt_bool BOOLEAN' in PG SQL: " << sql;
+    const std::size_t pos = sql.find(R"("opt_bool" BOOLEAN)");
     ASSERT_NE(pos, std::string::npos);
     EXPECT_EQ(sql.substr(pos, 23).find("NOT NULL"), std::string::npos) << "opt_bool should be nullable";
 }
 
 TEST(PgDialectTypesSchemaTest, OptionalSpecialTypesSqliteUnchanged) {
     const std::string& sql = SchemaStatement<PgOptionalSpecialTypes>::create_table_sql();
-    EXPECT_NE(sql.find("opt_date TEXT"), std::string::npos) << "SQLite should use TEXT for opt date: " << sql;
-    EXPECT_NE(sql.find("opt_uuid TEXT"), std::string::npos) << "SQLite should use TEXT for opt UUID: " << sql;
-    EXPECT_NE(sql.find("opt_bool INTEGER"), std::string::npos) << "SQLite should use INTEGER for opt bool: " << sql;
+    EXPECT_NE(sql.find(R"("opt_date" TEXT)"), std::string::npos) << "SQLite should use TEXT for opt date: " << sql;
+    EXPECT_NE(sql.find(R"("opt_uuid" TEXT)"), std::string::npos) << "SQLite should use TEXT for opt UUID: " << sql;
+    EXPECT_NE(sql.find(R"("opt_bool" INTEGER)"), std::string::npos)
+            << "SQLite should use INTEGER for opt bool: " << sql;
 }
 
 // ===== 64-BIT UNSIGNED SIGNED-STORAGE CAVEAT TESTS (#419) =====
@@ -2215,19 +2216,19 @@ namespace {
 TYPED_TEST(NewTypesSchemaTest, SignedStorageKeepsIntegerColumn) {
     // SQLite: signed_storage uint64 stays INTEGER (byte-identical to today).
     const auto& sqlite_sql = create_table_sql<ExtendedTypes>();
-    EXPECT_NE(sqlite_sql.find("big_unsigned INTEGER NOT NULL"), std::string::npos) << sqlite_sql;
+    EXPECT_NE(sqlite_sql.find(R"("big_unsigned" INTEGER NOT NULL)"), std::string::npos) << sqlite_sql;
     // PostgreSQL: signed_storage uint64 stays BIGINT.
     const std::string& pg_sql = SchemaStatement<ExtendedTypes>::create_table_sql<Dialect::PostgreSQL>();
-    EXPECT_NE(pg_sql.find("big_unsigned BIGINT NOT NULL"), std::string::npos) << pg_sql;
+    EXPECT_NE(pg_sql.find(R"("big_unsigned" BIGINT NOT NULL)"), std::string::npos) << pg_sql;
 }
 
 TYPED_TEST(NewTypesSchemaTest, FullUnsignedUsesOrderPreservingColumn) {
     // SQLite: full_unsigned uint64 maps to TEXT (zero-padded decimal on write).
     const auto& sqlite_sql = create_table_sql<ExtendedTypes>();
-    EXPECT_NE(sqlite_sql.find("big_unsigned_full TEXT NOT NULL"), std::string::npos) << sqlite_sql;
+    EXPECT_NE(sqlite_sql.find(R"("big_unsigned_full" TEXT NOT NULL)"), std::string::npos) << sqlite_sql;
     // PostgreSQL: full_unsigned uint64 maps to NUMERIC(20,0).
     const std::string& pg_sql = SchemaStatement<ExtendedTypes>::create_table_sql<Dialect::PostgreSQL>();
-    EXPECT_NE(pg_sql.find("big_unsigned_full NUMERIC(20,0) NOT NULL"), std::string::npos) << pg_sql;
+    EXPECT_NE(pg_sql.find(R"("big_unsigned_full" NUMERIC(20,0) NOT NULL)"), std::string::npos) << pg_sql;
 }
 
 // --- Round-trip: full_unsigned recovers the exact value across the full range ---

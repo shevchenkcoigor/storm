@@ -257,6 +257,16 @@ export namespace storm::db::sqlite {
                 }
             }
 
+            // Reject a double-quoted name that matches no column (#828). Storm quotes every
+            // identifier, and stock SQLite resolves an unknown double-quoted name as a
+            // STRING LITERAL: a model field the table lacks would read back as its own
+            // name, and `WHERE "missing" != ?` would match every row — silently, where the
+            // unquoted spelling used to fail with "no such column" and PostgreSQL still
+            // does. Storm itself only ever emits single-quoted literals.
+            if (const int rc = Api::reject_unknown_quoted_names(raw_db); rc != SQLITE_OK) {
+                return std::unexpected(Error{rc, sqlite3_errmsg(raw_db)});
+            }
+
             // Enforce referential integrity (#412). SQLite parses FK syntax always but
             // ignores it unless this PRAGMA is set, per connection — the docs recommend
             // applications turn it on. PG enforces FKs natively, so no equivalent there.

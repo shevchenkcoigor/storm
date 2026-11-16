@@ -38,7 +38,9 @@ TEST(ReflectionCacheBmi, ModelInstantiatedInsideAModuleIsUsableFromAnImporter) {
     using storm::orm::schema::SchemaStatement;
 
     EXPECT_EQ(SchemaStatement<BmiMessage>::create_table_sql<Dialect::SQLite>(), storm_test_bmi::message_sqlite_ddl());
-    EXPECT_TRUE(SchemaStatement<BmiUser>::create_table_sql<Dialect::SQLite>().contains("BmiUser"));
-    EXPECT_TRUE(SchemaStatement<BmiMessage>::create_table_sql<Dialect::SQLite>().contains("CHECK(length(text) <= 64)"));
+    EXPECT_TRUE(SchemaStatement<BmiUser>::create_table_sql<Dialect::SQLite>().contains(R"("bmiuser")"));
+    EXPECT_TRUE(
+            SchemaStatement<BmiMessage>::create_table_sql<Dialect::SQLite>().contains(R"(CHECK(length("text") <= 64))")
+    );
     EXPECT_TRUE(SchemaStatement<BmiMessage>::create_table_sql<Dialect::SQLite>().contains("ON DELETE CASCADE"));
 }

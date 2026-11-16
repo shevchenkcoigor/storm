@@ -56,9 +56,9 @@ TYPED_TEST(M2MThroughTest, ThroughSqlUsesJunctionModel) {
     auto sql = (SelectStatement<Pupil, TypeParam>{}).all().template join<fields::Pupil.courses>().sql();
     // Two-query shape (#391): junction = the through model's table; FK columns
     // come from its field names. Q1 selects the base pupils; Q2 the junction⋈course.
-    EXPECT_TRUE(sql.contains("SELECT id, name, age FROM Pupil; ")) << sql;
-    EXPECT_TRUE(sql.contains("FROM Enrollment t2 INNER JOIN Course t3 ON t2.course_id = t3.id")) << sql;
-    EXPECT_TRUE(sql.contains("WHERE t2.pupil_id IN (SELECT id FROM Pupil)")) << sql;
+    EXPECT_TRUE(sql.contains(R"(SELECT "id", "name", "age" FROM "pupil"; )")) << sql;
+    EXPECT_TRUE(sql.contains(R"(FROM "enrollment" t2 INNER JOIN "course" t3 ON t2."course_id" = t3."id")")) << sql;
+    EXPECT_TRUE(sql.contains(R"(WHERE t2."pupil_id" IN (SELECT "id" FROM "pupil"))")) << sql;
 }
 
 // Single-row and bulk UPDATE on a through-model owner must skip the m2m

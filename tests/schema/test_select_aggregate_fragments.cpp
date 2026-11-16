@@ -63,17 +63,17 @@ TEST(AggregateGrammar, SingleOpSqlNamesColumns) {
     constexpr auto sum_sql      = build_single_op_sql<SumQtyPrice>();
     constexpr auto count_sql    = build_single_op_sql<CountAll>();
     constexpr auto distinct_sql = build_single_op_sql<CountDistinct>();
-    EXPECT_EQ(sum_sql.view(), "SUM(qty + price)");
+    EXPECT_EQ(sum_sql.view(), R"(SUM("qty" + "price"))");
     EXPECT_EQ(count_sql.view(), "COUNT(*)");
-    EXPECT_EQ(distinct_sql.view(), "COUNT(DISTINCT owner_id)");
+    EXPECT_EQ(distinct_sql.view(), R"(COUNT(DISTINCT "owner_id"))");
 }
 
 TEST(AggregateGrammar, OpsAndGroupFieldListsAreCommaJoined) {
     constexpr auto ops = build_owned_ops_list<void, CountAll, AvgPrice>(std::make_index_sequence<2>{});
     constexpr auto groups =
             build_group_fields_sql<GroupByFields<^^AgRow::name, ^^AgRow::owner>>(std::make_index_sequence<2>{});
-    EXPECT_EQ(ops.view(), "COUNT(*), AVG(price)");
-    EXPECT_EQ(groups.view(), "name, owner_id");
+    EXPECT_EQ(ops.view(), R"(COUNT(*), AVG("price"))");
+    EXPECT_EQ(groups.view(), R"("name", "owner_id")");
     EXPECT_EQ(NoGroupBy::size, 0U);
 }
 

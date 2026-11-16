@@ -69,12 +69,12 @@ TYPED_TEST(WideJoinTest, NineFKsEmitTwoDigitAlias) {
     auto                          sql = join_all_nine(qs).select().sql();
 
     // 9th FK (Is == 8) → alias t10 in both the JOIN clause and the SELECT list.
-    EXPECT_TRUE(sql.contains("INNER JOIN Person t10 ON t10.id = t1.fk9_id"))
+    EXPECT_TRUE(sql.contains(R"(INNER JOIN "person" t10 ON t10."id" = t1."fk9_id")"))
             << "9th FK JOIN clause missing t10 alias:\n"
             << sql;
-    EXPECT_TRUE(sql.contains("t10.id")) << "SELECT list missing t10 columns:\n" << sql;
+    EXPECT_TRUE(sql.contains(R"(t10."id")")) << "SELECT list missing t10 columns:\n" << sql;
     // A bare " Person t ON" would be the dropped-digit bug.
-    EXPECT_FALSE(sql.contains(" Person t ON")) << "bare alias 't' leaked into JOIN:\n" << sql;
+    EXPECT_FALSE(sql.contains(R"( "person" t ON)")) << "bare alias 't' leaked into JOIN:\n" << sql;
 }
 
 // Round-trip: insert one WideJoin row referencing 9 real Persons, JOIN them all

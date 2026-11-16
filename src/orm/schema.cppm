@@ -465,7 +465,7 @@ export namespace storm::orm::schema {
                 return;
             } else {
                 col.append(" CHECK(length(");
-                col.append(name);
+                storm::meta::append_identifier(col, name);
                 col.append(") <= ");
                 col.append_uint(bound);
                 col.append(")");
@@ -646,9 +646,9 @@ export namespace storm::orm::schema {
             constexpr StorageClass cls = storage_class_of<PartType>();
             constexpr bool         nullable =
                     utilities::is_optional_v<FkFieldType> || cls == StorageClass::Blob || cls == StorageClass::Fallback;
-            col.append(std::meta::identifier_of(FkMember));
-            col.append("_");
-            col.append(std::meta::identifier_of(PartMember));
+            storm::meta::append_identifier(
+                    col, std::meta::identifier_of(FkMember), "_", std::meta::identifier_of(PartMember)
+            );
             col.append(" ");
             // Width-aware (#603) unless this part mirrors another model's pinned
             // single-column PK (part_pinned_bigint) — that PK's own column ignores its
@@ -710,14 +710,14 @@ export namespace storm::orm::schema {
                         if constexpr (Is > 0) {
                             sql.append(", ");
                         }
-                        sql.append(std::meta::identifier_of(Member));
-                        sql.append("_");
-                        sql.append(std::meta::identifier_of(targets[Is]));
+                        storm::meta::append_identifier(
+                                sql, std::meta::identifier_of(Member), "_", std::meta::identifier_of(targets[Is])
+                        );
                     }(),
                     ...
             );
             sql.append(") REFERENCES ");
-            sql.append(related_name);
+            storm::meta::append_identifier(sql, related_name);
             sql.append("(");
             (
                     [&] {
@@ -779,7 +779,8 @@ export namespace storm::orm::schema {
 
         // Column-name writer for one junction side, part `Is`. Single-PK sides ignore
         // `Is` entirely (they have exactly one part, index 0). The composite branch
-        // routes the part through append_column_name (#422), so an FK key part
+        // routes the part through append_unquoted_column_name (#422 — the unquoted form of
+        // append_column_name, since the whole junction column is quoted once), so an FK key part
         // (`[[= storm::primary_part]][[= storm::fk<>]] Person warehouse` — the canonical
         // association-table shape) emits "<Side>_warehouse_id", matching the column
         // append_junction_side_target_list names on the FK clause's target side.
@@ -788,13 +789,16 @@ export namespace storm::orm::schema {
         template <typename SideType, std::size_t Is, typename SqlT>
         consteval void append_junction_side_column_name(SqlT& sql, std::string_view side_name) {
             using SideBase = storm::orm::statements::BaseStatement<SideType>;
-            sql.append(side_name);
+            // One identifier (#828): the parts are composed bare and quoted as a whole.
+            sql.append(storm::meta::identifier_quote);
+            storm::meta::append_identifier_text(sql, side_name);
             if constexpr (SideBase::has_composite_pk_) {
                 sql.append("_");
-                storm::meta::append_column_name(sql, SideBase::primary_key_members_[Is]);
+                storm::meta::append_unquoted_column_name(sql, SideBase::primary_key_members_[Is]);
             } else {
                 sql.append("_id");
             }
+            sql.append(storm::meta::identifier_quote);
         }
 
         // "<Side>_<part> <TYPE> NOT NULL" for one junction column. A junction column is
@@ -918,7 +922,7 @@ export namespace storm::orm::schema {
             sql.append("FOREIGN KEY (");
             append_junction_side_column_list<SideType>(sql, side_name);
             sql.append(") REFERENCES ");
-            sql.append(side_name);
+            storm::meta::append_identifier(sql, side_name);
             sql.append("(");
             if constexpr (SideBase::has_composite_pk_) {
                 append_junction_side_target_list<SideType>(sql);
@@ -944,9 +948,7 @@ export namespace storm::orm::schema {
             constexpr auto owner_name   = std::meta::identifier_of(^^OwnerType);
             constexpr auto related_name = std::meta::identifier_of(std::meta::dealias(^^RelatedType));
             sql.append("CREATE TABLE ");
-            sql.append(owner_name);
-            sql.append("_");
-            sql.append(related_name);
+            storm::meta::append_identifier(sql, owner_name, "_", related_name);
             sql.append(" (\n    ");
             append_junction_side_column_defs<OwnerType, D>(sql, owner_name);
             sql.append(",\n    ");
@@ -1014,7 +1016,9 @@ export namespace storm::orm::schema {
                 const auto     name_len = std::meta::identifier_of(Base::all_members_[Index]).size();
                 std::size_t    total    = 0;
                 for (std::size_t i = 0; i < targets.size(); ++i) {
-                    total += name_len + 1 + std::meta::identifier_of(targets[i]).size() + 2; // "_part, "
+                    // "<name>_<part>" quoted, plus ", "
+                    total += name_len + 1 + std::meta::identifier_of(targets[i]).size() +
+                             storm::meta::identifier_quotes_size + 2;
                 }
                 return total * 2; // once for the idx name, once for the column list
             } else {
@@ -1055,7 +1059,7 @@ export namespace storm::orm::schema {
         static consteval void append_fk_column_def(SqlT& col) {
             using FieldType   = std::remove_cvref_t<typename[:std::meta::type_of(Member):]>;
             using RelatedType = detail::col_inner_t<FieldType>;
-            col.append(std::meta::identifier_of(Member));
+            storm::meta::append_column_name(col, Member); // "<name>_id"
             // The FK column's storage type mirrors the referenced model's PK type (#507):
             // an FK onto a storm::UUID PK is a UUID/TEXT column, not INTEGER/BIGINT. Derive
             // it from the target PK member so DDL and the runtime FK bind agree.
@@ -1064,7 +1068,7 @@ export namespace storm::orm::schema {
                     std::meta::dealias(std::meta::type_of(referenced_pk_member)) == ^^storm::orm::utilities::UUID;
             constexpr auto fk_nullable = static_cast<int>(storm::orm::utilities::is_optional_v<FieldType>);
             if constexpr (ref_is_uuid) {
-                col.append("_id ");
+                col.append(" ");
                 // detail::-qualified: SchemaStatement sits OUTSIDE namespace detail, so
                 // the unqualified name does not resolve. Both UUID branches in this class
                 // are if constexpr-guarded, so the error only fires once a model actually
@@ -1076,16 +1080,16 @@ export namespace storm::orm::schema {
             } else {
                 // [nullable][pg] → fk column suffix; avoids branch-clone and nested ternary
                 constexpr std::array<std::array<std::string_view, 2>, 2> fk_suffixes = {{
-                        {"_id INTEGER NOT NULL", "_id BIGINT NOT NULL"},
-                        {"_id INTEGER", "_id BIGINT"},
+                        {" INTEGER NOT NULL", " BIGINT NOT NULL"},
+                        {" INTEGER", " BIGINT"},
                 }};
                 constexpr auto fk_pg = static_cast<int>(D == Dialect::PostgreSQL);
                 col.append(fk_suffixes[fk_nullable][fk_pg]);
             }
             col.append(" REFERENCES ");
-            col.append(std::meta::identifier_of(std::meta::dealias(^^RelatedType)));
+            storm::meta::append_identifier(col, std::meta::identifier_of(std::meta::dealias(^^RelatedType)));
             col.append("(");
-            col.append(std::meta::identifier_of(referenced_pk_member));
+            storm::meta::append_identifier(col, std::meta::identifier_of(referenced_pk_member));
             col.append(")");
             // Per-FK ON DELETE policy (#431): emitted only when the field's fk<RefAction>
             // is a non-default action, so bare fk<>/fk<Restrict> stay byte-identical.
@@ -1106,7 +1110,7 @@ export namespace storm::orm::schema {
         template <std::meta::info Member, Dialect D, bool Unique, typename SqlT>
         static consteval void append_regular_column_def(SqlT& col) {
             using FieldType = std::remove_cvref_t<typename[:std::meta::type_of(Member):]>;
-            col.append(std::meta::identifier_of(Member));
+            storm::meta::append_identifier(col, std::meta::identifier_of(Member));
             col.append(" ");
             if constexpr (constexpr auto bound = storm::meta::max_length_of(Member); bound.has_value()) {
                 constexpr bool nullable = storm::orm::utilities::is_optional_v<FieldType>;
@@ -1198,7 +1202,7 @@ export namespace storm::orm::schema {
             // storage class comes from the annotation, not storage_class_of<FieldType>.
             else if constexpr (storm::meta::has_full_unsigned_attr(member)) {
                 using FieldType = std::remove_cvref_t<typename[:std::meta::type_of(member):]>;
-                col.append(std::meta::identifier_of(member));
+                storm::meta::append_identifier(col, std::meta::identifier_of(member));
                 col.append(" ");
                 if constexpr (storm::orm::utilities::is_optional_v<FieldType>) {
                     col.append(detail::full_unsigned_type<D>());
@@ -1282,7 +1286,7 @@ export namespace storm::orm::schema {
 
         // Index SQL buffer sized from reflected lengths (#355)
         // so a long table/field name can never silently truncate. Sums EVERY field
-        // name x2 (+"_id"+", " worst case), strictly bounding both the single-field
+        // name x2 (+"_id"+", "+two quotes worst case, #828), strictly bounding both the single-field
         // and composite builders; 64 covers table*2 + "CREATE UNIQUE INDEX ... ON
         // (...)" scaffolding + '\0'. Correct-by-construction — no truncation possible.
         //
@@ -1292,7 +1296,9 @@ export namespace storm::orm::schema {
         static consteval auto index_sql_buffer() -> std::size_t {
             std::size_t names = 0;
             for (std::size_t i = 0; i < Base::field_count_; ++i) {
-                names += (std::meta::identifier_of(Base::all_members_[i]).size() + 3 + 2) * 2;
+                names += (std::meta::identifier_of(Base::all_members_[i]).size() + 3 + 2 +
+                          storm::meta::identifier_quotes_size) *
+                         2;
             }
             std::size_t composite_extra = detail::composite_fk_index_extra_size<Base>();
             return (Base::table_name_.size() * 2) + names + composite_extra + 64;
@@ -1300,23 +1306,24 @@ export namespace storm::orm::schema {
         static constexpr std::size_t INDEX_SQL_BUFFER = index_sql_buffer();
 
         // Append the shared tail of a CREATE INDEX statement:
-        //   <prefix>idx_<table>_<field><suffix> ON <table>(<field><column_suffix>)
+        //   <prefix>"idx_<table>_<field><suffix>" ON "<table>"("<field><column_suffix>")
+        // The index name is composed from the bare parts and quoted as one identifier (#828).
         // The three callers differ only in the leading keyword ("CREATE INDEX" vs
         // "CREATE UNIQUE INDEX") and in whether FK fields get the "_id" decoration.
+        static constexpr std::string_view index_name_prefix = "idx_";
+
         template <typename SqlT>
         static consteval void append_index_sql(
                 SqlT& sql, std::string_view prefix, std::string_view field_name, std::string_view column_suffix
         ) {
             sql.append(prefix);
-            sql.append(Base::table_name_);
-            sql.append("_");
-            sql.append(field_name);
-            sql.append(column_suffix);
+            storm::meta::append_identifier(
+                    sql, index_name_prefix, Base::raw_table_name_, "_", field_name, column_suffix
+            );
             sql.append(" ON ");
             sql.append(Base::table_name_);
             sql.append("(");
-            sql.append(field_name);
-            sql.append(column_suffix);
+            storm::meta::append_identifier(sql, field_name, column_suffix);
             sql.append(")");
         }
 
@@ -1329,10 +1336,10 @@ export namespace storm::orm::schema {
             using RelatedBase      = storm::orm::statements::BaseStatement<detail::composite_fk_related_t<Base, Index>>;
             constexpr auto member  = Base::all_members_[Index];
             constexpr auto targets = RelatedBase::primary_key_members_;
-            sql.append("CREATE INDEX IF NOT EXISTS idx_");
-            sql.append(Base::table_name_);
-            sql.append("_");
-            sql.append(std::meta::identifier_of(member));
+            sql.append("CREATE INDEX IF NOT EXISTS ");
+            storm::meta::append_identifier(
+                    sql, index_name_prefix, Base::raw_table_name_, "_", std::meta::identifier_of(member)
+            );
             sql.append(" ON ");
             sql.append(Base::table_name_);
             sql.append("(");
@@ -1340,9 +1347,9 @@ export namespace storm::orm::schema {
                 if (i > 0) {
                     sql.append(", ");
                 }
-                sql.append(std::meta::identifier_of(member));
-                sql.append("_");
-                sql.append(std::meta::identifier_of(targets[i]));
+                storm::meta::append_identifier(
+                        sql, std::meta::identifier_of(member), "_", std::meta::identifier_of(targets[i])
+                );
             }
             sql.append(")");
         }
@@ -1355,13 +1362,13 @@ export namespace storm::orm::schema {
             if constexpr (!Base::needs_index(member)) {
                 return sql;
             } else if constexpr (Base::is_unique_field(member)) {
-                append_index_sql(sql, "CREATE UNIQUE INDEX IF NOT EXISTS idx_", std::meta::identifier_of(member), "");
+                append_index_sql(sql, "CREATE UNIQUE INDEX IF NOT EXISTS ", std::meta::identifier_of(member), "");
             } else if constexpr (detail::has_composite_fk_target<Base, Index>()) {
                 append_composite_fk_index_sql<Index>(sql);
             } else if constexpr (Base::is_fk_field(member)) {
-                append_index_sql(sql, "CREATE INDEX IF NOT EXISTS idx_", std::meta::identifier_of(member), "_id");
+                append_index_sql(sql, "CREATE INDEX IF NOT EXISTS ", std::meta::identifier_of(member), "_id");
             } else {
-                append_index_sql(sql, "CREATE INDEX IF NOT EXISTS idx_", std::meta::identifier_of(member), "");
+                append_index_sql(sql, "CREATE INDEX IF NOT EXISTS ", std::meta::identifier_of(member), "");
             }
             return sql;
         }
@@ -1396,15 +1403,19 @@ export namespace storm::orm::schema {
         template <typename IdxType> static consteval auto build_composite_index_sql() {
             ConstexprString<INDEX_SQL_BUFFER> sql;
             if constexpr (IdxType::unique) {
-                sql.append("CREATE UNIQUE INDEX IF NOT EXISTS idx_");
+                sql.append("CREATE UNIQUE INDEX IF NOT EXISTS ");
             } else {
-                sql.append("CREATE INDEX IF NOT EXISTS idx_");
+                sql.append("CREATE INDEX IF NOT EXISTS ");
             }
-            sql.append(Base::table_name_);
+            // "idx_<table>_<f1>_<f2>…" — one identifier, quoted as a whole (#828).
+            sql.append(storm::meta::identifier_quote);
+            sql.append(index_name_prefix);
+            storm::meta::append_identifier_text(sql, Base::raw_table_name_);
             for (std::size_t i = 0; i < IdxType::fields.size(); ++i) {
                 sql.append("_");
-                sql.append(std::meta::identifier_of(IdxType::fields[i]));
+                storm::meta::append_identifier_text(sql, std::meta::identifier_of(IdxType::fields[i]));
             }
+            sql.append(storm::meta::identifier_quote);
             sql.append(" ON ");
             sql.append(Base::table_name_);
             sql.append("(");

@@ -27,9 +27,9 @@ auto result = qs.insert(user)
 ```
 
 ```sql
-INSERT INTO User (name, email, age) VALUES (?, ?, ?)
-ON CONFLICT (email) DO UPDATE SET name=excluded.name, age=excluded.age
-RETURNING id
+INSERT INTO "user" ("name", "email", "age") VALUES (?, ?, ?)
+ON CONFLICT ("email") DO UPDATE SET "name"=excluded."name", "age"=excluded."age"
+RETURNING "id"
 ```
 
 Only the `update<...>()` members are overwritten. An `auto_update` timestamp is
@@ -52,9 +52,9 @@ auto result = qs.insert(user)
 ```
 
 ```sql
-INSERT INTO User (name, email, age) VALUES (?, ?, ?)
-ON CONFLICT (email) DO NOTHING
-RETURNING id
+INSERT INTO "user" ("name", "email", "age") VALUES (?, ?, ?)
+ON CONFLICT ("email") DO NOTHING
+RETURNING "id"
 ```
 
 | Operation | Result type | Conflict result |

@@ -50,6 +50,7 @@ Read the diff as SQL-with-a-C++-generator, not as C++. For every changed stateme
 ### 2. Column naming
 - Every emitted identifier must route through the canonical column-name writer (`append_column_name`, #422) — flag any place that concatenates a member's bare `identifier_of()` or a literal string instead.
 - FK members must emit `<name>_id`, never the bare member name.
+- Every identifier is emitted double-quoted and lowercased (#828): `"person"`, `"sender_id"`. The quoted forms are the defaults (`append_column_name`, `column_name_view`, `Base::table_name_`, `Base::pk_name_`). A name COMPOSED from parts (junction table `"<owner>_<related>"`, junction column `"<side>_<part>"`, index `"idx_<table>_<field>"`, composite-FK column `"<member>_<part>"`) must be built from the bare parts (`append_identifier(buf, parts...)`, `append_identifier_text`, `append_bare_column_name`, `Base::raw_table_name_`) and quoted ONCE as a whole — flag `"order"_id`-shaped output, and flag any identifier emitted unquoted: it still executes for ordinary names, so only a reserved-word model (`tests/query/test_reserved_word_identifiers.cpp`) or a text assertion catches it.
 - PK members must emit `Base::pk_name_` (or, for composite keys, each part via the same writer) — never a hardcoded `"id"` literal, even though it's correct for the majority of in-tree models (#506 was exactly this: right by coincidence, not by construction).
 
 ### 3. Clause shape under composition

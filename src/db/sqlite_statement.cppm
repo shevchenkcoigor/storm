@@ -34,6 +34,17 @@ export namespace storm::db::sqlite {
         static auto busy_timeout(sqlite3* db, int timeout_ms) noexcept -> int {
             return sqlite3_busy_timeout(db, timeout_ms);
         }
+        // Turn off SQLite's double-quoted-string fallback for DML and DDL (#828); see
+        // BasicConnection::apply_tuning for why. sqlite3_db_config is variadic, hence the
+        // wrapper rather than a direct call at the use site.
+        static auto reject_unknown_quoted_names(sqlite3* db) noexcept -> int {
+            if (const int rc = sqlite3_db_config(db, SQLITE_DBCONFIG_DQS_DML, 0, nullptr); rc != SQLITE_OK) {
+                // LCOV_EXCL_START — cannot fail on a valid handle; the caller's branch is fake-tested
+                return rc;
+            }
+            // LCOV_EXCL_STOP
+            return sqlite3_db_config(db, SQLITE_DBCONFIG_DQS_DDL, 0, nullptr);
+        }
         static auto exec(sqlite3* db, const char* sql, char** errmsg) noexcept -> int {
             return sqlite3_exec(db, sql, nullptr, nullptr, errmsg);
         }

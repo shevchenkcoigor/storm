@@ -405,7 +405,7 @@ TYPED_TEST(CollateTest, WhereCollateSqlGeneration) {
                               .to_sql();
     ASSERT_TRUE(sql_result.has_value());
     const auto& sql = sql_result.value();
-    EXPECT_NE(sql.find("name COLLATE NOCASE"), std::string::npos)
+    EXPECT_NE(sql.find(R"("name" COLLATE NOCASE)"), std::string::npos)
             << "SQL should contain 'name COLLATE NOCASE': " << sql;
 }
 
@@ -473,7 +473,7 @@ TYPED_TEST(CollateInFoldTest, SqlGenerationPreservesCollate) {
                     .to_sql();
     ASSERT_TRUE(sql_result.has_value());
     const auto& sql = sql_result.value();
-    EXPECT_NE(sql.find("tiny_signed COLLATE BINARY IN"), std::string::npos)
+    EXPECT_NE(sql.find(R"("tiny_signed" COLLATE BINARY IN)"), std::string::npos)
             << "SQL should contain 'tiny_signed COLLATE BINARY IN': " << sql;
 }
 

@@ -42,11 +42,11 @@ namespace fields {
 namespace {
 
     constexpr std::string_view kJoinSelect =
-            "SELECT t1.id, t1.content, t1.value, t2.id, t2.name, t2.age, t2.salary,"
-            " t2.is_active, t2.years_experience, t2.department, t2.score, t2.nickname, t2.avatar"
-            " FROM Message t1 INNER JOIN Person t2 ON t2.id = t1.sender_id";
+            R"(SELECT t1."id", t1."content", t1."value", t2."id", t2."name", t2."age", t2."salary",)"
+            R"( t2."is_active", t2."years_experience", t2."department", t2."score", t2."nickname", t2."avatar")"
+            R"( FROM "message" t1 INNER JOIN "person" t2 ON t2."id" = t1."sender_id")";
 
-    constexpr std::string_view kJoinFrom = " FROM Message t1 INNER JOIN Person t2 ON t2.id = t1.sender_id";
+    constexpr std::string_view kJoinFrom = R"( FROM "message" t1 INNER JOIN "person" t2 ON t2."id" = t1."sender_id")";
 
     template <typename ConnType> constexpr auto asc_suffix() -> std::string_view {
         if constexpr (storm::test::is_postgresql<ConnType>()) {
@@ -107,7 +107,7 @@ TYPED_TEST(JoinQualifyTest, SelectJoinWhereOnSharedColumnIsQualified) {
     QuerySet<Message, TypeParam> qs;
     auto                         query = qs.where(fields::Message.id > 0).template join<fields::Message.sender>();
 
-    EXPECT_EQ(query.select().sql(), std::format("{} WHERE t1.id > ?", kJoinSelect));
+    EXPECT_EQ(query.select().sql(), std::format(R"({} WHERE t1."id" > ?)", kJoinSelect));
     auto result = query.select().execute();
     ASSERT_TRUE(result.has_value()) << result.error().message();
     EXPECT_EQ(result->size(), 3U);
@@ -117,7 +117,7 @@ TYPED_TEST(JoinQualifyTest, SelectJoinWhereOnJoinedColumnStaysBare) {
     QuerySet<Message, TypeParam> qs;
     auto                         query = qs.template join<fields::Message.sender>().where(fields::Person.age >= 10);
 
-    EXPECT_EQ(query.select().sql(), std::format("{} WHERE age >= ?", kJoinSelect));
+    EXPECT_EQ(query.select().sql(), std::format(R"({} WHERE "age" >= ?)", kJoinSelect));
     auto result = query.select().execute();
     ASSERT_TRUE(result.has_value()) << result.error().message();
     EXPECT_EQ(result->size(), 2U);
@@ -133,8 +133,8 @@ TYPED_TEST(JoinQualifyTest, SelectJoinWhereEveryExpressionKindIsQualified) {
     EXPECT_EQ(
             query.select().sql(),
             std::format(
-                    "{} WHERE (((t1.id IN (?, ?) AND t1.value BETWEEN ? AND ?) AND (t1.content LIKE ? OR "
-                    "t1.content = ?)) AND age > ?)",
+                    R"({} WHERE (((t1."id" IN (?, ?) AND t1."value" BETWEEN ? AND ?) AND (t1."content" LIKE ? OR )"
+                    R"(t1."content" = ?)) AND "age" > ?))",
                     kJoinSelect
             )
     );
@@ -154,7 +154,7 @@ TYPED_TEST(JoinQualifyTest, SelectJoinWhereAndOrderByCollatedAreQualified) {
     EXPECT_EQ(
             query.select().sql(),
             std::format(
-                    "{} WHERE t1.content COLLATE NOCASE = ? ORDER BY age {}, t1.content COLLATE NOCASE {}",
+                    R"({} WHERE t1."content" COLLATE NOCASE = ? ORDER BY "age" {}, t1."content" COLLATE NOCASE {})",
                     kJoinSelect,
                     asc_suffix<TypeParam>(),
                     asc_suffix<TypeParam>()
@@ -182,7 +182,7 @@ TYPED_TEST(JoinQualifyTest, SelectJoinWhereNullCheckOnJoinedColumnStaysBare) {
     QuerySet<Message, TypeParam> qs;
     auto query = qs.template join<fields::Message.sender>().where(fields::Person.score.is_null());
 
-    EXPECT_EQ(query.select().sql(), std::format("{} WHERE score IS NULL", kJoinSelect));
+    EXPECT_EQ(query.select().sql(), std::format(R"({} WHERE "score" IS NULL)", kJoinSelect));
     auto result = query.select().execute();
     ASSERT_TRUE(result.has_value()) << result.error().message();
     EXPECT_EQ(result->size(), 3U);
@@ -195,7 +195,7 @@ TYPED_TEST(JoinQualifyTest, SelectWithoutJoinStaysBare) {
     EXPECT_EQ(
             query.select().sql(),
             std::format(
-                    "SELECT id, content, value, sender_id FROM Message WHERE id > ? ORDER BY id {}",
+                    R"(SELECT "id", "content", "value", "sender_id" FROM "message" WHERE "id" > ? ORDER BY "id" {})",
                     asc_suffix<TypeParam>()
             )
     );
@@ -209,7 +209,7 @@ TYPED_TEST(JoinQualifyTest, SelectJoinOrderByOnSharedColumnIsQualified) {
     QuerySet<Message, TypeParam> qs;
     auto query = qs.template join<fields::Message.sender>().template order_by<fields::Message.id, false>();
 
-    EXPECT_EQ(query.select().sql(), std::format("{} ORDER BY t1.id {}", kJoinSelect, desc_suffix<TypeParam>()));
+    EXPECT_EQ(query.select().sql(), std::format(R"({} ORDER BY t1."id" {})", kJoinSelect, desc_suffix<TypeParam>()));
     auto result = query.select().execute();
     ASSERT_TRUE(result.has_value()) << result.error().message();
     ASSERT_EQ(result->size(), 3U);
@@ -224,7 +224,10 @@ TYPED_TEST(JoinQualifyTest, SelectJoinOrderByMixedOwnersQualifiesOnlyBase) {
     EXPECT_EQ(
             query.select().sql(),
             std::format(
-                    "{} ORDER BY age {}, t1.value {}", kJoinSelect, asc_suffix<TypeParam>(), desc_suffix<TypeParam>()
+                    R"({} ORDER BY "age" {}, t1."value" {})",
+                    kJoinSelect,
+                    asc_suffix<TypeParam>(),
+                    desc_suffix<TypeParam>()
             )
     );
     auto result = query.select().execute();
@@ -264,7 +267,7 @@ TYPED_TEST(JoinQualifyTest, AggregateJoinSumOnSharedColumnIsQualified) {
     auto                         agg =
             qs.where(fields::Message.id > 0).template join<fields::Message.sender>().template sum<fields::Message.id>();
 
-    EXPECT_EQ(agg.sql(), std::format("SELECT SUM(t1.id){} WHERE t1.id > ?", kJoinFrom));
+    EXPECT_EQ(agg.sql(), std::format(R"(SELECT SUM(t1."id"){} WHERE t1."id" > ?)", kJoinFrom));
     auto result = agg.execute();
     ASSERT_TRUE(result.has_value()) << result.error().message();
     EXPECT_EQ(result.value(), std::ranges::fold_left(this->message_ids, std::int64_t{0}, std::plus{}));
@@ -277,7 +280,7 @@ TYPED_TEST(JoinQualifyTest, AggregateJoinMultiOpMixedOwners) {
                        .template sum<fields::Message.value, fields::Person.age>()
                        .template count<fields::Message.id>();
 
-    EXPECT_EQ(agg.sql(), std::format("SELECT MAX(t1.id), SUM(t1.value + age), COUNT(t1.id){}", kJoinFrom));
+    EXPECT_EQ(agg.sql(), std::format(R"(SELECT MAX(t1."id"), SUM(t1."value" + "age"), COUNT(t1."id"){})", kJoinFrom));
     auto result = agg.execute();
     ASSERT_TRUE(result.has_value()) << result.error().message();
     EXPECT_EQ(std::get<1>(result.value()), 60 + 10 + 5 + 10);
@@ -288,7 +291,7 @@ TYPED_TEST(JoinQualifyTest, AggregateJoinCountDistinctIsQualified) {
     QuerySet<Message, TypeParam> qs;
     auto agg = qs.template join<fields::Message.sender>().template count_distinct<fields::Message.id>();
 
-    EXPECT_EQ(agg.sql(), std::format("SELECT COUNT(DISTINCT t1.id){}", kJoinFrom));
+    EXPECT_EQ(agg.sql(), std::format(R"(SELECT COUNT(DISTINCT t1."id"){})", kJoinFrom));
     auto result = agg.execute();
     ASSERT_TRUE(result.has_value()) << result.error().message();
     EXPECT_EQ(result.value(), 3);
@@ -306,7 +309,7 @@ TYPED_TEST(JoinQualifyTest, AggregateJoinGroupByHavingIsQualified) {
     EXPECT_EQ(
             agg.sql(),
             std::format(
-                    "SELECT t1.id, COUNT(*){} WHERE t1.id > ? GROUP BY t1.id HAVING t1.id > ? ORDER BY t1.id {}",
+                    R"(SELECT t1."id", COUNT(*){} WHERE t1."id" > ? GROUP BY t1."id" HAVING t1."id" > ? ORDER BY t1."id" {})",
                     kJoinFrom,
                     asc_suffix<TypeParam>()
             )
@@ -322,7 +325,7 @@ TYPED_TEST(JoinQualifyTest, AggregateJoinGroupByWithoutWhereIsQualified) {
             fields::Message.id > 0
     );
 
-    EXPECT_EQ(agg.sql(), std::format("SELECT t1.id, COUNT(*){} GROUP BY t1.id HAVING t1.id > ?", kJoinFrom));
+    EXPECT_EQ(agg.sql(), std::format(R"(SELECT t1."id", COUNT(*){} GROUP BY t1."id" HAVING t1."id" > ?)", kJoinFrom));
     auto result = agg.execute();
     ASSERT_TRUE(result.has_value()) << result.error().message();
     EXPECT_EQ(result->size(), 3U);
@@ -335,7 +338,7 @@ TYPED_TEST(JoinQualifyTest, AggregateWithoutJoinStaysBare) {
                        .count()
                        .having(fields::Message.id > 0);
 
-    EXPECT_EQ(agg.sql(), "SELECT id, COUNT(*) FROM Message WHERE id > ? GROUP BY id HAVING id > ?");
+    EXPECT_EQ(agg.sql(), R"(SELECT "id", COUNT(*) FROM "message" WHERE "id" > ? GROUP BY "id" HAVING "id" > ?)");
 }
 
 // ============================================================================
@@ -351,7 +354,11 @@ TYPED_TEST(JoinQualifyTest, DistinctJoinWhereOrderByIsQualified) {
 
     EXPECT_EQ(
             stmt.sql(),
-            std::format("SELECT DISTINCT t1.id{} WHERE t1.id > ? ORDER BY t1.id {}", kJoinFrom, asc_suffix<TypeParam>())
+            std::format(
+                    R"(SELECT DISTINCT t1."id"{} WHERE t1."id" > ? ORDER BY t1."id" {})",
+                    kJoinFrom,
+                    asc_suffix<TypeParam>()
+            )
     );
     auto result = stmt.execute();
     ASSERT_TRUE(result.has_value()) << result.error().message();
@@ -368,7 +375,9 @@ TYPED_TEST(JoinQualifyTest, ValuesJoinWhereOrderByIsQualified) {
     EXPECT_EQ(
             stmt.sql(),
             std::format(
-                    "SELECT t1.id, t1.value{} WHERE t1.id > ? ORDER BY t1.id {}", kJoinFrom, desc_suffix<TypeParam>()
+                    R"(SELECT t1."id", t1."value"{} WHERE t1."id" > ? ORDER BY t1."id" {})",
+                    kJoinFrom,
+                    desc_suffix<TypeParam>()
             )
     );
     auto result = stmt.execute();
@@ -388,7 +397,9 @@ TYPED_TEST(JoinQualifyTest, SetOpJoinOperandWhereIsQualified) {
                          .where(fields::Message.id > 0)
                          .union_(rhs.template join<fields::Message.sender>().where(fields::Message.value > 15));
 
-    EXPECT_EQ(setop.sql(), std::format("{} WHERE t1.id > ? UNION {} WHERE t1.value > ?", kJoinSelect, kJoinSelect));
+    EXPECT_EQ(
+            setop.sql(), std::format(R"({} WHERE t1."id" > ? UNION {} WHERE t1."value" > ?)", kJoinSelect, kJoinSelect)
+    );
     auto result = setop.execute();
     ASSERT_TRUE(result.has_value()) << result.error().message();
     EXPECT_EQ(result->size(), 3U);
@@ -402,16 +413,16 @@ namespace {
 
     auto person_cols(std::string_view alias) -> std::string {
         constexpr std::array<std::string_view, 10> cols{
-                "id",
-                "name",
-                "age",
-                "salary",
-                "is_active",
-                "years_experience",
-                "department",
-                "score",
-                "nickname",
-                "avatar"
+                R"("id")",
+                R"("name")",
+                R"("age")",
+                R"("salary")",
+                R"("is_active")",
+                R"("years_experience")",
+                R"("department")",
+                R"("score")",
+                R"("nickname")",
+                R"("avatar")"
         };
         std::string out;
         for (const auto col : cols) {
@@ -422,13 +433,17 @@ namespace {
 
     auto letter_from(std::string_view kw) -> std::string {
         return std::format(
-                " FROM Letter t1 {0} Person t2 ON t2.id = t1.sender_id {0} Person t3 ON t3.id = t1.receiver_id", kw
+                R"( FROM "letter" t1 {0} "person" t2 ON t2."id" = t1."sender_id" {0} "person" t3 ON t3."id" = t1."receiver_id")",
+                kw
         );
     }
 
     auto letter_select(std::string_view kw) -> std::string {
         return std::format(
-                "SELECT t1.id, t1.body, t1.value, {}, {}{}", person_cols("t2"), person_cols("t3"), letter_from(kw)
+                R"(SELECT t1."id", t1."body", t1."value", {}, {}{})",
+                person_cols("t2"),
+                person_cols("t3"),
+                letter_from(kw)
         );
     }
 
@@ -478,7 +493,9 @@ TYPED_TEST(MultiFkJoinQualifyTest, SelectWhereAndOrderByAreQualified) {
 
     EXPECT_EQ(
             query.select().sql(),
-            std::format("{} WHERE t1.id > ? ORDER BY t1.id {}", letter_select("INNER JOIN"), desc_suffix<TypeParam>())
+            std::format(
+                    R"({} WHERE t1."id" > ? ORDER BY t1."id" {})", letter_select("INNER JOIN"), desc_suffix<TypeParam>()
+            )
     );
     auto result = query.select().execute();
     ASSERT_TRUE(result.has_value()) << result.error().message();
@@ -495,7 +512,9 @@ TYPED_TEST(MultiFkJoinQualifyTest, LeftJoinWhereAndOrderByAreQualified) {
 
     EXPECT_EQ(
             query.select().sql(),
-            std::format("{} WHERE t1.id > ? ORDER BY t1.id {}", letter_select("LEFT JOIN"), asc_suffix<TypeParam>())
+            std::format(
+                    R"({} WHERE t1."id" > ? ORDER BY t1."id" {})", letter_select("LEFT JOIN"), asc_suffix<TypeParam>()
+            )
     );
     auto result = query.select().execute();
     ASSERT_TRUE(result.has_value()) << result.error().message();
@@ -509,13 +528,13 @@ TYPED_TEST(MultiFkJoinQualifyTest, SumAndCountAreQualified) {
     auto joined = qs.where(fields::Letter.id > 0).template join<fields::Letter.sender, fields::Letter.receiver>();
 
     auto sum = joined.template sum<fields::Letter.id>();
-    EXPECT_EQ(sum.sql(), std::format("SELECT SUM(t1.id){} WHERE t1.id > ?", letter_from("INNER JOIN")));
+    EXPECT_EQ(sum.sql(), std::format(R"(SELECT SUM(t1."id"){} WHERE t1."id" > ?)", letter_from("INNER JOIN")));
     auto total = sum.execute();
     ASSERT_TRUE(total.has_value()) << total.error().message();
     EXPECT_EQ(total.value(), std::ranges::fold_left(this->letter_ids, std::int64_t{0}, std::plus{}));
 
     auto count = joined.count();
-    EXPECT_EQ(count.sql(), std::format("SELECT COUNT(*){} WHERE t1.id > ?", letter_from("INNER JOIN")));
+    EXPECT_EQ(count.sql(), std::format(R"(SELECT COUNT(*){} WHERE t1."id" > ?)", letter_from("INNER JOIN")));
     auto rows = count.execute();
     ASSERT_TRUE(rows.has_value()) << rows.error().message();
     EXPECT_EQ(rows.value(), 3);
@@ -533,7 +552,7 @@ TYPED_TEST(MultiFkJoinQualifyTest, LeftJoinGroupByHavingIsQualified) {
     EXPECT_EQ(
             agg.sql(),
             std::format(
-                    "SELECT t1.id, COUNT(*){} WHERE t1.id > ? GROUP BY t1.id HAVING t1.id > ? ORDER BY t1.id {}",
+                    R"(SELECT t1."id", COUNT(*){} WHERE t1."id" > ? GROUP BY t1."id" HAVING t1."id" > ? ORDER BY t1."id" {})",
                     letter_from("LEFT JOIN"),
                     asc_suffix<TypeParam>()
             )

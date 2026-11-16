@@ -136,7 +136,7 @@ TYPED_TEST(IlikeTest, NonAsciiCaseFoldingIsBackendDefined) {
 TYPED_TEST(IlikeTest, EmitsLowerOnBothSidesOfLike) {
     QuerySet<Person, TypeParam> qs;
     const auto                  sql = qs.where(fields::Person.name.ilike("one")).select().sql();
-    EXPECT_TRUE(sql.contains("lower(name) LIKE lower(?)")) << sql;
+    EXPECT_TRUE(sql.contains(R"(lower("name") LIKE lower(?))")) << sql;
 }
 
 // The pattern is bound, never spliced into the text.
@@ -170,7 +170,7 @@ TYPED_TEST(IlikeJoinTest, BaseColumnIsQualifiedUnderJoin) {
 
     auto query = qs.where(fields::Message.content.ilike("%hello%")).template join<fields::Message.sender>().select();
 
-    EXPECT_TRUE(query.sql().contains("lower(t1.content) LIKE lower(?)")) << query.sql();
+    EXPECT_TRUE(query.sql().contains(R"(lower(t1."content") LIKE lower(?))")) << query.sql();
     auto result = query.execute();
     ASSERT_TRUE(result.has_value()) << result.error().message();
     ASSERT_EQ(result.value().size(), 1U) << "the qualified lower() must match through the JOIN";

@@ -123,10 +123,12 @@ export namespace storm::orm::statements {
         static constexpr std::size_t    bulk_insert_prefix_size =
                 calculate_bulk_insert_prefix_size() - 1; // Exclude null terminator
 
-        // Pre-computed RETURNING suffix: " RETURNING <pk_name>"
-        static constexpr auto returning_suffix_array = [] consteval {
-            ConstexprString<64> result;
-            result.append(" RETURNING ");
+        // Pre-computed RETURNING suffix: " RETURNING <pk_name>". Sized from the key name
+        // (+1: NUL terminator) — a fixed buffer truncates a long name silently.
+        static constexpr std::string_view returning_keyword      = " RETURNING ";
+        static constexpr auto             returning_suffix_array = [] consteval {
+            ConstexprString<returning_keyword.size() + Base::pk_name_.size() + 1> result;
+            result.append(returning_keyword);
             result.append(Base::pk_name_);
             return result;
         }();

@@ -39,6 +39,7 @@ You are a senior C++ code reviewer specializing in the Storm ORM project, with d
 - Batch transactions use `TransactionGuard` (`storm::begin(conn)`), not raw BEGIN/COMMIT
 - SQL string caching via static methods like `get_insert_sql()`
 - Minimize code duplication through shared binding helpers
+- Identifier quoting (#828): every table, column, junction and index name is emitted double-quoted and lowercased (`"person"`, `"sender_id"`). `BaseStatement::table_name_` / `pk_name_`, `append_column_name` and `column_name_view` are the QUOTED forms and the default. `raw_table_name_`, `append_unquoted_column_name` and `append_identifier_text` are for composing a longer name (junction table/column, index, composite-FK column) or for comparing names — never emit them on their own, and never append to a quoted name (`"order"_id`): compose the unquoted parts, then quote once with `storm::meta::append_identifier(buf, parts...)`. An unquoted identifier still executes for ordinary names, so it only fails for a reserved-word model — `tests/query/test_reserved_word_identifiers.cpp` is the net. The SQLite connection rejects an unknown double-quoted name (`Api::reject_unknown_quoted_names` in `apply_tuning`) instead of reading it as a string literal; do not remove that call
 
 ### 5. Database Abstraction Concepts
 - `DatabaseConnection` concept is properly satisfied by implementations

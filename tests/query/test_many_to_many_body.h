@@ -233,11 +233,11 @@ TYPED_TEST(M2MBaseTest, JunctionTableIsCreatedAndWritable) {
 TYPED_TEST(M2MBaseTest, M2MJoinSqlShape) {
     auto sql = (SelectStatement<Student, TypeParam>{}).all().template join<fields::Student.courses>().sql();
     // Q1 — base entities, a plain SELECT (no join, no sorter).
-    EXPECT_TRUE(sql.contains("SELECT id, name, age FROM Student; ")) << sql;
+    EXPECT_TRUE(sql.contains(R"(SELECT "id", "name", "age" FROM "student"; )")) << sql;
     // Q2 — junction⋈related, related rows filtered by the same base subquery.
-    EXPECT_TRUE(sql.contains("SELECT t2.Student_id, t3.id, t3.title")) << sql;
-    EXPECT_TRUE(sql.contains("FROM Student_Course t2 INNER JOIN Course t3 ON t2.Course_id = t3.id")) << sql;
-    EXPECT_TRUE(sql.contains("WHERE t2.Student_id IN (SELECT id FROM Student)")) << sql;
+    EXPECT_TRUE(sql.contains(R"(SELECT t2."student_id", t3."id", t3."title")")) << sql;
+    EXPECT_TRUE(sql.contains(R"(FROM "student_course" t2 INNER JOIN "course" t3 ON t2."course_id" = t3."id")")) << sql;
+    EXPECT_TRUE(sql.contains(R"(WHERE t2."student_id" IN (SELECT "id" FROM "student"))")) << sql;
     // No outer ORDER BY / pk-adjacency contract — the stitch is a hash map.
     EXPECT_FALSE(sql.contains(" t1")) << sql;
 }
@@ -254,15 +254,18 @@ TYPED_TEST(M2MBaseTest, M2MJoinSqlModifiersGoInsideSubquery) {
     // Q1 directly AND inside Q2's IN-subquery so both pick the same entities.
     // PG dialect adds NULLS LAST after DESC (matches SQLite NULL ordering).
     if constexpr (storm::test::is_postgresql<TypeParam>()) {
-        EXPECT_TRUE(
-            sql.contains("SELECT id, name, age FROM Student WHERE age > ? ORDER BY name DESC NULLS LAST LIMIT 2; "))
+        EXPECT_TRUE(sql.contains(
+            R"(SELECT "id", "name", "age" FROM "student" WHERE "age" > ? ORDER BY "name" DESC NULLS LAST LIMIT 2; )"))
             << sql;
-        EXPECT_TRUE(sql.contains("IN (SELECT id FROM Student WHERE age > ? ORDER BY name DESC NULLS LAST LIMIT 2)"))
+        EXPECT_TRUE(
+            sql.contains(R"(IN (SELECT "id" FROM "student" WHERE "age" > ? ORDER BY "name" DESC NULLS LAST LIMIT 2))"))
             << sql;
     } else {
-        EXPECT_TRUE(sql.contains("SELECT id, name, age FROM Student WHERE age > ? ORDER BY name DESC LIMIT 2; "))
+        EXPECT_TRUE(
+            sql.contains(R"(SELECT "id", "name", "age" FROM "student" WHERE "age" > ? ORDER BY "name" DESC LIMIT 2; )"))
             << sql;
-        EXPECT_TRUE(sql.contains("IN (SELECT id FROM Student WHERE age > ? ORDER BY name DESC LIMIT 2)")) << sql;
+        EXPECT_TRUE(sql.contains(R"(IN (SELECT "id" FROM "student" WHERE "age" > ? ORDER BY "name" DESC LIMIT 2))"))
+            << sql;
     }
 }
 
@@ -275,10 +278,11 @@ TYPED_TEST(M2MBaseTest, M2MJoinSqlMultiFieldOrderByQualifiesAllFields) {
     // Multi-field ORDER BY appears (unqualified — no t1. surgery) in Q1 and the
     // Q2 IN-subquery; no pk tiebreak (the stitch is a hash map, not adjacency).
     if constexpr (storm::test::is_postgresql<TypeParam>()) {
-        EXPECT_TRUE(sql.contains("ORDER BY age ASC NULLS FIRST, name ASC NULLS FIRST")) << sql;
+        EXPECT_TRUE(sql.contains(R"(ORDER BY "age" ASC NULLS FIRST, "name" ASC NULLS FIRST)")) << sql;
     } else {
-        EXPECT_TRUE(sql.contains("SELECT id, name, age FROM Student ORDER BY age ASC, name ASC; ")) << sql;
-        EXPECT_TRUE(sql.contains("IN (SELECT id FROM Student ORDER BY age ASC, name ASC)")) << sql;
+        EXPECT_TRUE(sql.contains(R"(SELECT "id", "name", "age" FROM "student" ORDER BY "age" ASC, "name" ASC; )"))
+            << sql;
+        EXPECT_TRUE(sql.contains(R"(IN (SELECT "id" FROM "student" ORDER BY "age" ASC, "name" ASC))")) << sql;
     }
 }
 
@@ -410,8 +414,8 @@ TYPED_TEST(M2MSeededTest, M2MJoinWhereAndAggregateOnSharedIdAreQualified) {
                    .template join<fields::Student.courses>()
                    .where(fields::Student.id > 0)
                    .template sum<fields::Student.id>();
-    EXPECT_TRUE(agg.sql().starts_with("SELECT SUM(t1.id) FROM ")) << agg.sql();
-    EXPECT_TRUE(agg.sql().ends_with(" WHERE t1.id > ?")) << agg.sql();
+    EXPECT_TRUE(agg.sql().starts_with(R"(SELECT SUM(t1."id") FROM )")) << agg.sql();
+    EXPECT_TRUE(agg.sql().ends_with(R"( WHERE t1."id" > ?)")) << agg.sql();
     auto sum = agg.execute();
     ASSERT_TRUE(sum.has_value()) << sum.error().message();
     EXPECT_EQ(sum.value(), 1 + 1 + 2); // pairs (Alice,Math) (Alice,Physics) (Bob,Math)
@@ -445,7 +449,7 @@ TYPED_TEST(M2MSeededTest, M2MJoinGroupByHavingOnSharedIdIsQualified) {
                    .template group_by<fields::Student.id>()
                    .having(fields::Student.id > 0)
                    .count();
-    EXPECT_TRUE(agg.sql().contains(" GROUP BY t1.id HAVING t1.id > ?")) << agg.sql();
+    EXPECT_TRUE(agg.sql().contains(R"( GROUP BY t1."id" HAVING t1."id" > ?)")) << agg.sql();
     auto groups = agg.execute();
     ASSERT_TRUE(groups.has_value()) << groups.error().message();
     EXPECT_EQ(groups->size(), 2U); // Alice, Bob
@@ -458,8 +462,8 @@ TYPED_TEST(M2MSeededTest, M2MJoinDistinctOnSharedIdIsQualified) {
                     .where(fields::Student.id > 0)
                     .template order_by<fields::Student.id>()
                     .template distinct<fields::Student.id>();
-    EXPECT_TRUE(stmt.sql().starts_with("SELECT DISTINCT t1.id FROM ")) << stmt.sql();
-    EXPECT_TRUE(stmt.sql().contains(" WHERE t1.id > ? ORDER BY t1.id ")) << stmt.sql();
+    EXPECT_TRUE(stmt.sql().starts_with(R"(SELECT DISTINCT t1."id" FROM )")) << stmt.sql();
+    EXPECT_TRUE(stmt.sql().contains(R"( WHERE t1."id" > ? ORDER BY t1."id" )")) << stmt.sql();
     auto ids = stmt.execute();
     ASSERT_TRUE(ids.has_value()) << ids.error().message();
     EXPECT_EQ(ids->size(), 2U); // Alice, Bob — Carol has no course

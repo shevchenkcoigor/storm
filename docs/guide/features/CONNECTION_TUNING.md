@@ -55,6 +55,17 @@ The tuning is applied once, in `open()`, immediately after the handle is created
 and before it is handed out. It does **not** touch the query hot path (prepare /
 bind / step), so it costs nothing per query.
 
+## Always on: unknown quoted names are errors (#828)
+
+Every SQLite connection Storm opens rejects a double-quoted name that matches no column.
+Stock SQLite instead reads such a name as a string literal, which matters because Storm
+double-quotes every identifier it emits: without this, a model field the table does not have
+would read back as its own name, and `WHERE "missing" != ?` would match every row. With it,
+the statement fails with "no such column", as it does on PostgreSQL.
+
+This is not configurable. It also applies to raw SQL run on the connection: write text
+literals with single quotes (`'text'`), never double quotes.
+
 ## Pooled SQLite concurrency
 
 `PoolConfig` carries the same knobs and propagates them to every connection the
