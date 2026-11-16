@@ -242,10 +242,7 @@ export namespace storm::db::postgresql {
             if (pos == 0 || (sql[pos - 1] != 'e' && sql[pos - 1] != 'E')) {
                 return false;
             }
-            if (pos == 1) {
-                return true;
-            }
-            const char before = sql[pos - 2];
+            const char before = pos >= 2 ? sql[pos - 2] : ' '; // start of text counts as a boundary
             return std::isalnum(static_cast<unsigned char>(before)) == 0 && before != '_' && before != '$';
         }
 
