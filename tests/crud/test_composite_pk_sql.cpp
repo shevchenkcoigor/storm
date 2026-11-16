@@ -16,6 +16,9 @@ import storm_orm_statements_update_grammar;
 import storm_orm_statements_erase_grammar;
 import storm_orm_statements_upsert_grammar;
 import storm_orm_statements_erase;
+import storm_orm_statements_update;
+import storm_orm_model_concepts;
+import storm_orm_queryset;
 
 #include "../../shared/models/person.h" // NOSONAR cpp:S954 — Person, the FK target of StockEntry
 #include "../../shared/models/timestamped_record.h"
@@ -205,6 +208,37 @@ TEST(CompositePkUpdateSql, FkKeyPartUsesColumnNameNotIdentifier) {
             "UPDATE StockEntry SET qty=? WHERE warehouse_id = ? AND sku = ?"
     );
 }
+
+// #744: a model whose columns are all key parts has nothing to SET, so the whole-row
+// update() is refused at compile time rather than emitting "SET  WHERE". Asserted on
+// the concept and on the statement's query() overloads.
+static_assert(!storm::orm::statements::ModelHasUpdatableColumn<PairLink>);
+static_assert(storm::orm::statements::ModelHasUpdatableColumn<OrderLine>);
+static_assert(storm::orm::statements::ModelHasUpdatableColumn<StockEntry>);
+static_assert(storm::orm::statements::ModelHasUpdatableColumn<Widget>);
+// A requires-expression outside a template turns an unsatisfied call into a hard error,
+// so the call checks go through dependent concepts.
+template <typename M>
+concept CanUpdateWholeRow =
+        requires(storm::orm::statements::BasicUpdateStatement<M, storm::db::sqlite::Connection>& st, const M& obj) {
+            st.query(obj);
+        };
+template <typename M>
+concept CanBulkUpdateWholeRow = requires(
+        storm::orm::statements::BasicUpdateStatement<M, storm::db::sqlite::Connection>& st, std::span<const M> objs
+) { st.query(objs); };
+
+template <typename M>
+concept CanQuerySetUpdate =
+        requires(storm::BasicQuerySet<M, storm::db::sqlite::Connection>& qs, const M& obj) { qs.update(obj); };
+static_assert(
+        !CanQuerySetUpdate<PairLink>, "QuerySet::update() on an all-key-part model must be rejected by its constraint"
+);
+static_assert(CanQuerySetUpdate<OrderLine>, "QuerySet::update() on a model with a non-key column still compiles");
+static_assert(!CanUpdateWholeRow<PairLink>, "whole-row update() on an all-key-part model must not compile");
+static_assert(!CanBulkUpdateWholeRow<PairLink>, "bulk whole-row update() on an all-key-part model must not compile");
+static_assert(CanUpdateWholeRow<OrderLine>, "a model with a non-key column keeps its whole-row update()");
+static_assert(CanBulkUpdateWholeRow<OrderLine>, "a model with a non-key column keeps its bulk update()");
 
 static_assert(
         !UpdateGrammar<StockEntry>::is_settable_member<^^StockEntry::warehouse>(),

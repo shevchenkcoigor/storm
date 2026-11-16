@@ -236,18 +236,33 @@ export namespace storm::db::postgresql {
         // a $N placeholder. Each skipper starts at the opener and returns the
         // index just past the terminator. See translate_placeholders (#418).
 
-        // Single- or double-quoted string starting at sql[pos] (a ' or "). Inside
-        // a single-quoted string a backslash escapes the next char (covers the
-        // E'...' escape-string form, e.g. E'it\'s'); double-quoted identifiers do
-        // not. Copies through the closing quote.
+        // True when the quote at sql[pos] opens an E'...' escape string: it is directly
+        // preceded by an `e`/`E` that is not the tail of a longer identifier (#744).
+        static auto opens_escape_string(std::string_view sql, std::size_t pos) -> bool {
+            if (pos == 0 || (sql[pos - 1] != 'e' && sql[pos - 1] != 'E')) {
+                return false;
+            }
+            const char before = pos >= 2 ? sql[pos - 2] : ' '; // start of text counts as a boundary
+            return std::isalnum(static_cast<unsigned char>(before)) == 0 && before != '_' && before != '$';
+        }
+
+        // Single- or double-quoted string starting at sql[pos] (a ' or "). A backslash
+        // escapes the next char ONLY inside an E'...' escape string (e.g. E'it\'s');
+        // in a plain '...' string — with PostgreSQL's default standard_conforming_strings —
+        // and in a double-quoted identifier it is an ordinary character, so 'C:\' is a
+        // complete string (#744). Assumes standard_conforming_strings=on (the PG default and
+        // what Storm's own generated SQL relies on); a session with it off treats a backslash
+        // as an escape in plain strings too, which only raw caller SQL could observe.
+        // Copies through the closing quote.
         static auto skip_quoted(std::string_view sql, std::size_t pos, std::string& out) -> std::size_t {
-            const char quote = sql[pos];
+            const char quote            = sql[pos];
+            const bool backslash_escape = quote == '\'' && opens_escape_string(sql, pos);
             out += sql[pos++];
             while (pos < sql.size()) {
                 const char ch = sql[pos];
                 out += ch;
                 ++pos;
-                if (quote == '\'' && ch == '\\' && pos < sql.size()) {
+                if (backslash_escape && ch == '\\' && pos < sql.size()) {
                     out += sql[pos++]; // escaped char — never a terminator
                 } else if (ch == quote) {
                     break;

@@ -642,6 +642,18 @@ export namespace storm::orm::statements {
                 return !meta::is_primary_member(m) || (!meta::is_auto_create(m) && !meta::is_auto_update(m));
             });
 
+    // A whole-row UPDATE needs at least one column to SET (#744). Every primary-key part is
+    // excluded from the SET list (#501) and relation containers are not columns (#485), so a
+    // model whose every column is a key part would emit "UPDATE t SET  WHERE ..." — a syntax
+    // error. Gates only the whole-row update() overloads: INSERT/SELECT/DELETE on such a model
+    // (a pure association table) are legitimate. Members are read directly from
+    // data_members_of_v<T> (BMI-safe, #262, #694), matching the sibling concepts above.
+    template <typename T>
+    concept ModelHasUpdatableColumn =
+            std::ranges::any_of(storm::meta::data_members_of_v<T>, [](std::meta::info m) consteval {
+                return !meta::is_primary_member(m) && !meta::is_relation_field(m);
+            });
+
     // A field carrying auto_create/auto_update must be a system_clock::time_point (#209).
     // Referenced by a static_assert in bind_field_at_index so a wrong-typed timestamp field
     // fails to compile with a clear message rather than deep inside parameter binding.

@@ -1049,6 +1049,27 @@ namespace {
         EXPECT_EQ(translated("SELECT E'it\\'s ?', ?"), "SELECT E'it\\'s ?', $1");
     }
 
+    // #744: with standard_conforming_strings=on (the PG default) a backslash in a plain
+    // '...' string is an ordinary character, so 'C:\' is a complete string and the `?`
+    // after it is a real placeholder. Only an E'...' string treats backslash as an escape.
+    TEST_F(PgQuoteHandlingTest, PlainStringBackslashIsLiteral) {
+        EXPECT_EQ(translated("SELECT 'C:\\' || ?, ?"), "SELECT 'C:\\' || $1, $2");
+    }
+
+    TEST_F(PgQuoteHandlingTest, PlainStringBackslashBeforeQuoteDoesNotSwallowPlaceholder) {
+        EXPECT_EQ(translated("SELECT 1 WHERE 'a\\' = 'a\\' AND 1 = ?"), "SELECT 1 WHERE 'a\\' = 'a\\' AND 1 = $1");
+    }
+
+    TEST_F(PgQuoteHandlingTest, LowercaseEscapeStringStillEscapes) {
+        EXPECT_EQ(translated("SELECT e'it\\'s ?', ?"), "SELECT e'it\\'s ?', $1");
+    }
+
+    TEST_F(PgQuoteHandlingTest, TypeNameEndingInEIsNotAnEscapeString) {
+        // `name'a\'` is a typed literal: the `e` closes the identifier `name`, it is not
+        // the E prefix, so the backslash is literal and the trailing `?` is a placeholder.
+        EXPECT_EQ(translated("SELECT name'a\\', ?::int"), "SELECT name'a\\', $1::int");
+    }
+
     TEST_F(PgQuoteHandlingTest, LineCommentQuestionMarkNotTranslated) {
         EXPECT_EQ(translated("SELECT ? -- pick ? one\n, ?"), "SELECT $1 -- pick ? one\n, $2");
     }

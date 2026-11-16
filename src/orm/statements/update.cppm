@@ -171,7 +171,10 @@ export namespace storm::orm::statements {
         )
             : conn_(std::move(conn)) {}
 
-        [[nodiscard]] auto query(const T& obj [[clang::lifetimebound]]) -> detail::SingleQuery<T, ConnType> {
+        // Whole-row UPDATE: refused at compile time when T has no column to SET (#744).
+        [[nodiscard]] auto query(const T& obj [[clang::lifetimebound]]) -> detail::SingleQuery<T, ConnType>
+            requires ModelHasUpdatableColumn<T>
+        {
             return {{}, std::move(*this), obj};
         }
         // LIFETIME CONTRACT (issue #357, finding B): the returned BulkQuery holds a
@@ -180,8 +183,9 @@ export namespace storm::orm::statements {
         // container that dies before .execute()/.to_sql() runs still dangles silently at
         // runtime. Treat the proxy as single-expression-use: keep the backing container
         // alive until the terminal call completes.
-        [[nodiscard]] auto query(std::span<const T> objects [[clang::lifetimebound]])
-                -> detail::BulkQuery<T, ConnType> {
+        [[nodiscard]] auto query(std::span<const T> objects [[clang::lifetimebound]]) -> detail::BulkQuery<T, ConnType>
+            requires ModelHasUpdatableColumn<T>
+        {
             return {{}, std::move(*this), objects};
         }
 

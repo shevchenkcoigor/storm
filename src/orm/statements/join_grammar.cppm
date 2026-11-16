@@ -171,6 +171,41 @@ export namespace storm::orm::statements {
         return sizer.len;
     }
 
+    // Forwards every append to `out` EXCEPT the leading ", " append_relation_columns emits
+    // before its first column, so the same composite-aware writer can produce an
+    // un-prefixed list ("t1.a, t1.b") as well as the leading-comma Q2 block.
+    namespace detail {
+        template <typename Buf> struct LeadingSeparatorDropper {
+            Buf&           out;
+            bool           dropped = false;
+            consteval void append(std::string_view text) {
+                if (!dropped) {
+                    dropped = true;
+                    if (text == ", ") {
+                        return;
+                    }
+                }
+                out.append(text);
+            }
+        };
+    } // namespace detail
+
+    // "<prefix>c1, <prefix>c2, …" — every column of Base, no leading separator (#744). A
+    // composite-FK member expands to one "<prefix><fk>_<part>" per target PK part, which a
+    // per-member append_column_name loop cannot do (it always names "<fk>_id", a column a
+    // composite FK does not have). Used by the aggregate paths' base SELECT list.
+    template <typename Base> consteval auto append_base_select_list(auto& result, std::string_view prefix) -> void {
+        detail::LeadingSeparatorDropper<std::remove_reference_t<decltype(result)>> sink{result};
+        append_relation_columns<Base>(sink, prefix);
+    }
+
+    // Exact byte size of what append_base_select_list<Base> emits for `prefix`.
+    template <typename Base> consteval auto base_select_list_size(std::string_view prefix) -> std::size_t {
+        RelationColumnsSizer sizer;
+        append_base_select_list<Base>(sizer, prefix);
+        return sizer.len;
+    }
+
     // Which table owns the junction columns being named, and therefore which naming
     // rule spells them (#536). The two rules agree for a single-column PK, and for a
     // composite key whose parts are plain columns; they diverge the moment a PK part

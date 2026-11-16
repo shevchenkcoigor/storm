@@ -45,6 +45,12 @@ struct Ledger {
     double balance{};
 };
 
+// #744 — every column is a key part, so no column is a SET target.
+struct PairLink {
+    [[= primary_part]] int left_id{};
+    [[= primary_part]] int right_id{};
+};
+
 // Single-PK control. Every SQL assertion on this model must be byte-identical
 // to what Storm emitted before composite support.
 struct Widget {
@@ -62,6 +68,58 @@ struct StockEntry {
     [[= primary_part]][[= storm::fk<>]] Person warehouse;
     [[= primary_part]] int sku{};
     int qty{};
+};
+
+// #744 — m2m aggregate "complete SQL" path with a COMPOSITE-FK member on each side. The
+// aggregate path builds its own column lists, so a composite FK ("line" -> OrderLine's
+// 2-part key) must expand to line_order_id/line_product_id there as everywhere else,
+// not collapse to a single "line_id" column that does not exist.
+struct ParcelLabel {
+    [[= primary]] int id{};
+    [[= storm::fk<>]] OrderLine line;
+    std::string text;
+};
+struct Parcel {
+    [[= primary]] int id{};
+    [[= storm::fk<>]] OrderLine line;
+    [[= many_to_many<>]] std::vector<ParcelLabel> labels;
+};
+
+// #744 — reverse-FK aggregate "complete SQL" path with a composite-FK member on the BASE.
+// Same cycle-breaking shape as OrderLineWithShipments/Shipment below.
+struct ParcelNote;
+struct ParcelHolder {
+    [[= primary]] int id{};
+    [[= storm::fk<>]] OrderLine line;
+    std::string tag; // a column AFTER the composite-FK member: its position shifts with the widened block
+    [[= storm::reverse_fk<^^ParcelNote>]] std::vector<ParcelNote> notes;
+};
+struct ParcelNote {
+    [[= primary_autoincrement]] int id{};
+    [[= storm::fk<>]] ParcelHolder holder;
+    std::string text;
+};
+
+// #744 — two joined FKs to a target whose own member is a composite FK: the SECOND joined
+// table's columns start after the first's WIDENED block, so a column-offset bookkeeping
+// that counts members instead of columns misreads the second target.
+struct ParcelPair {
+    [[= primary_autoincrement]] int id{};
+    [[= storm::fk<>]] ParcelHolder first;
+    [[= storm::fk<>]] ParcelHolder second;
+};
+
+// #744 — single-column FK on each side of an m2m relation, for byte-identity assertions
+// on the aggregate path (a single FK must still render "<fk>_id").
+struct CardLabel {
+    [[= primary]] int id{};
+    [[= storm::fk<>]] Person owner;
+    std::string text;
+};
+struct CardBox {
+    [[= primary]] int id{};
+    [[= storm::fk<>]] Person owner;
+    [[= many_to_many<>]] std::vector<CardLabel> cards;
 };
 
 // #504 — Base⟷Owner reference cycle between OrderLineWithShipments and
@@ -379,6 +437,22 @@ inline constexpr OrderLineWithShipmentsT OrderLineWithShipments{};
 struct ShelfAssignmentT;
 consteval { std::meta::define_aggregate(^^ShelfAssignmentT, field_specs_for(^^ShelfAssignment)); }
 inline constexpr ShelfAssignmentT ShelfAssignment{};
+
+struct ParcelNoteT;
+consteval { std::meta::define_aggregate(^^ParcelNoteT, field_specs_for(^^ParcelNote)); }
+inline constexpr ParcelNoteT ParcelNote{};
+
+struct ParcelPairT;
+consteval { std::meta::define_aggregate(^^ParcelPairT, field_specs_for(^^ParcelPair)); }
+inline constexpr ParcelPairT ParcelPair{};
+
+struct ParcelT;
+consteval { std::meta::define_aggregate(^^ParcelT, field_specs_for(^^Parcel)); }
+inline constexpr ParcelT Parcel{};
+
+struct ParcelHolderT;
+consteval { std::meta::define_aggregate(^^ParcelHolderT, field_specs_for(^^ParcelHolder)); }
+inline constexpr ParcelHolderT ParcelHolder{};
 
 struct ShipmentT;
 consteval { std::meta::define_aggregate(^^ShipmentT, field_specs_for(^^Shipment)); }
