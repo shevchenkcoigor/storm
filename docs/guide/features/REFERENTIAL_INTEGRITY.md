@@ -34,10 +34,10 @@ struct Message {
 
 ```sql
 -- SQLite
-CREATE TABLE Message (
-    id INTEGER PRIMARY KEY,
-    content TEXT NOT NULL,
-    sender_id INTEGER NOT NULL REFERENCES Person(id)
+CREATE TABLE "message" (
+    "id" INTEGER PRIMARY KEY,
+    "content" TEXT NOT NULL,
+    "sender_id" INTEGER NOT NULL REFERENCES "person"("id")
 );
 -- PostgreSQL: sender_id BIGINT NOT NULL REFERENCES Person(id)
 ```
@@ -45,7 +45,7 @@ CREATE TABLE Message (
 A nullable FK (`std::optional<Person>`) drops `NOT NULL` but keeps the `REFERENCES`:
 
 ```sql
-owner_id INTEGER REFERENCES Person(id)
+"owner_id" INTEGER REFERENCES "person"("id")
 ```
 
 ## Junction-table foreign keys
@@ -56,12 +56,12 @@ its owner or related entity is gone, so deleting the entity removes its link row
 default is overridable per field (see [ON DELETE policy](#on-delete-policy-431)):
 
 ```sql
-CREATE TABLE Student_Course (
-    Student_id INTEGER NOT NULL,
-    Course_id INTEGER NOT NULL,
-    PRIMARY KEY (Student_id, Course_id),
-    FOREIGN KEY (Student_id) REFERENCES Student(id) ON DELETE CASCADE,
-    FOREIGN KEY (Course_id) REFERENCES Course(id) ON DELETE CASCADE
+CREATE TABLE "student_course" (
+    "student_id" INTEGER NOT NULL,
+    "course_id" INTEGER NOT NULL,
+    PRIMARY KEY ("student_id", "course_id"),
+    FOREIGN KEY ("student_id") REFERENCES "student"("id") ON DELETE CASCADE,
+    FOREIGN KEY ("course_id") REFERENCES "course"("id") ON DELETE CASCADE
 );
 ```
 
@@ -78,12 +78,12 @@ struct Hero {
 ```
 
 ```sql
-CREATE TABLE Hero_Badge (
-    Hero_id INTEGER NOT NULL,
-    Badge_id INTEGER NOT NULL,
-    PRIMARY KEY (Hero_id, Badge_id),
-    FOREIGN KEY (Hero_id) REFERENCES Hero(hero_id) ON DELETE CASCADE,
-    FOREIGN KEY (Badge_id) REFERENCES Badge(badge_id) ON DELETE CASCADE
+CREATE TABLE "hero_badge" (
+    "hero_id" INTEGER NOT NULL,
+    "badge_id" INTEGER NOT NULL,
+    PRIMARY KEY ("hero_id", "badge_id"),
+    FOREIGN KEY ("hero_id") REFERENCES "hero"("hero_id") ON DELETE CASCADE,
+    FOREIGN KEY ("badge_id") REFERENCES "badge"("badge_id") ON DELETE CASCADE
 );
 ```
 
@@ -106,12 +106,12 @@ struct Doc {
 
 ```sql
 -- PostgreSQL
-CREATE TABLE Doc_Tag (
-    Doc_id UUID NOT NULL,
-    Tag_id UUID NOT NULL,
-    PRIMARY KEY (Doc_id, Tag_id),
-    FOREIGN KEY (Doc_id) REFERENCES Doc(id) ON DELETE CASCADE,
-    FOREIGN KEY (Tag_id) REFERENCES Tag(id) ON DELETE CASCADE
+CREATE TABLE "doc_tag" (
+    "doc_id" UUID NOT NULL,
+    "tag_id" UUID NOT NULL,
+    PRIMARY KEY ("doc_id", "tag_id"),
+    FOREIGN KEY ("doc_id") REFERENCES "doc"("id") ON DELETE CASCADE,
+    FOREIGN KEY ("tag_id") REFERENCES "tag"("id") ON DELETE CASCADE
 );
 ```
 

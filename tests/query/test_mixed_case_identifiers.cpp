@@ -5,12 +5,11 @@
 
 // NOLINTBEGIN(misc-const-correctness)
 
-// #822: table and column names that are not all lowercase. Storm emits identifiers exactly as
-// the model spells them and does not quote them, so PostgreSQL folds them to lowercase while
-// SQLite keeps the spelling and matches case-insensitively. Both must agree with themselves
-// between the DDL and every statement that names the table afterwards — which only executing
-// the statements shows, hence no SQL-text assertions here.
-// A name that is an SQL reserved word (`Union`, `desc`) is a different problem: #828.
+// #822: table and column names that are not all lowercase. Storm emits every identifier
+// quoted and lowercased (#828), so a mixed-case name is the same lowercase name on both
+// backends. DDL and every statement that names the table afterwards must agree with each
+// other — which only executing the statements shows, hence no SQL-text assertions here.
+// Names that are SQL reserved words (`Union`, `desc`): test_reserved_word_identifiers.cpp.
 //
 // WorstCase1/WorstCase2 both have a `MixedCase` column, so the JOIN test also covers the same
 // mixed-case name on both sides of a join.

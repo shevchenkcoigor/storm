@@ -37,13 +37,13 @@ namespace {
     // entirely. The eager load is TWO statements (Q1 base rows; Q2 the relation),
     // so the Q2 half is what actually proves the relation was resolved.
     constexpr std::string_view STUDENT_Q2 =
-            "SELECT t2.Student_id, t3.id, t3.title FROM Student_Course t2 INNER JOIN Course t3 ON t2.Course_id = "
-            "t3.id WHERE t2.Student_id IN (SELECT id FROM Student)";
+            R"(SELECT t2."student_id", t3."id", t3."title" FROM "student_course" t2 INNER JOIN "course" t3 ON t2."course_id" = )"
+            R"(t3."id" WHERE t2."student_id" IN (SELECT "id" FROM "student"))";
 
     TEST_F(FieldsRelationJoin, AutoJunctionM2MJoin) {
         // INNER and LEFT render byte-identical SQL: the difference only shows in how the
         // stitched rows are filtered, not in the two statements.
-        const std::string expected_sql = std::format("SELECT id, name, age FROM Student; {}", STUDENT_Q2);
+        const std::string expected_sql = std::format(R"(SELECT "id", "name", "age" FROM "student"; {})", STUDENT_Q2);
         EXPECT_EQ(student_qs().join<fields::Student.courses>().select().sql(), expected_sql);
         EXPECT_EQ(student_qs().left_join<fields::Student.courses>().select().sql(), expected_sql);
     }
@@ -53,8 +53,8 @@ namespace {
         // so Q2 names Enrollment and its own FK columns rather than Student_Course.
         EXPECT_EQ(
                 pupil_qs().join<fields::Pupil.courses>().select().sql(),
-                "SELECT id, name, age FROM Pupil; SELECT t2.pupil_id, t3.id, t3.title FROM Enrollment t2 INNER JOIN "
-                "Course t3 ON t2.course_id = t3.id WHERE t2.pupil_id IN (SELECT id FROM Pupil)"
+                R"(SELECT "id", "name", "age" FROM "pupil"; SELECT t2."pupil_id", t3."id", t3."title" FROM "enrollment" t2 INNER JOIN )"
+                R"("course" t3 ON t2."course_id" = t3."id" WHERE t2."pupil_id" IN (SELECT "id" FROM "pupil"))"
         );
     }
 
@@ -63,8 +63,8 @@ namespace {
         // hits the OWNER TABLE DIRECTLY — no junction table and no second JOIN.
         // That structural difference is what this pinned text asserts.
         constexpr std::string_view rfk =
-                "SELECT id, name, age FROM RfPerson; SELECT t2.assignee_id, t2.id, t2.title, t2.assignee_id FROM "
-                "RfTask t2 WHERE t2.assignee_id IN (SELECT id FROM RfPerson)";
+                R"(SELECT "id", "name", "age" FROM "rfperson"; SELECT t2."assignee_id", t2."id", t2."title", t2."assignee_id" FROM )"
+                R"("rftask" t2 WHERE t2."assignee_id" IN (SELECT "id" FROM "rfperson"))";
         EXPECT_EQ(rf_qs().join<fields::RfPerson.tasks>().select().sql(), rfk);
         EXPECT_EQ(rf_qs().left_join<fields::RfPerson.tasks>().select().sql(), rfk);
     }
@@ -80,9 +80,9 @@ namespace {
                         .order_by<fields::Student.name>()
                         .select()
                         .sql(),
-                "SELECT id, name, age FROM Student WHERE age > ? ORDER BY name ASC; SELECT t2.Student_id, t3.id, "
-                "t3.title FROM Student_Course t2 INNER JOIN Course t3 ON t2.Course_id = t3.id WHERE t2.Student_id IN "
-                "(SELECT id FROM Student WHERE age > ? ORDER BY name ASC)"
+                R"(SELECT "id", "name", "age" FROM "student" WHERE "age" > ? ORDER BY "name" ASC; SELECT t2."student_id", t3."id", )"
+                R"(t3."title" FROM "student_course" t2 INNER JOIN "course" t3 ON t2."course_id" = t3."id" WHERE t2."student_id" IN )"
+                R"((SELECT "id" FROM "student" WHERE "age" > ? ORDER BY "name" ASC))"
         );
     }
 

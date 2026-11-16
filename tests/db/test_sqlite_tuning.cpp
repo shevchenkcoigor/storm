@@ -103,6 +103,25 @@ namespace {
         EXPECT_EQ(pragma_int(*conn, "PRAGMA busy_timeout"), 0);
     }
 
+    // ------------------------------------------------- unknown quoted names (#828)
+    // Storm double-quotes every identifier. Stock SQLite resolves a double-quoted name
+    // that matches no column as a STRING LITERAL, so a model field missing from the table
+    // would read back as its own name, and `WHERE "missing" != ?` would match every row.
+    // open() turns that fallback off: an unknown name is an error, as on PostgreSQL.
+    TEST(SqliteTuningTest, UnknownQuotedColumnIsAnErrorNotAStringLiteral) {
+        auto conn = Connection::open(":memory:");
+        ASSERT_TRUE(conn.has_value());
+        ASSERT_TRUE(conn->execute(R"(CREATE TABLE "t" ("a" INTEGER))").has_value());
+        ASSERT_TRUE(conn->execute(R"(INSERT INTO "t" ("a") VALUES (1))").has_value());
+
+        EXPECT_TRUE(conn->execute(R"(SELECT "a" FROM "t")").has_value());
+        EXPECT_FALSE(conn->execute(R"(SELECT "missing" FROM "t")").has_value());
+        EXPECT_FALSE(conn->execute(R"(DELETE FROM "t" WHERE "missing" != 'x')").has_value());
+        EXPECT_FALSE(conn->execute(R"(CREATE INDEX "i" ON "t"("missing"))").has_value());
+        // Single-quoted text is still a string literal.
+        EXPECT_TRUE(conn->execute(R"(DELETE FROM "t" WHERE 'missing' = 'x')").has_value());
+    }
+
     // ---------------------------------------------------------------------- WAL
     TEST(SqliteTuningTest, WalOptInOnFileDatabase) {
         TempDb db("wal");

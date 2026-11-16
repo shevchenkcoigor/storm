@@ -267,7 +267,7 @@ TYPED_TEST(InNullableTest, InOnBoolColumnWithBothValues) {
     storm::QuerySet<InNullableRow, TypeParam> qs;
     const auto                                where_expr = fields::InNullableRow.is_active.in(true, false);
     const auto                                sql        = qs.where(where_expr).select().sql();
-    EXPECT_TRUE(sql.contains("is_active IN (?, ?)")) << sql;
+    EXPECT_TRUE(sql.contains(R"("is_active" IN (?, ?))")) << sql;
     auto result = qs.where(where_expr).select().execute();
     ASSERT_TRUE(result.has_value()) << result.error().message();
     EXPECT_EQ(result.value().size(), 3U);
@@ -334,7 +334,7 @@ TYPED_TEST(InNullableTest, TwoEmptyInsAndedMatchNothing) {
 TYPED_TEST(InNullableTest, NullableColumnEmitsPlainInText) {
     storm::QuerySet<InNullableRow, TypeParam> qs;
     const auto sql = qs.where(fields::InNullableRow.nickname.in("alice", "bob")).select().sql();
-    EXPECT_TRUE(sql.contains("nickname IN (?, ?)")) << sql;
+    EXPECT_TRUE(sql.contains(R"("nickname" IN (?, ?))")) << sql;
 }
 
 // NOLINTEND(readability-implicit-bool-conversion)

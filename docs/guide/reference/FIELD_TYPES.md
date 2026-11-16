@@ -226,11 +226,11 @@ The parts are emitted as ordinary columns plus one table-level clause, in **decl
 order** (column order is significant for the index the key creates):
 
 ```sql
-CREATE TABLE OrderItem (
-    order_id INTEGER NOT NULL DEFAULT 0,
-    product_id INTEGER NOT NULL DEFAULT 0,
-    quantity INTEGER NOT NULL DEFAULT 0,
-    PRIMARY KEY (order_id, product_id)
+CREATE TABLE "orderitem" (
+    "order_id" INTEGER NOT NULL DEFAULT 0,
+    "product_id" INTEGER NOT NULL DEFAULT 0,
+    "quantity" INTEGER NOT NULL DEFAULT 0,
+    PRIMARY KEY ("order_id", "product_id")
 )
 ```
 
@@ -832,19 +832,59 @@ Planned additions:
 - Custom types via user-defined conversions
 - `std::span<uint8_t>` for BLOB (non-owning)
 
+## Table and Column Names (#828)
+
+A table is named after its model type and a column after its member. Storm writes every
+name it emits — table, column, junction table, index — **double-quoted and lowercased**:
+
+```cpp
+struct Order {
+    [[= storm::primary]] int id{};
+    int                      desc{};
+    [[= storm::fk<>]] Group  Group;
+};
+```
+
+```sql
+CREATE TABLE "order" (
+    "id" INTEGER PRIMARY KEY,
+    "desc" INTEGER NOT NULL DEFAULT 0,
+    "group_id" INTEGER NOT NULL REFERENCES "group"("id")
+)
+```
+
+What this means for a model:
+
+- **A reserved word is an ordinary name.** `Order`, `Group`, `User`, `desc`, `Union` and the
+  like work as model and member names on both backends. No list of keywords is involved:
+  every name is quoted, reserved or not.
+- **Names are case-insensitive.** `Person` is the table `person`. Two members that differ only
+  in case (`Name` and `name`) are the same column and collide — on PostgreSQL and SQLite alike.
+- **Composed names are quoted as one identifier.** An FK column is `"<member>_id"`, an
+  auto-junction table `"<owner>_<related>"`, an index `"idx_<table>_<field>"`.
+- **Raw SQL can use either spelling for ordinary names.** `SELECT * FROM Person` and
+  `SELECT * FROM "person"` name the same table on both backends, because PostgreSQL folds an
+  unquoted name to lowercase and SQLite matches names case-insensitively. A reserved-word name
+  must be quoted in raw SQL — `"order"`, lowercase.
+- **Existing databases are unaffected.** Tables created before #828 already answer to the
+  lowercase name; no migration is needed. New SQLite tables are stored with the lowercase
+  spelling (`person`), which only shows in `sqlite_master`.
+
+Only ASCII letters are lowercased, the same range PostgreSQL folds.
+
 ## Table Creation Guidelines
 
 When creating tables, ensure column types match the C++ type mappings:
 
 ```sql
-CREATE TABLE Example (
-    id INTEGER PRIMARY KEY,  -- AUTOINCREMENT is opt-in (#379): primary_autoincrement
-    name TEXT NOT NULL,
-    age INTEGER,
-    salary REAL,
-    is_active INTEGER,  -- bool
-    email TEXT,         -- std::optional<std::string> (can be NULL)
-    data BLOB
+CREATE TABLE "example" (
+    "id" INTEGER PRIMARY KEY,  -- AUTOINCREMENT is opt-in (#379): primary_autoincrement
+    "name" TEXT NOT NULL,
+    "age" INTEGER,
+    "salary" REAL,
+    "is_active" INTEGER,  -- bool
+    "email" TEXT,         -- std::optional<std::string> (can be NULL)
+    "data" BLOB
 );
 ```
 

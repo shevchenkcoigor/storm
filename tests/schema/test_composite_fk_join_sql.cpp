@@ -132,7 +132,7 @@ TEST(FkColumnNamesTest, SingleColumnTargetMatchesLegacyAppendColumnName) {
         storm::meta::append_fk_column_names(buf, sender_member, target_pk, ", ");
         return buf;
     }();
-    EXPECT_EQ(result.view(), "sender_id");
+    EXPECT_EQ(result.view(), R"("sender_id")");
 }
 
 TEST(FkColumnNamesTest, CompositeTargetEmitsOneColumnPerPart) {
@@ -153,7 +153,7 @@ TEST(FkColumnNamesTest, CompositeTargetEmitsOneColumnPerPart) {
         storm::meta::append_fk_column_names(buf, target_pk[0], target_pk, ", ");
         return buf;
     }();
-    EXPECT_EQ(result.view(), "order_id_order_id, order_id_product_id");
+    EXPECT_EQ(result.view(), R"("order_id_order_id", "order_id_product_id")");
 }
 
 // ── #504 (Task 5): ValidForeignKey composite-arity finding (no code change) ──
@@ -215,12 +215,12 @@ namespace {
     // literally, keeping this a true exact-string regression guard.
     auto expected_student_course_ddl(std::string_view int_type) -> std::string {
         return std::format(
-                "CREATE TABLE Student_Course (\n"
-                "    Student_id {0} NOT NULL,\n"
-                "    Course_id {0} NOT NULL,\n"
-                "    PRIMARY KEY (Student_id, Course_id),\n"
-                "    FOREIGN KEY (Student_id) REFERENCES Student(id) ON DELETE CASCADE,\n"
-                "    FOREIGN KEY (Course_id) REFERENCES Course(id) ON DELETE CASCADE\n"
+                "CREATE TABLE \"student_course\" (\n"
+                "    \"student_id\" {0} NOT NULL,\n"
+                "    \"course_id\" {0} NOT NULL,\n"
+                "    PRIMARY KEY (\"student_id\", \"course_id\"),\n"
+                "    FOREIGN KEY (\"student_id\") REFERENCES \"student\"(\"id\") ON DELETE CASCADE,\n"
+                "    FOREIGN KEY (\"course_id\") REFERENCES \"course\"(\"id\") ON DELETE CASCADE\n"
                 ")",
                 int_type
         );
@@ -245,15 +245,16 @@ TEST(JunctionDdlTest, CompositeOwnerSideEmitsOneColumnPerPkPart) {
     const std::string& sql = junction_sql<LedgerWithTags, schema_ns::Dialect::SQLite>();
     EXPECT_EQ(
             sql,
-            "CREATE TABLE LedgerWithTags_LedgerTag (\n"
-            "    LedgerWithTags_region INTEGER NOT NULL,\n"
-            "    LedgerWithTags_account TEXT NOT NULL,\n"
-            "    LedgerWithTags_period INTEGER NOT NULL,\n"
-            "    LedgerTag_id INTEGER NOT NULL,\n"
-            "    PRIMARY KEY (LedgerWithTags_region, LedgerWithTags_account, LedgerWithTags_period, LedgerTag_id),\n"
-            "    FOREIGN KEY (LedgerWithTags_region, LedgerWithTags_account, LedgerWithTags_period) REFERENCES "
-            "LedgerWithTags(region, account, period) ON DELETE CASCADE,\n"
-            "    FOREIGN KEY (LedgerTag_id) REFERENCES LedgerTag(id) ON DELETE CASCADE\n"
+            "CREATE TABLE \"ledgerwithtags_ledgertag\" (\n"
+            "    \"ledgerwithtags_region\" INTEGER NOT NULL,\n"
+            "    \"ledgerwithtags_account\" TEXT NOT NULL,\n"
+            "    \"ledgerwithtags_period\" INTEGER NOT NULL,\n"
+            "    \"ledgertag_id\" INTEGER NOT NULL,\n"
+            "    PRIMARY KEY (\"ledgerwithtags_region\", \"ledgerwithtags_account\", \"ledgerwithtags_period\", "
+            "\"ledgertag_id\"),\n"
+            R"(    FOREIGN KEY ("ledgerwithtags_region", "ledgerwithtags_account", "ledgerwithtags_period") REFERENCES )"
+            "\"ledgerwithtags\"(\"region\", \"account\", \"period\") ON DELETE CASCADE,\n"
+            "    FOREIGN KEY (\"ledgertag_id\") REFERENCES \"ledgertag\"(\"id\") ON DELETE CASCADE\n"
             ")"
     );
 }
@@ -267,10 +268,10 @@ TEST(JunctionDdlTest, CompositeOwnerSideEmitsOneColumnPerPkPart) {
 // width (see has_pinned_bigint_pk in schema.cppm) — not width-derived here.
 TEST(JunctionDdlTest, CompositeOwnerSidePostgresTypesEachPartIndividually) {
     const std::string& sql = junction_sql<LedgerWithTags, schema_ns::Dialect::PostgreSQL>();
-    EXPECT_TRUE(sql.contains("LedgerWithTags_region INTEGER NOT NULL")) << sql;
-    EXPECT_TRUE(sql.contains("LedgerWithTags_account TEXT NOT NULL")) << sql;
-    EXPECT_TRUE(sql.contains("LedgerWithTags_period BIGINT NOT NULL")) << sql;
-    EXPECT_TRUE(sql.contains("LedgerTag_id BIGINT NOT NULL")) << sql;
+    EXPECT_TRUE(sql.contains(R"("ledgerwithtags_region" INTEGER NOT NULL)")) << sql;
+    EXPECT_TRUE(sql.contains(R"("ledgerwithtags_account" TEXT NOT NULL)")) << sql;
+    EXPECT_TRUE(sql.contains(R"("ledgerwithtags_period" BIGINT NOT NULL)")) << sql;
+    EXPECT_TRUE(sql.contains(R"("ledgertag_id" BIGINT NOT NULL)")) << sql;
 }
 
 // ---- Composite RELATED side (TagRegistry -> CatalogEntry) --------------------
@@ -288,14 +289,14 @@ namespace {
     auto expected_tag_registry_catalog_entry_ddl(std::string_view owner_type, std::string_view related_type)
             -> std::string {
         return std::format(
-                "CREATE TABLE TagRegistry_CatalogEntry (\n"
-                "    TagRegistry_id {0} NOT NULL,\n"
-                "    CatalogEntry_catalog_id {1} NOT NULL,\n"
-                "    CatalogEntry_entry_no {1} NOT NULL,\n"
-                "    PRIMARY KEY (TagRegistry_id, CatalogEntry_catalog_id, CatalogEntry_entry_no),\n"
-                "    FOREIGN KEY (TagRegistry_id) REFERENCES TagRegistry(id) ON DELETE CASCADE,\n"
-                "    FOREIGN KEY (CatalogEntry_catalog_id, CatalogEntry_entry_no) REFERENCES "
-                "CatalogEntry(catalog_id, entry_no) ON DELETE CASCADE\n"
+                "CREATE TABLE \"tagregistry_catalogentry\" (\n"
+                "    \"tagregistry_id\" {0} NOT NULL,\n"
+                "    \"catalogentry_catalog_id\" {1} NOT NULL,\n"
+                "    \"catalogentry_entry_no\" {1} NOT NULL,\n"
+                "    PRIMARY KEY (\"tagregistry_id\", \"catalogentry_catalog_id\", \"catalogentry_entry_no\"),\n"
+                "    FOREIGN KEY (\"tagregistry_id\") REFERENCES \"tagregistry\"(\"id\") ON DELETE CASCADE,\n"
+                R"(    FOREIGN KEY ("catalogentry_catalog_id", "catalogentry_entry_no") REFERENCES )"
+                "\"catalogentry\"(\"catalog_id\", \"entry_no\") ON DELETE CASCADE\n"
                 ")",
                 owner_type,
                 related_type
@@ -328,18 +329,18 @@ TEST(JunctionDdlTest, CompositeOnBothSidesEmitsEveryColumnFromEachSide) {
     const std::string& sql = junction_sql<ShelfAssignment, schema_ns::Dialect::SQLite>();
     EXPECT_EQ(
             sql,
-            "CREATE TABLE ShelfAssignment_StorageBin (\n"
-            "    ShelfAssignment_warehouse_no INTEGER NOT NULL,\n"
-            "    ShelfAssignment_shelf_code TEXT NOT NULL,\n"
-            "    StorageBin_aisle INTEGER NOT NULL,\n"
-            "    StorageBin_bin_code TEXT NOT NULL,\n"
-            "    StorageBin_revision INTEGER NOT NULL,\n"
-            "    PRIMARY KEY (ShelfAssignment_warehouse_no, ShelfAssignment_shelf_code, StorageBin_aisle, "
-            "StorageBin_bin_code, StorageBin_revision),\n"
-            "    FOREIGN KEY (ShelfAssignment_warehouse_no, ShelfAssignment_shelf_code) REFERENCES "
-            "ShelfAssignment(warehouse_no, shelf_code) ON DELETE CASCADE,\n"
-            "    FOREIGN KEY (StorageBin_aisle, StorageBin_bin_code, StorageBin_revision) REFERENCES "
-            "StorageBin(aisle, bin_code, revision) ON DELETE CASCADE\n"
+            "CREATE TABLE \"shelfassignment_storagebin\" (\n"
+            "    \"shelfassignment_warehouse_no\" INTEGER NOT NULL,\n"
+            "    \"shelfassignment_shelf_code\" TEXT NOT NULL,\n"
+            "    \"storagebin_aisle\" INTEGER NOT NULL,\n"
+            "    \"storagebin_bin_code\" TEXT NOT NULL,\n"
+            "    \"storagebin_revision\" INTEGER NOT NULL,\n"
+            R"(    PRIMARY KEY ("shelfassignment_warehouse_no", "shelfassignment_shelf_code", "storagebin_aisle", )"
+            "\"storagebin_bin_code\", \"storagebin_revision\"),\n"
+            R"(    FOREIGN KEY ("shelfassignment_warehouse_no", "shelfassignment_shelf_code") REFERENCES )"
+            "\"shelfassignment\"(\"warehouse_no\", \"shelf_code\") ON DELETE CASCADE,\n"
+            R"(    FOREIGN KEY ("storagebin_aisle", "storagebin_bin_code", "storagebin_revision") REFERENCES )"
+            "\"storagebin\"(\"aisle\", \"bin_code\", \"revision\") ON DELETE CASCADE\n"
             ")"
     );
 }

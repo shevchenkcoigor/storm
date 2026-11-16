@@ -43,23 +43,23 @@ using storm::orm::statements::SelectStatement;
 // Test: a single FK column emits REFERENCES to its related table (SQLite).
 TEST(SchemaFkRefTest, MessageFkEmitsReferencesSqlite) {
     const std::string& sql = create_table_sql<Message>();
-    EXPECT_NE(sql.find("sender_id INTEGER NOT NULL REFERENCES Person(id)"), std::string::npos)
+    EXPECT_NE(sql.find(R"("sender_id" INTEGER NOT NULL REFERENCES "person"("id"))"), std::string::npos)
             << "Expected FK column to carry REFERENCES Person(id) in: " << sql;
 }
 
 // Test: same column emits REFERENCES in the PostgreSQL dialect.
 TEST(SchemaFkRefTest, MessageFkEmitsReferencesPostgres) {
     const std::string& sql = create_table_sql<Message, Dialect::PostgreSQL>();
-    EXPECT_NE(sql.find("sender_id BIGINT NOT NULL REFERENCES Person(id)"), std::string::npos)
+    EXPECT_NE(sql.find(R"("sender_id" BIGINT NOT NULL REFERENCES "person"("id"))"), std::string::npos)
             << "Expected FK column to carry REFERENCES Person(id) in: " << sql;
 }
 
 // Test: multiple FKs to the same table each get their own REFERENCES (SQLite).
 TEST(SchemaFkRefTest, TaskBothFksEmitReferencesSqlite) {
     const std::string& sql = create_table_sql<Task>();
-    EXPECT_NE(sql.find("assignee_id INTEGER NOT NULL REFERENCES Person(id)"), std::string::npos)
+    EXPECT_NE(sql.find(R"("assignee_id" INTEGER NOT NULL REFERENCES "person"("id"))"), std::string::npos)
             << "Expected assignee FK to reference Person(id) in: " << sql;
-    EXPECT_NE(sql.find("reviewer_id INTEGER NOT NULL REFERENCES Person(id)"), std::string::npos)
+    EXPECT_NE(sql.find(R"("reviewer_id" INTEGER NOT NULL REFERENCES "person"("id"))"), std::string::npos)
             << "Expected reviewer FK to reference Person(id) in: " << sql;
 }
 
@@ -72,9 +72,9 @@ struct NullableFkRow {
 
 TEST(SchemaFkRefTest, NullableFkEmitsReferencesWithoutNotNull) {
     const std::string& sql = create_table_sql<NullableFkRow>();
-    EXPECT_NE(sql.find("owner_id INTEGER REFERENCES Person(id)"), std::string::npos)
+    EXPECT_NE(sql.find(R"("owner_id" INTEGER REFERENCES "person"("id"))"), std::string::npos)
             << "Nullable FK should be 'owner_id INTEGER REFERENCES Person(id)' (no NOT NULL) in: " << sql;
-    const std::size_t owner_pos = sql.find("owner_id INTEGER");
+    const std::size_t owner_pos = sql.find(R"("owner_id" INTEGER)");
     ASSERT_NE(owner_pos, std::string::npos);
     EXPECT_EQ(sql.substr(owner_pos, 16).find("NOT NULL"), std::string::npos)
             << "Nullable FK must not carry NOT NULL, got: " << sql.substr(owner_pos, 40);
@@ -91,16 +91,16 @@ TEST(SchemaFkPolicyTest, CascadeEmitsOnDeleteCascade) {
     for (std::string_view sql :
          {std::string_view(create_table_sql<CascadeChild>()),
           std::string_view(create_table_sql<CascadeChild, Dialect::PostgreSQL>())}) {
-        EXPECT_TRUE(sql.contains("REFERENCES Person(id) ON DELETE CASCADE"))
+        EXPECT_TRUE(sql.contains(R"(REFERENCES "person"("id") ON DELETE CASCADE)"))
                 << "CASCADE FK must emit ON DELETE CASCADE in: " << sql;
     }
 }
 
 TEST(SchemaFkPolicyTest, SetNullEmitsOnDeleteSetNullOnNullableFk) {
     const std::string& sql = create_table_sql<SetNullChild>();
-    EXPECT_TRUE(sql.contains("owner_id INTEGER REFERENCES Person(id) ON DELETE SET NULL"))
+    EXPECT_TRUE(sql.contains(R"("owner_id" INTEGER REFERENCES "person"("id") ON DELETE SET NULL)"))
             << "SET NULL FK must be nullable and emit ON DELETE SET NULL in: " << sql;
-    EXPECT_FALSE(sql.contains("owner_id INTEGER NOT NULL"))
+    EXPECT_FALSE(sql.contains(R"("owner_id" INTEGER NOT NULL)"))
             << "SET NULL FK column must be nullable (no NOT NULL) in: " << sql;
 }
 
@@ -108,7 +108,7 @@ TEST(SchemaFkPolicyTest, SetNullEmitsOnDeleteSetNullOnNullableFk) {
 // ON DELETE clause — byte-identical to a bare fk<>. The DB still enforces RESTRICT.
 TEST(SchemaFkPolicyTest, RestrictEmitsPlainReferencesNoClause) {
     const std::string& sql = create_table_sql<RestrictChild>();
-    EXPECT_TRUE(sql.contains("owner_id INTEGER NOT NULL REFERENCES Person(id)"))
+    EXPECT_TRUE(sql.contains(R"("owner_id" INTEGER NOT NULL REFERENCES "person"("id"))"))
             << "RESTRICT FK must emit a plain REFERENCES in: " << sql;
     EXPECT_FALSE(sql.contains("ON DELETE")) << "RESTRICT is the default — no ON DELETE clause expected in: " << sql;
 }

@@ -119,29 +119,30 @@ namespace {
 
 TEST(MaxLengthSchema, SqliteNotNullEmitsCheck) {
     const auto& sql = create_table_sql<BoundedName>();
-    EXPECT_NE(sql.find("name TEXT NOT NULL CHECK(length(name) <= 50)"), std::string::npos) << sql;
+    EXPECT_NE(sql.find(R"("name" TEXT NOT NULL CHECK(length("name") <= 50))"), std::string::npos) << sql;
 }
 
 TEST(MaxLengthSchema, SqliteOptionalOmitsNotNullKeepsCheck) {
     const auto& sql = create_table_sql<BoundedOptional>();
     // Nullable: no NOT NULL, but the CHECK is still emitted (passes on NULL).
-    EXPECT_NE(sql.find("nickname TEXT CHECK(length(nickname) <= 20)"), std::string::npos) << sql;
-    EXPECT_EQ(sql.find("nickname TEXT NOT NULL"), std::string::npos) << sql;
+    EXPECT_NE(sql.find(R"("nickname" TEXT CHECK(length("nickname") <= 20))"), std::string::npos) << sql;
+    EXPECT_EQ(sql.find(R"("nickname" TEXT NOT NULL)"), std::string::npos) << sql;
 }
 
 TEST(MaxLengthSchema, SqliteUniqueAppendsAfterCheck) {
     const auto& sql = create_table_sql<BoundedUnique>();
-    EXPECT_NE(sql.find("code TEXT NOT NULL CHECK(length(code) <= 30) UNIQUE"), std::string::npos) << sql;
+    EXPECT_NE(sql.find(R"("code" TEXT NOT NULL CHECK(length("code") <= 30) UNIQUE)"), std::string::npos) << sql;
 }
 
 TEST(MaxLengthSchema, SqliteDefaultPrecedesCheck) {
     const auto& sql = create_table_sql<BoundedDefault>();
-    EXPECT_NE(sql.find("status TEXT NOT NULL DEFAULT 'new' CHECK(length(status) <= 10)"), std::string::npos) << sql;
+    EXPECT_NE(sql.find(R"("status" TEXT NOT NULL DEFAULT 'new' CHECK(length("status") <= 10))"), std::string::npos)
+            << sql;
 }
 
 TEST(MaxLengthSchema, SqliteStringViewEmitsCheck) {
     const auto& sql = create_table_sql<BoundedView>();
-    EXPECT_NE(sql.find("label TEXT NOT NULL CHECK(length(label) <= 15)"), std::string::npos) << sql;
+    EXPECT_NE(sql.find(R"("label" TEXT NOT NULL CHECK(length("label") <= 15))"), std::string::npos) << sql;
 }
 
 // ============================================================================
@@ -150,23 +151,23 @@ TEST(MaxLengthSchema, SqliteStringViewEmitsCheck) {
 
 TEST(MaxLengthSchema, PgNotNullEmitsVarchar) {
     const std::string& sql = SchemaStatement<BoundedName>::create_table_sql<Dialect::PostgreSQL>();
-    EXPECT_NE(sql.find("name VARCHAR(50) NOT NULL"), std::string::npos) << sql;
+    EXPECT_NE(sql.find(R"("name" VARCHAR(50) NOT NULL)"), std::string::npos) << sql;
 }
 
 TEST(MaxLengthSchema, PgOptionalOmitsNotNull) {
     const std::string& sql = SchemaStatement<BoundedOptional>::create_table_sql<Dialect::PostgreSQL>();
-    EXPECT_NE(sql.find("nickname VARCHAR(20)"), std::string::npos) << sql;
-    EXPECT_EQ(sql.find("nickname VARCHAR(20) NOT NULL"), std::string::npos) << sql;
+    EXPECT_NE(sql.find(R"("nickname" VARCHAR(20))"), std::string::npos) << sql;
+    EXPECT_EQ(sql.find(R"("nickname" VARCHAR(20) NOT NULL)"), std::string::npos) << sql;
 }
 
 TEST(MaxLengthSchema, PgUniqueAppendsAfterVarchar) {
     const std::string& sql = SchemaStatement<BoundedUnique>::create_table_sql<Dialect::PostgreSQL>();
-    EXPECT_NE(sql.find("code VARCHAR(30) NOT NULL UNIQUE"), std::string::npos) << sql;
+    EXPECT_NE(sql.find(R"("code" VARCHAR(30) NOT NULL UNIQUE)"), std::string::npos) << sql;
 }
 
 TEST(MaxLengthSchema, PgDefaultAfterVarchar) {
     const std::string& sql = SchemaStatement<BoundedDefault>::create_table_sql<Dialect::PostgreSQL>();
-    EXPECT_NE(sql.find("status VARCHAR(10) NOT NULL DEFAULT 'new'"), std::string::npos) << sql;
+    EXPECT_NE(sql.find(R"("status" VARCHAR(10) NOT NULL DEFAULT 'new')"), std::string::npos) << sql;
 }
 
 // ============================================================================

@@ -507,8 +507,9 @@ export namespace storm::orm::where {
     concept OrderableOperand = ComparableOperand<MemberInfo, V> && !std::is_same_v<std::decay_t<V>, utilities::UUID> &&
                                !ColumnIsUuid<MemberInfo>;
 
-    // The name of the model a field selector belongs to — its table name, the same string
-    // BaseStatement<Model>::table_name_ holds — stamped on every leaf as owner_ (#785).
+    // The name of the model a field selector belongs to — its identifier as declared, the
+    // same string BaseStatement<Model>::raw_table_name_ holds — stamped on every leaf as
+    // owner_ (#785). Compared, never emitted, so it stays unquoted (#828).
     template <std::meta::info MemberInfo>
     inline constexpr std::string_view column_owner_name = std::meta::identifier_of(std::meta::parent_of(MemberInfo));
 
@@ -585,11 +586,11 @@ export namespace storm::orm::where {
       public:
         // The SQL column name (#575): a plain member's identifier, or an FK member's
         // "<member>_id" — the same canonical writer ORDER BY/COUNT(DISTINCT) route
-        // through (#570). Byte-identical to std::meta::identifier_of(MemberInfo) for a
-        // non-FK member. CAUTION: for an FK to a COMPOSITE-PK target this still evaluates
+        // through (#570), so it is quoted and lowercased (#828): "age", "sender_id".
+        // CAUTION: for an FK to a COMPOSITE-PK target this still evaluates
         // (Field<M> must instantiate for every member — field_specs_for emits a FieldRef<M>
         // unconditionally) but yields a column that does NOT exist ("line_id" instead of
-        // "line_order_id"/"line_product_id"), because column_name_view always assumes a
+        // "line_order_id" / "line_product_id"), because column_name_view always assumes a
         // single "_id" suffix. Every method below gates on SingleColumnMember<MemberInfo>
         // before reading this; a new method that reads field_name_sv MUST gate the same way.
         static constexpr auto field_name_sv = storm::meta::column_name_view<MemberInfo>;

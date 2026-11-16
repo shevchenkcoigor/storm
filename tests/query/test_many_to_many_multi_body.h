@@ -54,12 +54,12 @@ TYPED_TEST(MultiM2MSqlTest, MultiM2MJoinSqlShape) {
     QuerySet<Member, TypeParam> qs;
     auto sql = qs.template join<fields::Member.courses, fields::Member.clubs>().select().sql();
     // Q1 — base entities, once.
-    EXPECT_TRUE(sql.contains("SELECT id, name, age FROM Member; ")) << sql;
+    EXPECT_TRUE(sql.contains(R"(SELECT "id", "name", "age" FROM "member"; )")) << sql;
     // Q2a — courses relation, filtered by the base subquery.
-    EXPECT_TRUE(sql.contains("FROM Member_Course t2 INNER JOIN Course t3 ON t2.Course_id = t3.id")) << sql;
-    EXPECT_TRUE(sql.contains("WHERE t2.Member_id IN (SELECT id FROM Member)")) << sql;
+    EXPECT_TRUE(sql.contains(R"(FROM "member_course" t2 INNER JOIN "course" t3 ON t2."course_id" = t3."id")")) << sql;
+    EXPECT_TRUE(sql.contains(R"(WHERE t2."member_id" IN (SELECT "id" FROM "member"))")) << sql;
     // Q2b — clubs relation, filtered by the same base subquery.
-    EXPECT_TRUE(sql.contains("FROM Member_Club t2 INNER JOIN Club t3 ON t2.Club_id = t3.id")) << sql;
+    EXPECT_TRUE(sql.contains(R"(FROM "member_club" t2 INNER JOIN "club" t3 ON t2."club_id" = t3."id")")) << sql;
     // Exactly three statements.
     EXPECT_EQ(std::ranges::count(sql, ';'), 2) << sql;
 }
@@ -72,8 +72,8 @@ TYPED_TEST(MultiM2MSqlTest, MultiM2MModifiersBoundTheSharedBaseSet) {
                    .select()
                    .sql();
     // WHERE/LIMIT appear in Q1 and in BOTH Q2 IN-subqueries.
-    EXPECT_TRUE(sql.contains("SELECT id, name, age FROM Member WHERE age > ? LIMIT 2; ")) << sql;
-    constexpr std::string_view bounded = "IN (SELECT id FROM Member WHERE age > ? LIMIT 2)";
+    EXPECT_TRUE(sql.contains(R"(SELECT "id", "name", "age" FROM "member" WHERE "age" > ? LIMIT 2; )")) << sql;
+    constexpr std::string_view bounded = R"(IN (SELECT "id" FROM "member" WHERE "age" > ? LIMIT 2))";
     std::size_t hits = 0;
     for (std::size_t pos = sql.find(bounded); pos != std::string::npos; pos = sql.find(bounded, pos + 1)) {
         ++hits;

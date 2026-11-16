@@ -381,33 +381,128 @@ export namespace storm::meta {
                std::meta::dealias(std::meta::template_arguments_of(t)[0]) == ^^char;
     }
 
+    // ---- SQL identifier quoting (#828) -----------------------------------------------
+    //
+    // Storm emits EVERY identifier — table, column, junction table, index — double-quoted
+    // and lowercased: `struct Order { int desc; }` is the table "order" with the column
+    // "desc". Quoting is what makes a reserved word (`Order`, `Group`, `desc`, `Union`) an
+    // ordinary model or member name; without it the first CREATE TABLE is a runtime syntax
+    // error, and a different one per backend.
+    //
+    // Lowercasing is what keeps the change invisible to existing databases. An unquoted
+    // name is folded to lowercase by PostgreSQL, so the tables Storm created before #828
+    // are already stored lowercase there, and "person" names exactly the table `Person`
+    // used to. SQLite matches identifiers case-insensitively whether quoted or not. Quoting
+    // the declared spelling instead ("Person") would name a DIFFERENT table on PostgreSQL.
+    // ASCII only — the same range PostgreSQL folds.
+    //
+    // The rule for a name built from several parts (a junction table "<owner>_<related>",
+    // an FK column "<member>_id", an index "idx_<table>_<field>"): compose the parts
+    // first, quote the whole once. Quoting a part and then appending to it produces
+    // `"order"_id`, a syntax error on every model — which is why the quoted form is the
+    // default everywhere (append_column_name, BaseStatement::table_name_) and the bare
+    // form is the named exception.
+    inline constexpr std::string_view identifier_quote       = "\"";
+    inline constexpr std::size_t      identifier_quotes_size = 2 * identifier_quote.size();
+
+    [[nodiscard]] constexpr auto is_ascii_upper(char c) noexcept -> bool {
+        return c >= 'A' && c <= 'Z';
+    }
+
+    [[nodiscard]] constexpr auto sql_lowercase(std::string_view text) -> std::string {
+        std::string lowered;
+        lowered.reserve(text.size());
+        for (const char c : text) {
+            lowered.push_back(is_ascii_upper(c) ? static_cast<char>(c - 'A' + 'a') : c);
+        }
+        return lowered;
+    }
+
+    // One PART of an identifier: `part` lowercased, no quotes. For composing a longer name
+    // between an explicit pair of identifier_quote appends. A part with no uppercase letter
+    // (most members) is appended as-is, with no temporary.
+    consteval void append_identifier_text(auto& buf, std::string_view part) {
+        if (std::ranges::none_of(part, is_ascii_upper)) {
+            buf.append(part);
+            return;
+        }
+        const std::string lowered = sql_lowercase(part);
+        buf.append(std::string_view{lowered});
+    }
+
+    // One complete identifier made of `parts` concatenated: "<parts, lowercased>".
+    // `buf` is any buffer with `.append(std::string_view)` — ConstexprString, a counting
+    // sink and std::string all qualify.
+    template <std::convertible_to<std::string_view>... Parts>
+    consteval void append_identifier(auto& buf, const Parts&... parts) {
+        buf.append(identifier_quote);
+        (append_identifier_text(buf, std::string_view{parts}), ...);
+        buf.append(identifier_quote);
+    }
+
+    // Byte size append_identifier() emits for the same parts.
+    template <std::convertible_to<std::string_view>... Parts>
+    [[nodiscard]] consteval auto identifier_size(const Parts&... parts) -> std::size_t {
+        return (std::string_view{parts}.size() + ... + identifier_quotes_size);
+    }
+
+    // An entity's own identifier, quoted, as a string_view over static storage — a model
+    // type (`^^Person` → "person") or a member taken WITHOUT the FK "_id" suffix. Usable
+    // from consteval builders and from runtime code alike.
+    template <std::meta::info Entity> consteval auto quoted_identifier_storage() {
+        std::array<char, identifier_size(std::meta::identifier_of(Entity))> out{};
+        std::string                                                         text;
+        append_identifier(text, std::meta::identifier_of(Entity));
+        std::ranges::copy(text, out.begin());
+        return out;
+    }
+    template <std::meta::info Entity>
+    inline constexpr auto quoted_identifier_chars = quoted_identifier_storage<Entity>();
+    template <std::meta::info Entity>
+    inline constexpr std::string_view quoted_identifier_view{
+            quoted_identifier_chars<Entity>.data(), quoted_identifier_chars<Entity>.size()
+    };
+
     // The "_id" suffix an FK column carries, paired with its byte length so the writer
     // (append_column_name) and the sizer (column_name_size) can never disagree (ES.45).
     inline constexpr std::string_view fk_id_suffix      = "_id";
     inline constexpr std::size_t      fk_id_suffix_size = fk_id_suffix.size();
 
-    // Canonical column-name writer (#422): a member's SQL column is its identifier, plus
-    // the "_id" suffix when the member is an FK (`User sender` → `sender_id`). This logic
-    // was open-coded in every SQL builder (field_names, distinct, update, join, schema)
-    // alongside a matching size-calculator that had to stay byte-exact. Route both through
-    // this pair so the append and the size can never drift.
-    //
-    // `buf` is any buffer with `.append(std::string_view)` — the compile-time
-    // ConstexprString and a runtime std::string both qualify. consteval (like every
-    // builder that calls it) so it is constant-evaluated, never emitted as runtime code.
-    consteval void append_column_name(auto& buf, std::meta::info member) {
-        buf.append(std::meta::identifier_of(member));
+    // A member's column name WITHOUT quotes: its identifier lowercased, plus the "_id"
+    // suffix when the member is an FK. Only for composing a longer identifier (a junction
+    // column "<side>_<part>[_id]") — a column named on its own goes through
+    // append_column_name. "Unquoted" rather than "bare": elsewhere in the tree a "bare"
+    // name means one WITHOUT the "_id" suffix, which this one keeps.
+    consteval void append_unquoted_column_name(auto& buf, std::meta::info member) {
+        append_identifier_text(buf, std::meta::identifier_of(member));
         if (is_fk_field(member)) {
             buf.append(fk_id_suffix);
         }
     }
 
-    // Byte size append_column_name() will emit for `member`: the identifier length, plus
-    // the "_id" suffix length when the member is an FK. The exact companion to
-    // append_column_name — every size-calculator that pairs with it must use this so the
-    // buffer fits precisely.
+    // Canonical column-name writer (#422): a member's SQL column is its identifier, plus
+    // the "_id" suffix when the member is an FK (`User sender` → "sender_id"), quoted and
+    // lowercased as one identifier (#828). This logic was open-coded in every SQL builder
+    // (field_names, distinct, update, join, schema) alongside a matching size-calculator
+    // that had to stay byte-exact. Route both through this pair so the append and the size
+    // can never drift.
+    //
+    // `buf` is any buffer with `.append(std::string_view)` — the compile-time
+    // ConstexprString and a runtime std::string both qualify. consteval (like every
+    // builder that calls it) so it is constant-evaluated, never emitted as runtime code.
+    consteval void append_column_name(auto& buf, std::meta::info member) {
+        buf.append(identifier_quote);
+        append_unquoted_column_name(buf, member);
+        buf.append(identifier_quote);
+    }
+
+    // Byte size append_column_name() will emit for `member`: the identifier length, the
+    // "_id" suffix length when the member is an FK, and the two quotes. The exact
+    // companion to append_column_name — every size-calculator that pairs with it must use
+    // this so the buffer fits precisely.
     consteval auto column_name_size(std::meta::info member) -> std::size_t {
-        return std::meta::identifier_of(member).size() + (is_fk_field(member) ? fk_id_suffix_size : 0);
+        return std::meta::identifier_of(member).size() + (is_fk_field(member) ? fk_id_suffix_size : 0) +
+               identifier_quotes_size;
     }
 
     // One member's column name as a self-sizing compile-time array (#570). The pair
@@ -419,20 +514,15 @@ export namespace storm::meta {
     //
     // Sizing it from column_name_size(Member) rather than from a fixed constant is
     // what removes the #500/#504 hazard by construction: an over-tight buffer cannot
-    // be written, because the extent IS the writer's own byte count. Returns the bare
-    // array (not ConstexprString) so this stays in the dependency-free leaf; callers
-    // wrap it in a string_view via column_name_view below.
+    // be written, because the extent IS the writer's own byte count. Filled by
+    // append_column_name itself, so the two cannot spell the name differently. Returns
+    // the bare array (not ConstexprString) so this stays in the dependency-free leaf;
+    // callers wrap it in a string_view via column_name_view below.
     template <std::meta::info Member> consteval auto column_name_storage() {
         std::array<char, column_name_size(Member)> out{};
-        std::size_t                                pos = 0;
-        for (const char c : std::meta::identifier_of(Member)) {
-            out[pos++] = c;
-        }
-        if (is_fk_field(Member)) {
-            for (const char c : fk_id_suffix) {
-                out[pos++] = c;
-            }
-        }
+        std::string                                text;
+        append_column_name(text, Member);
+        std::ranges::copy(text, out.begin());
         return out;
     }
 
@@ -511,7 +601,7 @@ export namespace storm::meta {
             std::string_view                      separator
     ) -> std::size_t {
         if constexpr (N == 1) {
-            return column_name_size(fk_member); // "<member>_id" — byte-identical to today
+            return column_name_size(fk_member); // "<member>_id" — exactly append_column_name
         } else {
             const auto  member_name = std::meta::identifier_of(fk_member);
             std::size_t total       = 0;
@@ -519,7 +609,7 @@ export namespace storm::meta {
                 if (i > 0) {
                     total += separator.size();
                 }
-                total += member_name.size() + 1 + std::meta::identifier_of(target_pk_members[i]).size();
+                total += identifier_size(member_name, "_", std::meta::identifier_of(target_pk_members[i]));
             }
             return total;
         }
@@ -533,16 +623,14 @@ export namespace storm::meta {
             std::string_view                      separator
     ) -> void {
         if constexpr (N == 1) {
-            append_column_name(buf, fk_member); // "<member>_id" — byte-identical to today
+            append_column_name(buf, fk_member); // "<member>_id" — exactly append_column_name
         } else {
             const auto member_name = std::meta::identifier_of(fk_member);
             for (std::size_t i = 0; i < N; ++i) {
                 if (i > 0) {
                     buf.append(separator);
                 }
-                buf.append(member_name);
-                buf.append("_");
-                buf.append(std::meta::identifier_of(target_pk_members[i]));
+                append_identifier(buf, member_name, "_", std::meta::identifier_of(target_pk_members[i]));
             }
         }
     }
@@ -559,10 +647,11 @@ export namespace storm::meta {
             std::meta::info fk_member, const std::array<std::meta::info, N>& target_pk_members, std::size_t part_index
     ) -> std::size_t {
         if constexpr (N == 1) {
-            return column_name_size(fk_member); // "<member>_id" — byte-identical to today
+            return column_name_size(fk_member); // "<member>_id" — exactly append_column_name
         } else {
-            return std::meta::identifier_of(fk_member).size() + 1 +
-                   std::meta::identifier_of(target_pk_members[part_index]).size();
+            return identifier_size(
+                    std::meta::identifier_of(fk_member), "_", std::meta::identifier_of(target_pk_members[part_index])
+            );
         }
     }
 
@@ -574,11 +663,14 @@ export namespace storm::meta {
             std::size_t                           part_index
     ) -> void {
         if constexpr (N == 1) {
-            append_column_name(buf, fk_member); // "<member>_id" — byte-identical to today
+            append_column_name(buf, fk_member); // "<member>_id" — exactly append_column_name
         } else {
-            buf.append(std::meta::identifier_of(fk_member));
-            buf.append("_");
-            buf.append(std::meta::identifier_of(target_pk_members[part_index]));
+            append_identifier(
+                    buf,
+                    std::meta::identifier_of(fk_member),
+                    "_",
+                    std::meta::identifier_of(target_pk_members[part_index])
+            );
         }
     }
 

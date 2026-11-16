@@ -52,7 +52,7 @@ Storm ORM uses smart thresholds based on SQLite's variable limit (999):
 For small batches, use a single SQL statement with multiple VALUES:
 
 ```sql
-INSERT INTO Person (name, age) VALUES (?, ?), (?, ?), (?, ?), ...
+INSERT INTO "person" ("name", "age") VALUES (?, ?), (?, ?), (?, ?), ...
 ```
 
 **Benefits**:
@@ -71,8 +71,8 @@ For large batches, wrap individual statements in a transaction:
 
 ```sql
 BEGIN TRANSACTION;
-INSERT INTO Person (name, age) VALUES (?, ?);
-INSERT INTO Person (name, age) VALUES (?, ?);
+INSERT INTO "person" ("name", "age") VALUES (?, ?);
+INSERT INTO "person" ("name", "age") VALUES (?, ?);
 ...
 COMMIT;
 ```
@@ -159,9 +159,9 @@ UPDATE uses individual statements wrapped in a transaction:
 
 ```sql
 BEGIN TRANSACTION;
-UPDATE Person SET name=?, age=? WHERE id=?;
-UPDATE Person SET name=?, age=? WHERE id=?;
-UPDATE Person SET name=?, age=? WHERE id=?;
+UPDATE "person" SET "name"=?, "age"=? WHERE "id"=?;
+UPDATE "person" SET "name"=?, "age"=? WHERE "id"=?;
+UPDATE "person" SET "name"=?, "age"=? WHERE "id"=?;
 COMMIT;
 ```
 
@@ -213,7 +213,7 @@ auto result = queryset.erase(std::span<const Person>(people));
 DELETE uses bulk IN clause for efficiency:
 
 ```sql
-DELETE FROM Person WHERE id IN (?, ?, ?)
+DELETE FROM "person" WHERE "id" IN (?, ?, ?)
 ```
 
 **SQL generation**:

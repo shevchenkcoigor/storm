@@ -284,7 +284,7 @@ namespace {
             Base<SinglePk>::primary_key_ == Base<SinglePk>::primary_key_members_[0],
             "for a single-PK model primary_key_ is the sole element of primary_key_members_"
     );
-    static_assert(Base<SinglePk>::pk_name_ == "id", "single-PK pk_name_ is unchanged");
+    static_assert(Base<SinglePk>::pk_name_ == R"("id")", "single-PK pk_name_ is the first (only) key member, quoted");
 } // namespace
 
 // ── CREATE TABLE DDL ─────────────────────────────────────────────────────────
@@ -305,11 +305,11 @@ namespace {
 // makes ALTER TABLE ADD COLUMN work on a populated table, which is why #413 emits it.
 auto order_item_ddl(std::string_view int_type) -> std::string {
     return std::format(
-            "CREATE TABLE OrderItem (\n"
-            "    order_id {0} NOT NULL DEFAULT 0,\n"
-            "    product_id {0} NOT NULL DEFAULT 0,\n"
-            "    quantity {0} NOT NULL DEFAULT 0,\n"
-            "    PRIMARY KEY (order_id, product_id)\n"
+            "CREATE TABLE \"orderitem\" (\n"
+            "    \"order_id\" {0} NOT NULL DEFAULT 0,\n"
+            "    \"product_id\" {0} NOT NULL DEFAULT 0,\n"
+            "    \"quantity\" {0} NOT NULL DEFAULT 0,\n"
+            "    PRIMARY KEY (\"order_id\", \"product_id\")\n"
             ")",
             int_type
     );
@@ -325,15 +325,15 @@ TEST(CompositePrimaryKeyDDL, PostgresEmitsTableLevelPrimaryKey) {
 
 TEST(CompositePrimaryKeyDDL, ThreePartKeyEmitsAllPartsInOrder) {
     const std::string& sql = create_table_sql<TripleKey>();
-    EXPECT_TRUE(sql.contains("PRIMARY KEY (region, sku, revision)")) << sql;
+    EXPECT_TRUE(sql.contains(R"(PRIMARY KEY ("region", "sku", "revision"))")) << sql;
     // No column-level PRIMARY KEY anywhere: the table-level clause is the only one.
     EXPECT_EQ(sql.find("PRIMARY KEY"), sql.rfind("PRIMARY KEY")) << sql;
 }
 
 TEST(CompositePrimaryKeyDDL, ThreePartKeyPgEmitsAllPartsInOrder) {
     const std::string& sql = create_table_sql<TripleKey, Dialect::PostgreSQL>();
-    EXPECT_TRUE(sql.contains("PRIMARY KEY (region, sku, revision)")) << sql;
-    EXPECT_TRUE(sql.contains("sku TEXT NOT NULL")) << sql;
+    EXPECT_TRUE(sql.contains(R"(PRIMARY KEY ("region", "sku", "revision"))")) << sql;
+    EXPECT_TRUE(sql.contains(R"("sku" TEXT NOT NULL)")) << sql;
     EXPECT_FALSE(sql.contains("IDENTITY")) << sql;
     EXPECT_EQ(sql.find("PRIMARY KEY"), sql.rfind("PRIMARY KEY")) << sql;
 }
@@ -344,16 +344,16 @@ TEST(CompositePrimaryKeyDDL, ThreePartKeyPgEmitsAllPartsInOrder) {
 // canonical association-table case, not an exotic one.
 TEST(CompositePrimaryKeyDDL, FkPartUsesColumnNameNotIdentifier) {
     const std::string& sql = create_table_sql<StockLine>();
-    EXPECT_TRUE(sql.contains("PRIMARY KEY (warehouse_id, sku)")) << sql;
-    EXPECT_FALSE(sql.contains("PRIMARY KEY (warehouse,")) << sql;
+    EXPECT_TRUE(sql.contains(R"(PRIMARY KEY ("warehouse_id", "sku"))")) << sql;
+    EXPECT_FALSE(sql.contains(R"(PRIMARY KEY ("warehouse",)")) << sql;
     // The part is still emitted as a normal FK column, REFERENCES intact.
-    EXPECT_TRUE(sql.contains("warehouse_id INTEGER NOT NULL REFERENCES Person(id)")) << sql;
+    EXPECT_TRUE(sql.contains(R"("warehouse_id" INTEGER NOT NULL REFERENCES "person"("id"))")) << sql;
 }
 
 TEST(CompositePrimaryKeyDDL, FkPartUsesColumnNameNotIdentifierPg) {
     const std::string& sql = create_table_sql<StockLine, Dialect::PostgreSQL>();
-    EXPECT_TRUE(sql.contains("PRIMARY KEY (warehouse_id, sku)")) << sql;
-    EXPECT_TRUE(sql.contains("warehouse_id BIGINT NOT NULL REFERENCES Person(id)")) << sql;
+    EXPECT_TRUE(sql.contains(R"(PRIMARY KEY ("warehouse_id", "sku"))")) << sql;
+    EXPECT_TRUE(sql.contains(R"("warehouse_id" BIGINT NOT NULL REFERENCES "person"("id"))")) << sql;
 }
 
 // The FK columns of a composite model must be SIZED as FK columns. Crediting them the
@@ -364,8 +364,8 @@ TEST(CompositePrimaryKeyDDL, FkPartUsesColumnNameNotIdentifierPg) {
 TEST(CompositePrimaryKeyDDL, CompositeWithFksIsNotTruncated) {
     const std::string& sql = create_table_sql<WideFkComposite>();
     EXPECT_TRUE(sql.ends_with(")")) << sql;
-    EXPECT_TRUE(sql.contains("PRIMARY KEY (first_ref_id, second_ref_id)")) << sql;
-    EXPECT_TRUE(sql.contains("second_ref_id INTEGER NOT NULL REFERENCES Person(id) ON DELETE CASCADE")) << sql;
+    EXPECT_TRUE(sql.contains(R"(PRIMARY KEY ("first_ref_id", "second_ref_id"))")) << sql;
+    EXPECT_TRUE(sql.contains(R"("second_ref_id" INTEGER NOT NULL REFERENCES "person"("id") ON DELETE CASCADE)")) << sql;
 }
 
 TEST(CompositePrimaryKeyDDL, CompositePartsAreNotAutoincrement) {
@@ -378,9 +378,9 @@ TEST(CompositePrimaryKeyDDL, CompositePartsAreNotAutoincrement) {
 // fixtures asserted verbatim in test_orm_schema.cpp; repeating the assertion here
 // pins it against the composite branch specifically.
 TEST(CompositePrimaryKeyDDL, SinglePkDdlIsByteIdentical) {
-    const std::string expected = "CREATE TABLE SinglePk (\n"
-                                 "    id INTEGER PRIMARY KEY,\n"
-                                 "    name TEXT NOT NULL\n"
+    const std::string expected = "CREATE TABLE \"singlepk\" (\n"
+                                 "    \"id\" INTEGER PRIMARY KEY,\n"
+                                 "    \"name\" TEXT NOT NULL\n"
                                  ")";
     EXPECT_EQ(create_table_sql<SinglePk>(), expected);
 }
@@ -390,13 +390,13 @@ TEST(CompositePrimaryKeyDDL, SinglePkAutoincrementDdlUnchanged) {
     // trailing "PRIMARY KEY (" check pins that a single-PK model never grows a
     // table-level clause.
     const std::string& sql = create_table_sql<AutoincrementModel>();
-    EXPECT_TRUE(sql.contains("id INTEGER PRIMARY KEY AUTOINCREMENT")) << sql;
+    EXPECT_TRUE(sql.contains(R"("id" INTEGER PRIMARY KEY AUTOINCREMENT)")) << sql;
     EXPECT_FALSE(sql.contains("PRIMARY KEY (")) << sql;
 }
 
 TEST(CompositePrimaryKeyDDL, SinglePkPgDdlUnchanged) {
     const std::string& sql = create_table_sql<Person, Dialect::PostgreSQL>();
-    EXPECT_TRUE(sql.contains("id BIGINT PRIMARY KEY GENERATED BY DEFAULT AS IDENTITY")) << sql;
+    EXPECT_TRUE(sql.contains(R"("id" BIGINT PRIMARY KEY GENERATED BY DEFAULT AS IDENTITY)")) << sql;
     EXPECT_FALSE(sql.contains("PRIMARY KEY (")) << sql;
 }
 
@@ -406,8 +406,8 @@ TEST(CompositePrimaryKeyDDL, SinglePkPgDdlUnchanged) {
 TEST(CompositePrimaryKeyDDL, CompositePartsGetNoSeparateIndex) {
     const std::vector<std::string>& indexes = create_index_sql<OrderItem>();
     for (const std::string& idx : indexes) {
-        EXPECT_FALSE(idx.contains("(order_id)")) << idx;
-        EXPECT_FALSE(idx.contains("(product_id)")) << idx;
+        EXPECT_FALSE(idx.contains(R"(("order_id"))")) << idx;
+        EXPECT_FALSE(idx.contains(R"(("product_id"))")) << idx;
     }
 }
 

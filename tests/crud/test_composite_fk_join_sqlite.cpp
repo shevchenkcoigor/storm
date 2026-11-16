@@ -24,10 +24,10 @@ using storm::create_table_sql;
 // (Shipment above) never emitted a doubled "NOT NULL NOT NULL" suffix.
 TEST(CompositeFkSchemaTest, NullableCompositeFkColumnsOmitNotNull) {
     const std::string& sql = create_table_sql<OptionalShipment>();
-    EXPECT_NE(sql.find("line_order_id INTEGER,"), std::string::npos) << sql;
-    EXPECT_NE(sql.find("line_product_id INTEGER,"), std::string::npos) << sql;
-    EXPECT_EQ(sql.find("line_order_id INTEGER NOT NULL"), std::string::npos) << sql;
-    EXPECT_EQ(sql.find("line_product_id INTEGER NOT NULL"), std::string::npos) << sql;
+    EXPECT_NE(sql.find(R"("line_order_id" INTEGER,)"), std::string::npos) << sql;
+    EXPECT_NE(sql.find(R"("line_product_id" INTEGER,)"), std::string::npos) << sql;
+    EXPECT_EQ(sql.find(R"("line_order_id" INTEGER NOT NULL)"), std::string::npos) << sql;
+    EXPECT_EQ(sql.find(R"("line_product_id" INTEGER NOT NULL)"), std::string::npos) << sql;
 }
 
 TEST(CompositeFkSchemaTest, NonOptionalCompositeFkColumnsHaveExactlyOneNotNull) {

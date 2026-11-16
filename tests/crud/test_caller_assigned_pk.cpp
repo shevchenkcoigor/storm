@@ -164,21 +164,21 @@ namespace {
 
 TEST(CallerAssignedPkSqlTest, InsertEmitsPkColumnAndNoReturning) {
     const std::string& sql = insert_sql<AssignedIdRec, ReturnId::No>();
-    EXPECT_TRUE(sql.starts_with("INSERT INTO AssignedIdRec (ext_id, label) VALUES (?, ?)"))
+    EXPECT_TRUE(sql.starts_with(R"(INSERT INTO "assignedidrec" ("ext_id", "label") VALUES (?, ?))"))
             << "PK column must be present in the INSERT column list: " << sql;
     EXPECT_FALSE(sql.contains("RETURNING")) << "no RETURNING for a caller-assigned key: " << sql;
 }
 
 TEST(CallerAssignedPkSqlTest, InsertWithNonIdPkNameEmitsCorrectColumn) {
     const std::string& sql = insert_sql<AssignedRefRec, ReturnId::No>();
-    EXPECT_TRUE(sql.starts_with("INSERT INTO AssignedRefRec (ref_code, description) VALUES (?, ?)"))
+    EXPECT_TRUE(sql.starts_with(R"(INSERT INTO "assignedrefrec" ("ref_code", "description") VALUES (?, ?))"))
             << "PK column name must be the real identifier, not a hardcoded 'id': " << sql;
     EXPECT_FALSE(sql.contains("RETURNING")) << "no RETURNING for a caller-assigned key: " << sql;
 }
 
 TEST(CallerAssignedPkSqlTest, AutoIdInsertStillReturnsId) {
     const std::string& sql = insert_sql<AutoIdRec>();
-    EXPECT_TRUE(sql.ends_with("RETURNING id")) << "plain primary INSERT must still RETURN id: " << sql;
+    EXPECT_TRUE(sql.ends_with(R"(RETURNING "id")")) << "plain primary INSERT must still RETURN id: " << sql;
 }
 
 // ============================================================================

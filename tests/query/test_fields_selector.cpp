@@ -21,7 +21,7 @@ static_assert(std::meta::identifier_of(selector_info<fields::FSPerson.age>()) !=
 
 // ── The inherited Field<M> static reaches through the base ───────────────────
 // Load-bearing: removing the base class breaks exactly this (mutation-verified).
-static_assert(decltype(fields::FSPerson.age)::field_name_sv == "age");
+static_assert(decltype(fields::FSPerson.age)::field_name_sv == R"("age")"); // quoted, #828
 
 // ── The proxy resolves to exactly the member's reflection ───────────────────
 // A RAW ^^Model::member is no longer accepted anywhere: selector_info is

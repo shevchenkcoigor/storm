@@ -403,6 +403,20 @@ See [docs/internals/performance/PERFORMANCE.md](docs/internals/performance/PERFO
 
 `int`, `int64_t`, `double`, `float`, `bool`, `std::string`, `std::string_view`, `std::optional<T>`, `std::vector<uint8_t>` (BLOB)
 
+**Identifier quoting (#828)**: every identifier Storm emits — table, column, junction table, index —
+is double-quoted and lowercased (`struct Order { int desc; }` → `"order"` / `"desc"`), so a model or
+member named after an SQL reserved word works on both backends. Lowercase is what keeps this
+non-breaking: PostgreSQL already folded Storm's unquoted names to lowercase, and SQLite matches names
+case-insensitively, so `"person"` is the table `Person` always was (quoting the declared spelling would
+name a different table on PG). The quoted forms are the defaults — `append_column_name` /
+`column_name_view` (leaf `field_attr.cppm`), `BaseStatement::table_name_` / `pk_name_`. A name composed
+from parts (FK column `<member>_id`, junction `<owner>_<related>`, index `idx_<table>_<field>`) is built
+from the bare parts and quoted once as a whole: `storm::meta::append_identifier(buf, parts...)`,
+`append_identifier_text`, `append_bare_column_name`, `BaseStatement::raw_table_name_`. An identifier
+emitted UNQUOTED still executes for ordinary names, so only `tests/query/test_reserved_word_identifiers.cpp`
+(reserved-word models through every statement path, both backends) or a SQL-text assertion catches it.
+Expected SQL in tests is written quoted, usually as a raw string: `R"(SELECT "id" FROM "person")"`.
+
 **Annotation spelling (#442)**: annotation names are re-exported into the top-level `storm`
 namespace — write `primary`, `fk<>`, `many_to_many<>`,
 `storm::reverse_fk<...>` instead of the longer `storm::meta::...`. The `storm::meta::` spelling

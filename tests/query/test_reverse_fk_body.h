@@ -278,8 +278,8 @@ TYPED_TEST(ReverseFKTest, JoinWhereAndAggregateOnSharedIdAreQualified) {
                    .where(fields::RfPerson.id > 0)
                    .template join<fields::RfTask.assignee>()
                    .template sum<fields::RfPerson.id>();
-    EXPECT_TRUE(agg.sql().starts_with("SELECT SUM(t1.id) FROM RfPerson t1 ")) << agg.sql();
-    EXPECT_TRUE(agg.sql().ends_with(" WHERE t1.id > ?")) << agg.sql();
+    EXPECT_TRUE(agg.sql().starts_with(R"(SELECT SUM(t1."id") FROM "rfperson" t1 )")) << agg.sql();
+    EXPECT_TRUE(agg.sql().ends_with(R"( WHERE t1."id" > ?)")) << agg.sql();
     auto sum = agg.execute();
     ASSERT_TRUE(sum.has_value()) << sum.error().message();
     EXPECT_EQ(*sum, 1 + 1 + 2); // T1, T2 -> Alice(1); T3 -> Bob(2)
@@ -301,7 +301,7 @@ TYPED_TEST(ReverseFKTest, LeftJoinGroupByOnSharedIdIsQualified) {
                    .template left_join<fields::RfTask.assignee>()
                    .template group_by<fields::RfPerson.id>()
                    .count();
-    EXPECT_TRUE(agg.sql().contains(" WHERE t1.id > ? GROUP BY t1.id")) << agg.sql();
+    EXPECT_TRUE(agg.sql().contains(R"( WHERE t1."id" > ? GROUP BY t1."id")")) << agg.sql();
     auto groups = agg.execute();
     ASSERT_TRUE(groups.has_value()) << groups.error().message();
     EXPECT_EQ(groups->size(), 3U); // Alice, Bob, Carol (LEFT keeps the zero group)

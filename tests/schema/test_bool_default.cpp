@@ -40,20 +40,20 @@ struct BoolDefaultModel {
 
 TEST(BoolDefaultSchema, SqliteFalseDefaultIsZero) {
     const std::string& sql = SchemaStatement<BoolDefaultModel>::create_table_sql<Dialect::SQLite>();
-    EXPECT_NE(sql.find("flag_false INTEGER NOT NULL DEFAULT 0"), std::string::npos)
+    EXPECT_NE(sql.find(R"("flag_false" INTEGER NOT NULL DEFAULT 0)"), std::string::npos)
             << "Expected 'flag_false INTEGER NOT NULL DEFAULT 0' in: " << sql;
 }
 
 TEST(BoolDefaultSchema, SqliteTrueDefaultIsOne) {
     const std::string& sql = SchemaStatement<BoolDefaultModel>::create_table_sql<Dialect::SQLite>();
-    EXPECT_NE(sql.find("flag_true INTEGER NOT NULL DEFAULT 1"), std::string::npos)
+    EXPECT_NE(sql.find(R"("flag_true" INTEGER NOT NULL DEFAULT 1)"), std::string::npos)
             << "Expected 'flag_true INTEGER NOT NULL DEFAULT 1' in: " << sql;
 }
 
 // Person.is_active{} value-initializes to false → DEFAULT 0 (regression guard).
 TEST(BoolDefaultSchema, SqlitePersonIsActiveHasDefaultZero) {
     const std::string& sql = SchemaStatement<Person>::create_table_sql<Dialect::SQLite>();
-    EXPECT_NE(sql.find("is_active INTEGER NOT NULL DEFAULT 0"), std::string::npos)
+    EXPECT_NE(sql.find(R"("is_active" INTEGER NOT NULL DEFAULT 0)"), std::string::npos)
             << "Expected 'is_active INTEGER NOT NULL DEFAULT 0' in: " << sql;
 }
 
@@ -63,19 +63,19 @@ TEST(BoolDefaultSchema, SqlitePersonIsActiveHasDefaultZero) {
 
 TEST(BoolDefaultSchema, PgFalseDefaultIsFalse) {
     const std::string& sql = SchemaStatement<BoolDefaultModel>::create_table_sql<Dialect::PostgreSQL>();
-    EXPECT_NE(sql.find("flag_false BOOLEAN NOT NULL DEFAULT FALSE"), std::string::npos)
+    EXPECT_NE(sql.find(R"("flag_false" BOOLEAN NOT NULL DEFAULT FALSE)"), std::string::npos)
             << "Expected 'flag_false BOOLEAN NOT NULL DEFAULT FALSE' in: " << sql;
 }
 
 TEST(BoolDefaultSchema, PgTrueDefaultIsTrue) {
     const std::string& sql = SchemaStatement<BoolDefaultModel>::create_table_sql<Dialect::PostgreSQL>();
-    EXPECT_NE(sql.find("flag_true BOOLEAN NOT NULL DEFAULT TRUE"), std::string::npos)
+    EXPECT_NE(sql.find(R"("flag_true" BOOLEAN NOT NULL DEFAULT TRUE)"), std::string::npos)
             << "Expected 'flag_true BOOLEAN NOT NULL DEFAULT TRUE' in: " << sql;
 }
 
 TEST(BoolDefaultSchema, PgPersonIsActiveHasDefaultFalse) {
     const std::string& sql = SchemaStatement<Person>::create_table_sql<Dialect::PostgreSQL>();
-    EXPECT_NE(sql.find("is_active BOOLEAN NOT NULL DEFAULT FALSE"), std::string::npos)
+    EXPECT_NE(sql.find(R"("is_active" BOOLEAN NOT NULL DEFAULT FALSE)"), std::string::npos)
             << "Expected 'is_active BOOLEAN NOT NULL DEFAULT FALSE' in: " << sql;
 }
 
@@ -88,7 +88,7 @@ TEST(BoolDefaultSchema, PgPersonIsActiveHasDefaultFalse) {
 
 TEST(BoolDefaultSchema, IntColumnGainsDefault) {
     const std::string& sql     = SchemaStatement<Person>::create_table_sql<Dialect::SQLite>();
-    const std::size_t  age_pos = sql.find("age INTEGER NOT NULL DEFAULT 0");
+    const std::size_t  age_pos = sql.find(R"("age" INTEGER NOT NULL DEFAULT 0)");
     EXPECT_NE(age_pos, std::string::npos) << "int 'age' column should carry DEFAULT 0: " << sql;
 }
 

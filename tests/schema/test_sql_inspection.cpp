@@ -41,7 +41,7 @@ TYPED_TEST(SqlInspectionTest, SelectBareToSql) {
     const std::string& sql = result.value();
     EXPECT_FALSE(sql.empty()) << "SQL should not be empty";
     EXPECT_TRUE(contains(sql, "SELECT")) << "Should contain SELECT";
-    EXPECT_TRUE(contains(sql, "Person")) << "Should contain table name";
+    EXPECT_TRUE(contains(sql, R"("person")")) << "Should contain table name";
     EXPECT_TRUE(contains(sql, "name")) << "Should contain field 'name'";
     EXPECT_TRUE(contains(sql, "age")) << "Should contain field 'age'";
     // No WHERE clause
@@ -257,7 +257,7 @@ TYPED_TEST(SqlInspectionTest, InsertSingleToSql) {
 
     const std::string& sql = result.value();
     EXPECT_TRUE(contains(sql, "INSERT INTO")) << "Should contain INSERT INTO";
-    EXPECT_TRUE(contains(sql, "Person")) << "Should contain table name";
+    EXPECT_TRUE(contains(sql, R"("person")")) << "Should contain table name";
     EXPECT_TRUE(contains(sql, "VALUES")) << "Should contain VALUES";
     EXPECT_TRUE(contains(sql, "Alice")) << "Should contain name value";
     EXPECT_TRUE(contains(sql, "30")) << "Should contain age value";
@@ -326,7 +326,7 @@ TYPED_TEST(SqlInspectionTest, UpdateSingleToSql) {
 
     const std::string& sql = result.value();
     EXPECT_TRUE(contains(sql, "UPDATE")) << "Should contain UPDATE";
-    EXPECT_TRUE(contains(sql, "Person")) << "Should contain table name";
+    EXPECT_TRUE(contains(sql, R"("person")")) << "Should contain table name";
     EXPECT_TRUE(contains(sql, "SET")) << "Should contain SET";
     EXPECT_TRUE(contains(sql, "WHERE")) << "Should contain WHERE";
     EXPECT_TRUE(contains(sql, "31")) << "Should contain updated age value";
@@ -368,7 +368,7 @@ TYPED_TEST(SqlInspectionTest, RemoveSingleToSql) {
 
     const std::string& sql = result.value();
     EXPECT_TRUE(contains(sql, "DELETE FROM")) << "Should contain DELETE FROM";
-    EXPECT_TRUE(contains(sql, "Person")) << "Should contain table name";
+    EXPECT_TRUE(contains(sql, R"("person")")) << "Should contain table name";
     EXPECT_TRUE(contains(sql, "WHERE")) << "Should contain WHERE (id condition)";
 }
 
@@ -598,7 +598,7 @@ TYPED_TEST(SqlInspectionTest, DistinctBareToSql) {
     const std::string& sql = result.value();
     EXPECT_TRUE(contains(sql, "SELECT DISTINCT")) << "Should contain SELECT DISTINCT: " << sql;
     EXPECT_TRUE(contains(sql, "name")) << "Should contain projected field 'name': " << sql;
-    EXPECT_TRUE(contains(sql, "Person")) << "Should contain table name: " << sql;
+    EXPECT_TRUE(contains(sql, R"("person")")) << "Should contain table name: " << sql;
     EXPECT_FALSE(contains(sql, "WHERE")) << "Bare distinct should have no WHERE: " << sql;
 }
 
@@ -646,7 +646,7 @@ TYPED_TEST(SqlInspectionTest, CountBareToSql) {
 
     const std::string& sql = result.value();
     EXPECT_TRUE(contains(sql, "COUNT")) << "Should contain COUNT: " << sql;
-    EXPECT_TRUE(contains(sql, "Person")) << "Should contain table name: " << sql;
+    EXPECT_TRUE(contains(sql, R"("person")")) << "Should contain table name: " << sql;
     EXPECT_FALSE(contains(sql, "WHERE")) << "Bare count should have no WHERE: " << sql;
 }
 

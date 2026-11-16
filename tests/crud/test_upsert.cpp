@@ -94,29 +94,29 @@ namespace {
 TEST(UpsertGrammarTest, ConflictTargetSingleColumn) {
     constexpr auto    target = UpsertGrammar<Person>::build_conflict_target<^^Person::name>();
     const std::string s(target);
-    EXPECT_EQ(s, "(name)");
+    EXPECT_EQ(s, R"(("name"))");
 }
 
 // Grammar emits col=excluded.col for each listed SET column.
 TEST(UpsertGrammarTest, ExcludedSetClauseMultipleColumns) {
     constexpr auto    set = UpsertGrammar<Person>::build_excluded_set_clause<^^Person::age, ^^Person::salary>();
     const std::string s(set);
-    EXPECT_EQ(s, "age=excluded.age, salary=excluded.salary");
+    EXPECT_EQ(s, R"("age"=excluded."age", "salary"=excluded."salary")");
 }
 
 TEST(UpsertGrammarTest, ForeignKeyColumnsUseIdSuffix) {
     constexpr auto target = UpsertGrammar<UniqueOwnerRecord>::build_conflict_target<^^UniqueOwnerRecord::owner>();
     constexpr auto set    = UpsertGrammar<UniqueOwnerRecord>::build_excluded_set_clause<^^UniqueOwnerRecord::owner>();
-    EXPECT_EQ(std::string(target), "(owner_id)");
-    EXPECT_EQ(std::string(set), "owner_id=excluded.owner_id");
+    EXPECT_EQ(std::string(target), R"(("owner_id"))");
+    EXPECT_EQ(std::string(set), R"("owner_id"=excluded."owner_id")");
 }
 
 // Full DO NOTHING statement for Person conflicting on name.
 TEST(UpsertGrammarTest, FullSqlDoNothing) {
     const std::string& sql = UpsertGrammar<Person>::nothing_sql<^^Person::name>();
-    EXPECT_TRUE(sql.starts_with("INSERT INTO Person ")) << sql;
-    EXPECT_NE(sql.find("ON CONFLICT (name) DO NOTHING"), std::string::npos) << sql;
-    EXPECT_TRUE(sql.ends_with("RETURNING id")) << sql;
+    EXPECT_TRUE(sql.starts_with(R"(INSERT INTO "person" )")) << sql;
+    EXPECT_NE(sql.find(R"(ON CONFLICT ("name") DO NOTHING)"), std::string::npos) << sql;
+    EXPECT_TRUE(sql.ends_with(R"(RETURNING "id")")) << sql;
 }
 
 // Full DO UPDATE statement, conflict on name, set age.
@@ -124,8 +124,8 @@ TEST(UpsertGrammarTest, FullSqlDoUpdate) {
     const std::string sql = UpsertGrammar<Person>::update_sql<^^Person::name>(
             UpsertGrammar<Person>::build_excluded_set_clause<^^Person::age>()
     );
-    EXPECT_NE(sql.find("ON CONFLICT (name) DO UPDATE SET age=excluded.age"), std::string::npos) << sql;
-    EXPECT_TRUE(sql.ends_with("RETURNING id")) << sql;
+    EXPECT_NE(sql.find(R"(ON CONFLICT ("name") DO UPDATE SET "age"=excluded."age")"), std::string::npos) << sql;
+    EXPECT_TRUE(sql.ends_with(R"(RETURNING "id")")) << sql;
 }
 
 // Positive: a single unique field IS a valid conflict target.
@@ -194,7 +194,7 @@ TYPED_TEST(UpsertTest, SqlGoldenNothing) {
     QuerySet<Person, TypeParam> qs;
     Person const                row{.name = "Q", .age = 1, .department = "X"};
     const std::string           sql = qs.insert(row).template on_conflict<fields::Person.name>().nothing().sql();
-    EXPECT_NE(sql.find("ON CONFLICT (name) DO NOTHING"), std::string::npos) << sql;
+    EXPECT_NE(sql.find(R"(ON CONFLICT ("name") DO NOTHING)"), std::string::npos) << sql;
 }
 
 // Composite conflict target via UniqueIndex<name, department>.
@@ -253,7 +253,7 @@ TYPED_TEST(UpsertTest, ToSqlInlinesParams) {
     Person const                rec{.name = "Eve", .age = 5, .department = "X"};
     auto                        r = qs.insert(rec).template on_conflict<fields::Person.name>().nothing().to_sql();
     ASSERT_TRUE(r.has_value());
-    EXPECT_NE(r.value().find("ON CONFLICT (name) DO NOTHING"), std::string::npos) << r.value();
+    EXPECT_NE(r.value().find(R"(ON CONFLICT ("name") DO NOTHING)"), std::string::npos) << r.value();
     // The bound text values are rendered inline (name and department of the record), not as `?` / `$n`.
     EXPECT_NE(r.value().find("'Eve'"), std::string::npos) << r.value();
     EXPECT_NE(r.value().find("'X'"), std::string::npos) << r.value();
@@ -308,7 +308,7 @@ TYPED_TEST(UpsertTimestampTest, AutoUpdateTailInFullUpsertSql) {
                                     .template on_conflict<fields::TimestampedUpsertRecord.name>()
                                     .template update<fields::TimestampedUpsertRecord.name>()
                                     .sql();
-    EXPECT_NE(sql.find("DO UPDATE SET name=excluded.name, updated_at=?"), std::string::npos) << sql;
+    EXPECT_NE(sql.find(R"(DO UPDATE SET "name"=excluded."name", "updated_at"=?)"), std::string::npos) << sql;
 }
 
 // A UUID PK occupies a VALUES placeholder (#565), so the DO UPDATE auto_update tail

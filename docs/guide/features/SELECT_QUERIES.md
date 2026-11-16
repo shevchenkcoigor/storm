@@ -70,7 +70,7 @@ if (result) {
 
 **SQL Generated**:
 ```sql
-SELECT id, name, age FROM Person
+SELECT "id", "name", "age" FROM "person"
 ```
 
 **Performance**: 13.07M rows/sec (74% of raw SQLite, 1.51x faster than sqlite_orm)

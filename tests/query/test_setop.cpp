@@ -322,15 +322,15 @@ TYPED_TEST(SetOpTest, ToSqlWithModifiers) {
                        .to_sql();
     ASSERT_TRUE(sql.has_value()) << sql.error().message();
     constexpr std::string_view columns =
-            "SELECT id, name, age, salary, is_active, years_experience, department, score, "
-            "nickname, avatar FROM Person";
+            R"(SELECT "id", "name", "age", "salary", "is_active", "years_experience", "department", "score", )"
+            R"("nickname", "avatar" FROM "person")";
     // PostgreSQL inlines literals quoted and spells the NULL ordering out.
     constexpr bool pg = storm::db::SupportsPgDialect<TypeParam>;
     std::string    expected{columns};
-    expected += pg ? " WHERE age > '30' UNION " : " WHERE age > 30 UNION ";
+    expected += pg ? R"( WHERE "age" > '30' UNION )" : R"( WHERE "age" > 30 UNION )";
     expected += columns;
-    expected += pg ? " WHERE age < '25' ORDER BY name ASC NULLS FIRST LIMIT 5"
-                   : " WHERE age < 25 ORDER BY name ASC LIMIT 5";
+    expected += pg ? R"( WHERE "age" < '25' ORDER BY "name" ASC NULLS FIRST LIMIT 5)"
+                   : R"( WHERE "age" < 25 ORDER BY "name" ASC LIMIT 5)";
     EXPECT_EQ(*sql, expected);
 }
 

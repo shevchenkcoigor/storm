@@ -128,16 +128,18 @@ namespace {
 // loop follows).
 
 TEST(CompositePkDeleteSql, SingleRowWhereIsAndJoined) {
-    EXPECT_EQ(single_delete_sql<OrderLine>(), "DELETE FROM OrderLine WHERE order_id = ? AND product_id = ?");
+    EXPECT_EQ(single_delete_sql<OrderLine>(), R"(DELETE FROM "orderline" WHERE "order_id" = ? AND "product_id" = ?)");
 }
 
 TEST(CompositePkDeleteSql, ThreePartWhereIsAndJoinedInDeclarationOrder) {
-    EXPECT_EQ(single_delete_sql<Ledger>(), "DELETE FROM Ledger WHERE region = ? AND account = ? AND period = ?");
+    EXPECT_EQ(
+            single_delete_sql<Ledger>(), R"(DELETE FROM "ledger" WHERE "region" = ? AND "account" = ? AND "period" = ?)"
+    );
 }
 
 // The single-PK DELETE text must be byte-identical to before this issue.
 TEST(CompositePkDeleteSql, SinglePkTextIsByteIdentical) {
-    EXPECT_EQ(single_delete_sql<Widget>(), "DELETE FROM Widget WHERE id = ?");
+    EXPECT_EQ(single_delete_sql<Widget>(), R"(DELETE FROM "widget" WHERE "id" = ?)");
 }
 
 // Bulk DELETE uses a row-value IN list for a composite key: the single-PK
@@ -146,24 +148,28 @@ TEST(CompositePkDeleteSql, SinglePkTextIsByteIdentical) {
 // tests in test_composite_pk_crud.cpp prove it against live backends.
 TEST(CompositePkDeleteSql, BulkUsesRowValueInList) {
     EXPECT_EQ(
-            bulk_delete_sql<OrderLine>(3), "DELETE FROM OrderLine WHERE (order_id, product_id) IN ((?,?),(?,?),(?,?))"
+            bulk_delete_sql<OrderLine>(3),
+            R"(DELETE FROM "orderline" WHERE ("order_id", "product_id") IN ((?,?),(?,?),(?,?)))"
     );
 }
 
 TEST(CompositePkDeleteSql, BulkThreePartRowValueInList) {
-    EXPECT_EQ(bulk_delete_sql<Ledger>(2), "DELETE FROM Ledger WHERE (region, account, period) IN ((?,?,?),(?,?,?))");
+    EXPECT_EQ(
+            bulk_delete_sql<Ledger>(2),
+            R"(DELETE FROM "ledger" WHERE ("region", "account", "period") IN ((?,?,?),(?,?,?)))"
+    );
 }
 
 TEST(CompositePkDeleteSql, BulkSinglePkInListIsByteIdentical) {
-    EXPECT_EQ(bulk_delete_sql<Widget>(3), "DELETE FROM Widget WHERE id IN (?,?,?)");
+    EXPECT_EQ(bulk_delete_sql<Widget>(3), R"(DELETE FROM "widget" WHERE "id" IN (?,?,?))");
 }
 
 // The grammar builds a genuine one-element IN list for count == 1; it is
 // EraseStatement::get_bulk_delete_sql that short-circuits a one-object batch to the
 // single-row form, so this pins the grammar's own shape rather than that fast path.
 TEST(CompositePkDeleteSql, BulkOfOneIsAOneElementList) {
-    EXPECT_EQ(bulk_delete_sql<OrderLine>(1), "DELETE FROM OrderLine WHERE (order_id, product_id) IN ((?,?))");
-    EXPECT_EQ(bulk_delete_sql<Widget>(1), "DELETE FROM Widget WHERE id IN (?)");
+    EXPECT_EQ(bulk_delete_sql<OrderLine>(1), R"(DELETE FROM "orderline" WHERE ("order_id", "product_id") IN ((?,?)))");
+    EXPECT_EQ(bulk_delete_sql<Widget>(1), R"(DELETE FROM "widget" WHERE "id" IN (?))");
 }
 
 // An FK part's COLUMN is "<name>_id", so the key clause must name that. Emitting the
@@ -172,11 +178,13 @@ TEST(CompositePkDeleteSql, BulkOfOneIsAOneElementList) {
 // the canonical association-table case, not an exotic one — the same reason #500
 // asserts this for the DDL.
 TEST(CompositePkDeleteSql, FkKeyPartUsesColumnNameNotIdentifier) {
-    EXPECT_EQ(single_delete_sql<StockEntry>(), "DELETE FROM StockEntry WHERE warehouse_id = ? AND sku = ?");
+    EXPECT_EQ(single_delete_sql<StockEntry>(), R"(DELETE FROM "stockentry" WHERE "warehouse_id" = ? AND "sku" = ?)");
 }
 
 TEST(CompositePkDeleteSql, FkKeyPartBulkUsesColumnName) {
-    EXPECT_EQ(bulk_delete_sql<StockEntry>(2), "DELETE FROM StockEntry WHERE (warehouse_id, sku) IN ((?,?),(?,?))");
+    EXPECT_EQ(
+            bulk_delete_sql<StockEntry>(2), R"(DELETE FROM "stockentry" WHERE ("warehouse_id", "sku") IN ((?,?),(?,?)))"
+    );
 }
 
 // ── (1) SQL text: UPDATE ─────────────────────────────────────────────────────
@@ -185,19 +193,19 @@ TEST(CompositePkDeleteSql, FkKeyPartBulkUsesColumnName) {
 TEST(CompositePkUpdateSql, SetExcludesEveryKeyPartAndWhereIsAndJoined) {
     EXPECT_EQ(
             UpdateGrammar<OrderLine>::update_sql_string,
-            "UPDATE OrderLine SET quantity=?, note=? WHERE order_id = ? AND product_id = ?"
+            R"(UPDATE "orderline" SET "quantity"=?, "note"=? WHERE "order_id" = ? AND "product_id" = ?)"
     );
 }
 
 TEST(CompositePkUpdateSql, ThreePartKeyUpdate) {
     EXPECT_EQ(
             UpdateGrammar<Ledger>::update_sql_string,
-            "UPDATE Ledger SET balance=? WHERE region = ? AND account = ? AND period = ?"
+            R"(UPDATE "ledger" SET "balance"=? WHERE "region" = ? AND "account" = ? AND "period" = ?)"
     );
 }
 
 TEST(CompositePkUpdateSql, SinglePkTextIsByteIdentical) {
-    EXPECT_EQ(UpdateGrammar<Widget>::update_sql_string, "UPDATE Widget SET name=?, weight=? WHERE id = ?");
+    EXPECT_EQ(UpdateGrammar<Widget>::update_sql_string, R"(UPDATE "widget" SET "name"=?, "weight"=? WHERE "id" = ?)");
 }
 
 // FK key parts name their "_id" column in the UPDATE WHERE clause too, and stay out
@@ -205,7 +213,7 @@ TEST(CompositePkUpdateSql, SinglePkTextIsByteIdentical) {
 TEST(CompositePkUpdateSql, FkKeyPartUsesColumnNameNotIdentifier) {
     EXPECT_EQ(
             UpdateGrammar<StockEntry>::update_sql_string,
-            "UPDATE StockEntry SET qty=? WHERE warehouse_id = ? AND sku = ?"
+            R"(UPDATE "stockentry" SET "qty"=? WHERE "warehouse_id" = ? AND "sku" = ?)"
     );
 }
 
@@ -279,14 +287,14 @@ namespace {
 TEST(CompositePkInsertSql, EveryKeyPartJoinsTheColumnList) {
     EXPECT_EQ(
             (insert_sql<OrderLine, ReturnId::No>()),
-            "INSERT INTO OrderLine (order_id, product_id, quantity, note) VALUES (?, ?, ?, ?)"
+            R"(INSERT INTO "orderline" ("order_id", "product_id", "quantity", "note") VALUES (?, ?, ?, ?))"
     );
 }
 
 TEST(CompositePkInsertSql, ThreePartKeyInDeclarationOrder) {
     EXPECT_EQ(
             (insert_sql<Ledger, ReturnId::No>()),
-            "INSERT INTO Ledger (region, account, period, balance) VALUES (?, ?, ?, ?)"
+            R"(INSERT INTO "ledger" ("region", "account", "period", "balance") VALUES (?, ?, ?, ?))"
     );
 }
 
@@ -294,21 +302,23 @@ TEST(CompositePkInsertSql, ThreePartKeyInDeclarationOrder) {
 // into a column that does not exist. Same reason #500 asserts this for DDL.
 TEST(CompositePkInsertSql, FkKeyPartUsesColumnNameNotIdentifier) {
     EXPECT_EQ(
-            (insert_sql<StockEntry, ReturnId::No>()), "INSERT INTO StockEntry (warehouse_id, sku, qty) VALUES (?, ?, ?)"
+            (insert_sql<StockEntry, ReturnId::No>()),
+            R"(INSERT INTO "stockentry" ("warehouse_id", "sku", "qty") VALUES (?, ?, ?))"
     );
 }
 
 TEST(CompositePkInsertSql, MixedTypeKeyParts) {
     EXPECT_EQ(
-            (insert_sql<Inventory, ReturnId::No>()), "INSERT INTO Inventory (warehouse, sku, on_hand) VALUES (?, ?, ?)"
+            (insert_sql<Inventory, ReturnId::No>()),
+            R"(INSERT INTO "inventory" ("warehouse", "sku", "on_hand") VALUES (?, ?, ?))"
     );
 }
 
 // Single-PK INSERT text must be byte-identical to before this issue, on both
 // the void and the RETURNING variants.
 TEST(CompositePkInsertSql, SinglePkTextIsByteIdentical) {
-    EXPECT_EQ((insert_sql<Widget, ReturnId::No>()), "INSERT INTO Widget (name, weight) VALUES (?, ?)");
-    EXPECT_EQ(insert_sql<Widget>(), "INSERT INTO Widget (name, weight) VALUES (?, ?) RETURNING id");
+    EXPECT_EQ((insert_sql<Widget, ReturnId::No>()), R"(INSERT INTO "widget" ("name", "weight") VALUES (?, ?))");
+    EXPECT_EQ(insert_sql<Widget>(), R"(INSERT INTO "widget" ("name", "weight") VALUES (?, ?) RETURNING "id")");
 }
 
 // ── (#502) ReturnId gate ─────────────────────────────────────────────────────
@@ -387,7 +397,7 @@ static_assert(!ConflictTargetUnique<Widget, ^^Widget::id>, "single-PK ConflictTa
 
 TEST(CompositePkUpsertSql, NothingSqlHasNoReturning) {
     const std::string& sql = UpsertGrammar<OrderLine>::nothing_sql<^^OrderLine::order_id, ^^OrderLine::product_id>();
-    EXPECT_NE(sql.find("ON CONFLICT (order_id, product_id) DO NOTHING"), std::string::npos) << sql;
+    EXPECT_NE(sql.find(R"(ON CONFLICT ("order_id", "product_id") DO NOTHING)"), std::string::npos) << sql;
     EXPECT_EQ(sql.find("RETURNING"), std::string::npos) << "a composite key has nothing to RETURN: " << sql;
 }
 
@@ -396,7 +406,8 @@ TEST(CompositePkUpsertSql, UpdateSqlHasNoReturning) {
             UpsertGrammar<OrderLine>::build_excluded_set_clause<^^OrderLine::quantity>()
     );
     EXPECT_NE(
-            sql.find("ON CONFLICT (order_id, product_id) DO UPDATE SET quantity=excluded.quantity"), std::string::npos
+            sql.find(R"(ON CONFLICT ("order_id", "product_id") DO UPDATE SET "quantity"=excluded."quantity")"),
+            std::string::npos
     ) << sql;
     EXPECT_EQ(sql.find("RETURNING"), std::string::npos) << "a composite key has nothing to RETURN: " << sql;
 }
@@ -406,18 +417,18 @@ TEST(CompositePkUpsertSql, UpdateSqlHasNoReturning) {
 TEST(CompositePkUpsertSql, FkKeyPartConflictTargetUsesColumnName) {
     const std::string target =
             std::string(UpsertGrammar<StockEntry>::build_conflict_target<^^StockEntry::warehouse, ^^StockEntry::sku>());
-    EXPECT_EQ(target, "(warehouse_id, sku)");
+    EXPECT_EQ(target, R"(("warehouse_id", "sku"))");
 }
 
 // Single-PK upsert SQL must stay byte-identical: RETURNING <pk> is still emitted.
 TEST(CompositePkUpsertSql, SinglePkStillEmitsReturning) {
     const std::string& nothing = UpsertGrammar<Widget>::nothing_sql<^^Widget::name>();
-    EXPECT_TRUE(nothing.ends_with("RETURNING id")) << nothing;
+    EXPECT_TRUE(nothing.ends_with(R"(RETURNING "id")")) << nothing;
 
     const std::string update = UpsertGrammar<Widget>::update_sql<^^Widget::name>(
             UpsertGrammar<Widget>::build_excluded_set_clause<^^Widget::weight>()
     );
-    EXPECT_TRUE(update.ends_with("RETURNING id")) << update;
+    EXPECT_TRUE(update.ends_with(R"(RETURNING "id")")) << update;
 }
 
 // ── #542: the auto_update SET tail uses the canonical column-name writer ─────
@@ -430,12 +441,12 @@ TEST(CompositePkUpsertSql, SinglePkStillEmitsReturning) {
 TEST(AutoUpdateSetTail, UpdateSetClauseText) {
     constexpr auto set = UpdateGrammar<TimestampedRecord>::build_conditional_set_clause<^^TimestampedRecord::name>();
     // created_at is auto_create (INSERT only), so only updated_at joins the tail.
-    EXPECT_EQ(std::string(set), "name=?, updated_at=?");
+    EXPECT_EQ(std::string(set), R"("name"=?, "updated_at"=?)");
 }
 
 TEST(AutoUpdateSetTail, UpsertExcludedSetClauseText) {
     constexpr auto set = UpsertGrammar<TimestampedRecord>::build_excluded_set_clause<^^TimestampedRecord::name>();
-    EXPECT_EQ(std::string(set), "name=excluded.name, updated_at=?");
+    EXPECT_EQ(std::string(set), R"("name"=excluded."name", "updated_at"=?)");
 }
 
 // NOLINTEND(readability-implicit-bool-conversion)

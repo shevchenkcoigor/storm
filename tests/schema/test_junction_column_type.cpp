@@ -156,15 +156,15 @@ namespace fields {
 
 TEST(JunctionColumnTypeTest, UuidPkBothSidesSqlite) {
     const std::string& sql = junction_sql<UuidDoc, Dialect::SQLite>();
-    EXPECT_TRUE(sql.contains("UuidDoc_id TEXT NOT NULL")) << sql;
-    EXPECT_TRUE(sql.contains("UuidTag_id TEXT NOT NULL")) << sql;
+    EXPECT_TRUE(sql.contains(R"("uuiddoc_id" TEXT NOT NULL)")) << sql;
+    EXPECT_TRUE(sql.contains(R"("uuidtag_id" TEXT NOT NULL)")) << sql;
     EXPECT_FALSE(sql.contains("INTEGER")) << "A UUID-PK junction must not emit an INTEGER column: " << sql;
 }
 
 TEST(JunctionColumnTypeTest, UuidPkBothSidesPostgres) {
     const std::string& sql = junction_sql<UuidDoc, Dialect::PostgreSQL>();
-    EXPECT_TRUE(sql.contains("UuidDoc_id UUID NOT NULL")) << sql;
-    EXPECT_TRUE(sql.contains("UuidTag_id UUID NOT NULL")) << sql;
+    EXPECT_TRUE(sql.contains(R"("uuiddoc_id" UUID NOT NULL)")) << sql;
+    EXPECT_TRUE(sql.contains(R"("uuidtag_id" UUID NOT NULL)")) << sql;
     EXPECT_FALSE(sql.contains("BIGINT")) << "A UUID-PK junction must not emit a BIGINT column: " << sql;
 }
 
@@ -173,22 +173,22 @@ TEST(JunctionColumnTypeTest, UuidPkBothSidesPostgres) {
 TEST(JunctionColumnTypeTest, MixedPkTypesResolveIndependently) {
     EXPECT_EQ(
             (junction_sql<IntShelf, Dialect::SQLite>()),
-            "CREATE TABLE IntShelf_UuidLabel (\n"
-            "    IntShelf_id INTEGER NOT NULL,\n"
-            "    UuidLabel_id TEXT NOT NULL,\n"
-            "    PRIMARY KEY (IntShelf_id, UuidLabel_id),\n"
-            "    FOREIGN KEY (IntShelf_id) REFERENCES IntShelf(id) ON DELETE CASCADE,\n"
-            "    FOREIGN KEY (UuidLabel_id) REFERENCES UuidLabel(id) ON DELETE CASCADE\n"
+            "CREATE TABLE \"intshelf_uuidlabel\" (\n"
+            "    \"intshelf_id\" INTEGER NOT NULL,\n"
+            "    \"uuidlabel_id\" TEXT NOT NULL,\n"
+            "    PRIMARY KEY (\"intshelf_id\", \"uuidlabel_id\"),\n"
+            "    FOREIGN KEY (\"intshelf_id\") REFERENCES \"intshelf\"(\"id\") ON DELETE CASCADE,\n"
+            "    FOREIGN KEY (\"uuidlabel_id\") REFERENCES \"uuidlabel\"(\"id\") ON DELETE CASCADE\n"
             ")"
     );
     EXPECT_EQ(
             (junction_sql<IntShelf, Dialect::PostgreSQL>()),
-            "CREATE TABLE IntShelf_UuidLabel (\n"
-            "    IntShelf_id BIGINT NOT NULL,\n"
-            "    UuidLabel_id UUID NOT NULL,\n"
-            "    PRIMARY KEY (IntShelf_id, UuidLabel_id),\n"
-            "    FOREIGN KEY (IntShelf_id) REFERENCES IntShelf(id) ON DELETE CASCADE,\n"
-            "    FOREIGN KEY (UuidLabel_id) REFERENCES UuidLabel(id) ON DELETE CASCADE\n"
+            "CREATE TABLE \"intshelf_uuidlabel\" (\n"
+            "    \"intshelf_id\" BIGINT NOT NULL,\n"
+            "    \"uuidlabel_id\" UUID NOT NULL,\n"
+            "    PRIMARY KEY (\"intshelf_id\", \"uuidlabel_id\"),\n"
+            "    FOREIGN KEY (\"intshelf_id\") REFERENCES \"intshelf\"(\"id\") ON DELETE CASCADE,\n"
+            "    FOREIGN KEY (\"uuidlabel_id\") REFERENCES \"uuidlabel\"(\"id\") ON DELETE CASCADE\n"
             ")"
     );
 }
@@ -199,14 +199,16 @@ TEST(JunctionColumnTypeTest, UuidPkWithNonIdPkName) {
          {junction_sql<UuidBinder, Dialect::SQLite>(), junction_sql<UuidBinder, Dialect::PostgreSQL>()}) {
         // The junction's OWN columns stay "<Side>_id" — only the type and the
         // REFERENCES target follow the model's PK.
-        EXPECT_TRUE(sql.contains("FOREIGN KEY (UuidBinder_id) REFERENCES UuidBinder(binder_uuid) ON DELETE CASCADE"))
+        EXPECT_TRUE(sql.contains(
+                R"(FOREIGN KEY ("uuidbinder_id") REFERENCES "uuidbinder"("binder_uuid") ON DELETE CASCADE)"
+        )) << sql;
+        EXPECT_TRUE(sql.contains(R"(FOREIGN KEY ("uuidnote_id") REFERENCES "uuidnote"("note_uuid") ON DELETE CASCADE)"))
                 << sql;
-        EXPECT_TRUE(sql.contains("FOREIGN KEY (UuidNote_id) REFERENCES UuidNote(note_uuid) ON DELETE CASCADE")) << sql;
     }
     const std::string& sqlite_sql = junction_sql<UuidBinder, Dialect::SQLite>();
     const std::string& pg_sql     = junction_sql<UuidBinder, Dialect::PostgreSQL>();
-    EXPECT_TRUE(sqlite_sql.contains("UuidBinder_id TEXT NOT NULL")) << sqlite_sql;
-    EXPECT_TRUE(pg_sql.contains("UuidBinder_id UUID NOT NULL")) << pg_sql;
+    EXPECT_TRUE(sqlite_sql.contains(R"("uuidbinder_id" TEXT NOT NULL)")) << sqlite_sql;
+    EXPECT_TRUE(pg_sql.contains(R"("uuidbinder_id" UUID NOT NULL)")) << pg_sql;
 }
 
 // Regression guard: integer PKs on both sides — the junction DDL must stay
@@ -214,22 +216,22 @@ TEST(JunctionColumnTypeTest, UuidPkWithNonIdPkName) {
 TEST(JunctionColumnTypeTest, IntegerPkJunctionDdlUnchanged) {
     EXPECT_EQ(
             (junction_sql<IntPost, Dialect::SQLite>()),
-            "CREATE TABLE IntPost_IntTag (\n"
-            "    IntPost_id INTEGER NOT NULL,\n"
-            "    IntTag_id INTEGER NOT NULL,\n"
-            "    PRIMARY KEY (IntPost_id, IntTag_id),\n"
-            "    FOREIGN KEY (IntPost_id) REFERENCES IntPost(id) ON DELETE CASCADE,\n"
-            "    FOREIGN KEY (IntTag_id) REFERENCES IntTag(id) ON DELETE CASCADE\n"
+            "CREATE TABLE \"intpost_inttag\" (\n"
+            "    \"intpost_id\" INTEGER NOT NULL,\n"
+            "    \"inttag_id\" INTEGER NOT NULL,\n"
+            "    PRIMARY KEY (\"intpost_id\", \"inttag_id\"),\n"
+            "    FOREIGN KEY (\"intpost_id\") REFERENCES \"intpost\"(\"id\") ON DELETE CASCADE,\n"
+            "    FOREIGN KEY (\"inttag_id\") REFERENCES \"inttag\"(\"id\") ON DELETE CASCADE\n"
             ")"
     );
     EXPECT_EQ(
             (junction_sql<IntPost, Dialect::PostgreSQL>()),
-            "CREATE TABLE IntPost_IntTag (\n"
-            "    IntPost_id BIGINT NOT NULL,\n"
-            "    IntTag_id BIGINT NOT NULL,\n"
-            "    PRIMARY KEY (IntPost_id, IntTag_id),\n"
-            "    FOREIGN KEY (IntPost_id) REFERENCES IntPost(id) ON DELETE CASCADE,\n"
-            "    FOREIGN KEY (IntTag_id) REFERENCES IntTag(id) ON DELETE CASCADE\n"
+            "CREATE TABLE \"intpost_inttag\" (\n"
+            "    \"intpost_id\" BIGINT NOT NULL,\n"
+            "    \"inttag_id\" BIGINT NOT NULL,\n"
+            "    PRIMARY KEY (\"intpost_id\", \"inttag_id\"),\n"
+            "    FOREIGN KEY (\"intpost_id\") REFERENCES \"intpost\"(\"id\") ON DELETE CASCADE,\n"
+            "    FOREIGN KEY (\"inttag_id\") REFERENCES \"inttag\"(\"id\") ON DELETE CASCADE\n"
             ")"
     );
 }
@@ -243,15 +245,15 @@ TEST(JunctionColumnTypeTest, IntegerPkJunctionDdlUnchanged) {
 // type mismatch that SQLite would silently accept instead.
 TEST(JunctionColumnTypeTest, NarrowDeclaredPkStaysPinnedToBigintOnPostgres) {
     const std::string& sql = junction_sql<NarrowPkPost, Dialect::PostgreSQL>();
-    EXPECT_TRUE(sql.contains("NarrowPkTag_id BIGINT NOT NULL")) << sql;
-    EXPECT_TRUE(sql.contains("NarrowPkPost_id BIGINT NOT NULL")) << sql;
-    EXPECT_TRUE(sql.contains("FOREIGN KEY (NarrowPkTag_id) REFERENCES NarrowPkTag(id)")) << sql;
+    EXPECT_TRUE(sql.contains(R"("narrowpktag_id" BIGINT NOT NULL)")) << sql;
+    EXPECT_TRUE(sql.contains(R"("narrowpkpost_id" BIGINT NOT NULL)")) << sql;
+    EXPECT_TRUE(sql.contains(R"(FOREIGN KEY ("narrowpktag_id") REFERENCES "narrowpktag"("id"))")) << sql;
 }
 
 TEST(JunctionColumnTypeTest, NarrowDeclaredPkSqliteUnchanged) {
     const std::string& sql = junction_sql<NarrowPkPost, Dialect::SQLite>();
-    EXPECT_TRUE(sql.contains("NarrowPkTag_id INTEGER NOT NULL")) << sql;
-    EXPECT_TRUE(sql.contains("NarrowPkPost_id INTEGER NOT NULL")) << sql;
+    EXPECT_TRUE(sql.contains(R"("narrowpktag_id" INTEGER NOT NULL)")) << sql;
+    EXPECT_TRUE(sql.contains(R"("narrowpkpost_id" INTEGER NOT NULL)")) << sql;
 }
 
 // ============================================================================

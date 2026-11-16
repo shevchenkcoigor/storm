@@ -28,10 +28,10 @@ using storm::orm::schema::SchemaStatement;
 TEST(MultiM2MSchemaTest, OneJunctionTablePerM2MField) {
     const auto& sqls = SchemaStatement<Member>::junction_table_sqls<Dialect::SQLite>();
     ASSERT_EQ(sqls.size(), 2U);
-    EXPECT_TRUE(sqls[0].contains("CREATE TABLE Member_Course")) << sqls[0];
-    EXPECT_TRUE(sqls[0].contains("PRIMARY KEY (Member_id, Course_id)")) << sqls[0];
-    EXPECT_TRUE(sqls[1].contains("CREATE TABLE Member_Club")) << sqls[1];
-    EXPECT_TRUE(sqls[1].contains("PRIMARY KEY (Member_id, Club_id)")) << sqls[1];
+    EXPECT_TRUE(sqls[0].contains(R"(CREATE TABLE "member_course")")) << sqls[0];
+    EXPECT_TRUE(sqls[0].contains(R"(PRIMARY KEY ("member_id", "course_id"))")) << sqls[0];
+    EXPECT_TRUE(sqls[1].contains(R"(CREATE TABLE "member_club")")) << sqls[1];
+    EXPECT_TRUE(sqls[1].contains(R"(PRIMARY KEY ("member_id", "club_id"))")) << sqls[1];
 }
 
 // NOLINTEND(misc-const-correctness)

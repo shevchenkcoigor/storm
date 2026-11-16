@@ -226,8 +226,9 @@ TYPED_TEST(ThroughCompositeRelatedTest, JoinsRelatedOnFullCompositeKey) {
 TYPED_TEST(ThroughCompositeOwnerTest, AutoJunctionCompositeSqlIsUnchanged) {
     const auto sql =
         (SelectStatement<LedgerWithTags, TypeParam>{}).all().template join<fields::LedgerWithTags.tags>().sql();
-    EXPECT_TRUE(sql.contains("t2.LedgerWithTags_region, t2.LedgerWithTags_account, t2.LedgerWithTags_period")) << sql;
-    EXPECT_TRUE(sql.contains("ON t2.LedgerTag_id = t3.id")) << sql;
+    EXPECT_TRUE(sql.contains(R"(t2."ledgerwithtags_region", t2."ledgerwithtags_account", t2."ledgerwithtags_period")"))
+        << sql;
+    EXPECT_TRUE(sql.contains(R"(ON t2."ledgertag_id" = t3."id")")) << sql;
 }
 
 // THE divergence case: the owner's composite key has a part that is itself an

@@ -53,8 +53,8 @@ struct Enrollment {
 ```
 
 ```sql
-CREATE UNIQUE INDEX IF NOT EXISTS idx_Enrollment_student_id_course_id
-    ON Enrollment(student_id, course_id)
+CREATE UNIQUE INDEX IF NOT EXISTS "idx_enrollment_student_id_course_id"
+    ON "enrollment"("student_id", "course_id")
 ```
 
 `storm::Index<^^A::x, ^^A::y>` (non-unique) and `uniqueIndex<^^A::x, ^^A::y>` both
