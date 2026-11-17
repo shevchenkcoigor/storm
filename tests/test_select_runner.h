@@ -246,24 +246,39 @@ template <typename Model, typename ConnType> class SelectRunner : public SelectQ
 // AggregateRunner -- scalar aggregates (count, sum, avg, min, max, count_distinct)
 // ---------------------------------------------------------------------------
 template <typename Model, typename ConnType> class AggregateRunner : public SelectQueryRunnerBase<Model, ConnType> {
+  private:
+    // #818: pin the statement's SQL text when the case declares expected_sql;
+    // a case without it is result-only, as before.
+    template <const auto &Tc> static auto expect_sql(auto &query) -> void {
+        if constexpr (!Tc.expected_sql.empty())
+            EXPECT_EQ(query.sql(), Tc.expected_sql.view())
+                << "YAML expected_sql (#818) of case " << Tc.bench.test_name.view();
+    }
+
   public:
     template <const auto &Tc> auto run() -> void { // NOSONAR(S3776) -- inherent constexpr dispatch
         this->template apply_where_and_join<Tc>();
 
         if constexpr (Tc.query_type == "count") {
-            auto r = this->qs_.count().execute();
+            auto q = this->qs_.count();
+            expect_sql<Tc>(q);
+            auto r = q.execute();
             ASSERT_TRUE(r.has_value()) << r.error().message();
             EXPECT_EQ(r.value(), Tc.expected.int_val);
 
         } else if constexpr (Tc.query_type == "count_distinct") {
             constexpr auto fi = dispatch_field<Model>(Tc.bench.aggregate.field.view());
-            auto r = this->qs_.template count_distinct<FieldRef<fi>{}>().execute();
+            auto q = this->qs_.template count_distinct<FieldRef<fi>{}>();
+            expect_sql<Tc>(q);
+            auto r = q.execute();
             ASSERT_TRUE(r.has_value()) << r.error().message();
             EXPECT_EQ(r.value(), Tc.expected.int_val);
 
         } else if constexpr (Tc.query_type == "sum") {
             constexpr auto fi = dispatch_field<Model>(Tc.bench.aggregate.field.view());
-            auto r = this->qs_.template sum<FieldRef<fi>{}>().execute();
+            auto q = this->qs_.template sum<FieldRef<fi>{}>();
+            expect_sql<Tc>(q);
+            auto r = q.execute();
             ASSERT_TRUE(r.has_value()) << r.error().message();
             if constexpr (Tc.expected.int_val != -1)
                 EXPECT_EQ(r.value(), Tc.expected.int_val);
@@ -272,25 +287,33 @@ template <typename Model, typename ConnType> class AggregateRunner : public Sele
 
         } else if constexpr (Tc.query_type == "avg") {
             constexpr auto fi = dispatch_field<Model>(Tc.bench.aggregate.field.view());
-            auto r = this->qs_.template avg<FieldRef<fi>{}>().execute();
+            auto q = this->qs_.template avg<FieldRef<fi>{}>();
+            expect_sql<Tc>(q);
+            auto r = q.execute();
             ASSERT_TRUE(r.has_value()) << r.error().message();
             expect_opt_near(r.value(), Tc.expected.dbl_val, Tc.dataset.view() == "empty");
 
         } else if constexpr (Tc.query_type == "min") {
             constexpr auto fi = dispatch_field<Model>(Tc.bench.aggregate.field.view());
-            auto r = this->qs_.template min<FieldRef<fi>{}>().execute();
+            auto q = this->qs_.template min<FieldRef<fi>{}>();
+            expect_sql<Tc>(q);
+            auto r = q.execute();
             ASSERT_TRUE(r.has_value()) << r.error().message();
             expect_opt_near(r.value(), Tc.expected.dbl_val, Tc.dataset.view() == "empty");
 
         } else if constexpr (Tc.query_type == "max") {
             constexpr auto fi = dispatch_field<Model>(Tc.bench.aggregate.field.view());
-            auto r = this->qs_.template max<FieldRef<fi>{}>().execute();
+            auto q = this->qs_.template max<FieldRef<fi>{}>();
+            expect_sql<Tc>(q);
+            auto r = q.execute();
             ASSERT_TRUE(r.has_value()) << r.error().message();
             expect_opt_near(r.value(), Tc.expected.dbl_val, Tc.dataset.view() == "empty");
 
         } else if constexpr (Tc.query_type == "count_field") {
             constexpr auto fi = dispatch_field<Model>(Tc.bench.aggregate.field.view());
-            auto r = this->qs_.template count<FieldRef<fi>{}>().execute();
+            auto q = this->qs_.template count<FieldRef<fi>{}>();
+            expect_sql<Tc>(q);
+            auto r = q.execute();
             ASSERT_TRUE(r.has_value()) << r.error().message();
             EXPECT_EQ(r.value(), Tc.expected.int_val);
         }

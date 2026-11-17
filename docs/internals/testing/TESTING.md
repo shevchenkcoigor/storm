@@ -154,6 +154,38 @@ total, measured alongside [Local Test Suite Speed](#local-test-suite-speed):
   #784/#787) — 100% passing
 - ~33s wall time running the binaries directly (measured 2026-08-27)
 
+## YAML-driven cases and `expected_sql` (#818)
+
+`tests/test_cases/unified_cases.yaml` is split by `scripts/split_unified_cases.py` into one JSON per
+category, `#embed`ded into `tests/yaml/test_unified_yaml_*.cpp` and run on SQLite and PostgreSQL. A case
+checks **results** (`expected:`). SQL text is pinned separately in C++ (`test_sql_verify.cpp`,
+`test_fields_sql_parity.cpp`).
+
+A case may also carry an optional `expected_sql:` — the exact `sql()` text, compared **before** the
+statement executes. A case without it stays result-only. It is **prototyped on the aggregate runner only**
+(`AggregateRunner`, all 58 scalar-aggregate cases); other runners ignore the key.
+
+```yaml
+- name: count_where_age_gte_35
+  query_type: count
+  where: {conditions: [{field: age, op: '>=', values: [35]}]}
+  expected_sql: 'SELECT COUNT(*) FROM "person" WHERE "age" >= ?'
+  expected: {int_val: 11}
+```
+
+- `sql()` is backend-independent for these statements (placeholders stay `?`), so one string covers both
+  backends. A per-dialect `expected_sql_sqlite` / `expected_sql_pg` is not implemented: no aggregate case needs
+  one (that is `NULLS FIRST/LAST` and `LIMIT ALL` vs `LIMIT -1`, which no aggregate case emits).
+- Write the string from the case, not by pasting the code's output — a pinned wrong string passes forever.
+- The capacity is `EXPECTED_SQL_CAPACITY` (160) in `tests/test_parser.hpp`, mirrored in
+  `scripts/split_unified_cases.py`, which fails the build on a string of 160 or more characters (the C++ parser
+  cannot report an overflow), on non-printable or non-ASCII text, on `{ } [ ]` (the parser's brace skipper ignores string boundaries), and on `expected_sql` in a category whose
+  runner does not read it yet (it would pass without ever comparing SQL). The parser unescapes `\"` and `\\`, which is how the quoted identifiers survive the JSON hop.
+- Write paths (`to_sql()` inlines bound values), set-ops and upsert still need C++ tests.
+- **Build cost** (Release, warm, aggregate TU, 3 runs each): 25.5–27.3 s before, 26.9–27.0 s after
+  (about +1 s, +4%, at the edge of run-to-run noise); the select TU, which carries no `expected_sql` but whose
+  `TestCase` grew by 160 bytes, is unchanged (28.7–29.2 s vs 28.7–29.2 s).
+
 ## Writing New Tests
 
 1. **Create test file**: `tests/<category>/test_<feature>.cpp`
