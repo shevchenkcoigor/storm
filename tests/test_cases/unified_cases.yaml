@@ -3321,7 +3321,8 @@
     conditions:
     - field: content
       op: LIKE
-      values: []
+      values:
+      - H%
   join:
     type: inner
     related: Person
@@ -3385,7 +3386,8 @@
     conditions:
     - field: content
       op: LIKE
-      values: []
+      values:
+      - '%o%'
   distinct:
     fields:
     - content
