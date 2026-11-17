@@ -558,24 +558,21 @@ namespace storm::test {
         int                 right     = -1;
     };
 
+    // One `expected.first` entry: a row member's name and its expected value (#834).
+    struct FirstRowField {
+        ConstexprString<32> name;
+        TypedValue          value;
+    };
+
+    // `expected.first` as a name -> value list, checked member by member against
+    // the row via reflection (test_select_runner.h), so a new model field needs no
+    // parser change. `count` counts every key seen, even past MAX_FIELDS, so the
+    // runner can reject an overflowing case instead of dropping its extra keys.
     struct FirstRowSpec {
-        ConstexprString<64> name;
-        bool                has_name             = false;
-        int                 age                  = 0;
-        bool                has_age              = false;
-        double              salary               = 0;
-        bool                has_salary           = false;
-        bool                is_active            = false;
-        bool                has_is_active        = false;
-        int                 years_experience     = 0;
-        bool                has_years_experience = false;
-        ConstexprString<64> department;
-        bool                has_department = false;
-        ConstexprString<64> content;
-        bool                has_content = false;
-        int                 value       = 0;
-        bool                has_value   = false;
-        constexpr FirstRowSpec()        = default;
+        static constexpr std::size_t          MAX_FIELDS = 8;
+        std::array<FirstRowField, MAX_FIELDS> fields{};
+        std::size_t                           count = 0;
+        constexpr FirstRowSpec()                    = default;
     };
 
     struct ExpectedSpec {
@@ -626,32 +623,15 @@ namespace storm::test {
 
     constexpr void parse_first_row_into(std::string_view j, std::size_t& p, FirstRowSpec& f) {
         parse_object(j, p, [&](const char* ptr, JsonKeyRef kr, std::string_view jj, std::size_t& pp) {
-            if (jkey_eq(ptr, kr.start, kr.len, "name")) {
-                f.name     = parse_str<64>(jj, pp);
-                f.has_name = true;
-            } else if (jkey_eq(ptr, kr.start, kr.len, "age")) {
-                f.age     = parse_int(jj, pp);
-                f.has_age = true;
-            } else if (jkey_eq(ptr, kr.start, kr.len, "salary")) {
-                f.salary     = parse_double(jj, pp);
-                f.has_salary = true;
-            } else if (jkey_eq(ptr, kr.start, kr.len, "is_active")) {
-                f.is_active     = parse_bool(jj, pp);
-                f.has_is_active = true;
-            } else if (jkey_eq(ptr, kr.start, kr.len, "years_experience")) {
-                f.years_experience     = parse_int(jj, pp);
-                f.has_years_experience = true;
-            } else if (jkey_eq(ptr, kr.start, kr.len, "department")) {
-                f.department     = parse_str<64>(jj, pp);
-                f.has_department = true;
-            } else if (jkey_eq(ptr, kr.start, kr.len, "content")) {
-                f.content     = parse_str<64>(jj, pp);
-                f.has_content = true;
-            } else if (jkey_eq(ptr, kr.start, kr.len, "value")) {
-                f.value     = parse_int(jj, pp);
-                f.has_value = true;
-            } else
+            if (f.count >= FirstRowSpec::MAX_FIELDS) {
                 skip_value(jj, pp);
+                ++f.count;
+                return;
+            }
+            FirstRowField& field = f.fields.data()[f.count++];
+            for (std::size_t i = 0; i < kr.len && i + 1 < field.name.data.size(); ++i)
+                field.name.data.data()[field.name.len++] = ptr[kr.start + i];
+            field.value = parse_typed_value(jj, pp);
         });
     }
 
@@ -761,9 +741,10 @@ namespace storm::test {
         std::size_t n = 0;
         parse_array(j, p, [&](std::string_view jj, std::size_t& pp) {
             if (n < TestCase::MAX_CHAIN)
-                out.data()[n++] = parse_chain_agg_spec(jj, pp);
+                out.data()[n] = parse_chain_agg_spec(jj, pp);
             else
                 skip_braced(jj, pp, '{', '}');
+            ++n; // counts past MAX_CHAIN too, so ChainAggRunner can reject the overflow
         });
         return n;
     }

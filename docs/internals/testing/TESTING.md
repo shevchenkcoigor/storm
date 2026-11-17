@@ -186,6 +186,31 @@ statement executes. A case without it stays result-only. It is **prototyped on t
   (about +1 s, +4%, at the edge of run-to-run noise); the select TU, which carries no `expected_sql` but whose
   `TestCase` grew by 160 bytes, is unchanged (28.7–29.2 s vs 28.7–29.2 s).
 
+## How a YAML case reaches the query API (#834)
+
+The runners (`tests/test_select_runner.h`, `tests/test_unified_yaml_body.h`) have no branch per model,
+aggregate or field. Names in the YAML are resolved by reflection at compile time:
+
+- **`model:`** looks up `YAML_MODELS` in `test_unified_yaml_body.h` (`person`, `message`, `simple`), and the
+  type is spliced into whichever runner the `query_type` picks. To support a new model, add one row there. An
+  unknown name is a compile error (`KnownYamlModel`). Before #834 a missing branch silently ran nothing:
+  three `message` cases (`select_join_where_*`, `distinct_join_where_like_o`) never executed, and two of
+  them had lost their `LIKE` patterns unnoticed.
+- **Aggregates** — `query_type` (`count`, `sum`, `avg`, `min`, `max`, `count_distinct`; `count_field` →
+  `count`), the `group_<func>` suffix, and each chain `func:` are the **method names** themselves.
+  `member_function_named<Q>(name)` finds the member function template, and `call_query_method` splices it with
+  zero selectors (`COUNT(*)`) or one. Chains are built by recursion over `aggregations:`, one step per entry. A
+  name that is not a member function template of the query type is a compile error, but any such member would
+  be called, so a `func:` must be an aggregate.
+- **`expected.first:`** keys are row **member names**. Each is compared according to the member's C++ type
+  (string, bool, floating with a 0.01 tolerance, integer). A key with no matching member, or a value of the
+  wrong kind, is a compile error. Before #834 such a key was skipped.
+- Results are checked according to the C++ result type: `std::optional<double>` (MIN/MAX/AVG, #416) against
+  `dbl_val` / `res_value`, integers exactly. Per-group values (`group_keys`, `group_agg_*`) are now checked
+  for `having` cases too. They used to be ignored there.
+- Operator strings (`==`, `LIKE`, `IN`, …) stay explicit branches: each maps to a different operator or
+  signature, so no single splice can call them all.
+
 ## Writing New Tests
 
 1. **Create test file**: `tests/<category>/test_<feature>.cpp`

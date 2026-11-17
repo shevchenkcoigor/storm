@@ -40,6 +40,34 @@ using storm::orm::statements::SelectStatement;
 
 namespace storm::test {
 
+// YAML `model:` name -> model type (#834). Names are explicit rather than
+// derived from identifier_of: the corpus spells SimpleRecord as "simple".
+struct YamlModel {
+    std::string_view name;
+    std::meta::info type;
+};
+inline constexpr std::array YAML_MODELS{
+    YamlModel{.name = "person", .type = ^^Person},
+    YamlModel{.name = "message", .type = ^^Message},
+    YamlModel{.name = "simple", .type = ^^SimpleRecord},
+};
+
+consteval auto yaml_model_index(std::string_view name) -> std::size_t {
+    for (std::size_t i = 0; i < YAML_MODELS.size(); ++i)
+        if (YAML_MODELS[i].name == name)
+            return i;
+    return YAML_MODELS.size();
+}
+
+// A case naming a model missing from YAML_MODELS fails here, at compile time,
+// instead of silently running nothing.
+template <const auto &Tc>
+concept KnownYamlModel = yaml_model_index(Tc.bench.model.view()) < YAML_MODELS.size();
+
+template <const auto &Tc>
+    requires KnownYamlModel<Tc>
+using YamlModelOf = typename[:YAML_MODELS[yaml_model_index(Tc.bench.model.view())].type:];
+
 // Per-category fixture; Tag distinguishes the TUs -- see the ODR note above.
 template <typename Tag, typename ConnType>
 class UnifiedYamlFixture : public StormTestFixture<Person, ConnType, SimpleRecord, Message> {};
@@ -113,113 +141,45 @@ class UnifiedYamlBody : public UnifiedYamlFixture<Tag, ConnType> {
         }
     }
 
-    auto dispatch_select() -> void {
-        if constexpr (tc.bench.model == "person") {
-            storm::test::SelectRunner<Person, ConnType> runner;
-            runner.template run<tc>();
-        }
-    }
-
-    auto dispatch_aggregate() -> void { // NOSONAR(S3776)
-        if constexpr (tc.bench.model == "person") {
-            storm::test::AggregateRunner<Person, ConnType> runner;
-            runner.template run<tc>();
-        } else if constexpr (tc.bench.model == "message") {
-            storm::test::AggregateRunner<Message, ConnType> runner;
-            runner.template run<tc>();
-        }
-    }
-
-    auto dispatch_chain() -> void {
-        if constexpr (tc.bench.model == "person") {
-            storm::test::ChainAggRunner<Person, ConnType> runner;
-            runner.template run<tc>();
-        } else if constexpr (tc.bench.model == "message") {
-            storm::test::ChainAggRunner<Message, ConnType> runner;
-            runner.template run<tc>();
-        }
-    }
-
-    auto dispatch_group_by() -> void {
-        if constexpr (tc.bench.model == "person") {
-            storm::test::GroupByRunner<Person, ConnType> runner;
-            runner.template run<tc>();
-        } else if constexpr (tc.bench.model == "message") {
-            storm::test::GroupByRunner<Message, ConnType> runner;
-            runner.template run<tc>();
-        }
-    }
-
-    auto dispatch_insert() -> void {
-        if constexpr (tc.bench.model == "person") {
-            storm::test::InsertRunner<Person, ConnType> runner;
-            runner.template run<tc>();
-        } else if constexpr (tc.bench.model == "simple") {
-            storm::test::InsertRunner<SimpleRecord, ConnType> runner;
-            runner.template run<tc>();
-        }
-    }
-
-    auto dispatch_update() -> void {
-        if constexpr (tc.bench.model == "simple") {
-            storm::test::UpdateRunner<SimpleRecord, ConnType> runner;
-            runner.template run<tc>();
-        } else if constexpr (tc.bench.model == "person") {
-            storm::test::UpdateRunner<Person, ConnType> runner;
-            runner.template run<tc>();
-        }
-    }
-
-    auto dispatch_erase() -> void {
-        if constexpr (tc.bench.model == "person") {
-            storm::test::EraseRunner<Person, ConnType> runner;
-            runner.template run<tc>();
-        } else if constexpr (tc.bench.model == "simple") {
-            storm::test::EraseRunner<SimpleRecord, ConnType> runner;
-            runner.template run<tc>();
-        }
-    }
-
-    auto dispatch_distinct() -> void {
-        if constexpr (tc.bench.model == "person") {
-            storm::test::DistinctRunner<Person, ConnType> runner;
-            runner.template run<tc>();
-        }
+    template <template <typename, typename> class Runner> auto dispatch() -> void {
+        Runner<YamlModelOf<tc>, ConnType> runner;
+        runner.template run<tc>();
     }
 
     auto dispatch_grouped_family() -> void {
         if constexpr (tc.query_type == "chain") {
-            dispatch_chain();
+            dispatch<ChainAggRunner>();
         } else if constexpr (tc.query_type == "distinct") {
-            dispatch_distinct();
+            dispatch<DistinctRunner>();
         } else {
-            dispatch_group_by();
+            dispatch<GroupByRunner>();
         }
     }
 
     static consteval auto is_grouped_op() -> bool {
         constexpr auto qt = tc.query_type.view();
-        return qt == "chain" || qt == "distinct" || qt == "group_count" || qt == "group_sum" || qt == "group_avg" ||
-               qt == "group_min" || qt == "group_max";
+        return qt == "chain" || qt == "distinct" || qt.starts_with("group_");
     }
 
     auto dispatch_select_family() -> void {
         if constexpr (tc.query_type == "select" || tc.query_type == "first" || tc.query_type == "one") {
-            dispatch_select();
+            dispatch<SelectRunner>();
         } else if constexpr (is_grouped_op()) {
             dispatch_grouped_family();
         } else {
-            dispatch_aggregate();
+            dispatch<AggregateRunner>();
         }
     }
 
     auto dispatch_write_family() -> void {
         if constexpr (tc.query_type == "insert_one" || tc.query_type == "insert_batch") {
-            dispatch_insert();
+            dispatch<InsertRunner>();
         } else if constexpr (tc.query_type == "update_batch") {
-            dispatch_update();
-        } else if constexpr (tc.query_type == "erase_all" || tc.query_type == "erase_batch") {
-            dispatch_erase();
+            dispatch<UpdateRunner>();
+        } else {
+            static_assert(tc.query_type == "erase_all" || tc.query_type == "erase_batch",
+                          "unknown write query_type in YAML case");
+            dispatch<EraseRunner>();
         }
     }
 
