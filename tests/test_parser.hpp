@@ -140,8 +140,13 @@ namespace storm::test {
             ++p;
             char*       rd = r.data.data();
             std::size_t i  = 0;
-            while (p < sz && ptr[p] != '"' && i < N - 1)
+            while (p < sz && ptr[p] != '"' && i < N - 1) {
+                // #818: `\"` and `\\` unescape to the character after the backslash, so a
+                // pinned SQL string can carry the quoted identifiers Storm emits.
+                if (ptr[p] == '\\' && p + 1 < sz)
+                    ++p;
                 rd[i++] = ptr[p++];
+            }
             r.len = i;
             rd[i] = '\0';
             if (p < sz && ptr[p] == '"')
@@ -596,10 +601,16 @@ namespace storm::test {
         constexpr ChainAggSpec()      = default;
     };
 
+    // Longest pinned statement today is 105 chars (a JOIN + WHERE aggregate).
+    inline constexpr std::size_t EXPECTED_SQL_CAPACITY = 160;
+
     struct TestCase { // NOSONAR(cpp:S1820)
-        BenchmarkTest                          bench;
-        ConstexprString<32>                    query_type;
-        ConstexprString<16>                    dataset;
+        BenchmarkTest       bench;
+        ConstexprString<32> query_type;
+        ConstexprString<16> dataset;
+        // #818: optional. When set, a runner that supports it pins the statement's
+        // sql() text against this; empty = result-only check, as before.
+        ConstexprString<EXPECTED_SQL_CAPACITY> expected_sql;
         ExpectedSpec                           expected;
         int                                    insert_count = 0, update_count = 0, erase_count = 0;
         std::size_t                            chain_len = 0;
@@ -822,6 +833,8 @@ namespace storm::test {
             tc.query_type = parse_str<32>(j, p);
         else if (jkey_eq(ptr, kr.start, kr.len, "dataset"))
             tc.dataset = parse_str<16>(j, p);
+        else if (jkey_eq(ptr, kr.start, kr.len, "expected_sql"))
+            tc.expected_sql = parse_str<EXPECTED_SQL_CAPACITY>(j, p);
         else if (jkey_eq(ptr, kr.start, kr.len, "expected"))
             parse_expected_into(j, p, tc.expected);
         else if (jkey_eq(ptr, kr.start, kr.len, "erase_count"))

@@ -52,6 +52,48 @@ AGGREGATE_OPS = {"count", "count_field", "count_distinct", "sum", "avg", "min", 
 
 CATEGORIES = ("select", "grouped", "aggregate", "crud")
 
+# Mirrors EXPECTED_SQL_CAPACITY in tests/test_parser.hpp (#818). The C++ parser
+# cannot report an overflow: it stops copying at capacity and desyncs from the
+# JSON, so the length is enforced here, at the one place that sees the YAML.
+EXPECTED_SQL_CAPACITY = 160
+
+
+# Categories whose runner compares expected_sql. Only AggregateRunner reads it
+# today; on any other category the key would be silently ignored and the case
+# would pass without ever comparing SQL.
+EXPECTED_SQL_CATEGORIES = {"aggregate"}
+
+
+def validate_expected_sql(case: dict, category: str) -> None:
+    """Reject an expected_sql that is unsupported, or that the C++ parser would
+    mangle or silently truncate."""
+    sql = case.get("expected_sql")
+    if sql is None:
+        return
+    name = case.get("name", "<unnamed>")
+    if category not in EXPECTED_SQL_CATEGORIES:
+        raise SystemExit(
+            f"Error: case {name!r} ({category}): expected_sql is not supported by this "
+            f"category's runner yet, so it would be silently ignored. Supported: "
+            f"{', '.join(sorted(EXPECTED_SQL_CATEGORIES))}."
+        )
+    if not isinstance(sql, str) or not sql:
+        raise SystemExit(f"Error: case {name!r}: expected_sql must be a non-empty string")
+    # The C++ parser only unescapes \" and \\; json.dumps would turn anything else
+    # (non-ASCII, newline, tab) into a multi-character escape it cannot undo.
+    if not (sql.isascii() and sql.isprintable()):
+        raise SystemExit(f"Error: case {name!r}: expected_sql must be printable ASCII")
+    # test_parser.hpp's skip_braced ignores string boundaries, so a brace or bracket
+    # inside any string value shifts its nesting depth and miscounts the objects.
+    if any(ch in sql for ch in "{}[]"):
+        raise SystemExit(f"Error: case {name!r}: expected_sql must not contain any of {{ }} [ ]")
+    if len(sql) >= EXPECTED_SQL_CAPACITY:
+        raise SystemExit(
+            f"Error: case {name!r}: expected_sql is {len(sql)} chars, capacity is "
+            f"{EXPECTED_SQL_CAPACITY - 1}. Raise EXPECTED_SQL_CAPACITY here and in "
+            f"tests/test_parser.hpp together."
+        )
+
 
 def categorize(case: dict, index: int) -> str:
     """Map one case to its category, mirroring the C++ dispatch families."""
@@ -101,7 +143,9 @@ def main() -> None:
 
     buckets: dict[str, list] = {name: [] for name in CATEGORIES}
     for index, case in enumerate(cases):
-        buckets[categorize(case, index)].append(case)
+        category = categorize(case, index)
+        validate_expected_sql(case, category)
+        buckets[category].append(case)
 
     # A truncated, empty or all-comments YAML otherwise yields four empty JSONs,
     # four suites registering zero tests, and a green ctest that verifies nothing.
