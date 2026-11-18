@@ -211,17 +211,19 @@ aggregate or field. Names in the YAML are resolved by reflection at compile time
   `dbl_val` / `res_value`, integers exactly. Per-group values (`group_keys`, `group_agg_*`) are now checked
   for `having` cases too. They used to be ignored there.
 - **WHERE/HAVING operators** (#835) are resolved by name in `shared/query_builder.hpp`, with no branch per
-  operator and one resolver for the benchmark, the `QueryBuilder` and the runners' `where_expr` tree
+  operator and one resolver for the benchmark, the `QueryBuilder` and `QueryBuilder::build_where_node`
   (`build_compare_expr<field, op>(values...)`). A symbolic operator (`> >= < <= == !=`) is the C++ operator's
   own symbol (`operator_of` / `symbol_of`); a word operator is the member name with the case lowered and spaces
   turned into `_` (`LIKE` → `like`, `IS NOT NULL` → `is_not_null`). A name can carry several templates
   (`where::Field` has a real `operator==` and a `= delete`d composite-FK twin), and the reflection of a template
   does not report it deleted, so candidates are judged by their specialization for the value types:
   unsatisfied constraints and deleted ones are skipped, and exactly one must remain. The argument *shape*
-  (one string / two values / a pack / none) stays explicit in `build_condition_expr`, because that is behaviour.
+  (one string / two values / a pack / none) stays explicit in `build_where_leaf`, because that is behaviour.
 - **Value counts** are checked at compile time per operator, in `build_compare_expr` so every caller is covered (`ValidValueCount`): a comparison and `LIKE` take one
   value, `BETWEEN` two, `IN` any number (an empty list is valid and matches no row, `1 = 0`), `IS [NOT] NULL` none. `values: []` on a `LIKE` used to read
-  `values[0]` and compile to `LIKE ''`.
+  `values[0]` and compile to `LIKE ''`. In the WHERE tree the leaves share one value pool, so the count a leaf CARRIES is
+  checked too (`WhereNode::operands_match_op`, via the `SpecWellFormed` constraint on `QueryBuilder`): a leaf short of
+  values would otherwise read the next leaf's operand, and extra values would be dropped silently (#843).
 - **`order_by[].collate`** is an enumerator name of `Collate` (other than `None`) matched case-insensitively (`NOCASE` → `NoCase`);
   an unknown name is a compile error (`ValidCollate`) instead of falling back to `NoCase`.
 - **`distinct.fields`** takes any number of fields through one path (`QueryBuilder::build_distinct_stmt`); a
@@ -236,9 +238,13 @@ aggregate or field. Names in the YAML are resolved by reflection at compile time
   `static run<Tc>()`. The two helpers the old `QueryRunnerBase` mixed are free functions:
   `base_query<Tc, Model, Conn>()` (the case's filtered/joined `QuerySet`) and
   `seed_records<Tc, Model, Conn>()` (insert the dataset). The query is a local, not runner state.
-- **One WHERE path.** `where:` goes through `QueryBuilder`; a `where_expr:` tree is layered on top of that
-  query, and its leaves use the same `build_compare_expr` resolver, so an unknown or ill-typed operator is a
-  compile error on both paths.
+- **One WHERE tree (#843).** Every WHERE form fills one `WhereSpec` tree of `WhereNode`s
+  (`benchmarks/schema.cppm`): `where:` is its leaves joined left to right by `combine` (AND when absent), and the
+  test-only `where_expr:` is written as the tree itself (nodes numbered in pre-order from the root). `QueryBuilder`
+  builds the tree (`build_where_node`), and every leaf goes through the shared `build_compare_expr` resolver, so an
+  unknown or ill-typed operator is a compile error. The operands of all leaves live in one pool
+  (`WhereSpec::values`), typed by the key that wrote them: `value_dbl: 0.0` is a double, not the int 0. A case that
+  writes both `where:` and `where_expr:` does not compile (two trees cannot share one set of nodes).
 - **FK by member name.** `QueryBuilder`'s `fk_resolver` defaults to `member_name_resolver<Model>`, so a
   `join.fk:` is a member name on the model. The benchmark still passes its own (`registry::resolve_fk_field`).
 - **One value check.** `expect_agg_value(actual, expected, expect_null, what)` is chosen by result type
@@ -247,6 +253,32 @@ aggregate or field. Names in the YAML are resolved by reflection at compile time
 - **`query_type` → runner** is the `YAML_RUNNERS` table in `test_unified_yaml_body.h` (`{name, is_prefix,
   ^^Runner}`), spliced with `template [:runner:]<Model, Conn>::template run<tc>()`. A `query_type` missing from the
   table fails `KnownYamlQueryType` at compile time. To add a runner, add its rows there.
+
+### Spec limits are compile errors (#843)
+
+A few spec arrays are capped (`BenchmarkTest::MAX_ORDER_BY`, `JoinSpec::MAX_FKS`, `GroupBySpec::MAX_FIELDS`,
+`DistinctSpec::MAX_FIELDS`, `WhereSpec::MAX_NODES` = 7 and `WhereSpec::MAX_VALUES` = 10, `TestCase::MAX_CHAIN`). A case that lists more entries than the cap **does not compile**; before #843 the parsers
+dropped the extra entries and the case passed while checking less than it said.
+
+- **Counting is in the schema.** `benchmarks/schema.cppm` owns the rule, once, in `add_capped`: `add_order_by`,
+  `add_fk` and `add_field` count every entry and store only what fits. Both parsers (`benchmarks/parser.cppm`,
+  `tests/test_parser.hpp`) call them and still read an over-long array to its end, so the key after it is parsed.
+  An element of the wrong kind (a number in a list of names) is skipped, not counted, and a repeated key replaces
+  the first instead of adding to it.
+- **The check is one concept.** `BenchmarkTest::within_limits()` is false when any count passed its cap;
+  `storm::orm::query_builder::SpecWithinLimits<spec>` is the constraint on `QueryBuilder<Model, spec, ...>`, so an
+  over-cap case fails at the `QueryBuilder` use site (`BuilderFor` in `test_select_runner.h`).
+- **To raise a limit**, change the `MAX_*` constant next to its struct and keep the current corpus maximum plus headroom;
+  every slot costs compile time per case (~190 ms/case, #561).
+- **Tested once, run against both parsers.** `tests/test_spec_limits.h` holds the cases;
+  `tests/yaml/test_spec_limits_benchmark_parser.cpp` and `test_spec_limits_test_parser.cpp` each pass their parser to it.
+  Merging the two parsers is #845.
+- **WHERE.** 7 nodes is 4 conditions (4 leaves + 3 joins); the value pool of 10 is shared by the whole tree. The
+  corpus needs at most 5 nodes and 3 values. A repeated `conditions` or `values` key replaces the first; a
+  non-condition element is skipped, and a stray `}` inside an array is stepped over so the parse ends.
+  `TestCase::within_limits()` adds the chain cap to the spec's. Separately from the caps, `SpecWellFormed` rejects a
+  tree that cannot be built: a leaf with the wrong number of values for its operator, a join missing a child or
+  carrying a field of its own, an empty tree, or a node the root cannot reach (a subtree that would be dropped).
 
 ## Writing New Tests
 

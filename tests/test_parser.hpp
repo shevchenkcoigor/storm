@@ -42,7 +42,7 @@ namespace storm::test {
     using storm::benchmark::LimitSpec;
     using storm::benchmark::OrderBySpec;
     using storm::benchmark::TypedValue;
-    using storm::benchmark::WhereCondition;
+    using storm::benchmark::WhereNode;
     using storm::benchmark::WhereSpec;
 
     // ============================================================================
@@ -351,41 +351,80 @@ namespace storm::test {
 
     // --- BenchmarkTest sub-object parsers ---
 
-    constexpr auto parse_where_condition(std::string_view j, std::size_t& p) -> WhereCondition {
-        WhereCondition cond;
-        parse_object(j, p, [&](const char* ptr, JsonKeyRef kr, std::string_view jj, std::size_t& pp) {
-            if (jkey_eq(ptr, kr.start, kr.len, "field"))
-                cond.field = parse_str<32>(jj, pp);
-            else if (jkey_eq(ptr, kr.start, kr.len, "op"))
-                cond.op = parse_str<16>(jj, pp);
-            else if (jkey_eq(ptr, kr.start, kr.len, "values"))
-                parse_array(jj, pp, [&](std::string_view jjj, std::size_t& ppp) {
-                    if (cond.value_count < WhereCondition::MAX_VALUES)
-                        cond.values[cond.value_count++] = parse_typed_value(jjj, ppp);
-                    else
-                        skip_value(jjj, ppp);
-                });
-            else
-                skip_value(jj, pp);
-        });
-        return cond;
+    // Skips the next value. A token no parser consumes (a stray `}` in an array) is stepped over,
+    // or the loop around it would never end (#843).
+    constexpr void skip_or_step(std::string_view j, std::size_t& p) {
+        const std::size_t before = p;
+        skip_value(j, p);
+        if (p == before && p < j.size())
+            ++p;
     }
 
+    // The next token is `c`. Skips whitespace first.
+    constexpr auto at_char(std::string_view j, std::size_t& p, char c) -> bool {
+        skip_ws(j, p);
+        return p < j.size() && j[p] == c;
+    }
+
+    // Adds one value to the WHERE pool, skipping a token that parses to nothing so no loop stalls.
+    constexpr void add_where_value(WhereSpec& w, std::string_view j, std::size_t& p) {
+        const std::size_t before = p;
+        const TypedValue  value  = parse_typed_value(j, p);
+        if (p == before)
+            skip_or_step(j, p);
+        else
+            w.add_value(value);
+    }
+
+    // One condition {field, op, values: [...]} becomes one leaf of the WHERE tree (#843).
+    constexpr void parse_where_leaf(WhereSpec& w, std::string_view j, std::size_t& p) {
+        WhereNode leaf;
+        leaf.first_value = w.value_count;
+        parse_object(j, p, [&](const char* ptr, JsonKeyRef kr, std::string_view jj, std::size_t& pp) {
+            if (jkey_eq(ptr, kr.start, kr.len, "field")) {
+                leaf.field = parse_str<32>(jj, pp);
+            } else if (jkey_eq(ptr, kr.start, kr.len, "op")) {
+                leaf.op = parse_str<16>(jj, pp);
+            } else if (jkey_eq(ptr, kr.start, kr.len, "values")) {
+                w.value_count = leaf.first_value; // a repeated key replaces the first (#843)
+                parse_array(jj, pp, [&](std::string_view jjj, std::size_t& ppp) { add_where_value(w, jjj, ppp); });
+            } else {
+                skip_value(jj, pp);
+            }
+        });
+        leaf.value_count = w.value_count - leaf.first_value;
+        w.add_node(leaf);
+    }
+
+    // {conditions: [...], combine: "and"|"or"}: the conditions are the leaves, joined left to right.
+    // AND when `combine` is absent; it may come before or after `conditions` (#843).
     constexpr void parse_where_into(std::string_view j, std::size_t& p, WhereSpec& w) {
-        w.enabled = true;
+        w.begin_form();
+        const std::size_t first_leaf  = w.node_count;
+        const std::size_t first_value = w.value_count;
+        std::size_t       leaves      = 0;
+        bool              use_or      = false;
         parse_object(j, p, [&](const char* ptr, JsonKeyRef kr, std::string_view jj, std::size_t& pp) {
             if (jkey_eq(ptr, kr.start, kr.len, "conditions")) {
+                // a repeated key replaces the first (#843)
+                w.node_count  = first_leaf;
+                w.value_count = first_value;
+                leaves        = 0;
                 parse_array(jj, pp, [&](std::string_view jjj, std::size_t& ppp) {
-                    if (w.condition_count < WhereSpec::MAX_CONDITIONS)
-                        w.conditions[w.condition_count++] = parse_where_condition(jjj, ppp);
-                    else
-                        skip_braced(jjj, ppp, '{', '}');
+                    if (at_char(jjj, ppp, '{')) {
+                        parse_where_leaf(w, jjj, ppp);
+                        ++leaves;
+                    } else {
+                        skip_or_step(jjj, ppp); // not a condition: skip it, or parse_array would never leave
+                    }
                 });
-                if (w.condition_count > 1)
-                    w.combine_and = true;
-            } else
+            } else if (jkey_eq(ptr, kr.start, kr.len, "combine")) {
+                use_or = parse_str<8>(jj, pp) == "or";
+            } else {
                 skip_value(jj, pp);
+            }
         });
+        w.join_leaves(first_leaf, leaves, use_or);
     }
 
     constexpr auto parse_order_by_entry(std::string_view j, std::size_t& p) -> OrderBySpec {
@@ -403,11 +442,12 @@ namespace storm::test {
     }
 
     constexpr void parse_order_by_array(std::string_view j, std::size_t& p, BenchmarkTest& b) {
+        b.order_by_count = 0; // a repeated key replaces the first (#843)
         parse_array(j, p, [&](std::string_view jj, std::size_t& pp) {
-            if (b.order_by_count < BenchmarkTest::MAX_ORDER_BY)
-                b.order_by[b.order_by_count++] = parse_order_by_entry(jj, pp);
+            if (at_char(jj, pp, '{'))
+                b.add_order_by(parse_order_by_entry(jj, pp));
             else
-                skip_braced(jj, pp, '{', '}');
+                skip_or_step(jj, pp); // not an entry: skip it, or parse_array would never leave
         });
     }
 
@@ -427,15 +467,14 @@ namespace storm::test {
         return h;
     }
 
-    template <std::size_t MaxFields>
-    constexpr auto
-    parse_fields_array(std::string_view j, std::size_t& p, std::array<ConstexprString<32>, MaxFields>& fields) -> void {
-        std::size_t fi = 0;
+    // `add` receives every name; the spec decides what to keep (#843). An element that is not a
+    // string is skipped: parse_str does not advance past it, and parse_array would never leave.
+    template <typename AddFn> constexpr void parse_fields_array(std::string_view j, std::size_t& p, AddFn add) {
         parse_array(j, p, [&](std::string_view jj, std::size_t& pp) {
-            if (fi < MaxFields)
-                fields[fi++] = parse_str<32>(jj, pp);
+            if (at_char(jj, pp, '"'))
+                add(parse_str<32>(jj, pp));
             else
-                skip_value(jj, pp);
+                skip_or_step(jj, pp);
         });
     }
 
@@ -443,9 +482,10 @@ namespace storm::test {
         GroupBySpec g;
         g.enabled = true;
         parse_object(j, p, [&](const char* ptr, JsonKeyRef kr, std::string_view jj, std::size_t& pp) {
-            if (jkey_eq(ptr, kr.start, kr.len, "fields"))
-                parse_fields_array(jj, pp, g.fields);
-            else if (jkey_eq(ptr, kr.start, kr.len, "having"))
+            if (jkey_eq(ptr, kr.start, kr.len, "fields")) {
+                g.declared_count = 0; // a repeated key replaces the first (#843)
+                parse_fields_array(jj, pp, [&](const ConstexprString<32>& s) { g.add_field(s); });
+            } else if (jkey_eq(ptr, kr.start, kr.len, "having"))
                 g.having = parse_having(jj, pp);
             else
                 skip_value(jj, pp);
@@ -457,9 +497,10 @@ namespace storm::test {
         DistinctSpec d;
         d.enabled = true;
         parse_object(j, p, [&](const char* ptr, JsonKeyRef kr, std::string_view jj, std::size_t& pp) {
-            if (jkey_eq(ptr, kr.start, kr.len, "fields"))
-                parse_fields_array(jj, pp, d.fields);
-            else
+            if (jkey_eq(ptr, kr.start, kr.len, "fields")) {
+                d.declared_count = 0; // a repeated key replaces the first (#843)
+                parse_fields_array(jj, pp, [&](const ConstexprString<32>& s) { d.add_field(s); });
+            } else
                 skip_value(jj, pp);
         });
         return d;
@@ -503,14 +544,10 @@ namespace storm::test {
                 jn.related = parse_str<32>(jj, pp);
             else if (jkey_eq(ptr, kr.start, kr.len, "fk"))
                 jn.fk = parse_str<32>(jj, pp);
-            else if (jkey_eq(ptr, kr.start, kr.len, "fks"))
-                parse_array(jj, pp, [&](std::string_view jjj, std::size_t& ppp) {
-                    if (jn.fk_count < JoinSpec::MAX_FKS)
-                        jn.fks[jn.fk_count++] = parse_str<32>(jjj, ppp);
-                    else
-                        skip_value(jjj, ppp);
-                });
-            else
+            else if (jkey_eq(ptr, kr.start, kr.len, "fks")) {
+                jn.fk_count = 0; // a repeated key replaces the first (#843)
+                parse_fields_array(jj, pp, [&](const ConstexprString<32>& s) { jn.add_fk(s); });
+            } else
                 skip_value(jj, pp);
         });
         return jn;
@@ -548,15 +585,6 @@ namespace storm::test {
     }
 
     // --- Test-only sub-specs and structs ---
-
-    struct WhereNode {
-        ConstexprString<32> field;
-        ConstexprString<8>  op;
-        int                 value_int = 0;
-        double              value_dbl = 0.0;
-        int                 left      = -1;
-        int                 right     = -1;
-    };
 
     // One `expected.first` entry: a row member's name and its expected value (#834).
     struct FirstRowField {
@@ -613,10 +641,13 @@ namespace storm::test {
         std::size_t                            chain_len = 0;
         static constexpr std::size_t           MAX_CHAIN = 5;
         std::array<ChainAggSpec, MAX_CHAIN>    aggregations{};
-        static constexpr int                   MAX_WHERE_NODES = 7;
-        std::array<WhereNode, MAX_WHERE_NODES> where_nodes{};
-        int                                    where_node_count = 0;
-        constexpr TestCase()                                    = default;
+        constexpr TestCase() = default;
+
+        // #843: the spec's caps plus the chain's. A case past one does not compile (QueryBuilder
+        // for the spec's, the chain runner for MAX_CHAIN).
+        [[nodiscard]] constexpr auto within_limits() const -> bool {
+            return bench.within_limits() && chain_len <= MAX_CHAIN;
+        }
     };
 
     // --- Test-only parsers ---
@@ -758,30 +789,38 @@ namespace storm::test {
             skip_value(jj, pp);
     }
 
-    constexpr void
-    parse_where_node_leaf(const char* ptr, JsonKeyRef kr, std::string_view jj, std::size_t& pp, WhereNode& n) {
-        if (jkey_eq(ptr, kr.start, kr.len, "field"))
+    // One node's own keys: a leaf's field/op and its value, an inner node's op. `value_int` /
+    // `value_dbl` each add one operand, typed by WHICH key was written, so 0.0 stays a double.
+    constexpr void parse_where_node_leaf(
+            const char* ptr, JsonKeyRef kr, std::string_view jj, std::size_t& pp, WhereSpec& w, WhereNode& n
+    ) {
+        if (jkey_eq(ptr, kr.start, kr.len, "field")) {
             n.field = parse_str<32>(jj, pp);
-        else if (jkey_eq(ptr, kr.start, kr.len, "op"))
-            n.op = parse_str<8>(jj, pp);
-        else if (jkey_eq(ptr, kr.start, kr.len, "value_int"))
-            n.value_int = parse_int(jj, pp);
-        else if (jkey_eq(ptr, kr.start, kr.len, "value_dbl"))
-            n.value_dbl = parse_double(jj, pp);
-        else
+        } else if (jkey_eq(ptr, kr.start, kr.len, "op")) {
+            n.op = parse_str<16>(jj, pp);
+        } else if (jkey_eq(ptr, kr.start, kr.len, "value_int")) {
+            TypedValue tv;
+            tv.kind   = TypedValue::Kind::Int;
+            tv.as_int = parse_int(jj, pp);
+            w.add_value(tv);
+        } else if (jkey_eq(ptr, kr.start, kr.len, "value_dbl")) {
+            TypedValue tv;
+            tv.kind      = TypedValue::Kind::Double;
+            tv.as_double = parse_double(jj, pp);
+            w.add_value(tv);
+        } else {
             skip_value(jj, pp);
+        }
     }
 
-    template <int MaxNodes>
-    constexpr auto parse_where_expr_dfs( // NOSONAR — consteval recursive DFS
-            std::string_view j, std::size_t& p,
-            std::array<WhereNode, MaxNodes>& nodes, int& count) -> int {
-        if (count >= MaxNodes) {
-            skip_braced(j, p, '{', '}');
-            return -1;
-        }
-        int idx              = count++;
-        nodes[idx]           = WhereNode{};
+    // The `where_expr:` tree, written as the tree itself. Nodes are numbered in pre-order from the
+    // root. A node's slot is reserved before its children are read, and every node is counted, so a
+    // tree past MAX_NODES is rejected instead of losing nodes (#843).
+    constexpr auto parse_where_expr_dfs(std::string_view j, std::size_t& p, WhereSpec& w)
+            -> int { // NOSONAR — recursive
+        const std::size_t idx = w.add_node(WhereNode{});
+        WhereNode         node;
+        node.first_value     = w.value_count;
         std::size_t left_pos = 0, right_pos = 0;
         bool        has_left = false, has_right = false;
         parse_object(j, p, [&](const char* ptr, JsonKeyRef kr, std::string_view jj, std::size_t& pp) {
@@ -791,17 +830,22 @@ namespace storm::test {
             else if (jkey_eq(ptr, kr.start, kr.len, "right"))
                 capture_child(jj, pp, has_right, right_pos);
             else
-                parse_where_node_leaf(ptr, kr, jj, pp, nodes[idx]);
+                parse_where_node_leaf(ptr, kr, jj, pp, w, node);
         });
+        node.value_count = w.value_count - node.first_value;
+        w.put_node(idx, node);
+        int left  = -1;
+        int right = -1;
         if (has_left) {
-            std::size_t lp  = left_pos;
-            nodes[idx].left = parse_where_expr_dfs<MaxNodes>(j, lp, nodes, count);
+            std::size_t lp = left_pos;
+            left           = parse_where_expr_dfs(j, lp, w);
         }
         if (has_right) {
-            std::size_t rp   = right_pos;
-            nodes[idx].right = parse_where_expr_dfs<MaxNodes>(j, rp, nodes, count);
+            std::size_t rp = right_pos;
+            right          = parse_where_expr_dfs(j, rp, w);
         }
-        return idx;
+        w.set_children(idx, left, right);
+        return static_cast<int>(idx);
     }
 
     // --- Top-level TestCase parser ---
@@ -827,9 +871,8 @@ namespace storm::test {
         else if (jkey_eq(ptr, kr.start, kr.len, "aggregations"))
             tc.chain_len = parse_chain_agg_array(j, p, tc.aggregations);
         else if (jkey_eq(ptr, kr.start, kr.len, "where_expr")) {
-            int cnt = 0;
-            parse_where_expr_dfs<TestCase::MAX_WHERE_NODES>(j, p, tc.where_nodes, cnt);
-            tc.where_node_count = cnt;
+            tc.bench.where.begin_form();
+            tc.bench.where.root = parse_where_expr_dfs(j, p, tc.bench.where);
         } else
             parse_bench_field(tc.bench, ptr, kr, j, p);
     }

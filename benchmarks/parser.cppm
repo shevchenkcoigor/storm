@@ -21,12 +21,11 @@
 //     "join":     { "type": "inner", "related": "User", "fk": "sender" }
 //   }
 //
-// `where.value` is sniffed from the JSON token type — int, double, bool,
-// or string — and stored in a TypedValue tagged union. Two-value operators
-// (BETWEEN) use `value2`; IN uses `in_values`. A second clause combined
-// with AND/OR is expressed via `"and": { ... }` or `"or": { ... }` inside
-// `where`, encoded as flat fields (`field2`, `op2`, `value2_rhs`) plus
-// a `combine_and`/`combine_or` flag.
+// `where` is {conditions: [{field, op, values: [...]}], combine: "and"|"or"}
+// (yaml_to_json.py rewrites the single-condition shorthand to it). Each value
+// is sniffed from the JSON token type — int, double, bool, or string — and
+// stored in a TypedValue. The conditions become the leaves of one WhereSpec
+// tree, joined left to right by `combine` (AND when absent) (#843).
 //
 // Was: benchmarks/parser.hpp (textual header). Issue #221 — Phase 4 of the
 // benchmark module conversion.
@@ -249,52 +248,70 @@ export namespace storm::benchmark {
     }
 
     // ========================================================================
-    // Array of integers — used by where.in_values
+    // WHERE values: one typed value per element
     // ========================================================================
-    // Parse a "values" array of TypedValues into a WhereCondition
-    constexpr auto parse_values_array(WhereCondition& cond, std::string_view json, std::size_t& pos) -> void {
+    // Skips the next value. A token no parser consumes (a stray `}` in an array) is stepped over,
+    // or the loop around it would never end (#843).
+    constexpr auto skip_or_step(std::string_view json, std::size_t& pos) -> void {
+        const std::size_t before = pos;
+        skip_value(json, pos);
+        if (pos == before && pos < json.size()) {
+            ++pos;
+        }
+    }
+
+    // Parse a "values" array of TypedValues into the WHERE value pool. Every value is added; the
+    // spec counts past its cap (#843). A token that parses to nothing is skipped so the loop ends.
+    constexpr auto parse_values_array(WhereSpec& w, std::string_view json, std::size_t& pos) -> void {
         skip_whitespace(json, pos);
         if (pos >= json.size() || json[pos] != '[') {
             return;
         }
         pos++; // '['
-        std::size_t count = 0;
-        while (pos < json.size() && count < WhereCondition::MAX_VALUES) {
+        while (pos < json.size()) {
             skip_whitespace(json, pos);
             if (json[pos] == ']') {
                 pos++;
                 break;
             }
-            cond.values[count] = parse_typed_value(json, pos);
-            count++;
+            const std::size_t before = pos;
+            const TypedValue  value  = parse_typed_value(json, pos);
+            if (pos == before) {
+                skip_or_step(json, pos);
+            } else {
+                w.add_value(value);
+            }
             skip_whitespace(json, pos);
             if (json[pos] == ',') {
                 pos++;
             }
         }
-        cond.value_count = count;
     }
 
     // ========================================================================
     // Array of short strings — used by group_by.fields, distinct.fields, join.fks
     // ========================================================================
-    template <std::size_t MaxItems, typename AssignFn>
-    constexpr auto parse_string_array(std::string_view json, std::size_t& pos, AssignFn assign) -> std::size_t {
+    // `add` receives every entry; the spec decides what to keep (#843).
+    template <typename AddFn>
+    constexpr auto parse_string_array(std::string_view json, std::size_t& pos, AddFn add) -> void {
         skip_whitespace(json, pos);
         if (pos >= json.size() || json[pos] != '[') {
-            return 0;
+            return;
         }
         pos++; // '['
-        std::size_t count = 0;
-        while (pos < json.size() && count < MaxItems) {
+        // Reads every entry (#843): parsing on keeps the position right for the key
+        // after the array, and the spec counts what does not fit.
+        while (pos < json.size()) {
             skip_whitespace(json, pos);
             if (json[pos] == ']') {
                 pos++;
                 break;
             }
-            auto s = parse_string<32>(json, pos);
-            assign(count, s);
-            count++;
+            if (json[pos] == '"') {
+                add(parse_string<32>(json, pos));
+            } else {
+                skip_or_step(json, pos); // not a name: skip it, or the loop would never leave the array
+            }
             skip_whitespace(json, pos);
             if (json[pos] == ',') {
                 pos++;
@@ -305,7 +322,6 @@ export namespace storm::benchmark {
         if (pos < json.size() && json[pos] == ']') {
             pos++;
         }
-        return count;
     }
 
     // ========================================================================
@@ -333,44 +349,53 @@ export namespace storm::benchmark {
         }
     }
 
-    // --- parse_where_condition_into (one condition: {field, op, values: [...]}) ---
-    constexpr auto parse_where_condition_into(WhereCondition& cond, std::string_view json, std::size_t& pos) -> void {
+    // --- parse_where_leaf_into (one condition: {field, op, values: [...]}) -> one leaf node ---
+    constexpr auto parse_where_leaf_into(WhereSpec& w, std::string_view json, std::size_t& pos) -> void {
+        WhereNode leaf;
+        leaf.first_value = w.value_count;
         parse_object_keys(json, pos, [&](std::string_view key, std::string_view j, std::size_t& p) {
             if (key == "field") {
-                cond.field = parse_string<32>(j, p);
+                leaf.field = parse_string<32>(j, p);
             } else if (key == "op") {
-                cond.op = parse_string<16>(j, p);
+                leaf.op = parse_string<16>(j, p);
             } else if (key == "values") {
-                parse_values_array(cond, j, p);
+                w.value_count = leaf.first_value; // a repeated key replaces the first (#843)
+                parse_values_array(w, j, p);
             } else {
                 skip_value(j, p);
             }
         });
+        leaf.value_count = w.value_count - leaf.first_value;
+        w.add_node(leaf);
     }
 
-    // --- parse_where_into (conditions array + optional combine) ---
-    // NOLINTNEXTLINE(readability-function-cognitive-complexity)
+    // --- parse_where_into (conditions array + optional combine) -> one tree (#843) ---
     constexpr auto parse_where_into(WhereSpec& w, std::string_view json, std::size_t& pos) -> void {
-        w.enabled = true;
+        w.begin_form();
+        const std::size_t first_leaf  = w.node_count;
+        const std::size_t first_value = w.value_count;
+        std::size_t       leaves      = 0;
+        bool              use_or      = false;
         parse_object_keys(json, pos, [&](std::string_view key, std::string_view j, std::size_t& p) {
             if (key == "conditions") {
-                // Parse array of WhereCondition objects
+                // a repeated key replaces the first (#843)
+                w.node_count  = first_leaf;
+                w.value_count = first_value;
+                leaves        = 0;
                 skip_whitespace(j, p);
                 if (p < j.size() && j[p] == '[') {
                     p++; // '['
-                    std::size_t idx = 0;
                     while (p < j.size()) {
                         skip_whitespace(j, p);
                         if (j[p] == ']') {
                             p++;
                             break;
                         }
-                        if (idx < WhereSpec::MAX_CONDITIONS) {
-                            parse_where_condition_into(w.conditions[idx], j, p);
-                            idx++;
-                            w.condition_count = idx;
+                        if (j[p] == '{') {
+                            parse_where_leaf_into(w, j, p);
+                            ++leaves;
                         } else {
-                            skip_value(j, p);
+                            skip_or_step(j, p); // not a condition: skip it, or the loop would never leave
                         }
                         skip_whitespace(j, p);
                         if (j[p] == ',') {
@@ -379,16 +404,13 @@ export namespace storm::benchmark {
                     }
                 }
             } else if (key == "combine") {
-                auto s = parse_string<8>(j, p);
-                if (s == std::string_view("and")) {
-                    w.combine_and = true;
-                } else if (s == std::string_view("or")) {
-                    w.combine_or = true;
-                }
+                use_or = parse_string<8>(j, p) == std::string_view("or");
             } else {
                 skip_value(j, p);
             }
         });
+        // `combine` may come before or after `conditions`, so the leaves are joined once both are read.
+        w.join_leaves(first_leaf, leaves, use_or);
     }
 
     // --- parse_order_by_entry_into (one OrderBySpec) ---
@@ -413,16 +435,21 @@ export namespace storm::benchmark {
         if (pos >= json.size() || json[pos] != '[') {
             return;
         }
-        pos++; // '['
-        std::size_t count = 0;
-        while (pos < json.size() && count < BenchmarkTest::MAX_ORDER_BY) {
+        pos++;                   // '['
+        test.order_by_count = 0; // a repeated key replaces the first (#843)
+        while (pos < json.size()) {
             skip_whitespace(json, pos);
             if (json[pos] == ']') {
                 pos++;
                 break;
             }
-            parse_order_by_entry_into(test.order_by[count], json, pos);
-            count++;
+            if (json[pos] == '{') {
+                OrderBySpec entry;
+                parse_order_by_entry_into(entry, json, pos);
+                test.add_order_by(entry);
+            } else {
+                skip_or_step(json, pos); // not an entry: skip it, or the loop would never leave the array
+            }
             skip_whitespace(json, pos);
             if (json[pos] == ',') {
                 pos++;
@@ -432,7 +459,6 @@ export namespace storm::benchmark {
         if (pos < json.size() && json[pos] == ']') {
             pos++;
         }
-        test.order_by_count = count;
     }
 
     // --- parse_having_into ---
@@ -456,9 +482,8 @@ export namespace storm::benchmark {
         g.enabled = true;
         parse_object_keys(json, pos, [&](std::string_view key, std::string_view j, std::size_t& p) {
             if (key == "fields") {
-                parse_string_array<GroupBySpec::MAX_FIELDS>(j, p, [&](std::size_t i, const ConstexprString<32>& s) {
-                    g.fields[i] = s;
-                });
+                g.declared_count = 0; // a repeated key replaces the first (#843)
+                parse_string_array(j, p, [&](const ConstexprString<32>& s) { g.add_field(s); });
             } else if (key == "having") {
                 parse_having_into(g.having, j, p);
             } else {
@@ -472,9 +497,8 @@ export namespace storm::benchmark {
         d.enabled = true;
         parse_object_keys(json, pos, [&](std::string_view key, std::string_view j, std::size_t& p) {
             if (key == "fields") {
-                parse_string_array<DistinctSpec::MAX_FIELDS>(j, p, [&](std::size_t i, const ConstexprString<32>& s) {
-                    d.fields[i] = s;
-                });
+                d.declared_count = 0; // a repeated key replaces the first (#843)
+                parse_string_array(j, p, [&](const ConstexprString<32>& s) { d.add_field(s); });
             } else {
                 skip_value(j, p);
             }
@@ -520,10 +544,8 @@ export namespace storm::benchmark {
             } else if (key == "fk") {
                 jn.fk = parse_string<32>(j, p);
             } else if (key == "fks") {
-                jn.fk_count =
-                        parse_string_array<JoinSpec::MAX_FKS>(j, p, [&](std::size_t i, const ConstexprString<32>& s) {
-                            jn.fks[i] = s;
-                        });
+                jn.fk_count = 0; // a repeated key replaces the first (#843)
+                parse_string_array(j, p, [&](const ConstexprString<32>& s) { jn.add_fk(s); });
             } else {
                 skip_value(j, p);
             }

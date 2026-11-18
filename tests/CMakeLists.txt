@@ -26,7 +26,9 @@ set(UNIFIED_CASES_YAML "${TEST_CASES_DIR}/unified_cases.yaml")
 
 # Single source of truth for the category split; mirrored by CATEGORIES in
 # scripts/split_unified_cases.py and by the tests/yaml/test_unified_yaml_*.cpp
-# TUs.
+# TUs. A fourth consumer names `crud`:
+# tests/yaml/test_spec_limits_test_parser.cpp borrows that slice only to satisfy
+# test_parser.hpp's #error (#843, see below).
 set(SPLIT_CATEGORIES select grouped aggregate crud)
 
 set(SPLIT_JSON_FILES "")
@@ -96,6 +98,16 @@ foreach(CATEGORY IN LISTS SPLIT_CATEGORIES)
     APPEND
     PROPERTY OBJECT_DEPENDS "${TEST_CASES_DIR}/unified_cases_${CATEGORY}.json")
 endforeach()
+
+# #843: the test-parser limits TU #embeds the crud slice only because
+# test_parser.hpp #errors without STORM_UNIFIED_CASES_FILE; it never evaluates
+# the cases (it does not include test_unified_yaml_body.h). The #embed must
+# still resolve, so this edge orders JSON generation before this compile (at the
+# cost of an occasional extra recompile when the crud slice changes).
+set_property(
+  SOURCE "${CMAKE_CURRENT_SOURCE_DIR}/yaml/test_spec_limits_test_parser.cpp"
+  APPEND
+  PROPERTY OBJECT_DEPENDS "${TEST_CASES_DIR}/unified_cases_crud.json")
 
 target_sources(
   ${PROJECT_NAME}
