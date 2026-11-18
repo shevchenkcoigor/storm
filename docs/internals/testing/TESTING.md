@@ -199,17 +199,35 @@ aggregate or field. Names in the YAML are resolved by reflection at compile time
 - **Aggregates** — `query_type` (`count`, `sum`, `avg`, `min`, `max`, `count_distinct`; `count_field` →
   `count`), the `group_<func>` suffix, and each chain `func:` are the **method names** themselves.
   `member_function_named<Q>(name)` finds the member function template, and `call_query_method` splices it with
-  zero selectors (`COUNT(*)`) or one. Chains are built by recursion over `aggregations:`, one step per entry. A
-  name that is not a member function template of the query type is a compile error, but any such member would
-  be called, so a `func:` must be an aggregate.
+  zero selectors (`COUNT(*)`) or one. Both live in `shared/query_builder.hpp` (#835), so the tests and
+  `benchmarks/query_benchmark.cppm` use one copy; `QueryBuilder::resolve_aggregate` (the benchmark path) is the same lookup, with
+  `ValidAggregate` kept as the allow-list of names a YAML `func` may reach there; the test runners have no allow-list. Chains are built by recursion over
+  `aggregations:`, one step per entry. A name that is not a member function template of the query type is a
+  compile error, but any such member would be called, so a `func:` must be an aggregate.
 - **`expected.first:`** keys are row **member names**. Each is compared according to the member's C++ type
   (string, bool, floating with a 0.01 tolerance, integer). A key with no matching member, or a value of the
   wrong kind, is a compile error. Before #834 such a key was skipped.
 - Results are checked according to the C++ result type: `std::optional<double>` (MIN/MAX/AVG, #416) against
   `dbl_val` / `res_value`, integers exactly. Per-group values (`group_keys`, `group_agg_*`) are now checked
   for `having` cases too. They used to be ignored there.
-- Operator strings (`==`, `LIKE`, `IN`, …) stay explicit branches: each maps to a different operator or
-  signature, so no single splice can call them all.
+- **WHERE/HAVING operators** (#835) are resolved by name in `shared/query_builder.hpp`, with no branch per
+  operator and one resolver for the benchmark, the `QueryBuilder` and the runners' `where_expr` tree
+  (`build_compare_expr<field, op>(values...)`). A symbolic operator (`> >= < <= == !=`) is the C++ operator's
+  own symbol (`operator_of` / `symbol_of`); a word operator is the member name with the case lowered and spaces
+  turned into `_` (`LIKE` → `like`, `IS NOT NULL` → `is_not_null`). A name can carry several templates
+  (`where::Field` has a real `operator==` and a `= delete`d composite-FK twin), and the reflection of a template
+  does not report it deleted, so candidates are judged by their specialization for the value types:
+  unsatisfied constraints and deleted ones are skipped, and exactly one must remain. The argument *shape*
+  (one string / two values / a pack / none) stays explicit in `build_condition_expr`, because that is behaviour.
+- **Value counts** are checked at compile time per operator, in `build_compare_expr` so every caller is covered (`ValidValueCount`): a comparison and `LIKE` take one
+  value, `BETWEEN` two, `IN` at least one, `IS [NOT] NULL` none. `values: []` on a `LIKE` used to read
+  `values[0]` and compile to `LIKE ''`.
+- **`order_by[].collate`** is an enumerator name of `Collate` (other than `None`) matched case-insensitively (`NOCASE` → `NoCase`);
+  an unknown name is a compile error (`ValidCollate`) instead of falling back to `NoCase`.
+- **`distinct.fields`** takes any number of fields through one path (`QueryBuilder::build_distinct_stmt`); a
+  third entry used to be ignored (`distinct_dept_age_name_three_fields`).
+- Still explicit: the set-operation keyword (`union` → `union_`), the JOIN type, `typed_value_as`, `apply_limit`
+  and the terminal choice. Their branches differ in behaviour, not only in a name.
 
 ## Writing New Tests
 

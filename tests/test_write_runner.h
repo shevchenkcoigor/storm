@@ -13,6 +13,14 @@
 
 namespace storm::test {
 
+// Row count of the table behind qs equals `expected` (the shared tail of the
+// insert and erase runners).
+inline auto expect_row_count(auto &qs, int expected) -> void {
+    auto cnt = qs.count().execute();
+    ASSERT_TRUE(cnt.has_value()) << cnt.error().message();
+    EXPECT_EQ(static_cast<int>(cnt.value()), expected);
+}
+
 // ---------------------------------------------------------------------------
 // InsertRunner -- insert_one / insert_batch
 // ---------------------------------------------------------------------------
@@ -22,9 +30,7 @@ template <typename Model, typename ConnType> class InsertRunner : public QueryRu
         if constexpr (Tc.query_type == "insert_one") {
             auto r = this->qs_.insert(make_record<Model>(0)).execute();
             ASSERT_TRUE(r.has_value()) << r.error().message();
-            auto cnt = this->qs_.count().execute();
-            ASSERT_TRUE(cnt.has_value()) << cnt.error().message();
-            EXPECT_EQ(static_cast<int>(cnt.value()), Tc.expected.count);
+            expect_row_count(this->qs_, Tc.expected.count);
 
         } else if constexpr (Tc.query_type == "insert_batch") {
             std::vector<Model> batch;
@@ -33,9 +39,7 @@ template <typename Model, typename ConnType> class InsertRunner : public QueryRu
                 batch.push_back(make_record<Model>(i));
             auto r = this->qs_.insert(std::span<const Model>(batch)).execute();
             ASSERT_TRUE(r.has_value()) << r.error().message();
-            auto cnt = this->qs_.count().execute();
-            ASSERT_TRUE(cnt.has_value()) << cnt.error().message();
-            EXPECT_EQ(static_cast<int>(cnt.value()), Tc.expected.count);
+            expect_row_count(this->qs_, Tc.expected.count);
         }
     }
 };
@@ -89,9 +93,7 @@ template <typename Model, typename ConnType> class EraseRunner : public QueryRun
             auto rem = this->qs_.erase_all().execute();
             ASSERT_TRUE(rem.has_value()) << rem.error().message();
 
-            auto cnt = this->qs_.count().execute();
-            ASSERT_TRUE(cnt.has_value()) << cnt.error().message();
-            EXPECT_EQ(static_cast<int>(cnt.value()), Tc.expected.remaining);
+            expect_row_count(this->qs_, Tc.expected.remaining);
 
         } else if constexpr (Tc.query_type == "erase_batch") {
             this->template seed_and_insert<Tc>();
@@ -112,9 +114,7 @@ template <typename Model, typename ConnType> class EraseRunner : public QueryRun
             auto rem = this->qs_.erase(std::span<const Model>(to_erase)).execute();
             ASSERT_TRUE(rem.has_value()) << rem.error().message();
 
-            auto cnt = this->qs_.count().execute();
-            ASSERT_TRUE(cnt.has_value()) << cnt.error().message();
-            EXPECT_EQ(static_cast<int>(cnt.value()), Tc.expected.remaining);
+            expect_row_count(this->qs_, Tc.expected.remaining);
         }
     }
 };

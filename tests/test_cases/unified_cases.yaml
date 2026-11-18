@@ -1075,6 +1075,19 @@
     offset: 0
   expected:
     count: 5
+# (department, age) alone has 24 groups -- Ivy and Quinn are both Engineering/30 --
+# so 25 only if the THIRD field is honored (#835: a third entry used to be ignored).
+- name: distinct_dept_age_name_three_fields
+  model: person
+  query_type: distinct
+  dataset: main
+  distinct:
+    fields:
+    - department
+    - age
+    - name
+  expected:
+    count: 25
 - name: group_by_join_count_order_by_value
   model: message
   query_type: group_count
