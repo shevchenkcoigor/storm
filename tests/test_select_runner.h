@@ -59,25 +59,6 @@ auto expect_agg_value(const Value &actual, double expected, bool expect_null, st
     }
 }
 
-// Recursively build a WHERE expression from a compile-time WhereNode tree. Leaves go
-// through the shared build_compare_expr, the same operator resolver QueryBuilder uses
-// for `where:`; an unknown or ill-typed operator fails its constraint (#835/#837).
-template <int N, const auto &Tc, typename Model> auto build_where_node_expr() {
-    if constexpr (Tc.where_nodes[N].left < 0) {
-        constexpr auto fi = dispatch_field<Model>(Tc.where_nodes[N].field.view());
-        if constexpr (Tc.where_nodes[N].value_dbl != 0.0)
-            return build_compare_expr<fi, Tc.where_nodes[N].op>(Tc.where_nodes[N].value_dbl);
-        else
-            return build_compare_expr<fi, Tc.where_nodes[N].op>(Tc.where_nodes[N].value_int);
-    } else if constexpr (Tc.where_nodes[N].op == "AND") {
-        return build_where_node_expr<Tc.where_nodes[N].left, Tc, Model>() &&
-               build_where_node_expr<Tc.where_nodes[N].right, Tc, Model>();
-    } else {
-        return build_where_node_expr<Tc.where_nodes[N].left, Tc, Model>() ||
-               build_where_node_expr<Tc.where_nodes[N].right, Tc, Model>();
-    }
-}
-
 // The shared QueryBuilder for a case; a JOIN names its FK by member name on Model (#837).
 // member_name_resolver<Model> is spelled out only because ConnType follows it in
 // QueryBuilder's parameter list.
@@ -86,14 +67,10 @@ using BuilderFor =
     storm::orm::query_builder::QueryBuilder<Model, Tc.bench, storm::orm::query_builder::member_name_resolver<Model>,
                                             ConnType>;
 
-// The case's filtered/joined QuerySet: `where:` / join / order / limit from the
-// shared QueryBuilder, then the `where_expr:` tree on top (#837).
+// The case's filtered/joined QuerySet: the WHERE tree, join, order and limit, all from the
+// shared QueryBuilder (#843).
 template <const auto &Tc, typename Model, typename ConnType> auto base_query() -> QuerySet<Model, ConnType, true> {
-    auto qs = BuilderFor<Tc, Model, ConnType>::build_qs();
-    if constexpr (Tc.where_node_count > 0)
-        return qs.where(build_where_node_expr<0, Tc, Model>());
-    else
-        return qs;
+    return BuilderFor<Tc, Model, ConnType>::build_qs();
 }
 
 // Insert the case's `dataset_size` records.
@@ -274,7 +251,7 @@ template <typename Model, typename ConnType> class ChainAggRunner {
   public:
     template <const auto &Tc> static auto run() -> void {
         static_assert(Tc.chain_len >= 2, "a chain case needs at least two aggregations");
-        static_assert(Tc.chain_len <= Tc.aggregations.size(), "chain case has more aggregations than MAX_CHAIN");
+        static_assert(Tc.chain_len <= Tc.MAX_CHAIN, "chain case has more aggregations than MAX_CHAIN");
         auto qs = base_query<Tc, Model, ConnType>();
         auto r = build_chain<Tc>(qs).execute();
         ASSERT_TRUE(r.has_value()) << r.error().message();

@@ -285,63 +285,93 @@ namespace storm::orm::query_builder {
     template <auto Spec>
     concept SpecWithinLimits = Spec.within_limits();
 
+    // The WHERE tree can be built (#843): children exist, joins are AND/OR, and each leaf has the
+    // operands its operator reads. Without it a leaf would index the shared value pool past its own.
+    template <auto Spec>
+    concept SpecWellFormed = Spec.where.is_well_formed();
+
     template <
             typename Model,
             auto spec,
             auto fk_resolver  = member_name_resolver<Model>,
             typename ConnType = storm::db::sqlite::Connection>
-        requires SpecWithinLimits<spec>
+        requires SpecWithinLimits<spec> && SpecWellFormed<spec>
     class QueryBuilder {
         // ----------------------------------------------------------------
         // typed_value_as
         // ----------------------------------------------------------------
+        // The value in the field's type, chosen by the KIND the value was written as (#843): `1` for
+        // a bool field is true, and an integer for a floating field is that number, not the unset
+        // as_double (0.0) the old field-type-only choice read.
         template <typename FieldType, auto tv> static consteval auto typed_value_as() {
-            if constexpr (std::is_same_v<FieldType, bool>)
-                return bool{tv.as_bool};
-            else if constexpr (std::is_floating_point_v<FieldType>)
-                return FieldType{tv.as_double};
-            else
+            constexpr bool is_int_kind = tv.kind == decltype(tv.kind)::Int;
+            if constexpr (std::is_same_v<FieldType, bool>) {
+                if constexpr (is_int_kind)
+                    return tv.as_int != 0;
+                else
+                    return bool{tv.as_bool};
+            } else if constexpr (std::is_floating_point_v<FieldType>) {
+                if constexpr (is_int_kind)
+                    return static_cast<FieldType>(tv.as_int);
+                else
+                    return FieldType{tv.as_double};
+            } else {
                 return FieldType{tv.as_int};
+            }
         }
 
         // ----------------------------------------------------------------
-        // WHERE
+        // WHERE — one tree of WhereNodes (#843)
         // ----------------------------------------------------------------
-        template <typename WhereModel, std::size_t I> static auto build_condition_expr() {
-            constexpr auto& cond = spec.where.conditions[I];
+        // A leaf: its operands are spec.where.values[first_value .. first_value + value_count).
+        template <typename WhereModel, std::size_t N> static auto build_where_leaf() {
+            constexpr auto& cond  = spec.where.nodes[N];
+            constexpr auto& pool  = spec.where.values;
+            constexpr auto  first = cond.first_value;
             static_assert(has_field<WhereModel>(cond.field.view()), "WHERE condition field not found on model");
             constexpr auto             fi = dispatch_field<WhereModel>(cond.field.view());
             constexpr std::string_view op = cond.op.view();
             using FieldType               = typename[:std::meta::type_of(fi):];
 
             if constexpr (op == "LIKE") {
-                return build_compare_expr<fi, cond.op>(cond.values[0].as_string.view());
+                return build_compare_expr<fi, cond.op>(pool[first].as_string.view());
             } else if constexpr (op == "BETWEEN") {
                 return build_compare_expr<fi, cond.op>(
-                        typed_value_as<FieldType, cond.values[0]>(), typed_value_as<FieldType, cond.values[1]>()
+                        typed_value_as<FieldType, pool[first]>(), typed_value_as<FieldType, pool[first + 1]>()
                 );
             } else if constexpr (op == "IN") {
                 return []<std::size_t... Is>(std::index_sequence<Is...>) {
-                    constexpr auto& c = spec.where.conditions[I];
-                    return build_compare_expr<fi, c.op>(typed_value_as<FieldType, c.values[Is]>()...);
+                    return build_compare_expr<fi, spec.where.nodes[N].op>(
+                            typed_value_as<FieldType, spec.where.values[spec.where.nodes[N].first_value + Is]>()...
+                    );
                 }(std::make_index_sequence<cond.value_count>{});
             } else if constexpr (op == "IS NULL" || op == "IS NOT NULL") {
                 return build_compare_expr<fi, cond.op>();
-            } else if constexpr (cond.values[0].kind == decltype(cond.values[0].kind)::String) {
-                return build_compare_expr<fi, cond.op>(cond.values[0].as_string.view());
+            } else if constexpr (pool[first].kind == decltype(pool[first].kind)::String) {
+                return build_compare_expr<fi, cond.op>(pool[first].as_string.view());
             } else {
-                return build_compare_expr<fi, cond.op>(typed_value_as<FieldType, cond.values[0]>());
+                return build_compare_expr<fi, cond.op>(typed_value_as<FieldType, pool[first]>());
+            }
+        }
+
+        // The tree below node N as one expression: a leaf is a comparison, an inner node AND/OR.
+        template <typename WhereModel, std::size_t N> static auto build_where_node() {
+            constexpr auto& node = spec.where.nodes[N];
+            if constexpr (node.is_leaf()) {
+                return build_where_leaf<WhereModel, N>();
+            } else if constexpr (node.op == "AND") {
+                return build_where_node<WhereModel, static_cast<std::size_t>(node.left)>() &&
+                       build_where_node<WhereModel, static_cast<std::size_t>(node.right)>();
+            } else {
+                static_assert(node.op == "OR", "a WHERE join node is AND or OR");
+                return build_where_node<WhereModel, static_cast<std::size_t>(node.left)>() ||
+                       build_where_node<WhereModel, static_cast<std::size_t>(node.right)>();
             }
         }
 
         template <typename WhereModel> static auto apply_where(QuerySet<Model, ConnType>& qs) -> void {
             if constexpr (spec.where.enabled) {
-                [&]<std::size_t... Is>(std::index_sequence<Is...>) {
-                    if constexpr (spec.where.combine_and)
-                        qs = qs.where((build_condition_expr<WhereModel, Is>() && ...));
-                    else
-                        qs = qs.where((build_condition_expr<WhereModel, Is>() || ...));
-                }(std::make_index_sequence<spec.where.condition_count>{});
+                qs = qs.where(build_where_node<WhereModel, static_cast<std::size_t>(spec.where.root)>());
             }
         }
 

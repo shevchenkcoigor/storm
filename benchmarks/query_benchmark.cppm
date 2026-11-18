@@ -60,11 +60,14 @@ export namespace storm::benchmark {
             if constexpr (!test.where.enabled || !test.join.enabled) {
                 return ^^Model;
             } else {
-                for (std::size_t i = 0; i < test.where.condition_count; ++i) {
+                for (std::size_t i = 0; i < test.where.stored_node_count(); ++i) {
+                    if (!test.where.nodes[i].is_leaf()) {
+                        continue; // an AND/OR join names no field
+                    }
                     bool found = false;
                     for (std::meta::info const m :
                          std::meta::nonstatic_data_members_of(^^Model, std::meta::access_context::unchecked())) {
-                        if (std::meta::identifier_of(m) == test.where.conditions[i].field.view()) {
+                        if (std::meta::identifier_of(m) == test.where.nodes[i].field.view()) {
                             found = true;
                             break;
                         }

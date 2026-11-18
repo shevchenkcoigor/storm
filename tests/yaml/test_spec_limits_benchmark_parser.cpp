@@ -15,6 +15,18 @@ namespace {
         return storm::benchmark::parse_test_object(json, pos);
     }
 
+    TEST(SpecLimitsBenchmarkParser, WhereRepeatedKeyAndStrayBraceAreHandled) {
+        storm::test::spec_limits::expect_where_repeated_key_and_stray_brace_are_handled<parse_case>();
+    }
+
+    TEST(SpecLimitsBenchmarkParser, FlatWhereBuildsOneTree) {
+        storm::test::spec_limits::expect_flat_where_builds_one_tree<parse_case>();
+    }
+
+    TEST(SpecLimitsBenchmarkParser, WhereCountsPastItsCaps) {
+        storm::test::spec_limits::expect_where_counts_past_its_caps<parse_case>();
+    }
+
     TEST(SpecLimitsBenchmarkParser, MalformedAndRepeatedInputIsHandled) {
         storm::test::spec_limits::expect_malformed_and_repeated_input_is_handled<parse_case>();
     }
