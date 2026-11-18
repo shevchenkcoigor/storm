@@ -266,17 +266,15 @@ export namespace storm::benchmark {
     };
 
     // ========================================================================
-    // GroupBySpec — one or more GROUP BY fields, optional HAVING.
+    // CappedFields<N> — up to N field names, counting past N (#843) so an overflow is detectable.
+    // The one list behind GROUP BY and DISTINCT; both parsers add through add_field.
     // ========================================================================
-    struct GroupBySpec {
-        bool                                        enabled    = false;
-        static constexpr std::size_t                MAX_FIELDS = 2;
-        std::array<ConstexprString<32>, MAX_FIELDS> fields{};
-        // Entries the case listed, counting past MAX_FIELDS (#843), so an overflow is detectable.
-        std::size_t declared_count = 0;
-        HavingSpec  having;
+    template <std::size_t N> struct CappedFields {
+        bool                               enabled    = false;
+        static constexpr std::size_t       MAX_FIELDS = N;
+        std::array<ConstexprString<32>, N> fields{};
+        std::size_t                        declared_count = 0;
 
-        // Both parsers add through this; add_capped is the one rule (#843).
         constexpr void add_field(const ConstexprString<32>& name) {
             add_capped(fields, declared_count, name);
         }
@@ -296,34 +294,13 @@ export namespace storm::benchmark {
         }
     };
 
-    // ========================================================================
+    // GroupBySpec — one or more GROUP BY fields (max 2), optional HAVING.
+    struct GroupBySpec : CappedFields<2> {
+        HavingSpec having;
+    };
+
     // DistinctSpec — SELECT DISTINCT over 1..3 fields.
-    // ========================================================================
-    struct DistinctSpec {
-        bool                                        enabled    = false;
-        static constexpr std::size_t                MAX_FIELDS = 3;
-        std::array<ConstexprString<32>, MAX_FIELDS> fields{};
-        // Entries the case listed, counting past MAX_FIELDS (#843), so an overflow is detectable.
-        std::size_t declared_count = 0;
-
-        constexpr void add_field(const ConstexprString<32>& name) {
-            add_capped(fields, declared_count, name);
-        }
-
-        [[nodiscard]] constexpr auto within_limits() const -> bool {
-            return declared_count <= MAX_FIELDS;
-        }
-
-        consteval auto field_count() const -> std::size_t {
-            std::size_t n = 0;
-            for (std::size_t i = 0; i < MAX_FIELDS; ++i) {
-                if (!fields[i].empty()) {
-                    ++n;
-                }
-            }
-            return n;
-        }
-    };
+    using DistinctSpec = CappedFields<3>;
 
     // ========================================================================
     // LimitSpec — LIMIT and/or OFFSET. `enabled` is true if either is set.
