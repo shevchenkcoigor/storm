@@ -229,6 +229,25 @@ aggregate or field. Names in the YAML are resolved by reflection at compile time
 - Still explicit: the set-operation keyword (`union` → `union_`), the JOIN type, `typed_value_as`, `apply_limit`
   and the terminal choice. Their branches differ in behaviour, not only in a name.
 
+### Runner structure (#837)
+
+- **No base class.** Every runner (`SelectRunner`, `AggregateRunner`, `ChainAggRunner`, `DistinctRunner`,
+  `GroupByRunner`, `InsertRunner`, `UpdateRunner`, `EraseRunner`) is a stateless class with a
+  `static run<Tc>()`. The two helpers the old `QueryRunnerBase` mixed are free functions:
+  `base_query<Tc, Model, Conn>()` (the case's filtered/joined `QuerySet`) and
+  `seed_records<Tc, Model, Conn>()` (insert the dataset). The query is a local, not runner state.
+- **One WHERE path.** `where:` goes through `QueryBuilder`; a `where_expr:` tree is layered on top of that
+  query, and its leaves use the same `build_compare_expr` resolver, so an unknown or ill-typed operator is a
+  compile error on both paths.
+- **FK by member name.** `QueryBuilder`'s `fk_resolver` defaults to `member_name_resolver<Model>`, so a
+  `join.fk:` is a member name on the model. The benchmark still passes its own (`registry::resolve_fk_field`).
+- **One value check.** `expect_agg_value(actual, expected, expect_null, what)` is chosen by result type
+  (`std::optional<double>` → near / `nullopt`, floating → near, integer → exact) and used by the scalar,
+  chain and group runners; `verify_groups` checks `group_keys` / `group_agg_*` (sorted by key).
+- **`query_type` → runner** is the `YAML_RUNNERS` table in `test_unified_yaml_body.h` (`{name, is_prefix,
+  ^^Runner}`), spliced with `template [:runner:]<Model, Conn>::template run<tc>()`. A `query_type` missing from the
+  table fails `KnownYamlQueryType` at compile time. To add a runner, add its rows there.
+
 ## Writing New Tests
 
 1. **Create test file**: `tests/<category>/test_<feature>.cpp`

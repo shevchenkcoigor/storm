@@ -258,6 +258,16 @@ namespace storm::orm::query_builder {
         return (storm::meta::FieldRef<fi>{}.[:method:](std::remove_cvref_t<Ts>(vs)...));
     }
 
+    // Default FK resolver (#837): a JOIN names its FK by the member name on Model,
+    // which dispatch_field already resolves. The benchmark overrides it with its own
+    // registry lookup.
+    template <typename Model> struct MemberNameResolver {
+        consteval auto operator()(std::string_view name) const -> std::meta::info {
+            return dispatch_field<Model>(name);
+        }
+    };
+    template <typename Model> inline constexpr MemberNameResolver<Model> member_name_resolver{};
+
     // ========================================================================
     // QueryBuilder<Model, spec, fk_resolver>
     //
@@ -266,9 +276,13 @@ namespace storm::orm::query_builder {
     // spec.distinct, spec.limit, spec.aggregate, spec.setop, spec.operation).
     //
     // fk_resolver: consteval callable (string_view) -> std::meta::info for
-    // JOIN field dispatch. Pass a no-op for tests that don't use JOINs.
+    // JOIN field dispatch. Defaults to a by-name member lookup on Model.
     // ========================================================================
-    template <typename Model, auto spec, auto fk_resolver, typename ConnType = storm::db::sqlite::Connection>
+    template <
+            typename Model,
+            auto spec,
+            auto fk_resolver  = member_name_resolver<Model>,
+            typename ConnType = storm::db::sqlite::Connection>
     class QueryBuilder {
         // ----------------------------------------------------------------
         // typed_value_as

@@ -24,22 +24,23 @@ inline auto expect_row_count(auto &qs, int expected) -> void {
 // ---------------------------------------------------------------------------
 // InsertRunner -- insert_one / insert_batch
 // ---------------------------------------------------------------------------
-template <typename Model, typename ConnType> class InsertRunner : public QueryRunnerBase<Model, ConnType> {
+template <typename Model, typename ConnType> class InsertRunner {
   public:
-    template <const auto &Tc> auto run() -> void {
+    template <const auto &Tc> static auto run() -> void {
+        QuerySet<Model, ConnType, true> qs;
         if constexpr (Tc.query_type == "insert_one") {
-            auto r = this->qs_.insert(make_record<Model>(0)).execute();
+            auto r = qs.insert(make_record<Model>(0)).execute();
             ASSERT_TRUE(r.has_value()) << r.error().message();
-            expect_row_count(this->qs_, Tc.expected.count);
+            expect_row_count(qs, Tc.expected.count);
 
         } else if constexpr (Tc.query_type == "insert_batch") {
             std::vector<Model> batch;
             batch.reserve(static_cast<std::size_t>(Tc.insert_count));
             for (int i = 0; i < Tc.insert_count; ++i)
                 batch.push_back(make_record<Model>(i));
-            auto r = this->qs_.insert(std::span<const Model>(batch)).execute();
+            auto r = qs.insert(std::span<const Model>(batch)).execute();
             ASSERT_TRUE(r.has_value()) << r.error().message();
-            expect_row_count(this->qs_, Tc.expected.count);
+            expect_row_count(qs, Tc.expected.count);
         }
     }
 };
@@ -47,13 +48,14 @@ template <typename Model, typename ConnType> class InsertRunner : public QueryRu
 // ---------------------------------------------------------------------------
 // UpdateRunner -- update_batch
 // ---------------------------------------------------------------------------
-template <typename Model, typename ConnType> class UpdateRunner : public QueryRunnerBase<Model, ConnType> {
+template <typename Model, typename ConnType> class UpdateRunner {
   public:
-    template <const auto &Tc> auto run() -> void {
-        this->template seed_and_insert<Tc>();
+    template <const auto &Tc> static auto run() -> void {
+        QuerySet<Model, ConnType, true> qs;
+        seed_records<Tc, Model, ConnType>();
 
         // Re-fetch to get actual IDs
-        auto sel = this->qs_.select().execute();
+        auto sel = qs.select().execute();
         ASSERT_TRUE(sel.has_value()) << sel.error().message();
 
         // Update first update_count records
@@ -66,12 +68,12 @@ template <typename Model, typename ConnType> class UpdateRunner : public QueryRu
             to_update.push_back(make_updated_record<Model>(r));
         }
         if (!to_update.empty()) {
-            auto upd = this->qs_.update(std::span<const Model>(to_update)).execute();
+            auto upd = qs.update(std::span<const Model>(to_update)).execute();
             ASSERT_TRUE(upd.has_value()) << upd.error().message();
         }
 
         // Count records still with original prefix
-        auto after = this->qs_.select().execute();
+        auto after = qs.select().execute();
         ASSERT_TRUE(after.has_value()) << after.error().message();
         int unchanged_count = 0;
         for (const auto &r : after.value())
@@ -84,22 +86,23 @@ template <typename Model, typename ConnType> class UpdateRunner : public QueryRu
 // ---------------------------------------------------------------------------
 // EraseRunner -- erase_all / erase_where / erase_batch
 // ---------------------------------------------------------------------------
-template <typename Model, typename ConnType> class EraseRunner : public QueryRunnerBase<Model, ConnType> {
+template <typename Model, typename ConnType> class EraseRunner {
   public:
-    template <const auto &Tc> auto run() -> void {
+    template <const auto &Tc> static auto run() -> void {
+        QuerySet<Model, ConnType, true> qs;
         if constexpr (Tc.query_type == "erase_all") {
-            this->template seed_and_insert<Tc>();
+            seed_records<Tc, Model, ConnType>();
 
-            auto rem = this->qs_.erase_all().execute();
+            auto rem = qs.erase_all().execute();
             ASSERT_TRUE(rem.has_value()) << rem.error().message();
 
-            expect_row_count(this->qs_, Tc.expected.remaining);
+            expect_row_count(qs, Tc.expected.remaining);
 
         } else if constexpr (Tc.query_type == "erase_batch") {
-            this->template seed_and_insert<Tc>();
+            seed_records<Tc, Model, ConnType>();
 
             // Re-fetch to get real IDs
-            auto sel = this->qs_.select().execute();
+            auto sel = qs.select().execute();
             ASSERT_TRUE(sel.has_value()) << sel.error().message();
 
             // Erase first erase_count records
@@ -111,10 +114,10 @@ template <typename Model, typename ConnType> class EraseRunner : public QueryRun
                     break;
                 to_erase.push_back(r);
             }
-            auto rem = this->qs_.erase(std::span<const Model>(to_erase)).execute();
+            auto rem = qs.erase(std::span<const Model>(to_erase)).execute();
             ASSERT_TRUE(rem.has_value()) << rem.error().message();
 
-            expect_row_count(this->qs_, Tc.expected.remaining);
+            expect_row_count(qs, Tc.expected.remaining);
         }
     }
 };

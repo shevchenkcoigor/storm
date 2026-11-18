@@ -2,13 +2,16 @@
 
 /**
  * @file test_select_runner.h
- * @brief Field dispatch, WHERE builder, QueryRunnerBase, and SELECT runners.
+ * @brief Field dispatch, WHERE builder, shared checks, and SELECT runners.
  *
  * Provides:
  * - dispatch_field<Model>(name) — via storm::orm::query_builder
  * - build_compare_expr<FieldInfo, op>(value) — YAML operator -> ORM expression (shared)
- * - QueryRunnerBase<Model, ConnType> — shared base with seed + WHERE/JOIN apply
- * - SelectRunner, AggregateRunner, ChainAggRunner, DistinctRunner, GroupByRunner
+ * - base_query<Tc, Model, ConnType>() — the case's filtered/joined QuerySet
+ * - seed_records<Tc, Model, ConnType>() — insert the case's dataset
+ * - expect_agg_value / verify_groups — the one aggregate-value check
+ * - SelectRunner, AggregateRunner, ChainAggRunner, DistinctRunner, GroupByRunner:
+ *   stateless, each a `static run<Tc>()` (#837)
  *
  * Include AFTER `import storm;` — it pulls the model headers it needs itself.
  */
@@ -21,7 +24,6 @@
 
 #include "shared/query_builder.hpp" // NOLINT(misc-header-include-cycle)
 
-#include "../shared/models/message.h"
 #include "test_record_helpers.h"
 using storm::QuerySet;
 using storm::meta::FieldRef;
@@ -35,40 +37,31 @@ using storm::orm::query_builder::dispatch_field;
 using storm::orm::query_builder::field_or_null;
 using storm::orm::query_builder::member_function_named;
 
-// MIN/MAX/AVG results are std::optional<double> (#416). Over a non-empty set the
-// optional holds the value; over an empty (or all-NULL) set it is nullopt.
-inline auto expect_opt_near(const std::optional<double> &actual, double expected) -> void {
-    ASSERT_TRUE(actual.has_value()) << "aggregate over non-empty set must hold a value";
-    EXPECT_NEAR(actual.value(), expected, 0.01);
-}
-
-// Variant for cases that may target an empty set: when expect_null, the
-// aggregate must be nullopt; otherwise it must equal `expected`.
-inline auto expect_opt_near(const std::optional<double> &actual, double expected, bool expect_null) -> void {
-    if (expect_null) {
-        EXPECT_FALSE(actual.has_value()) << "MIN/MAX/AVG over empty set must be nullopt (#416)";
+// One check for an aggregate value (#837), chosen by the result type: MIN/MAX/AVG
+// read back as std::optional<double> (#416) — a near match, or nullopt when
+// expect_null (empty set / all-NULL group); a floating value is a near match;
+// COUNT/SUM integers match exactly.
+template <typename Value>
+auto expect_agg_value(const Value &actual, double expected, bool expect_null, std::string_view what) -> void {
+    if constexpr (std::is_same_v<Value, std::optional<double>>) {
+        if (expect_null) {
+            EXPECT_FALSE(actual.has_value()) << what << ": MIN/MAX/AVG over an empty set must be nullopt (#416)";
+            return;
+        }
+        ASSERT_TRUE(actual.has_value()) << what << ": aggregate over a non-empty set must hold a value";
+        EXPECT_NEAR(actual.value(), expected, 0.01) << what;
+    } else if constexpr (std::is_floating_point_v<Value>) {
+        EXPECT_NEAR(actual, expected, 0.01) << what;
     } else {
-        expect_opt_near(actual, expected);
+        EXPECT_EQ(static_cast<double>(static_cast<std::int64_t>(expected)), expected)
+            << what << ": an integer aggregate needs an integral expectation";
+        EXPECT_EQ(actual, static_cast<std::int64_t>(expected)) << what;
     }
 }
 
-// FK resolver for test models (Message::sender → Person).
-struct TestFkResolver {
-    consteval auto operator()(std::string_view name) const -> std::meta::info {
-        if (name == "sender")
-            return ^^Message::sender;
-        std::unreachable();
-    }
-};
-inline constexpr TestFkResolver test_fk{};
-
-// Stateless no-op FK resolver for tests (JOIN is never enabled in test cases).
-struct NoOpFkResolver {
-    consteval auto operator()(std::string_view) const -> std::meta::info { std::unreachable(); }
-};
-inline constexpr NoOpFkResolver no_op_fk{};
-
-// Recursively build a WHERE expression from a compile-time WhereNode tree.
+// Recursively build a WHERE expression from a compile-time WhereNode tree. Leaves go
+// through the shared build_compare_expr, the same operator resolver QueryBuilder uses
+// for `where:`; an unknown or ill-typed operator fails its constraint (#835/#837).
 template <int N, const auto &Tc, typename Model> auto build_where_node_expr() {
     if constexpr (Tc.where_nodes[N].left < 0) {
         constexpr auto fi = dispatch_field<Model>(Tc.where_nodes[N].field.view());
@@ -85,86 +78,60 @@ template <int N, const auto &Tc, typename Model> auto build_where_node_expr() {
     }
 }
 
-template <typename Model, typename ConnType> class QueryRunnerBase {
-  public:
-    QuerySet<Model, ConnType, true> qs_;
+// The shared QueryBuilder for a case; a JOIN names its FK by member name on Model (#837).
+// member_name_resolver<Model> is spelled out only because ConnType follows it in
+// QueryBuilder's parameter list.
+template <const auto &Tc, typename Model, typename ConnType>
+using BuilderFor =
+    storm::orm::query_builder::QueryBuilder<Model, Tc.bench, storm::orm::query_builder::member_name_resolver<Model>,
+                                            ConnType>;
 
-    template <const auto &Tc> auto seed_and_insert() -> void {
-        std::vector<Model> initial;
-        initial.reserve(static_cast<std::size_t>(Tc.bench.dataset_size));
-        for (int i = 0; i < Tc.bench.dataset_size; ++i)
-            initial.push_back(make_record<Model>(i));
-        auto ins = this->qs_.insert(std::span<const Model>(initial)).execute();
-        ASSERT_TRUE(ins.has_value()) << ins.error().message();
-    }
+// The case's filtered/joined QuerySet: `where:` / join / order / limit from the
+// shared QueryBuilder, then the `where_expr:` tree on top (#837).
+template <const auto &Tc, typename Model, typename ConnType> auto base_query() -> QuerySet<Model, ConnType, true> {
+    auto qs = BuilderFor<Tc, Model, ConnType>::build_qs();
+    if constexpr (Tc.where_node_count > 0)
+        return qs.where(build_where_node_expr<0, Tc, Model>());
+    else
+        return qs;
+}
 
-    template <const auto &Tc> auto apply_where_and_join() -> void { // NOSONAR(S3776)
-        if constexpr (Tc.bench.join.enabled) {
-            using QB = storm::orm::query_builder::QueryBuilder<Model, Tc.bench, test_fk, ConnType>;
-            qs_ = QB::build_qs();
-        } else {
-            using QB = storm::orm::query_builder::QueryBuilder<Model, Tc.bench, no_op_fk, ConnType>;
-            qs_ = QB::build_qs();
-        }
-        if constexpr (Tc.where_node_count > 0)
-            qs_ = qs_.where(build_where_node_expr<0, Tc, Model>());
-    }
+// Insert the case's `dataset_size` records.
+template <const auto &Tc, typename Model, typename ConnType> auto seed_records() -> void {
+    std::vector<Model> initial;
+    initial.reserve(static_cast<std::size_t>(Tc.bench.dataset_size));
+    for (int i = 0; i < Tc.bench.dataset_size; ++i)
+        initial.push_back(make_record<Model>(i));
+    QuerySet<Model, ConnType, true> qs;
+    auto ins = qs.insert(std::span<const Model>(initial)).execute();
+    ASSERT_TRUE(ins.has_value()) << ins.error().message();
+}
 
-    template <const auto &Tc> auto qs_with_modifiers() -> decltype(auto) { return (qs_); }
-};
-
-template <typename Model, typename ConnType> class SelectQueryRunnerBase : public QueryRunnerBase<Model, ConnType> {};
-
-// ---------------------------------------------------------------------------
-// Shared group-by result verification helpers
-// ---------------------------------------------------------------------------
-
-template <const auto &Tc>
-auto check_group_keys_and_int_agg(const std::vector<std::pair<int, std::int64_t>> &groups) -> void {
+// Per-group check: sorted by key, each group's key and aggregate against the case.
+// MIN/MAX/AVG groups read back as std::optional<double> (#416).
+template <const auto &Tc> auto verify_groups(const auto &rows) -> void {
+    static_assert(Tc.bench.group_by.field_count() == 1, "per-group expectations need a single GROUP BY field");
+    using Row = std::ranges::range_value_t<std::remove_cvref_t<decltype(rows)>>;
+    using Agg = std::tuple_element_t<1, Row>;
+    std::vector<std::pair<int, Agg>> groups;
+    for (const auto &[key, agg] : rows)
+        groups.emplace_back(static_cast<int>(key), agg);
+    std::ranges::sort(groups, std::less<>{}, &std::pair<int, Agg>::first);
     ASSERT_EQ(groups.size(), Tc.expected.groups_count);
+    // Only MIN/MAX/AVG carry group_agg_dbl; COUNT/SUM (even over a double column) use group_agg_int.
+    constexpr bool is_double = std::is_same_v<Agg, std::optional<double>>;
     for (std::size_t g = 0; g < Tc.expected.groups_count; ++g) {
         EXPECT_EQ(groups[g].first, Tc.expected.group_keys[g]) << "Group key mismatch at index " << g;
-        EXPECT_EQ(groups[g].second, Tc.expected.group_agg_int[g]) << "Group agg mismatch at index " << g;
+        const double expected =
+            is_double ? Tc.expected.group_agg_dbl[g] : static_cast<double>(Tc.expected.group_agg_int[g]);
+        expect_agg_value(groups[g].second, expected, Tc.expected.group_agg_null[g], "group aggregate");
     }
-}
-
-// MIN/MAX/AVG group aggregates are std::optional<double> (#416). A group whose
-// aggregate column is all-NULL reads back as nullopt (flagged group_agg_null).
-template <const auto &Tc>
-auto check_group_keys_and_dbl_agg(const std::vector<std::pair<int, std::optional<double>>> &groups) -> void {
-    ASSERT_EQ(groups.size(), Tc.expected.groups_count);
-    for (std::size_t g = 0; g < Tc.expected.groups_count; ++g) {
-        EXPECT_EQ(groups[g].first, Tc.expected.group_keys[g]) << "Group key mismatch at index " << g;
-        if (Tc.expected.group_agg_null[g]) {
-            EXPECT_FALSE(groups[g].second.has_value()) << "Group agg should be nullopt at index " << g;
-        } else {
-            ASSERT_TRUE(groups[g].second.has_value()) << "Group agg should hold a value at index " << g;
-            EXPECT_NEAR(groups[g].second.value(), Tc.expected.group_agg_dbl[g], 0.01)
-                << "Group agg mismatch at index " << g;
-        }
-    }
-}
-
-template <const auto &Tc> auto verify_group_int_results(const auto &result) -> void {
-    std::vector<std::pair<int, std::int64_t>> groups;
-    for (const auto &[key, agg] : result)
-        groups.emplace_back(static_cast<int>(key), agg);
-    std::ranges::sort(groups);
-    check_group_keys_and_int_agg<Tc>(groups);
-}
-
-template <const auto &Tc> auto verify_group_dbl_results(const auto &result) -> void {
-    std::vector<std::pair<int, std::optional<double>>> groups;
-    for (const auto &[key, agg] : result)
-        groups.emplace_back(static_cast<int>(key), agg);
-    std::ranges::sort(groups, [](const auto &a, const auto &b) { return a.first < b.first; });
-    check_group_keys_and_dbl_agg<Tc>(groups);
 }
 
 // ---------------------------------------------------------------------------
 // SelectRunner -- plain SELECT queries (select / first / one)
 // ---------------------------------------------------------------------------
-template <typename Model, typename ConnType> class SelectRunner : public SelectQueryRunnerBase<Model, ConnType> {
+template <typename Model, typename ConnType> class SelectRunner {
     // Compare one row member against its expected value, dispatching on the
     // member's C++ type. A YAML value of the wrong kind fails to compile.
     // Expected is a parser TypedValue; deduced (not named) so this header does not
@@ -207,10 +174,10 @@ template <typename Model, typename ConnType> class SelectRunner : public SelectQ
         template for (constexpr std::size_t I : std::views::iota(0uz, spec.count)) verify_first_field<Tc, I>(row);
     }
 
-    template <const auto &Tc> auto run() -> void { // NOSONAR(S3776) -- inherent constexpr dispatch
-        this->template apply_where_and_join<Tc>();
+    template <const auto &Tc> static auto run() -> void { // NOSONAR(S3776) -- inherent constexpr dispatch
+        auto qs = base_query<Tc, Model, ConnType>();
         if constexpr (Tc.query_type == "first") {
-            auto r = this->qs_.first().execute();
+            auto r = qs.first().execute();
             ASSERT_TRUE(r.has_value()) << r.error().message();
             EXPECT_EQ(r.value().has_value() ? 1 : 0, Tc.expected.count);
             if constexpr (Tc.expected.count == 1) {
@@ -218,7 +185,7 @@ template <typename Model, typename ConnType> class SelectRunner : public SelectQ
                 verify_first_row<Tc>(r.value().value());
             }
         } else if constexpr (Tc.query_type == "one") {
-            auto r = this->qs_.get().execute();
+            auto r = qs.get().execute();
             if constexpr (Tc.expected.count == 1) {
                 ASSERT_TRUE(r.has_value()) << r.error().message();
                 verify_first_row<Tc>(r.value());
@@ -226,7 +193,7 @@ template <typename Model, typename ConnType> class SelectRunner : public SelectQ
                 EXPECT_FALSE(r.has_value());
             }
         } else {
-            auto result = this->qs_.select().execute();
+            auto result = qs.select().execute();
             ASSERT_TRUE(result.has_value()) << result.error().message();
             EXPECT_EQ(static_cast<int>(result.value().size()), Tc.expected.count);
             if constexpr (Tc.expected.count > 0) {
@@ -240,7 +207,7 @@ template <typename Model, typename ConnType> class SelectRunner : public SelectQ
 // ---------------------------------------------------------------------------
 // AggregateRunner -- scalar aggregates (count, sum, avg, min, max, count_distinct)
 // ---------------------------------------------------------------------------
-template <typename Model, typename ConnType> class AggregateRunner : public SelectQueryRunnerBase<Model, ConnType> {
+template <typename Model, typename ConnType> class AggregateRunner {
   private:
     // #818: pin the statement's SQL text when the case declares expected_sql;
     // a case without it is result-only, as before.
@@ -256,22 +223,19 @@ template <typename Model, typename ConnType> class AggregateRunner : public Sele
     }
 
   public:
-    template <const auto &Tc> auto run() -> void {
+    template <const auto &Tc> static auto run() -> void {
         static_assert(Tc.query_type != "count" || Tc.bench.aggregate.field.empty(),
                       "query_type count is COUNT(*); use count_field for COUNT(field)");
-        this->template apply_where_and_join<Tc>();
-        constexpr auto fn = member_function_named<decltype(this->qs_)>(method_name(Tc.query_type.view()));
-        auto q = call_query_method<fn, field_or_null<Model>(Tc.bench.aggregate.field.view())>(this->qs_);
+        auto qs = base_query<Tc, Model, ConnType>();
+        constexpr auto fn = member_function_named<decltype(qs)>(method_name(Tc.query_type.view()));
+        auto q = call_query_method<fn, field_or_null<Model>(Tc.bench.aggregate.field.view())>(qs);
         expect_sql<Tc>(q);
         auto r = q.execute();
         ASSERT_TRUE(r.has_value()) << r.error().message();
-        // MIN/MAX/AVG read back as std::optional<double> (#416); COUNT/SUM as numbers.
-        if constexpr (std::is_same_v<std::remove_cvref_t<decltype(r.value())>, std::optional<double>>)
-            expect_opt_near(r.value(), Tc.expected.dbl_val, Tc.dataset.view() == "empty");
-        else if constexpr (Tc.expected.int_val != -1)
-            EXPECT_EQ(r.value(), Tc.expected.int_val);
-        else
-            EXPECT_NEAR(r.value(), Tc.expected.dbl_val, 0.01);
+        using Value = std::remove_cvref_t<decltype(r.value())>;
+        constexpr bool exact_int = !std::is_same_v<Value, std::optional<double>> && Tc.expected.int_val != -1;
+        constexpr double expected = exact_int ? static_cast<double>(Tc.expected.int_val) : Tc.expected.dbl_val;
+        expect_agg_value(r.value(), expected, Tc.dataset.view() == "empty", Tc.query_type.view());
     }
 };
 
@@ -283,7 +247,7 @@ template <typename Model, typename ConnType> class AggregateRunner : public Sele
 // is applied to the result of step I-1. Only the orderings the YAML uses are
 // instantiated.
 // ---------------------------------------------------------------------------
-template <typename Model, typename ConnType> class ChainAggRunner : public SelectQueryRunnerBase<Model, ConnType> {
+template <typename Model, typename ConnType> class ChainAggRunner {
     // The YAML func name IS the member name (sum/avg/min/max/count), on both
     // QuerySet and the aggregate chain (#834).
     template <const auto &Tc, std::size_t I> static auto apply_agg(auto &&q) {
@@ -300,28 +264,19 @@ template <typename Model, typename ConnType> class ChainAggRunner : public Selec
             return build_chain<Tc, I + 1>(std::move(next));
     }
 
-    // COUNT/SUM read back as integers; MIN/MAX/AVG as std::optional<double> (#416),
-    // which is nullopt over an empty set.
-    template <const auto &Tc, std::size_t I> static auto check_value(const auto &actual) -> void {
-        constexpr double expected = Tc.aggregations[I].res_value;
-        if constexpr (std::is_same_v<std::remove_cvref_t<decltype(actual)>, std::optional<double>>)
-            expect_opt_near(actual, expected, Tc.dataset.view() == "empty");
-        else
-            EXPECT_EQ(actual, static_cast<std::int64_t>(expected)) << "chain aggregate " << I;
-    }
-
     // I must stay a constant: it indexes Tc.aggregations[I] and the tuple.
     template <const auto &Tc> static auto check_values(const auto &values) -> void {
         template for (constexpr std::size_t I : std::views::iota(0uz, Tc.chain_len))
-            check_value<Tc, I>(std::get<I>(values));
+            expect_agg_value(std::get<I>(values), Tc.aggregations[I].res_value, Tc.dataset.view() == "empty",
+                             Tc.aggregations[I].func.view());
     }
 
   public:
-    template <const auto &Tc> auto run() -> void {
+    template <const auto &Tc> static auto run() -> void {
         static_assert(Tc.chain_len >= 2, "a chain case needs at least two aggregations");
         static_assert(Tc.chain_len <= Tc.aggregations.size(), "chain case has more aggregations than MAX_CHAIN");
-        this->template apply_where_and_join<Tc>();
-        auto r = build_chain<Tc>(this->qs_).execute();
+        auto qs = base_query<Tc, Model, ConnType>();
+        auto r = build_chain<Tc>(qs).execute();
         ASSERT_TRUE(r.has_value()) << r.error().message();
         check_values<Tc>(r.value());
     }
@@ -330,14 +285,13 @@ template <typename Model, typename ConnType> class ChainAggRunner : public Selec
 // ---------------------------------------------------------------------------
 // DistinctRunner -- DISTINCT projection (returns plf::hive<FieldType>)
 // ---------------------------------------------------------------------------
-template <typename Model, typename ConnType> class DistinctRunner : public SelectQueryRunnerBase<Model, ConnType> {
+template <typename Model, typename ConnType> class DistinctRunner {
   public:
-    template <const auto &Tc> auto run() -> void {
+    template <const auto &Tc> static auto run() -> void {
         static_assert(Tc.bench.distinct.field_count() >= 1, "a distinct case needs at least one field");
-        this->template apply_where_and_join<Tc>();
+        auto qs = base_query<Tc, Model, ConnType>();
         // One path for any number of fields: the shared builder expands the field pack.
-        using QB = storm::orm::query_builder::QueryBuilder<Model, Tc.bench, no_op_fk, ConnType>;
-        auto r = QB::build_distinct_stmt(this->qs_).execute();
+        auto r = BuilderFor<Tc, Model, ConnType>::build_distinct_stmt(qs).execute();
         ASSERT_TRUE(r.has_value()) << r.error().message();
         EXPECT_EQ(static_cast<int>(r.value().size()), Tc.expected.count);
     }
@@ -349,11 +303,11 @@ template <typename Model, typename ConnType> class DistinctRunner : public Selec
 // group_<func> calls func on the grouped query by name (#834), after the
 // GROUP BY fields and the optional HAVING.
 // ---------------------------------------------------------------------------
-template <typename Model, typename ConnType> class GroupByRunner : public SelectQueryRunnerBase<Model, ConnType> {
+template <typename Model, typename ConnType> class GroupByRunner {
     static constexpr std::string_view GROUP_PREFIX = "group_";
 
-    template <const auto &Tc, std::size_t... Is> auto grouped(std::index_sequence<Is...>) {
-        return this->qs_.template group_by<FieldRef<dispatch_field<Model>(Tc.bench.group_by.fields[Is].view())>{}...>();
+    template <const auto &Tc, std::size_t... Is> static auto grouped(auto &qs, std::index_sequence<Is...>) {
+        return qs.template group_by<FieldRef<dispatch_field<Model>(Tc.bench.group_by.fields[Is].view())>{}...>();
     }
 
     template <const auto &Tc> static auto with_having(auto &&g) {
@@ -366,22 +320,12 @@ template <typename Model, typename ConnType> class GroupByRunner : public Select
         }
     }
 
-    // Per-group check: MIN/MAX/AVG groups read back as std::optional<double> (#416).
-    template <const auto &Tc> static auto verify_groups(const auto &rows) -> void {
-        static_assert(Tc.bench.group_by.field_count() == 1, "per-group expectations need a single GROUP BY field");
-        using Row = std::ranges::range_value_t<std::remove_cvref_t<decltype(rows)>>;
-        if constexpr (std::is_same_v<std::tuple_element_t<1, Row>, std::optional<double>>)
-            verify_group_dbl_results<Tc>(rows);
-        else
-            verify_group_int_results<Tc>(rows);
-    }
-
   public:
-    template <const auto &Tc> auto run() -> void {
+    template <const auto &Tc> static auto run() -> void {
         constexpr std::string_view query_type = Tc.query_type.view();
         static_assert(query_type.starts_with(GROUP_PREFIX), "GroupByRunner runs group_<func> cases only");
-        this->template apply_where_and_join<Tc>();
-        auto g = with_having<Tc>(grouped<Tc>(std::make_index_sequence<Tc.bench.group_by.field_count()>{}));
+        auto qs = base_query<Tc, Model, ConnType>();
+        auto g = with_having<Tc>(grouped<Tc>(qs, std::make_index_sequence<Tc.bench.group_by.field_count()>{}));
         constexpr auto fn = member_function_named<decltype(g)>(query_type.substr(GROUP_PREFIX.size()));
         auto r = call_query_method<fn, field_or_null<Model>(Tc.bench.aggregate.field.view())>(std::move(g)).execute();
         ASSERT_TRUE(r.has_value()) << r.error().message();

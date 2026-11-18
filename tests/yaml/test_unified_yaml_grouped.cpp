@@ -1,5 +1,5 @@
 // Issue #561: the unified YAML corpus is split by category across one TU per
-// dispatch family so its per-case template instantiation compiles in parallel.
+// runner group so its per-case template instantiation compiles in parallel.
 // This TU owns the grouped family (chain / distinct / group_*).
 // NOLINTNEXTLINE(cppcoreguidelines-macro-usage) - #embed needs a literal filename
 #define STORM_UNIFIED_CASES_FILE "test_cases/unified_cases_grouped.json"
