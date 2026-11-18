@@ -21,7 +21,9 @@ case that no runner handles. (The C++ side rejects it too: KnownYamlQueryType.)
 CATEGORIES below is mirrored by SPLIT_CATEGORIES in tests/CMakeLists.txt and by
 the set of tests/yaml/test_unified_yaml_*.cpp TUs. Changing one means changing
 all three: adding a category here alone writes a JSON nothing embeds, which
-drops those cases from the suite with a green build.
+drops those cases from the suite with a green build. One more TU names `crud`:
+tests/yaml/test_spec_limits_test_parser.cpp borrows that slice to satisfy
+test_parser.hpp's #embed guard (#843); renaming `crud` means updating it too.
 """
 
 from __future__ import annotations

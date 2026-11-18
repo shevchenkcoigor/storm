@@ -248,6 +248,27 @@ aggregate or field. Names in the YAML are resolved by reflection at compile time
   ^^Runner}`), spliced with `template [:runner:]<Model, Conn>::template run<tc>()`. A `query_type` missing from the
   table fails `KnownYamlQueryType` at compile time. To add a runner, add its rows there.
 
+### Spec limits are compile errors (#843)
+
+A few spec arrays are capped (`BenchmarkTest::MAX_ORDER_BY`, `JoinSpec::MAX_FKS`, `GroupBySpec::MAX_FIELDS`,
+`DistinctSpec::MAX_FIELDS`). A case that lists more entries than the cap **does not compile**; before #843 the parsers
+dropped the extra entries and the case passed while checking less than it said.
+
+- **Counting is in the schema.** `benchmarks/schema.cppm` owns the rule, once, in `add_capped`: `add_order_by`,
+  `add_fk` and `add_field` count every entry and store only what fits. Both parsers (`benchmarks/parser.cppm`,
+  `tests/test_parser.hpp`) call them and still read an over-long array to its end, so the key after it is parsed.
+  An element of the wrong kind (a number in a list of names) is skipped, not counted, and a repeated key replaces
+  the first instead of adding to it.
+- **The check is one concept.** `BenchmarkTest::within_limits()` is false when any count passed its cap;
+  `storm::orm::query_builder::SpecWithinLimits<spec>` is the constraint on `QueryBuilder<Model, spec, ...>`, so an
+  over-cap case fails at the `QueryBuilder` use site (`BuilderFor` in `test_select_runner.h`).
+- **To raise a limit**, change the `MAX_*` constant next to its struct and keep the current corpus maximum plus headroom;
+  every slot costs compile time per case (~190 ms/case, #561).
+- **Tested once, run against both parsers.** `tests/test_spec_limits.h` holds the cases;
+  `tests/yaml/test_spec_limits_benchmark_parser.cpp` and `test_spec_limits_test_parser.cpp` each pass their parser to it.
+  Merging the two parsers is #845.
+- Still silent, pending the WHERE rework in #843: the `where:` condition/value caps and the `where_expr:` node cap.
+
 ## Writing New Tests
 
 1. **Create test file**: `tests/<category>/test_<feature>.cpp`

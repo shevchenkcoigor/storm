@@ -277,12 +277,20 @@ namespace storm::orm::query_builder {
     //
     // fk_resolver: consteval callable (string_view) -> std::meta::info for
     // JOIN field dispatch. Defaults to a by-name member lookup on Model.
+    //
+    // spec.within_limits() (#843): a case that listed more entries than a capped
+    // array holds is not silently truncated; it fails the SpecWithinLimits
+    // constraint at the QueryBuilder<...> use site.
     // ========================================================================
+    template <auto Spec>
+    concept SpecWithinLimits = Spec.within_limits();
+
     template <
             typename Model,
             auto spec,
             auto fk_resolver  = member_name_resolver<Model>,
             typename ConnType = storm::db::sqlite::Connection>
+        requires SpecWithinLimits<spec>
     class QueryBuilder {
         // ----------------------------------------------------------------
         // typed_value_as

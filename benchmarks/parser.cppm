@@ -278,23 +278,27 @@ export namespace storm::benchmark {
     // ========================================================================
     // Array of short strings — used by group_by.fields, distinct.fields, join.fks
     // ========================================================================
-    template <std::size_t MaxItems, typename AssignFn>
-    constexpr auto parse_string_array(std::string_view json, std::size_t& pos, AssignFn assign) -> std::size_t {
+    // `add` receives every entry; the spec decides what to keep (#843).
+    template <typename AddFn>
+    constexpr auto parse_string_array(std::string_view json, std::size_t& pos, AddFn add) -> void {
         skip_whitespace(json, pos);
         if (pos >= json.size() || json[pos] != '[') {
-            return 0;
+            return;
         }
         pos++; // '['
-        std::size_t count = 0;
-        while (pos < json.size() && count < MaxItems) {
+        // Reads every entry (#843): parsing on keeps the position right for the key
+        // after the array, and the spec counts what does not fit.
+        while (pos < json.size()) {
             skip_whitespace(json, pos);
             if (json[pos] == ']') {
                 pos++;
                 break;
             }
-            auto s = parse_string<32>(json, pos);
-            assign(count, s);
-            count++;
+            if (json[pos] == '"') {
+                add(parse_string<32>(json, pos));
+            } else {
+                skip_value(json, pos); // not a name: skip it, or the loop would never leave the array
+            }
             skip_whitespace(json, pos);
             if (json[pos] == ',') {
                 pos++;
@@ -305,7 +309,6 @@ export namespace storm::benchmark {
         if (pos < json.size() && json[pos] == ']') {
             pos++;
         }
-        return count;
     }
 
     // ========================================================================
@@ -413,16 +416,21 @@ export namespace storm::benchmark {
         if (pos >= json.size() || json[pos] != '[') {
             return;
         }
-        pos++; // '['
-        std::size_t count = 0;
-        while (pos < json.size() && count < BenchmarkTest::MAX_ORDER_BY) {
+        pos++;                   // '['
+        test.order_by_count = 0; // a repeated key replaces the first (#843)
+        while (pos < json.size()) {
             skip_whitespace(json, pos);
             if (json[pos] == ']') {
                 pos++;
                 break;
             }
-            parse_order_by_entry_into(test.order_by[count], json, pos);
-            count++;
+            if (json[pos] == '{') {
+                OrderBySpec entry;
+                parse_order_by_entry_into(entry, json, pos);
+                test.add_order_by(entry);
+            } else {
+                skip_value(json, pos); // not an entry: skip it, or the loop would never leave the array
+            }
             skip_whitespace(json, pos);
             if (json[pos] == ',') {
                 pos++;
@@ -432,7 +440,6 @@ export namespace storm::benchmark {
         if (pos < json.size() && json[pos] == ']') {
             pos++;
         }
-        test.order_by_count = count;
     }
 
     // --- parse_having_into ---
@@ -456,9 +463,8 @@ export namespace storm::benchmark {
         g.enabled = true;
         parse_object_keys(json, pos, [&](std::string_view key, std::string_view j, std::size_t& p) {
             if (key == "fields") {
-                parse_string_array<GroupBySpec::MAX_FIELDS>(j, p, [&](std::size_t i, const ConstexprString<32>& s) {
-                    g.fields[i] = s;
-                });
+                g.declared_count = 0; // a repeated key replaces the first (#843)
+                parse_string_array(j, p, [&](const ConstexprString<32>& s) { g.add_field(s); });
             } else if (key == "having") {
                 parse_having_into(g.having, j, p);
             } else {
@@ -472,9 +478,8 @@ export namespace storm::benchmark {
         d.enabled = true;
         parse_object_keys(json, pos, [&](std::string_view key, std::string_view j, std::size_t& p) {
             if (key == "fields") {
-                parse_string_array<DistinctSpec::MAX_FIELDS>(j, p, [&](std::size_t i, const ConstexprString<32>& s) {
-                    d.fields[i] = s;
-                });
+                d.declared_count = 0; // a repeated key replaces the first (#843)
+                parse_string_array(j, p, [&](const ConstexprString<32>& s) { d.add_field(s); });
             } else {
                 skip_value(j, p);
             }
@@ -520,10 +525,8 @@ export namespace storm::benchmark {
             } else if (key == "fk") {
                 jn.fk = parse_string<32>(j, p);
             } else if (key == "fks") {
-                jn.fk_count =
-                        parse_string_array<JoinSpec::MAX_FKS>(j, p, [&](std::size_t i, const ConstexprString<32>& s) {
-                            jn.fks[i] = s;
-                        });
+                jn.fk_count = 0; // a repeated key replaces the first (#843)
+                parse_string_array(j, p, [&](const ConstexprString<32>& s) { jn.add_fk(s); });
             } else {
                 skip_value(j, p);
             }

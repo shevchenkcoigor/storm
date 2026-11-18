@@ -66,6 +66,16 @@ export namespace storm::benchmark {
         }
     }
 
+    // The one rule for every capped spec array (#843): count the entry always, store it only
+    // while there is room. A count past the array's size is what within_limits() rejects.
+    template <typename Array, typename Value>
+    constexpr void add_capped(Array& array, std::size_t& count, const Value& value) {
+        if (count < array.size()) {
+            array[count] = value;
+        }
+        ++count;
+    }
+
     // ========================================================================
     // WhereCondition — a single WHERE clause term (field + operator + values)
     //
@@ -129,7 +139,18 @@ export namespace storm::benchmark {
         bool                                        enabled    = false;
         static constexpr std::size_t                MAX_FIELDS = 2;
         std::array<ConstexprString<32>, MAX_FIELDS> fields{};
-        HavingSpec                                  having;
+        // Entries the case listed, counting past MAX_FIELDS (#843), so an overflow is detectable.
+        std::size_t declared_count = 0;
+        HavingSpec  having;
+
+        // Both parsers add through this; add_capped is the one rule (#843).
+        constexpr void add_field(const ConstexprString<32>& name) {
+            add_capped(fields, declared_count, name);
+        }
+
+        [[nodiscard]] constexpr auto within_limits() const -> bool {
+            return declared_count <= MAX_FIELDS;
+        }
 
         consteval auto field_count() const -> std::size_t {
             std::size_t n = 0;
@@ -149,6 +170,16 @@ export namespace storm::benchmark {
         bool                                        enabled    = false;
         static constexpr std::size_t                MAX_FIELDS = 3;
         std::array<ConstexprString<32>, MAX_FIELDS> fields{};
+        // Entries the case listed, counting past MAX_FIELDS (#843), so an overflow is detectable.
+        std::size_t declared_count = 0;
+
+        constexpr void add_field(const ConstexprString<32>& name) {
+            add_capped(fields, declared_count, name);
+        }
+
+        [[nodiscard]] constexpr auto within_limits() const -> bool {
+            return declared_count <= MAX_FIELDS;
+        }
 
         consteval auto field_count() const -> std::size_t {
             std::size_t n = 0;
@@ -193,7 +224,15 @@ export namespace storm::benchmark {
         // Multi-FK support (up to 2 for now)
         static constexpr std::size_t             MAX_FKS = 2;
         std::array<ConstexprString<32>, MAX_FKS> fks{};
-        std::size_t                              fk_count = 0;
+        std::size_t                              fk_count = 0; // counts past MAX_FKS (#843)
+
+        constexpr void add_fk(const ConstexprString<32>& name) {
+            add_capped(fks, fk_count, name);
+        }
+
+        [[nodiscard]] constexpr auto within_limits() const -> bool {
+            return fk_count <= MAX_FKS;
+        }
     };
 
     // ========================================================================
@@ -218,7 +257,7 @@ export namespace storm::benchmark {
         WhereSpec                             where;
         static constexpr std::size_t          MAX_ORDER_BY = 2;
         std::array<OrderBySpec, MAX_ORDER_BY> order_by{};
-        std::size_t                           order_by_count = 0;
+        std::size_t                           order_by_count = 0; // counts past MAX_ORDER_BY (#843)
         GroupBySpec                           group_by;
         DistinctSpec                          distinct;
         LimitSpec                             limit;
@@ -237,6 +276,18 @@ export namespace storm::benchmark {
         ConstexprString<32> size_profile;
 
         consteval BenchmarkTest() = default;
+
+        constexpr void add_order_by(const OrderBySpec& entry) {
+            add_capped(order_by, order_by_count, entry);
+        }
+
+        // #843: false when a case listed more entries than a capped array holds. The
+        // parsers keep counting past a cap instead of dropping the extra entries
+        // silently; the consumer (QueryBuilder) rejects the case at compile time.
+        [[nodiscard]] constexpr auto within_limits() const -> bool {
+            return order_by_count <= MAX_ORDER_BY && group_by.within_limits() && distinct.within_limits() &&
+                   join.within_limits();
+        }
     };
 
     // `load_benchmark_tests()` lives in the storm_benchmark_parser module —

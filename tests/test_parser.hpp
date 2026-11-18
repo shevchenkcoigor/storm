@@ -402,12 +402,19 @@ namespace storm::test {
         return ob;
     }
 
+    // The next token is `c`. Skips whitespace first.
+    constexpr auto at_char(std::string_view j, std::size_t& p, char c) -> bool {
+        skip_ws(j, p);
+        return p < j.size() && j[p] == c;
+    }
+
     constexpr void parse_order_by_array(std::string_view j, std::size_t& p, BenchmarkTest& b) {
+        b.order_by_count = 0; // a repeated key replaces the first (#843)
         parse_array(j, p, [&](std::string_view jj, std::size_t& pp) {
-            if (b.order_by_count < BenchmarkTest::MAX_ORDER_BY)
-                b.order_by[b.order_by_count++] = parse_order_by_entry(jj, pp);
+            if (at_char(jj, pp, '{'))
+                b.add_order_by(parse_order_by_entry(jj, pp));
             else
-                skip_braced(jj, pp, '{', '}');
+                skip_value(jj, pp); // not an entry: skip it, or parse_array would never leave
         });
     }
 
@@ -427,13 +434,12 @@ namespace storm::test {
         return h;
     }
 
-    template <std::size_t MaxFields>
-    constexpr auto
-    parse_fields_array(std::string_view j, std::size_t& p, std::array<ConstexprString<32>, MaxFields>& fields) -> void {
-        std::size_t fi = 0;
+    // `add` receives every name; the spec decides what to keep (#843). An element that is not a
+    // string is skipped: parse_str does not advance past it, and parse_array would never leave.
+    template <typename AddFn> constexpr void parse_fields_array(std::string_view j, std::size_t& p, AddFn add) {
         parse_array(j, p, [&](std::string_view jj, std::size_t& pp) {
-            if (fi < MaxFields)
-                fields[fi++] = parse_str<32>(jj, pp);
+            if (at_char(jj, pp, '"'))
+                add(parse_str<32>(jj, pp));
             else
                 skip_value(jj, pp);
         });
@@ -443,9 +449,10 @@ namespace storm::test {
         GroupBySpec g;
         g.enabled = true;
         parse_object(j, p, [&](const char* ptr, JsonKeyRef kr, std::string_view jj, std::size_t& pp) {
-            if (jkey_eq(ptr, kr.start, kr.len, "fields"))
-                parse_fields_array(jj, pp, g.fields);
-            else if (jkey_eq(ptr, kr.start, kr.len, "having"))
+            if (jkey_eq(ptr, kr.start, kr.len, "fields")) {
+                g.declared_count = 0; // a repeated key replaces the first (#843)
+                parse_fields_array(jj, pp, [&](const ConstexprString<32>& s) { g.add_field(s); });
+            } else if (jkey_eq(ptr, kr.start, kr.len, "having"))
                 g.having = parse_having(jj, pp);
             else
                 skip_value(jj, pp);
@@ -457,9 +464,10 @@ namespace storm::test {
         DistinctSpec d;
         d.enabled = true;
         parse_object(j, p, [&](const char* ptr, JsonKeyRef kr, std::string_view jj, std::size_t& pp) {
-            if (jkey_eq(ptr, kr.start, kr.len, "fields"))
-                parse_fields_array(jj, pp, d.fields);
-            else
+            if (jkey_eq(ptr, kr.start, kr.len, "fields")) {
+                d.declared_count = 0; // a repeated key replaces the first (#843)
+                parse_fields_array(jj, pp, [&](const ConstexprString<32>& s) { d.add_field(s); });
+            } else
                 skip_value(jj, pp);
         });
         return d;
@@ -503,14 +511,10 @@ namespace storm::test {
                 jn.related = parse_str<32>(jj, pp);
             else if (jkey_eq(ptr, kr.start, kr.len, "fk"))
                 jn.fk = parse_str<32>(jj, pp);
-            else if (jkey_eq(ptr, kr.start, kr.len, "fks"))
-                parse_array(jj, pp, [&](std::string_view jjj, std::size_t& ppp) {
-                    if (jn.fk_count < JoinSpec::MAX_FKS)
-                        jn.fks[jn.fk_count++] = parse_str<32>(jjj, ppp);
-                    else
-                        skip_value(jjj, ppp);
-                });
-            else
+            else if (jkey_eq(ptr, kr.start, kr.len, "fks")) {
+                jn.fk_count = 0; // a repeated key replaces the first (#843)
+                parse_fields_array(jj, pp, [&](const ConstexprString<32>& s) { jn.add_fk(s); });
+            } else
                 skip_value(jj, pp);
         });
         return jn;
