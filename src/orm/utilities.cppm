@@ -147,6 +147,7 @@ export namespace storm::orm::utilities {
         std::array<char, N> data{};
         std::size_t         len = 0;
 
+        // LCOV_EXCL_START — constexpr-only methods: evaluated at compile time, no runtime code generated
         constexpr ConstexprString() = default;
 
         explicit constexpr ConstexprString(const char* str) {
@@ -159,7 +160,6 @@ export namespace storm::orm::utilities {
             data[len] = '\0';
         }
 
-        // LCOV_EXCL_START — constexpr-only methods: evaluated at compile time, no runtime code generated
         // Read access
         constexpr std::string_view view() const {
             return {data.data(), len};
