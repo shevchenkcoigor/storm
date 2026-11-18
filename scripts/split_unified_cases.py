@@ -12,11 +12,11 @@ Issue #561: the 247-case corpus compiled as a single TU took 53 s -- 89% of it
 the per-case template instantiation, linear at ~190 ms/case. Splitting the
 corpus across TUs lets those instantiations compile in parallel.
 
-The categories mirror the four dispatch families in UnifiedYamlBody::TestBody
-exactly (see tests/test_unified_yaml_body.h), so each TU instantiates only the
-runners its own cases need, and a failing suite name points at a coherent area.
-A query_type absent from the tables below is a corpus/dispatch mismatch and is
-a hard error -- silently bucketing it would hide a case that no runner handles.
+The categories group the runners listed in YAML_RUNNERS (tests/test_unified_yaml_body.h),
+so each TU instantiates only the runners its own cases need, and a failing suite
+name points at a coherent area. A query_type absent from the tables below is a
+corpus/runner mismatch and is a hard error -- silently bucketing it would hide a
+case that no runner handles. (The C++ side rejects it too: KnownYamlQueryType.)
 
 CATEGORIES below is mirrored by SPLIT_CATEGORIES in tests/CMakeLists.txt and by
 the set of tests/yaml/test_unified_yaml_*.cpp TUs. Changing one means changing
@@ -32,11 +32,11 @@ import sys
 
 import yaml  # PyYAML required
 
-# query_type -> category, mirroring UnifiedYamlTest::TestBody's dispatch:
-#   is_write_op()          -> dispatch_write_family()
-#   select/first/one       -> dispatch_select()
-#   is_grouped_op()        -> dispatch_grouped_family()
-#   everything else        -> dispatch_aggregate()
+# query_type -> category, grouping the YAML_RUNNERS rows by runner:
+#   InsertRunner/UpdateRunner/EraseRunner -> crud
+#   SelectRunner                          -> select
+#   ChainAggRunner/DistinctRunner/GroupByRunner -> grouped
+#   AggregateRunner                       -> aggregate
 WRITE_OPS = {"insert_one", "insert_batch", "update_batch", "erase_all", "erase_batch"}
 SELECT_OPS = {"select", "first", "one"}
 GROUPED_OPS = {
@@ -96,7 +96,7 @@ def validate_expected_sql(case: dict, category: str) -> None:
 
 
 def categorize(case: dict, index: int) -> str:
-    """Map one case to its category, mirroring the C++ dispatch families."""
+    """Map one case to its category (the runner group in YAML_RUNNERS)."""
     if not isinstance(case, dict):
         raise SystemExit(
             f"Error: corpus entry {index} is {type(case).__name__}, not a mapping -- "
@@ -113,8 +113,9 @@ def categorize(case: dict, index: int) -> str:
         return "aggregate"
     raise SystemExit(
         f"Error: case {case.get('name', '<unnamed>')!r} has unknown query_type "
-        f"{qt!r}. Add it to the tables in {pathlib.Path(__file__).name} and to "
-        f"the matching dispatch family in tests/test_unified_yaml_body.h."
+        f"{qt!r}. Add it to the tables in {pathlib.Path(__file__).name} and and "
+        f"add a row to YAML_RUNNERS in tests/test_unified_yaml_body.h unless a prefix row "
+        f"(group_) already covers it."
     )
 
 
@@ -149,7 +150,7 @@ def main() -> None:
 
     # A truncated, empty or all-comments YAML otherwise yields four empty JSONs,
     # four suites registering zero tests, and a green ctest that verifies nothing.
-    # Every category maps to a dispatch family that has cases today, so an empty
+    # Every category maps to runners that have cases today, so an empty
     # bucket means the corpus or the tables above are wrong, not that the corpus
     # legitimately shrank.
     empty = [name for name in CATEGORIES if not buckets[name]]

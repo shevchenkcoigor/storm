@@ -68,6 +68,46 @@ template <const auto &Tc>
     requires KnownYamlModel<Tc>
 using YamlModelOf = typename[:YAML_MODELS[yaml_model_index(Tc.bench.model.view())].type:];
 
+// YAML `query_type` -> runner (#837). An entry matches the exact name, or any name
+// starting with it when is_prefix (group_<func>). A query_type missing from the
+// table fails KnownYamlQueryType at compile time instead of running nothing.
+struct YamlRunner {
+    std::string_view query_type;
+    bool is_prefix;
+    std::meta::info runner;
+};
+inline constexpr std::array YAML_RUNNERS{
+    YamlRunner{.query_type = "select", .is_prefix = false, .runner = ^^SelectRunner},
+    YamlRunner{.query_type = "first", .is_prefix = false, .runner = ^^SelectRunner},
+    YamlRunner{.query_type = "one", .is_prefix = false, .runner = ^^SelectRunner},
+    YamlRunner{.query_type = "count", .is_prefix = false, .runner = ^^AggregateRunner},
+    YamlRunner{.query_type = "count_field", .is_prefix = false, .runner = ^^AggregateRunner},
+    YamlRunner{.query_type = "count_distinct", .is_prefix = false, .runner = ^^AggregateRunner},
+    YamlRunner{.query_type = "sum", .is_prefix = false, .runner = ^^AggregateRunner},
+    YamlRunner{.query_type = "avg", .is_prefix = false, .runner = ^^AggregateRunner},
+    YamlRunner{.query_type = "min", .is_prefix = false, .runner = ^^AggregateRunner},
+    YamlRunner{.query_type = "max", .is_prefix = false, .runner = ^^AggregateRunner},
+    YamlRunner{.query_type = "chain", .is_prefix = false, .runner = ^^ChainAggRunner},
+    YamlRunner{.query_type = "distinct", .is_prefix = false, .runner = ^^DistinctRunner},
+    YamlRunner{.query_type = "group_", .is_prefix = true, .runner = ^^GroupByRunner},
+    YamlRunner{.query_type = "insert_one", .is_prefix = false, .runner = ^^InsertRunner},
+    YamlRunner{.query_type = "insert_batch", .is_prefix = false, .runner = ^^InsertRunner},
+    YamlRunner{.query_type = "update_batch", .is_prefix = false, .runner = ^^UpdateRunner},
+    YamlRunner{.query_type = "erase_all", .is_prefix = false, .runner = ^^EraseRunner},
+    YamlRunner{.query_type = "erase_batch", .is_prefix = false, .runner = ^^EraseRunner},
+};
+
+consteval auto yaml_runner_index(std::string_view query_type) -> std::size_t {
+    for (std::size_t i = 0; i < YAML_RUNNERS.size(); ++i)
+        if (YAML_RUNNERS[i].is_prefix ? query_type.starts_with(YAML_RUNNERS[i].query_type)
+                                      : query_type == YAML_RUNNERS[i].query_type)
+            return i;
+    return YAML_RUNNERS.size();
+}
+
+template <const auto &Tc>
+concept KnownYamlQueryType = yaml_runner_index(Tc.query_type.view()) < YAML_RUNNERS.size();
+
 // Per-category fixture; Tag distinguishes the TUs -- see the ODR note above.
 template <typename Tag, typename ConnType>
 class UnifiedYamlFixture : public StormTestFixture<Person, ConnType, SimpleRecord, Message> {};
@@ -141,63 +181,21 @@ class UnifiedYamlBody : public UnifiedYamlFixture<Tag, ConnType> {
         }
     }
 
-    template <template <typename, typename> class Runner> auto dispatch() -> void {
-        Runner<YamlModelOf<tc>, ConnType> runner;
-        runner.template run<tc>();
-    }
-
-    auto dispatch_grouped_family() -> void {
-        if constexpr (tc.query_type == "chain") {
-            dispatch<ChainAggRunner>();
-        } else if constexpr (tc.query_type == "distinct") {
-            dispatch<DistinctRunner>();
-        } else {
-            dispatch<GroupByRunner>();
-        }
-    }
-
-    static consteval auto is_grouped_op() -> bool {
-        constexpr auto qt = tc.query_type.view();
-        return qt == "chain" || qt == "distinct" || qt.starts_with("group_");
-    }
-
-    auto dispatch_select_family() -> void {
-        if constexpr (tc.query_type == "select" || tc.query_type == "first" || tc.query_type == "one") {
-            dispatch<SelectRunner>();
-        } else if constexpr (is_grouped_op()) {
-            dispatch_grouped_family();
-        } else {
-            dispatch<AggregateRunner>();
-        }
-    }
-
-    auto dispatch_write_family() -> void {
-        if constexpr (tc.query_type == "insert_one" || tc.query_type == "insert_batch") {
-            dispatch<InsertRunner>();
-        } else if constexpr (tc.query_type == "update_batch") {
-            dispatch<UpdateRunner>();
-        } else {
-            static_assert(tc.query_type == "erase_all" || tc.query_type == "erase_batch",
-                          "unknown write query_type in YAML case");
-            dispatch<EraseRunner>();
-        }
-    }
-
-    static consteval auto is_write_op() -> bool {
-        constexpr auto qt = tc.query_type.view();
-        return qt == "insert_one" || qt == "insert_batch" || qt == "update_batch" || qt == "erase_all" ||
-               qt == "erase_batch";
+    // The runner for tc.query_type, spliced from YAML_RUNNERS; an unknown
+    // query_type fails KnownYamlQueryType at the call.
+    auto run_case() -> void
+        requires KnownYamlQueryType<tc>
+    {
+        constexpr auto runner = YAML_RUNNERS[yaml_runner_index(tc.query_type.view())].runner;
+        // Parenthesised so `template` is not read as an explicit-instantiation declaration.
+        (template[:runner:]<YamlModelOf<tc>, ConnType>::template run<tc>());
     }
 
   public:
     void TestBody() override {
         reset_tables();
         seed_dataset();
-        if constexpr (is_write_op()) {
-            dispatch_write_family();
-        } else {
-            dispatch_select_family();
-        }
+        run_case();
     }
 };
 
