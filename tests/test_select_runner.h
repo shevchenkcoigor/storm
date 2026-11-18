@@ -6,7 +6,7 @@
  *
  * Provides:
  * - dispatch_field<Model>(name) — via storm::orm::query_builder
- * - build_where_expr<FieldInfo>(op, value) — ORM expression builder
+ * - build_compare_expr<FieldInfo, op>(value) — YAML operator -> ORM expression (shared)
  * - QueryRunnerBase<Model, ConnType> — shared base with seed + WHERE/JOIN apply
  * - SelectRunner, AggregateRunner, ChainAggRunner, DistinctRunner, GroupByRunner
  *
@@ -29,7 +29,11 @@ using storm::meta::FieldRef;
 namespace storm::test {
 
 // Re-use the shared field dispatcher — no duplication with bench side.
+using storm::orm::query_builder::build_compare_expr;
+using storm::orm::query_builder::call_query_method;
 using storm::orm::query_builder::dispatch_field;
+using storm::orm::query_builder::field_or_null;
+using storm::orm::query_builder::member_function_named;
 
 // MIN/MAX/AVG results are std::optional<double> (#416). Over a non-empty set the
 // optional holds the value; over an empty (or all-NULL) set it is nullopt.
@@ -46,67 +50,6 @@ inline auto expect_opt_near(const std::optional<double> &actual, double expected
     } else {
         expect_opt_near(actual, expected);
     }
-}
-
-// ============================================================================
-// WHERE expression builder — dispatches on operator string at compile time
-// ============================================================================
-
-template <std::meta::info FieldInfo, typename ValueType>
-constexpr auto build_where_expr(std::string_view op, ValueType value) {
-    if constexpr (requires { FieldRef<FieldInfo>{} == value; }) {
-        if (op == "==")
-            return FieldRef<FieldInfo>{} == value;
-        if (op == "!=")
-            return FieldRef<FieldInfo>{} != value;
-        if (op == ">")
-            return FieldRef<FieldInfo>{} > value;
-        if (op == ">=")
-            return FieldRef<FieldInfo>{} >= value;
-        if (op == "<")
-            return FieldRef<FieldInfo>{} < value;
-        if (op == "<=")
-            return FieldRef<FieldInfo>{} <= value;
-    }
-    return FieldRef<FieldInfo>{} == value;
-}
-
-// Reflection of the ONE public member function template of class T named
-// `name`, or a null info when T has none or several (#834). Used to call a query
-// method chosen by a YAML string without a branch per method. Overloads are
-// rejected: a splice calls the reflected template directly, so with two
-// candidates overload resolution would be skipped and the first one picked.
-template <typename T> consteval auto member_function_named(std::string_view name) -> std::meta::info {
-    std::meta::info found;
-    std::size_t matches = 0;
-    for (std::meta::info m : std::meta::members_of(^^T, std::meta::access_context::unchecked()))
-        if (std::meta::is_function_template(m) && std::meta::is_public(m) && std::meta::has_identifier(m) &&
-            std::meta::identifier_of(m) == name) {
-            found = m;
-            ++matches;
-        }
-    return matches == 1 ? found : std::meta::info{};
-}
-
-// The member named by `field`, or a null info for an empty name (COUNT(*)).
-template <typename Model> consteval auto field_or_null(std::string_view field) -> std::meta::info {
-    return field.empty() ? std::meta::info{} : dispatch_field<Model>(field);
-}
-
-// Call q.Fn<FieldRef<Field>{}>(), or q.Fn<>() for a null Field (#834). The
-// query methods the YAML names (count/sum/avg/min/max/count_distinct) are all
-// selector-pack templates, so one splice serves every one of them.
-template <std::meta::info Fn, std::meta::info Field> auto call_query_method(auto &&q) {
-    static_assert(Fn != std::meta::info{}, "YAML names no single public member function template of the query type");
-    // Only COUNT has a no-field form (COUNT(*)). Every other aggregate's
-    // constraints accept an empty pack, which would emit e.g. SUM(*) and fail
-    // only at runtime, so a missing field is rejected here at compile time.
-    static_assert(Field != std::meta::info{} || std::meta::identifier_of(Fn) == "count",
-                  "YAML aggregate needs a field: only count may omit it");
-    if constexpr (Field == std::meta::info{})
-        return std::forward<decltype(q)>(q).template[:Fn:]<>();
-    else
-        return std::forward<decltype(q)>(q).template[:Fn:]<FieldRef<Field>{}>();
 }
 
 // FK resolver for test models (Message::sender → Person).
@@ -130,9 +73,9 @@ template <int N, const auto &Tc, typename Model> auto build_where_node_expr() {
     if constexpr (Tc.where_nodes[N].left < 0) {
         constexpr auto fi = dispatch_field<Model>(Tc.where_nodes[N].field.view());
         if constexpr (Tc.where_nodes[N].value_dbl != 0.0)
-            return build_where_expr<fi>(Tc.where_nodes[N].op.view(), Tc.where_nodes[N].value_dbl);
+            return build_compare_expr<fi, Tc.where_nodes[N].op>(Tc.where_nodes[N].value_dbl);
         else
-            return build_where_expr<fi>(Tc.where_nodes[N].op.view(), Tc.where_nodes[N].value_int);
+            return build_compare_expr<fi, Tc.where_nodes[N].op>(Tc.where_nodes[N].value_int);
     } else if constexpr (Tc.where_nodes[N].op == "AND") {
         return build_where_node_expr<Tc.where_nodes[N].left, Tc, Model>() &&
                build_where_node_expr<Tc.where_nodes[N].right, Tc, Model>();
@@ -255,18 +198,13 @@ template <typename Model, typename ConnType> class SelectRunner : public SelectQ
         expect_member_eq<field.value>(row.[:member:]);
     }
 
-    template <const auto &Tc, typename Row, std::size_t... Is>
-    static auto verify_first_fields(const Row &row, std::index_sequence<Is...>) -> void {
-        (verify_first_field<Tc, Is>(row), ...);
-    }
-
   public:
     // #834: walks the case's `expected.first` keys and splices each named member,
     // replacing one hand-written `has_<field>` branch per model field.
     template <const auto &Tc, typename Row> static auto verify_first_row(const Row &row) -> void {
         constexpr auto &spec = Tc.expected.first;
         static_assert(spec.count <= spec.MAX_FIELDS, "expected.first has more keys than FirstRowSpec::MAX_FIELDS");
-        verify_first_fields<Tc>(row, std::make_index_sequence<spec.count>{});
+        template for (constexpr std::size_t I : std::views::iota(0uz, spec.count)) verify_first_field<Tc, I>(row);
     }
 
     template <const auto &Tc> auto run() -> void { // NOSONAR(S3776) -- inherent constexpr dispatch
@@ -372,9 +310,10 @@ template <typename Model, typename ConnType> class ChainAggRunner : public Selec
             EXPECT_EQ(actual, static_cast<std::int64_t>(expected)) << "chain aggregate " << I;
     }
 
-    template <const auto &Tc, std::size_t... Is>
-    static auto check_values(const auto &values, std::index_sequence<Is...>) -> void {
-        (check_value<Tc, Is>(std::get<Is>(values)), ...);
+    // I must stay a constant: it indexes Tc.aggregations[I] and the tuple.
+    template <const auto &Tc> static auto check_values(const auto &values) -> void {
+        template for (constexpr std::size_t I : std::views::iota(0uz, Tc.chain_len))
+            check_value<Tc, I>(std::get<I>(values));
     }
 
   public:
@@ -384,7 +323,7 @@ template <typename Model, typename ConnType> class ChainAggRunner : public Selec
         this->template apply_where_and_join<Tc>();
         auto r = build_chain<Tc>(this->qs_).execute();
         ASSERT_TRUE(r.has_value()) << r.error().message();
-        check_values<Tc>(r.value(), std::make_index_sequence<Tc.chain_len>{});
+        check_values<Tc>(r.value());
     }
 };
 
@@ -394,20 +333,13 @@ template <typename Model, typename ConnType> class ChainAggRunner : public Selec
 template <typename Model, typename ConnType> class DistinctRunner : public SelectQueryRunnerBase<Model, ConnType> {
   public:
     template <const auto &Tc> auto run() -> void {
+        static_assert(Tc.bench.distinct.field_count() >= 1, "a distinct case needs at least one field");
         this->template apply_where_and_join<Tc>();
-        constexpr std::size_t fc = Tc.bench.distinct.field_count();
-        if constexpr (fc >= 2) {
-            constexpr auto fi1 = dispatch_field<Model>(Tc.bench.distinct.fields[0].view());
-            constexpr auto fi2 = dispatch_field<Model>(Tc.bench.distinct.fields[1].view());
-            auto r = this->qs_.template distinct<FieldRef<fi1>{}, FieldRef<fi2>{}>().execute();
-            ASSERT_TRUE(r.has_value()) << r.error().message();
-            EXPECT_EQ(static_cast<int>(r.value().size()), Tc.expected.count);
-        } else {
-            constexpr auto fi = dispatch_field<Model>(Tc.bench.distinct.fields[0].view());
-            auto r = this->qs_.template distinct<FieldRef<fi>{}>().execute();
-            ASSERT_TRUE(r.has_value()) << r.error().message();
-            EXPECT_EQ(static_cast<int>(r.value().size()), Tc.expected.count);
-        }
+        // One path for any number of fields: the shared builder expands the field pack.
+        using QB = storm::orm::query_builder::QueryBuilder<Model, Tc.bench, no_op_fk, ConnType>;
+        auto r = QB::build_distinct_stmt(this->qs_).execute();
+        ASSERT_TRUE(r.has_value()) << r.error().message();
+        EXPECT_EQ(static_cast<int>(r.value().size()), Tc.expected.count);
     }
 };
 
@@ -428,7 +360,7 @@ template <typename Model, typename ConnType> class GroupByRunner : public Select
         constexpr auto &having = Tc.bench.group_by.having;
         if constexpr (having.enabled) {
             constexpr auto fi = dispatch_field<Model>(having.field.view());
-            return std::forward<decltype(g)>(g).having(build_where_expr<fi>(having.op.view(), having.value.as_int));
+            return std::forward<decltype(g)>(g).having(build_compare_expr<fi, having.op>(having.value.as_int));
         } else {
             return std::forward<decltype(g)>(g);
         }

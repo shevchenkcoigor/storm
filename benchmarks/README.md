@@ -421,6 +421,13 @@ Each test's operation dispatch (WHERE / JOIN / aggregate / INSERT / ...) is stil
 What changed vs. the pre-#235 system is the *outer* layer: Google Benchmark now owns filtering,
 repetition, timing, and statistical aggregation instead of a custom runner.
 
+The names the YAML uses are resolved by reflection in `shared/query_builder.hpp` rather than by a branch
+per name (#835): an aggregate `func` is the query method's own name (`count`, `sum`, `count_distinct`, …,
+gated by `ValidAggregate`), a WHERE operator is the C++ operator's symbol or the member name (`LIKE` →
+`like`), and `order_by.collate` is a `Collate` enumerator. A wrong value count for an operator or an
+unknown collation is a compile error. See
+[TESTING.md](../docs/internals/testing/TESTING.md#how-a-yaml-case-reaches-the-query-api-834).
+
 ### 3. Field Dispatch Using Reflection
 
 Field names in YAML are mapped to struct members at compile time using C++26 reflection:

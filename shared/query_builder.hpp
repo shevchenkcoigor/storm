@@ -38,6 +38,138 @@ namespace storm::orm::query_builder {
     }
 
     // ========================================================================
+    // By-name member lookup — shared by the YAML test runners and the benchmark
+    // ========================================================================
+
+    // Reflection of the ONE public member function template of class T named
+    // `name`, or a null info when T has none or several (#834). Used to call a query
+    // method chosen by a YAML string without a branch per method. Overloads are
+    // rejected: a splice calls the reflected template directly, so with two
+    // candidates overload resolution would be skipped and the first one picked.
+    template <typename T> consteval auto member_function_named(std::string_view name) -> std::meta::info {
+        std::meta::info found;
+        std::size_t     matches = 0;
+        for (std::meta::info m : std::meta::members_of(^^T, std::meta::access_context::unchecked()))
+            if (std::meta::is_function_template(m) && std::meta::is_public(m) && std::meta::has_identifier(m) &&
+                std::meta::identifier_of(m) == name) {
+                found = m;
+                ++matches;
+            }
+        return matches == 1 ? found : std::meta::info{};
+    }
+
+    // The member named by `field`, or a null info for an empty name (COUNT(*)).
+    template <typename Model> consteval auto field_or_null(std::string_view field) -> std::meta::info {
+        return field.empty() ? std::meta::info{} : dispatch_field<Model>(field);
+    }
+
+    // Call q.Fn<FieldRef<Field>{}>(), or q.Fn<>() for a null Field (#834). The
+    // query methods the YAML names (count/sum/avg/min/max/count_distinct) are all
+    // selector-pack templates, so one splice serves every one of them.
+    template <std::meta::info Fn, std::meta::info Field> auto call_query_method(auto&& q) {
+        static_assert(
+                Fn != std::meta::info{}, "YAML names no single public member function template of the query type"
+        );
+        // Only COUNT has a no-field form (COUNT(*)). Every other aggregate's
+        // constraints accept an empty pack, which would emit e.g. SUM(*) and fail
+        // only at runtime, so a missing field is rejected here at compile time.
+        static_assert(
+                Field != std::meta::info{} || std::meta::identifier_of(Fn) == "count",
+                "YAML aggregate needs a field: only count may omit it"
+        );
+        if constexpr (Field == std::meta::info{})
+            return std::forward<decltype(q)>(q).template[:Fn:]<>();
+        else
+            return std::forward<decltype(q)>(q).template[:Fn:]<storm::meta::FieldRef<Field>{}>();
+    }
+
+    // ========================================================================
+    // WHERE operator resolution by name (#835)
+    //
+    // A symbolic YAML operator (> >= < <= == !=) is the C++ operator's own symbol,
+    // found via operator_of/symbol_of. A word operator maps to a member name by
+    // lower-casing and turning spaces into underscores: LIKE -> like,
+    // IS NOT NULL -> is_not_null. No per-operator branch.
+    // ========================================================================
+    consteval auto ascii_lower(char c) -> char {
+        return c >= 'A' && c <= 'Z' ? static_cast<char>(c - 'A' + 'a') : c;
+    }
+
+    consteval auto is_symbolic_operator(std::string_view op) -> bool {
+        return !op.empty() && !(op.front() >= 'A' && op.front() <= 'Z');
+    }
+
+    consteval auto word_operator_matches(std::string_view identifier, std::string_view op) -> bool {
+        if (identifier.size() != op.size())
+            return false;
+        for (std::size_t i = 0; i < op.size(); ++i) {
+            const char c        = op[i];
+            const char expected = c == ' ' ? '_' : ascii_lower(c);
+            if (identifier[i] != expected)
+                return false;
+        }
+        return true;
+    }
+
+    // Does member m of a field proxy implement `op`? Symbolic operators are matched
+    // on operator templates only: the non-template nullopt_t overloads of ==/!= are
+    // a different spelling (`== std::nullopt`) of IS NULL, not a value comparison.
+    consteval auto operator_member_matches(std::meta::info m, std::string_view op) -> bool {
+        if (!std::meta::is_public(m))
+            return false;
+        if (is_symbolic_operator(op))
+            return std::meta::is_operator_function_template(m) && std::meta::symbol_of(std::meta::operator_of(m)) == op;
+        return (std::meta::is_function(m) || std::meta::is_function_template(m)) && std::meta::has_identifier(m) &&
+               word_operator_matches(std::meta::identifier_of(m), op);
+    }
+
+    // The ONE callable implementing `op` on T (or on a base of T) for argument types
+    // Ts, or a null info. IN is the only variadic operator and takes every value
+    // type; every other operator template has a single type parameter (BETWEEN's two
+    // values share it).
+    //
+    // A template is judged by its SPECIALIZATION for Ts, because a name can carry
+    // several templates: where::Field declares a real `operator==` and a `= delete`d
+    // twin that only a composite-FK member satisfies. The reflection of a template
+    // does not say it is deleted (is_deleted is false); the specialization does, and
+    // an unsatisfied constraint makes can_substitute false. Both are skipped.
+    template <typename T, typename... Ts> consteval auto operator_callable(std::string_view op) -> std::meta::info {
+        std::vector<std::meta::info> args{^^Ts...};
+        args.resize(op == "IN" ? sizeof...(Ts) : std::min<std::size_t>(1, sizeof...(Ts)));
+        std::meta::info found;
+        std::size_t     matches = 0;
+        const auto      scan    = [&](std::meta::info cls) consteval {
+            for (std::meta::info m : std::meta::members_of(cls, std::meta::access_context::unchecked())) {
+                if (!operator_member_matches(m, op))
+                    continue;
+                std::meta::info callable = m;
+                if (std::meta::is_function_template(m)) {
+                    if (!std::meta::can_substitute(m, args))
+                        continue;
+                    callable = std::meta::substitute(m, args);
+                }
+                if (std::meta::is_deleted(callable))
+                    continue;
+                found = callable;
+                ++matches;
+            }
+        };
+        scan(^^T);
+        for (std::meta::info base : std::meta::bases_of(^^T, std::meta::access_context::unchecked()))
+            scan(std::meta::type_of(base));
+        return matches == 1 ? found : std::meta::info{};
+    }
+
+    template <typename FE, auto op_str, typename... Ts> consteval auto resolve_operator() -> std::meta::info {
+        constexpr std::meta::info callable = operator_callable<FE, Ts...>(op_str.view());
+        static_assert(
+                callable != std::meta::info{},
+                "YAML operator names no single callable of the field proxy for these value types"
+        );
+        return callable;
+    }
+
+    // ========================================================================
     // Operator/aggregate validation concepts
     // ========================================================================
     template <auto op_str, typename FieldType>
@@ -45,7 +177,7 @@ namespace storm::orm::query_builder {
         constexpr std::string_view op = op_str.view();
         // Ordering/BETWEEN on a UUID column is rejected here too (#622), matching
         // where.cppm's OrderableOperand — otherwise rejection lands deep inside
-        // resolve_comparison_op's reflection splice instead of at this named gate.
+        // resolve_operator's reflection lookup instead of at this named gate.
         constexpr bool is_uuid = std::is_same_v<orm::utilities::optional_inner_type_t<FieldType>, orm::utilities::UUID>;
         if (op == "==" || op == "!=" || op == "LIKE" || op == "IN") {
             return true;
@@ -66,6 +198,43 @@ namespace storm::orm::query_builder {
                func == "max";
     }();
 
+    // Value-count shape per operator (#835): a comparison and LIKE take exactly one
+    // value, BETWEEN two, IN at least one, IS [NOT] NULL none. Before this check a
+    // `values: []` LIKE read values[0] and compiled to LIKE '' (matches nothing).
+    template <auto op_str, std::size_t count>
+    concept ValidValueCount = []() consteval {
+        constexpr std::string_view op = op_str.view();
+        if (op == "BETWEEN")
+            return count == 2;
+        if (op == "IN")
+            return count >= 1;
+        if (op == "IS NULL" || op == "IS NOT NULL")
+            return count == 0;
+        return count == 1;
+    }();
+
+    consteval auto iequals(std::string_view a, std::string_view b) -> bool {
+        if (a.size() != b.size())
+            return false;
+        for (std::size_t i = 0; i < a.size(); ++i)
+            if (ascii_lower(a[i]) != ascii_lower(b[i]))
+                return false;
+        return true;
+    }
+
+    // The Collate enumerator named `name` (case-insensitive), or a null info.
+    consteval auto find_collate(std::string_view name) -> std::meta::info {
+        for (std::meta::info e : std::meta::enumerators_of(^^storm::orm::utilities::Collate))
+            if (e != std::meta::enumerators_of(^^storm::orm::utilities::Collate).front() &&
+                iequals(std::meta::identifier_of(e), name))
+                return e;
+        return std::meta::info{};
+    }
+
+    // An unknown collation is a compile error rather than a silent NoCase.
+    template <auto collate_str>
+    concept ValidCollate = collate_str.view().empty() || find_collate(collate_str.view()) != std::meta::info{};
+
     // Extract numeric value from any TypedValue-like NTTP (duck-typed on Kind/as_double/as_int).
     template <auto tv> consteval auto spec_numeric_value() {
         if constexpr (tv.kind == std::remove_cvref_t<decltype(tv)>::Kind::Double) {
@@ -73,6 +242,20 @@ namespace storm::orm::query_builder {
         } else {
             return tv.as_int;
         }
+    }
+
+    // The WHERE/HAVING condition `FieldRef<fi> <op> vs...` for a YAML operator.
+    // Shared by QueryBuilder and the test runners' where-tree builder, so the
+    // operator-name mapping exists once (#835).
+    template <auto fi, auto op_str, typename... Ts>
+        requires ValidOperator<op_str, typename storm::meta::FieldRef<fi>::FieldType> &&
+                 ValidValueCount<op_str, sizeof...(Ts)>
+    auto build_compare_expr(Ts&&... vs) {
+        constexpr auto method = resolve_operator<storm::meta::FieldRef<fi>, op_str, std::remove_cvref_t<Ts>...>();
+        // The operator templates are instantiated for the decayed type, so their
+        // forwarding parameter is an rvalue reference: pass a copy of each value, which
+        // also lets a caller hand over a const lvalue.
+        return (storm::meta::FieldRef<fi>{}.[:method:](std::remove_cvref_t<Ts>(vs)...));
     }
 
     // ========================================================================
@@ -87,83 +270,6 @@ namespace storm::orm::query_builder {
     // ========================================================================
     template <typename Model, auto spec, auto fk_resolver, typename ConnType = storm::db::sqlite::Connection>
     class QueryBuilder {
-        // ----------------------------------------------------------------
-        // Operator dispatch — split into 3 helpers to stay under CCN limit
-        // ----------------------------------------------------------------
-        template <typename FE, auto op_str, typename... Ts>
-        static consteval auto resolve_comparison_op() -> std::meta::info {
-            constexpr std::string_view op = op_str.view();
-            if constexpr (op == ">") {
-                return ^^FE::template operator><Ts...>;
-            }
-            if constexpr (op == ">=") {
-                return ^^FE::template operator>= <Ts...>;
-            }
-            if constexpr (op == "<") {
-                return ^^FE::template operator< <Ts...>;
-            }
-            if constexpr (op == "<=") {
-                return ^^FE::template operator<= <Ts...>;
-            }
-            if constexpr (op == "==") {
-                return ^^FE::template operator== <Ts...>;
-            }
-            if constexpr (op == "!=") {
-                return ^^FE::template operator!= <Ts...>;
-            }
-            std::unreachable();
-        }
-
-        template <typename FE, auto op_str, typename... Ts>
-        static consteval auto resolve_range_op() -> std::meta::info {
-            constexpr std::string_view op = op_str.view();
-            if constexpr (op == "LIKE") {
-                return ^^FE::like;
-            }
-            if constexpr (op == "BETWEEN") {
-                using V = std::tuple_element_t<0, std::tuple<Ts..., void>>;
-                return ^^FE::template between<V>;
-            }
-            if constexpr (op == "IN") {
-                return ^^FE::template in<Ts...>;
-            }
-            std::unreachable();
-        }
-
-        template <typename FE, typename FieldType, auto op_str>
-        static consteval auto resolve_null_op() -> std::meta::info {
-            constexpr std::string_view op = op_str.view();
-            if constexpr (op == "IS NULL" && orm::where::NullableField<FieldType>) {
-                return ^^FE::is_null;
-            }
-            if constexpr (op == "IS NOT NULL" && orm::where::NullableField<FieldType>) {
-                return ^^FE::is_not_null;
-            }
-            std::unreachable();
-        }
-
-        template <auto fi, auto op_str, typename... Ts>
-            requires ValidOperator<op_str, typename storm::meta::FieldRef<fi>::FieldType>
-        static consteval auto resolve_operator() -> std::meta::info {
-            using FE                      = storm::meta::FieldRef<fi>;
-            using FieldType               = typename FE::FieldType;
-            constexpr std::string_view op = op_str.view();
-
-            if constexpr (op == ">" || op == ">=" || op == "<" || op == "<=" || op == "==" || op == "!=")
-                return resolve_comparison_op<FE, op_str, Ts...>();
-            else if constexpr (op == "LIKE" || op == "BETWEEN" || op == "IN")
-                return resolve_range_op<FE, op_str, Ts...>();
-            else
-                return resolve_null_op<FE, FieldType, op_str>();
-        }
-
-        template <auto fi, auto op_str, typename... Ts>
-            requires ValidOperator<op_str, typename storm::meta::FieldRef<fi>::FieldType>
-        static auto build_compare_expr(Ts&&... vs) {
-            constexpr auto method = resolve_operator<fi, op_str, std::remove_cvref_t<Ts>...>();
-            return (storm::meta::FieldRef<fi>{}.[:method:](std::forward<Ts>(vs)...));
-        }
-
         // ----------------------------------------------------------------
         // typed_value_as
         // ----------------------------------------------------------------
@@ -251,11 +357,7 @@ namespace storm::orm::query_builder {
         // ORDER BY
         // ----------------------------------------------------------------
         static consteval auto parse_collate(std::string_view s) -> Collate {
-            if (s == "BINARY")
-                return Collate::Binary;
-            if (s == "RTRIM")
-                return Collate::RTrim;
-            return Collate::NoCase;
+            return std::meta::extract<Collate>(find_collate(s));
         }
 
         static consteval auto enabled_order_by_count() -> std::size_t {
@@ -266,8 +368,11 @@ namespace storm::orm::query_builder {
             return n;
         }
 
-        template <std::size_t I> static auto apply_order_by_impl(auto qs) {
-            constexpr std::size_t MAX_OB = std::remove_cvref_t<decltype(spec)>::MAX_ORDER_BY;
+        static constexpr std::size_t MAX_OB = std::remove_cvref_t<decltype(spec)>::MAX_ORDER_BY;
+
+        template <std::size_t I>
+            requires(I >= MAX_OB || !spec.order_by[I].enabled || ValidCollate<spec.order_by[I].collate>)
+        static auto apply_order_by_impl(auto qs) {
             if constexpr (I >= MAX_OB) {
                 return qs;
             } else if constexpr (!spec.order_by[I].enabled) {
@@ -311,41 +416,23 @@ namespace storm::orm::query_builder {
         // ----------------------------------------------------------------
         // Aggregate / GROUP BY / DISTINCT / SET OP
         // ----------------------------------------------------------------
+        // The YAML `func` IS the member name (count/count_distinct/sum/avg/min/max),
+        // resolved by reflection; ValidAggregate stays as the allow-list so a YAML
+        // string can only reach those members, not any same-named one. A case with
+        // no aggregate field is COUNT(*).
         template <typename Stmt, bool HasField = !spec.aggregate.field.empty()>
             requires(!HasField) || ValidAggregate<spec.aggregate.func>
         static consteval auto resolve_aggregate() -> std::meta::info {
-            if constexpr (!HasField) {
-                return ^^Stmt::template count<>;
-            } else {
-                static_assert(has_field<Model>(spec.aggregate.field.view()), "aggregate field not found on model");
-                constexpr std::string_view func = spec.aggregate.func.view();
-                constexpr auto             fi   = selector_for<dispatch_field<Model>(spec.aggregate.field.view())>();
-                if (func == "count")
-                    return ^^Stmt::template count<fi>;
-                if (func == "count_distinct")
-                    return ^^Stmt::template count_distinct<fi>;
-                if (func == "sum")
-                    return ^^Stmt::template sum<fi>;
-                if (func == "avg")
-                    return ^^Stmt::template avg<fi>;
-                if (func == "min")
-                    return ^^Stmt::template min<fi>;
-                if (func == "max")
-                    return ^^Stmt::template max<fi>;
-                std::unreachable();
-            }
+            return member_function_named<std::remove_cvref_t<Stmt>>(HasField ? spec.aggregate.func.view() : "count");
         }
 
         template <typename Stmt> static auto apply_aggregate(Stmt& stmt) {
+            static_assert(
+                    spec.aggregate.field.empty() || has_field<Model>(spec.aggregate.field.view()),
+                    "aggregate field not found on model"
+            );
             constexpr auto method = resolve_aggregate<Stmt>();
-            return stmt.[:method:]();
-        }
-
-        static auto build_distinct_stmt(auto& qs) {
-            return [&]<std::size_t... Is>(std::index_sequence<Is...>) {
-                return qs
-                        .template distinct<selector_for<dispatch_field<Model>(spec.distinct.fields[Is].view())>()...>();
-            }(std::make_index_sequence<spec.distinct.field_count()>{});
+            return call_query_method<method, field_or_null<Model>(spec.aggregate.field.view())>(stmt);
         }
 
         static auto build_group_by_query(auto& qs) {
@@ -433,6 +520,13 @@ namespace storm::orm::query_builder {
         }
 
       public:
+        static auto build_distinct_stmt(auto& qs) {
+            return [&]<std::size_t... Is>(std::index_sequence<Is...>) {
+                return qs
+                        .template distinct<selector_for<dispatch_field<Model>(spec.distinct.fields[Is].view())>()...>();
+            }(std::make_index_sequence<spec.distinct.field_count()>{});
+        }
+
         // WhereModel defaults to Model. Pass a related model type for JOIN tests
         // where WHERE conditions live on the joined table rather than Model.
         template <typename WhereModel = Model> static auto build_qs() -> QuerySet<Model, ConnType, true> {
