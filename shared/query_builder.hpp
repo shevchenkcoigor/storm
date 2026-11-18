@@ -199,7 +199,7 @@ namespace storm::orm::query_builder {
     }();
 
     // Value-count shape per operator (#835): a comparison and LIKE take exactly one
-    // value, BETWEEN two, IN at least one, IS [NOT] NULL none. Before this check a
+    // value, BETWEEN two, IN any number (empty is "1 = 0"), IS [NOT] NULL none. Before this check a
     // `values: []` LIKE read values[0] and compiled to LIKE '' (matches nothing).
     template <auto op_str, std::size_t count>
     concept ValidValueCount = []() consteval {
@@ -207,7 +207,7 @@ namespace storm::orm::query_builder {
         if (op == "BETWEEN")
             return count == 2;
         if (op == "IN")
-            return count >= 1;
+            return true;
         if (op == "IS NULL" || op == "IS NOT NULL")
             return count == 0;
         return count == 1;

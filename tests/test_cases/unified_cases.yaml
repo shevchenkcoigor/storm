@@ -2043,6 +2043,18 @@
       - 35
   expected:
     count: 5
+# An empty IN is valid: the ORM emits "1 = 0" (always false), so no row matches.
+- name: where_age_in_empty_list
+  model: person
+  query_type: select
+  dataset: main
+  where:
+    conditions:
+    - field: age
+      op: IN
+      values: []
+  expected:
+    count: 0
 - name: where_age_gt_28_and_active
   model: person
   query_type: select

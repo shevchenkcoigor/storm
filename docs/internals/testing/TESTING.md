@@ -220,7 +220,7 @@ aggregate or field. Names in the YAML are resolved by reflection at compile time
   unsatisfied constraints and deleted ones are skipped, and exactly one must remain. The argument *shape*
   (one string / two values / a pack / none) stays explicit in `build_condition_expr`, because that is behaviour.
 - **Value counts** are checked at compile time per operator, in `build_compare_expr` so every caller is covered (`ValidValueCount`): a comparison and `LIKE` take one
-  value, `BETWEEN` two, `IN` at least one, `IS [NOT] NULL` none. `values: []` on a `LIKE` used to read
+  value, `BETWEEN` two, `IN` any number (an empty list is valid and matches no row, `1 = 0`), `IS [NOT] NULL` none. `values: []` on a `LIKE` used to read
   `values[0]` and compile to `LIKE ''`.
 - **`order_by[].collate`** is an enumerator name of `Collate` (other than `None`) matched case-insensitively (`NOCASE` → `NoCase`);
   an unknown name is a compile error (`ValidCollate`) instead of falling back to `NoCase`.
