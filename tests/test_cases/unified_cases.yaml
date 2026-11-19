@@ -2116,8 +2116,9 @@
   where:
     conditions:
     - field: score
-      op: IS NULL
-      values: []
+      op: ==
+      values:
+      - null
   expected:
     count: 10
 - name: where_score_is_not_null
@@ -2127,8 +2128,9 @@
   where:
     conditions:
     - field: score
-      op: IS NOT NULL
-      values: []
+      op: '!='
+      values:
+      - null
   expected:
     count: 15
 - name: where_nickname_is_null
@@ -2138,8 +2140,9 @@
   where:
     conditions:
     - field: nickname
-      op: IS NULL
-      values: []
+      op: ==
+      values:
+      - null
   expected:
     count: 14
 - name: where_nickname_is_not_null
@@ -2149,8 +2152,9 @@
   where:
     conditions:
     - field: nickname
-      op: IS NOT NULL
-      values: []
+      op: '!='
+      values:
+      - null
   expected:
     count: 11
 - name: count_where_score_is_null
@@ -2160,8 +2164,9 @@
   where:
     conditions:
     - field: score
-      op: IS NULL
-      values: []
+      op: ==
+      values:
+      - null
   aggregate:
     func: count
     field: ''
@@ -2175,8 +2180,9 @@
   where:
     conditions:
     - field: score
-      op: IS NOT NULL
-      values: []
+      op: '!='
+      values:
+      - null
   aggregate:
     func: count
     field: ''
@@ -3558,3 +3564,302 @@
     count: 1
     first:
       years_experience: 15
+# ---------------------------------------------------------------------------------------------
+# Typed values and per-dialect SQL (#844). Dataset `extended` is model ExtendedTypes, inserted in
+# this order (every other column keeps its default):
+#   alpha  big_num  5000000000  opt_double NULL  color Red    opt_color NULL   date 2024-01-15
+#          datetime 2024-01-15T10:30:00  uuid 550e8400-e29b-41d4-a716-446655440000  raw_data DEADBEEF
+#   beta   big_num -5000000000  opt_double 1.5   color Green  opt_color Blue   date 2024-06-30
+#          datetime 2024-06-30T23:59:59  uuid 6ba7b810-9dad-11d1-80b4-00c04fd430c8  raw_data 00FF
+#   gamma  big_num  42          opt_double 2.5   color Blue   opt_color Green  date 2023-12-31
+#          datetime 2023-12-31T00:00:00  uuid 123e4567-e89b-12d3-a456-426614174000  raw_data 0102
+# A value is read in its FIELD's type: UUID / date / time / enumerator name / blob (hex) are strings.
+# ---------------------------------------------------------------------------------------------
+- name: typed_int64_where_eq
+  model: extended
+  query_type: select
+  dataset: extended
+  where:
+    conditions:
+    - field: big_num
+      op: ==
+      values:
+      - 5000000000
+  order_by:
+  - field: label
+    direction: ASC
+  expected:
+    count: 1
+    first:
+      label: alpha
+      big_num: 5000000000
+- name: typed_int64_where_between
+  model: extended
+  query_type: select
+  dataset: extended
+  where:
+    conditions:
+    - field: big_num
+      op: BETWEEN
+      values:
+      - -5000000000
+      - 100
+  order_by:
+  - field: label
+    direction: ASC
+  expected:
+    count: 2
+    first:
+      label: beta
+      big_num: -5000000000
+- name: typed_int64_where_in
+  model: extended
+  query_type: select
+  dataset: extended
+  where:
+    conditions:
+    - field: big_num
+      op: IN
+      values:
+      - 5000000000
+      - 42
+  order_by:
+  - field: label
+    direction: ASC
+  expected:
+    count: 2
+    first:
+      label: alpha
+- name: typed_null_where_eq
+  model: extended
+  query_type: select
+  dataset: extended
+  where:
+    conditions:
+    - field: opt_double
+      op: ==
+      values:
+      - null
+  order_by:
+  - field: label
+    direction: ASC
+  expected:
+    count: 1
+    first:
+      label: alpha
+      opt_double: null
+- name: typed_null_where_ne
+  model: extended
+  query_type: select
+  dataset: extended
+  where:
+    conditions:
+    - field: opt_double
+      op: '!='
+      values:
+      - null
+  order_by:
+  - field: label
+    direction: ASC
+  expected:
+    count: 2
+    first:
+      label: beta
+      opt_double: 1.5
+- name: typed_null_where_eq_optional_enum
+  model: extended
+  query_type: select
+  dataset: extended
+  where:
+    conditions:
+    - field: opt_color
+      op: ==
+      values:
+      - null
+  order_by:
+  - field: label
+    direction: ASC
+  expected:
+    count: 1
+    first:
+      label: alpha
+      opt_color: null
+- name: typed_uuid_where_eq
+  model: extended
+  query_type: select
+  dataset: extended
+  where:
+    conditions:
+    - field: uuid_field
+      op: ==
+      values:
+      - '6ba7b810-9dad-11d1-80b4-00c04fd430c8'
+  order_by:
+  - field: label
+    direction: ASC
+  expected:
+    count: 1
+    first:
+      label: beta
+      uuid_field: '6ba7b810-9dad-11d1-80b4-00c04fd430c8'
+- name: typed_date_where_eq
+  model: extended
+  query_type: select
+  dataset: extended
+  where:
+    conditions:
+    - field: date_field
+      op: ==
+      values:
+      - '2024-01-15'
+  order_by:
+  - field: label
+    direction: ASC
+  expected:
+    count: 1
+    first:
+      label: alpha
+      date_field: '2024-01-15'
+- name: typed_date_where_between
+  model: extended
+  query_type: select
+  dataset: extended
+  where:
+    conditions:
+    - field: date_field
+      op: BETWEEN
+      values:
+      - '2024-01-01'
+      - '2024-12-31'
+  order_by:
+  - field: label
+    direction: ASC
+  expected:
+    count: 2
+    first:
+      label: alpha
+      date_field: '2024-01-15'
+- name: typed_datetime_where_gt
+  model: extended
+  query_type: select
+  dataset: extended
+  where:
+    conditions:
+    - field: datetime_field
+      op: '>'
+      values:
+      - '2024-01-15T10:30:00'
+  order_by:
+  - field: label
+    direction: ASC
+  expected:
+    count: 1
+    first:
+      label: beta
+      datetime_field: '2024-06-30T23:59:59'
+- name: typed_enum_where_eq
+  model: extended
+  query_type: select
+  dataset: extended
+  where:
+    conditions:
+    - field: color
+      op: ==
+      values:
+      - Green
+  order_by:
+  - field: label
+    direction: ASC
+  expected:
+    count: 1
+    first:
+      label: beta
+      color: Green
+- name: typed_enum_where_in
+  model: extended
+  query_type: select
+  dataset: extended
+  where:
+    conditions:
+    - field: color
+      op: IN
+      values:
+      - Red
+      - Blue
+  order_by:
+  - field: label
+    direction: ASC
+  expected:
+    count: 2
+    first:
+      label: alpha
+      color: Red
+- name: typed_optional_enum_where_eq
+  model: extended
+  query_type: select
+  dataset: extended
+  where:
+    conditions:
+    - field: opt_color
+      op: ==
+      values:
+      - Blue
+  order_by:
+  - field: label
+    direction: ASC
+  expected:
+    count: 1
+    first:
+      label: beta
+      opt_color: Blue
+- name: typed_blob_first_row_alpha
+  model: extended
+  query_type: select
+  dataset: extended
+  where:
+    conditions:
+    - field: label
+      op: ==
+      values:
+      - alpha
+  order_by:
+  - field: label
+    direction: ASC
+  expected:
+    count: 1
+    first:
+      label: alpha
+      raw_data: 'DEADBEEF'
+- name: dialect_sql_order_by_asc_nulls_first
+  model: simple
+  query_type: select
+  dataset: empty
+  order_by:
+  - field: name
+    direction: ASC
+  expected_sql_sqlite: 'SELECT "id", "name", "value" FROM "simplerecord" ORDER BY "name" ASC'
+  expected_sql_pg: 'SELECT "id", "name", "value" FROM "simplerecord" ORDER BY "name" ASC NULLS FIRST'
+  expected:
+    count: 0
+- name: dialect_sql_order_by_desc_nulls_last
+  model: simple
+  query_type: select
+  dataset: empty
+  order_by:
+  - field: name
+    direction: DESC
+  expected_sql_sqlite: 'SELECT "id", "name", "value" FROM "simplerecord" ORDER BY "name" DESC'
+  expected_sql_pg: 'SELECT "id", "name", "value" FROM "simplerecord" ORDER BY "name" DESC NULLS LAST'
+  expected:
+    count: 0
+- name: dialect_sql_offset_only_limit_all
+  model: simple
+  query_type: select
+  dataset: empty
+  limit:
+    value: 0
+    offset: 2
+  expected_sql_sqlite: 'SELECT "id", "name", "value" FROM "simplerecord" LIMIT -1 OFFSET 2'
+  expected_sql_pg: 'SELECT "id", "name", "value" FROM "simplerecord" LIMIT ALL OFFSET 2'
+  expected:
+    count: 0

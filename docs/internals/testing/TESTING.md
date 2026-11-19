@@ -162,9 +162,10 @@ checks **results** (`expected:`). SQL text is pinned separately in C++ (`test_sq
 `test_fields_sql_parity.cpp`).
 
 A case may also carry an optional `expected_sql:` — the exact `sql()` text, compared **before** the
-statement executes. A case without it stays result-only. It is **prototyped on the aggregate runner only**
-(`AggregateRunner`, the 58 scalar-aggregate cases); chain and group cases run through the same runner but
-the split script rejects the key outside the `aggregate` category.
+statement executes. A case without it stays result-only. It is read by `AggregateRunner` (all 58 scalar-aggregate
+cases) and by `SelectRunner` on `query_type: select` (#844); `first` / `one` and the other runners reject it
+(a compile error and a `split_unified_cases.py` error), since they would pass without comparing SQL. Chain and
+group cases share `AggregateRunner` but the split script still rejects the key outside `aggregate` and `select`.
 
 ```yaml
 - name: count_where_age_gte_35
@@ -174,9 +175,25 @@ the split script rejects the key outside the `aggregate` category.
   expected: {int_val: 11}
 ```
 
-- `sql()` is backend-independent for these statements (placeholders stay `?`), so one string covers both
-  backends. A per-dialect `expected_sql_sqlite` / `expected_sql_pg` is not implemented: no aggregate case needs
-  one (that is `NULLS FIRST/LAST` and `LIMIT ALL` vs `LIMIT -1`, which no aggregate case emits).
+- `sql()` is backend-independent for most statements (placeholders stay `?`), so one string covers both
+  backends. Where the text differs (`NULLS FIRST/LAST` after ORDER BY, `LIMIT ALL` vs `LIMIT -1` for an
+  OFFSET without a LIMIT) a case gives **both** `expected_sql_sqlite` and `expected_sql_pg` (#844):
+
+  ```yaml
+  - name: dialect_sql_order_by_asc_nulls_first
+    model: simple
+    query_type: select
+    dataset: empty
+    order_by: [{field: name, direction: ASC}]
+    expected_sql_sqlite: 'SELECT "id", "name", "value" FROM "simplerecord" ORDER BY "name" ASC'
+    expected_sql_pg: 'SELECT "id", "name", "value" FROM "simplerecord" ORDER BY "name" ASC NULLS FIRST'
+    expected: {count: 0}
+  ```
+
+  A case sets `expected_sql`, or both dialect keys, **never both forms, never one dialect alone** (the other
+  backend would run with no SQL check). `TestCase::expected_sql_well_formed()` / the `WellFormedExpectedSql`
+  concept reject it at compile time and `split_unified_cases.py` rejects it earlier; `expected_sql_for(pg)`
+  picks the text. `scripts/ci/tests/test_split_unified_cases.py` covers the script's rules.
 - Write the string from the case, not by pasting the code's output — a pinned wrong string passes forever.
 - The capacity is `EXPECTED_SQL_CAPACITY` (160) in `tests/test_parser.hpp`, mirrored in
   `scripts/split_unified_cases.py`, which fails the build on a string of 160 or more characters (the C++ parser
@@ -192,7 +209,7 @@ the split script rejects the key outside the `aggregate` category.
 The runners (`tests/test_select_runner.h`, `tests/test_unified_yaml_body.h`) have no branch per model,
 aggregate or field. Names in the YAML are resolved by reflection at compile time:
 
-- **`model:`** looks up `YAML_MODELS` in `test_unified_yaml_body.h` (`person`, `message`, `simple`), and the
+- **`model:`** looks up `YAML_MODELS` in `test_unified_yaml_body.h` (`person`, `message`, `simple`, `extended`), and the
   type is spliced into whichever runner the `query_type` picks. To support a new model, add one row there. An
   unknown name is a compile error (`KnownYamlModel`). Before #834 a missing branch silently ran nothing:
   three `message` cases (`select_join_where_*`, `distinct_join_where_like_o`) never executed, and two of
@@ -206,8 +223,9 @@ aggregate or field. Names in the YAML are resolved by reflection at compile time
   `aggregations:`, one step per entry. A name that is not a member function template of the query type is a
   compile error, but any such member would be called, so a `func:` must be an aggregate.
 - **`expected.first:`** keys are row **member names**. Each is compared according to the member's C++ type
-  (string, bool, floating with a 0.01 tolerance, integer). A key with no matching member, or a value of the
-  wrong kind, is a compile error. Before #834 such a key was skipped.
+  (string, bool, floating with a 0.01 tolerance, integer, and the typed values of #844 below). A key with no
+  matching member, or a value that does not fit the member (`ExpectedValueFits`), is a compile error. Before
+  #834 such a key was skipped.
 - Results are checked according to the C++ result type: `std::optional<double>` (MIN/MAX/AVG, #416) against
   `dbl_val` / `res_value`, integers exactly. Per-group values (`group_keys`, `group_agg_*`) are now checked
   for `having` cases too. They used to be ignored there.
@@ -259,6 +277,47 @@ aggregate or field. Names in the YAML are resolved by reflection at compile time
 - **`query_type` → runner** is the `YAML_RUNNERS` table in `test_unified_yaml_body.h` (`{name, is_prefix,
   ^^Runner}`), spliced with `template [:runner:]<Model, Conn>::template run<tc>()`. A `query_type` missing from the
   table fails `KnownYamlQueryType` at compile time. To add a runner, add its rows there.
+
+### Typed values and one null spelling (#844)
+
+A YAML value is read in the **type of the field it is compared with** (WHERE operands) or the member it is
+checked against (`expected.first`). The parsers only record what was written, as a `TypedValue` kind: `Null`
+(`null`), `Int` (fits 32 bits), `Int64` (wider; the one rule is `TypedValue::of_integer`), `Double`, `Bool`,
+`String`. A value that does not fit its field is a **compile error, never a coercion** (`SpecValuesFit` for
+WHERE, `ExpectedValueFits` for `expected.first`; both are `value_fits<FieldType>`, once, in
+`shared/query_builder.hpp`):
+
+| Field type | Written as | Rejected |
+|---|---|---|
+| nullable (`std::optional<T>`) | `null` with `==` / `!=` (WHERE) or as the expected value | `null` on a NOT NULL column; with any other operator; inside `IN`; `IS NULL` / `IS NOT NULL` |
+| integer / floating / bool | a number (an int64 literal needs a 64-bit field; a fraction needs a floating field) | out of range for the field, a string |
+| `storm::UUID` | `'550e8400-e29b-41d4-a716-446655440000'` (8-4-4-4-12 hex) | any other string or a number |
+| `std::chrono::year_month_day` | `'2024-01-15'` (ISO date; the day must exist) | `'2023-02-29'`, words, a number |
+| `std::chrono::system_clock::time_point` | `'2024-01-15T10:30:00'` (UTC) | an out-of-range time, a number |
+| enum | the enumerator **name** (`Green`) | an unknown name, a number |
+| `std::vector<std::byte>` / `<uint8_t>` | hex (`'DEADBEEF'`, even length) | odd length, non-hex |
+
+- **`null` is the one spelling of a null check.** `== null` / `!= null` lower to `IS NULL` / `IS NOT NULL`, the
+  same rule as `== std::nullopt` in the C++ API. `op: IS NULL` / `IS NOT NULL` are no longer YAML operators (a
+  compile error). The six corpus cases and the two `benchmark_tests.yaml` cases (`where_is_null`,
+  `where_is_not_null`) were migrated; the SQL they produce is unchanged.
+- **Quote the operator `>`** in YAML (`op: '>'`): a bare `>` is a block-scalar indicator and the operator would
+  silently read as empty.
+- **Dataset `extended`** (`model: extended` = `ExtendedTypes`): three rows, `alpha` / `beta` / `gamma`, defined in
+  `extended_dataset()` in `test_unified_yaml_body.h` and tabulated in the comment above the `typed_*` cases in
+  `unified_cases.yaml`. Quote hex and numeric-looking strings (`'0102'`, or YAML reads an int).
+- A blob is checked in `expected.first` only; a WHERE on a blob column compiles only where the field proxy
+  accepts a blob operand.
+- Not covered here: HAVING values (still one int) and write values (Phase 7 of #838).
+- **Build cost** (Debug, one TU touched and rebuilt alone, 3 runs each, quiet machine, `a4a11fc` vs #844):
+  select 9.5–9.7 s → 14.2–14.9 s (+51%), aggregate 9.4–9.5 → 10.5–10.6 s (+12%), grouped 13.9–14.4 → 15.2–15.3 s
+  (+8%), crud 6.1–6.4 → 6.9–7.0 s (+11%), measured with the first 22 cases. Where it goes (CPU seconds, select
+  TU): 10.8 s without the new cases, 14.9 s with them, so the cases are almost all of it. A new case costs about
+  what an old one does (~160 ms, #561: every case instantiates its own query type; the lever is #798), the
+  dialect cases ~250 ms each (4 when measured, 3 remain). The check that values fit (`SpecValuesFit`) is not measurable. Five overlapping
+  cases were dropped afterwards (17 remain). Creating the `ExtendedTypes` table only in the select TU was tried
+  and reverted: it moved the other three TUs by less than the measurement noise, so the ~1 s they gained is not
+  the fixture (unexplained).
 
 ### Spec limits are compile errors (#843)
 

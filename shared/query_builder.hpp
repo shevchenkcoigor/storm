@@ -235,8 +235,239 @@ namespace storm::orm::query_builder {
     template <auto collate_str>
     concept ValidCollate = collate_str.view().empty() || find_collate(collate_str.view()) != std::meta::info{};
 
+    // ========================================================================
+    // Typed values (#844)
+    //
+    // A YAML value is written as one of null / int / int64 / double / bool / string, and is read
+    // in the FIELD's type: a string is a UUID, an ISO date, an ISO date-time, an enumerator name or
+    // a hex blob when the field is one. A value that does not fit its field is a compile error
+    // (SpecValuesFit), never a coercion.
+    // ========================================================================
+    inline constexpr std::string_view kIsNullOp    = "IS NULL";
+    inline constexpr std::string_view kIsNotNullOp = "IS NOT NULL";
+
+    consteval auto digits_at(std::string_view s, std::size_t pos, std::size_t count) -> int {
+        int value = 0;
+        for (std::size_t i = 0; i < count; ++i) {
+            const char c = s[pos + i];
+            if (c < '0' || c > '9')
+                return -1;
+            value = (value * 10) + (c - '0');
+        }
+        return value;
+    }
+
+    consteval auto is_hex_digit(char c) -> bool {
+        return (c >= '0' && c <= '9') || (c >= 'a' && c <= 'f') || (c >= 'A' && c <= 'F');
+    }
+
+    // 8-4-4-4-12 hex digits, the form storm::UUID stores.
+    consteval auto uuid_text_is_valid(std::string_view s) -> bool {
+        if (s.size() != 36)
+            return false;
+        for (std::size_t i = 0; i < s.size(); ++i) {
+            const bool dash = i == 8 || i == 13 || i == 18 || i == 23;
+            if (dash ? s[i] != '-' : !is_hex_digit(s[i]))
+                return false;
+        }
+        return true;
+    }
+
+    // `YYYY-MM-DD`; a day that does not exist (2023-02-29) is not a date.
+    consteval auto iso_date_of(std::string_view s) -> std::optional<std::chrono::year_month_day> {
+        if (s.size() != 10 || s[4] != '-' || s[7] != '-')
+            return std::nullopt;
+        const int year  = digits_at(s, 0, 4);
+        const int month = digits_at(s, 5, 2);
+        const int day   = digits_at(s, 8, 2);
+        if (year < 0 || month < 0 || day < 0)
+            return std::nullopt;
+        const std::chrono::year_month_day ymd{
+                std::chrono::year{year},
+                std::chrono::month{static_cast<unsigned>(month)},
+                std::chrono::day{static_cast<unsigned>(day)}
+        };
+        return ymd.ok() ? std::optional{ymd} : std::nullopt;
+    }
+
+    // `YYYY-MM-DDTHH:MM:SS`, UTC.
+    consteval auto iso_datetime_of(std::string_view s) -> std::optional<std::chrono::system_clock::time_point> {
+        if (s.size() != 19 || s[10] != 'T' || s[13] != ':' || s[16] != ':')
+            return std::nullopt;
+        const auto date   = iso_date_of(s.substr(0, 10));
+        const int  hour   = digits_at(s, 11, 2);
+        const int  minute = digits_at(s, 14, 2);
+        const int  second = digits_at(s, 17, 2);
+        if (!date || hour < 0 || minute < 0 || second < 0 || hour > 23 || minute > 59 || second > 59)
+            return std::nullopt;
+        const auto seconds = std::chrono::sys_days{*date} + std::chrono::hours{hour} + std::chrono::minutes{minute} +
+                             std::chrono::seconds{second};
+        return std::chrono::time_point_cast<std::chrono::system_clock::duration>(seconds);
+    }
+
+    // An even number of hex digits; empty is an empty blob.
+    consteval auto blob_hex_is_valid(std::string_view s) -> bool {
+        if (s.size() % 2 != 0)
+            return false;
+        for (const char c : s)
+            if (!is_hex_digit(c))
+                return false;
+        return true;
+    }
+
+    constexpr auto hex_digit_value(char c) -> int {
+        if (c >= '0' && c <= '9')
+            return c - '0';
+        return (c >= 'a' && c <= 'f' ? c - 'a' : c - 'A') + 10;
+    }
+
+    // The bytes of a hex string (blob_hex_is_valid has already vetted it).
+    template <typename T>
+        requires std::is_same_v<T, std::vector<std::byte>> || std::is_same_v<T, std::vector<std::uint8_t>>
+    constexpr auto blob_from_hex(std::string_view text) -> T {
+        T bytes;
+        for (std::size_t i = 0; i < text.size(); i += 2)
+            bytes.push_back(
+                    static_cast<typename T::value_type>((hex_digit_value(text[i]) << 4) | hex_digit_value(text[i + 1]))
+            );
+        return bytes;
+    }
+
+    template <typename E> consteval auto find_enumerator(std::string_view name) -> std::meta::info {
+        for (std::meta::info e : std::meta::enumerators_of(^^E))
+            if (std::meta::identifier_of(e) == name)
+                return e;
+        return std::meta::info{};
+    }
+
+    template <typename T>
+    concept BlobType = std::is_same_v<T, std::vector<std::byte>> || std::is_same_v<T, std::vector<std::uint8_t>>;
+
+    // std::chrono::duration only: a time_point also has rep / period, but an integer is not a time.
+    template <typename T>
+    concept DurationType = requires {
+        typename T::rep;
+        typename T::period;
+    } && std::is_same_v<T, std::chrono::duration<typename T::rep, typename T::period>>;
+
+    // A string the field reads as something other than text: such a value goes through
+    // typed_value_as, a text field keeps the string it was given.
+    template <typename T>
+    concept NonTextString =
+            std::is_same_v<T, orm::utilities::UUID> || std::is_same_v<T, std::chrono::year_month_day> ||
+            std::is_same_v<T, std::chrono::system_clock::time_point> || std::is_enum_v<T> || BlobType<T>;
+
+    template <typename T> consteval auto integer_in_range(long long v) -> bool {
+        if constexpr (std::is_signed_v<T>)
+            return v >= static_cast<long long>(std::numeric_limits<T>::min()) &&
+                   v <= static_cast<long long>(std::numeric_limits<T>::max());
+        else
+            return v >= 0 && static_cast<unsigned long long>(v) <= std::numeric_limits<T>::max();
+    }
+
+    template <typename T> consteval auto int_fits(long long v) -> bool {
+        if constexpr (std::is_same_v<T, bool> || std::is_floating_point_v<T> || DurationType<T>)
+            return true;
+        else if constexpr (std::is_integral_v<T>)
+            return integer_in_range<T>(v);
+        else
+            return false;
+    }
+
+    template <typename T> consteval auto int64_fits(long long v) -> bool {
+        if constexpr (std::is_integral_v<T> && !std::is_same_v<T, bool>)
+            return integer_in_range<T>(v);
+        else if constexpr (std::is_floating_point_v<T>) {
+            // Range-check in the floating domain first: converting 2^63 back to long long is UB.
+            const auto f = static_cast<T>(v);
+            return f >= -0x1p63 && f < 0x1p63 && static_cast<long long>(f) == v; // exact, not rounded
+        } else
+            return false;
+    }
+
+    template <typename T> consteval auto string_fits(std::string_view text) -> bool {
+        if constexpr (std::is_same_v<T, orm::utilities::UUID>)
+            return uuid_text_is_valid(text);
+        else if constexpr (std::is_same_v<T, std::chrono::year_month_day>)
+            return iso_date_of(text).has_value();
+        else if constexpr (std::is_same_v<T, std::chrono::system_clock::time_point>)
+            return iso_datetime_of(text).has_value();
+        else if constexpr (std::is_enum_v<T>)
+            return find_enumerator<T>(text) != std::meta::info{};
+        else if constexpr (BlobType<T>)
+            return blob_hex_is_valid(text);
+        else
+            return std::is_constructible_v<T, std::string_view> || std::is_same_v<T, std::string>;
+    }
+
+    // Can the value `tv`, as written, be read as a FieldType?
+    template <typename FieldType> consteval auto value_fits(const auto& tv) -> bool {
+        using Kind = std::remove_cvref_t<decltype(tv.kind)>;
+        using T    = orm::utilities::optional_inner_type_t<FieldType>;
+        switch (tv.kind) {
+        case Kind::Null:
+            return orm::where::NullableField<FieldType>;
+        case Kind::Bool:
+            return std::is_same_v<T, bool>;
+        case Kind::Double:
+            return std::is_floating_point_v<T>;
+        case Kind::Int:
+            return int_fits<T>(tv.as_int);
+        case Kind::Int64:
+            return int64_fits<T>(tv.as_int64);
+        case Kind::String:
+            return string_fits<T>(tv.as_string.view());
+        default:
+            return false;
+        }
+    }
+
+    // One WHERE leaf (node N) fits its field. A field the model lacks is not this check's to
+    // report: the builder's own static_assert names it.
+    template <typename Model, auto Spec, std::size_t N> consteval auto where_leaf_fits() -> bool {
+        constexpr auto& node = Spec.where.nodes[N];
+        if constexpr (!node.is_leaf()) {
+            return true;
+        } else if constexpr (!has_field<Model>(node.field.view())) {
+            return true;
+        } else {
+            using FieldType = typename[:std::meta::type_of(dispatch_field<Model>(node.field.view())):];
+            // One spelling for a null check: `== null` / `!= null` (#844). The operator names
+            // IS NULL / IS NOT NULL are not part of the YAML.
+            if (node.op == kIsNullOp || node.op == kIsNotNullOp)
+                return false;
+            if (node.op == "LIKE") { // a pattern is text, never a number or null
+                if (node.value_count != 1)
+                    return false;
+                const auto& pattern = Spec.where.values[node.first_value];
+                return pattern.kind == std::remove_cvref_t<decltype(pattern.kind)>::String;
+            }
+            bool any_null = false;
+            for (std::size_t i = 0; i < node.value_count; ++i) {
+                const auto& tv = Spec.where.values[node.first_value + i];
+                any_null       = any_null || tv.kind == std::remove_cvref_t<decltype(tv.kind)>::Null;
+                if (!value_fits<FieldType>(tv))
+                    return false;
+            }
+            // `x IN (..., NULL)` never matches a NULL row (#625), and a null only means something
+            // against one operand of == / !=.
+            return !any_null || ((node.op == "==" || node.op == "!=") && node.value_count == 1);
+        }
+    }
+
+    // Every value in the WHERE tree can be read as the type of the field it is compared with.
+    template <typename Model, auto Spec>
+    concept SpecValuesFit = []<std::size_t... Ns>(std::index_sequence<Ns...>) consteval {
+        return (where_leaf_fits<Model, Spec, Ns>() && ...);
+    }(std::make_index_sequence<Spec.where.node_count>{});
+
     // Extract numeric value from any TypedValue-like NTTP (duck-typed on Kind/as_double/as_int).
     template <auto tv> consteval auto spec_numeric_value() {
+        using Kind = std::remove_cvref_t<decltype(tv)>::Kind;
+        static_assert(
+                tv.kind == Kind::Int || tv.kind == Kind::Double,
+                "a HAVING value is an int or a double; null, int64 and strings are WHERE-only (#844)"
+        );
         if constexpr (tv.kind == std::remove_cvref_t<decltype(tv)>::Kind::Double) {
             return tv.as_double;
         } else {
@@ -295,28 +526,50 @@ namespace storm::orm::query_builder {
             auto spec,
             auto fk_resolver  = member_name_resolver<Model>,
             typename ConnType = storm::db::sqlite::Connection>
-        requires SpecWithinLimits<spec> && SpecWellFormed<spec>
+        requires SpecWithinLimits<spec> && SpecWellFormed<spec> && SpecValuesFit<Model, spec>
     class QueryBuilder {
         // ----------------------------------------------------------------
         // typed_value_as
         // ----------------------------------------------------------------
-        // The value in the field's type, chosen by the KIND the value was written as (#843): `1` for
-        // a bool field is true, and an integer for a floating field is that number, not the unset
-        // as_double (0.0) the old field-type-only choice read.
-        template <typename FieldType, auto tv> static consteval auto typed_value_as() {
-            constexpr bool is_int_kind = tv.kind == decltype(tv.kind)::Int;
-            if constexpr (std::is_same_v<FieldType, bool>) {
-                if constexpr (is_int_kind)
+        // The value in the field's type (an optional field reads as its inner type), chosen by the
+        // KIND the value was written as (#843, #844): `1` for a bool field is true, and an integer
+        // for a floating field is that number. SpecValuesFit has already checked that it fits, so
+        // nothing here can fail. Not consteval: a UUID or a blob owns heap memory, which cannot
+        // leave a constant expression.
+        template <typename FieldType, auto tv> static auto typed_value_as() {
+            using T               = orm::utilities::optional_inner_type_t<FieldType>;
+            constexpr bool is_int = tv.kind == decltype(tv.kind)::Int;
+            constexpr bool is_i64 = tv.kind == decltype(tv.kind)::Int64;
+            constexpr auto text   = tv.as_string.view();
+            if constexpr (std::is_same_v<T, bool>) {
+                if constexpr (is_int)
                     return tv.as_int != 0;
                 else
                     return bool{tv.as_bool};
-            } else if constexpr (std::is_floating_point_v<FieldType>) {
-                if constexpr (is_int_kind)
-                    return static_cast<FieldType>(tv.as_int);
+            } else if constexpr (std::is_floating_point_v<T>) {
+                if constexpr (is_int)
+                    return static_cast<T>(tv.as_int);
+                else if constexpr (is_i64)
+                    return static_cast<T>(tv.as_int64);
                 else
-                    return FieldType{tv.as_double};
+                    return T{tv.as_double};
+            } else if constexpr (std::is_enum_v<T>) {
+                constexpr auto enumerator = find_enumerator<T>(text);
+                return [:enumerator:];
+            } else if constexpr (std::is_same_v<T, orm::utilities::UUID>) {
+                return orm::utilities::UUID{text};
+            } else if constexpr (std::is_same_v<T, std::chrono::year_month_day>) {
+                return *iso_date_of(text);
+            } else if constexpr (std::is_same_v<T, std::chrono::system_clock::time_point>) {
+                return *iso_datetime_of(text);
+            } else if constexpr (BlobType<T>) {
+                return blob_from_hex<T>(text);
+            } else if constexpr (tv.kind == decltype(tv.kind)::String) {
+                return std::string{text};
+            } else if constexpr (is_i64) {
+                return static_cast<T>(tv.as_int64);
             } else {
-                return FieldType{tv.as_int};
+                return T{tv.as_int};
             }
         }
 
@@ -333,8 +586,16 @@ namespace storm::orm::query_builder {
             constexpr std::string_view op = cond.op.view();
             using FieldType               = typename[:std::meta::type_of(fi):];
 
+            using Kind  = decltype(pool[first].kind);
+            using Inner = orm::utilities::optional_inner_type_t<FieldType>;
+
             if constexpr (op == "LIKE") {
                 return build_compare_expr<fi, cond.op>(pool[first].as_string.view());
+            } else if constexpr (cond.value_count == 1 && pool[first].kind == Kind::Null) {
+                // `== null` / `!= null`: the same IS [NOT] NULL as `== std::nullopt` (#844).
+                constexpr auto null_op =
+                        orm::utilities::ConstexprString<16>(op == "==" ? kIsNullOp.data() : kIsNotNullOp.data());
+                return build_compare_expr<fi, null_op>();
             } else if constexpr (op == "BETWEEN") {
                 return build_compare_expr<fi, cond.op>(
                         typed_value_as<FieldType, pool[first]>(), typed_value_as<FieldType, pool[first + 1]>()
@@ -345,9 +606,7 @@ namespace storm::orm::query_builder {
                             typed_value_as<FieldType, spec.where.values[spec.where.nodes[N].first_value + Is]>()...
                     );
                 }(std::make_index_sequence<cond.value_count>{});
-            } else if constexpr (op == "IS NULL" || op == "IS NOT NULL") {
-                return build_compare_expr<fi, cond.op>();
-            } else if constexpr (pool[first].kind == decltype(pool[first].kind)::String) {
+            } else if constexpr (pool[first].kind == Kind::String && !NonTextString<Inner>) {
                 return build_compare_expr<fi, cond.op>(pool[first].as_string.view());
             } else {
                 return build_compare_expr<fi, cond.op>(typed_value_as<FieldType, pool[first]>());
@@ -371,6 +630,9 @@ namespace storm::orm::query_builder {
 
         template <typename WhereModel> static auto apply_where(QuerySet<Model, ConnType>& qs) -> void {
             if constexpr (spec.where.enabled) {
+                // The class constraint checked the base model; a WHERE on a related model reads
+                // its values as that model's field types.
+                static_assert(SpecValuesFit<WhereModel, spec>, "a WHERE value does not fit its field's type");
                 qs = qs.where(build_where_node<WhereModel, static_cast<std::size_t>(spec.where.root)>());
             }
         }

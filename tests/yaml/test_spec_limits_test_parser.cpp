@@ -16,10 +16,12 @@ import storm_orm_indexes;
 import storm_orm_queryset;
 import storm_orm_schema;
 import storm_orm_statements_select;
+import storm_orm_utilities;
 import storm_orm_where;
 import std;
 
 #include "shared/models/person.h" // NOSONAR cpp:S954
+#include "shared/models/extended_types.h"
 #include "test_select_runner.h"
 #include "test_parser.hpp"
 #include "test_spec_limits.h"
@@ -176,6 +178,10 @@ namespace {
         storm::test::spec_limits::expect_flat_where_builds_one_tree<parse_case>();
     }
 
+    TEST(SpecLimitsTestParser, TypedValuesParseAsNullAndInt64) {
+        storm::test::spec_limits::expect_typed_values_parse<parse_case>();
+    }
+
     TEST(SpecLimitsTestParser, WhereCountsPastItsCaps) {
         storm::test::spec_limits::expect_where_counts_past_its_caps<parse_case>();
     }
@@ -186,6 +192,252 @@ namespace {
 
     TEST(SpecLimitsTestParser, CountsPastEveryCapAndKeepsParsing) {
         storm::test::spec_limits::expect_counts_past_every_cap<parse_case>();
+    }
+
+    // ------------------------------------------------------------------
+    // Typed values (#844). The value is read in the FIELD's type, so the model decides what a
+    // string or number means: a UUID, a date, an enumerator name, a blob in hex. A value that does
+    // not fit its field is a compile error, never a coercion.
+    // ------------------------------------------------------------------
+    using storm::orm::query_builder::SpecValuesFit;
+    using Ext = ExtendedTypes;
+
+    template <typename Model, auto Spec>
+    concept BuildableOn = requires { typename QueryBuilder<Model, Spec>; };
+
+    // One WHERE condition `field op value`; `value` is the JSON text of the operand.
+    constexpr auto where_case(std::string_view field, std::string_view op, std::string_view value)
+            -> storm::benchmark::BenchmarkTest {
+        std::string json = R"({"where":{"conditions":[{"field":")";
+        json += field;
+        json += R"(","op":")";
+        json += op;
+        json += R"(","values":[)";
+        json += value;
+        json += R"(]}]},"dataset_size":5})";
+        return parse_case(json);
+    }
+
+    // null: a nullable column may be compared with it; any other column, operator or list may not.
+    constexpr auto kNullOptDoubleEq = where_case("opt_double", "==", "null");
+    constexpr auto kNullOptDoubleNe = where_case("opt_double", "!=", "null");
+    constexpr auto kNullOptColorEq  = where_case("opt_color", "==", "null");
+    constexpr auto kNullOnLabel     = where_case("label", "==", "null");
+    constexpr auto kNullOnInt       = where_case("id", "!=", "null");
+    constexpr auto kNullOrdered     = where_case("opt_double", ">", "null");
+    constexpr auto kNullInList      = where_case("opt_double", "IN", "1.5,null");
+    constexpr auto kIsNullSpelling  = where_case("opt_double", "IS NULL", "");
+    static_assert(BuildableOn<Ext, kNullOptDoubleEq> && SpecValuesFit<Ext, kNullOptDoubleEq>);
+    static_assert(BuildableOn<Ext, kNullOptDoubleNe>);
+    static_assert(BuildableOn<Ext, kNullOptColorEq>);
+    static_assert(!BuildableOn<Ext, kNullOnLabel>, "null on a NOT NULL column");
+    static_assert(!BuildableOn<Ext, kNullOnInt>, "null on a NOT NULL column");
+    static_assert(!BuildableOn<Ext, kNullOrdered>, "null only with == / !=");
+    static_assert(!BuildableOn<Ext, kNullInList>, "IN (..., NULL) never matches NULL rows (#625)");
+    // One spelling: `IS NULL` / `IS NOT NULL` are gone from the YAML vocabulary, `== null` replaces them.
+    static_assert(!BuildableOn<Ext, kIsNullSpelling>);
+
+    // int64: a 32-bit literal fits an int64 field; an int64 literal does not fit an int field.
+    constexpr auto kBigOnInt64    = where_case("big_num", "==", "5000000000");
+    constexpr auto kSmallOnInt64  = where_case("big_num", ">", "5");
+    constexpr auto kInInt64       = where_case("big_num", "IN", "1,5000000000,-5000000000");
+    constexpr auto kBigBetween    = where_case("big_num", "BETWEEN", "-5000000000,5000000000");
+    constexpr auto kBigOnInt      = where_case("id", "==", "5000000000");
+    constexpr auto kStringOnInt64 = where_case("big_num", "==", R"("five")");
+    constexpr auto kDoubleOnInt64 = where_case("big_num", "==", "1.5");
+    static_assert(BuildableOn<Ext, kBigOnInt64>);
+    static_assert(BuildableOn<Ext, kSmallOnInt64>);
+    static_assert(BuildableOn<Ext, kInInt64>);
+    static_assert(BuildableOn<Ext, kBigBetween>);
+    static_assert(!BuildableOn<Ext, kBigOnInt>, "5000000000 does not fit an int field");
+    static_assert(!BuildableOn<Ext, kStringOnInt64>);
+    static_assert(!BuildableOn<Ext, kDoubleOnInt64>, "a fraction is not an integer");
+
+    // UUID: a canonical 36-character string.
+    constexpr auto kUuidOk        = where_case("uuid_field", "==", R"("550e8400-e29b-41d4-a716-446655440000")");
+    constexpr auto kUuidNe        = where_case("uuid_field", "!=", R"("550e8400-e29b-41d4-a716-446655440000")");
+    constexpr auto kUuidMalformed = where_case("uuid_field", "==", R"("not-a-uuid")");
+    constexpr auto kUuidShort     = where_case("uuid_field", "==", R"("550e8400-e29b-41d4-a716")");
+    constexpr auto kUuidNumber    = where_case("uuid_field", "==", "5");
+    constexpr auto kUuidOnLabel   = where_case("id", "==", R"("550e8400-e29b-41d4-a716-446655440000")");
+    static_assert(BuildableOn<Ext, kUuidOk>);
+    static_assert(BuildableOn<Ext, kUuidNe>);
+    static_assert(!BuildableOn<Ext, kUuidMalformed>);
+    static_assert(!BuildableOn<Ext, kUuidShort>);
+    static_assert(!BuildableOn<Ext, kUuidNumber>);
+    static_assert(!BuildableOn<Ext, kUuidOnLabel>, "a UUID string on an int field");
+
+    // date / time: ISO 8601, `YYYY-MM-DD` for a date and `YYYY-MM-DDTHH:MM:SS` for a time point.
+    constexpr auto kDateOk      = where_case("date_field", "==", R"("2024-01-15")");
+    constexpr auto kDateBetween = where_case("date_field", "BETWEEN", R"("2024-01-01","2024-12-31")");
+    constexpr auto kDateLeap    = where_case("date_field", "==", R"("2024-02-29")");
+    constexpr auto kTimeOk      = where_case("datetime_field", ">", R"("2024-01-15T10:30:00")");
+    constexpr auto kDateMonth13 = where_case("date_field", "==", R"("2024-13-01")");
+    constexpr auto kDateNotLeap = where_case("date_field", "==", R"("2023-02-29")");
+    constexpr auto kDateWords   = where_case("date_field", "==", R"("yesterday")");
+    constexpr auto kDateNumber  = where_case("date_field", "==", "20240115");
+    constexpr auto kTimeHour25  = where_case("datetime_field", ">", R"("2024-01-15T25:00:00")");
+    constexpr auto kTimeNumber  = where_case("datetime_field", ">", "1700000000");
+    static_assert(BuildableOn<Ext, kDateOk>);
+    static_assert(BuildableOn<Ext, kDateBetween>);
+    static_assert(BuildableOn<Ext, kDateLeap>);
+    static_assert(BuildableOn<Ext, kTimeOk>);
+    static_assert(!BuildableOn<Ext, kDateMonth13>);
+    static_assert(!BuildableOn<Ext, kDateNotLeap>, "2023 is not a leap year");
+    static_assert(!BuildableOn<Ext, kDateWords>);
+    static_assert(!BuildableOn<Ext, kDateNumber>);
+    static_assert(!BuildableOn<Ext, kTimeHour25>);
+    static_assert(!BuildableOn<Ext, kTimeNumber>);
+
+    // enum: by enumerator name, exact spelling.
+    constexpr auto kEnumOk        = where_case("color", "==", R"("Green")");
+    constexpr auto kEnumIn        = where_case("color", "IN", R"("Red","Blue")");
+    constexpr auto kOptEnumOk     = where_case("opt_color", "==", R"("Blue")");
+    constexpr auto kEnumUnknown   = where_case("color", "==", R"("Purple")");
+    constexpr auto kEnumWrongCase = where_case("color", "==", R"("green")");
+    constexpr auto kEnumNumber    = where_case("color", "==", "1");
+    static_assert(BuildableOn<Ext, kEnumOk>);
+    static_assert(BuildableOn<Ext, kEnumIn>);
+    static_assert(BuildableOn<Ext, kOptEnumOk>);
+    static_assert(!BuildableOn<Ext, kEnumUnknown>);
+    static_assert(!BuildableOn<Ext, kEnumWrongCase>);
+    static_assert(!BuildableOn<Ext, kEnumNumber>, "an enum is written by name, not by number");
+
+    // The fit check never rejects what already worked: plain int, double and string operands on Person.
+    constexpr auto kPersonAge    = where_case("age", ">", "30");
+    constexpr auto kPersonLike   = where_case("name", "LIKE", R"("A%")");
+    constexpr auto kPersonSalary = where_case("salary", "<", "50000");
+    static_assert(BuildableOn<Person, kPersonAge>);
+    static_assert(BuildableOn<Person, kPersonLike>);
+    static_assert(BuildableOn<Person, kPersonSalary>, "an integer literal on a floating column");
+
+    // ------------------------------------------------------------------
+    // expected.first: the same typed values, checked against the row member's type.
+    // ------------------------------------------------------------------
+    constexpr auto expected_value(std::string_view value) -> storm::benchmark::TypedValue {
+        std::string json = R"({"expected":{"count":1,"first":{"m":)";
+        json += value;
+        json += R"(}},"dataset_size":5})";
+        return parse_test_case(json).expected.first.fields[0].value;
+    }
+    using storm::test::ExpectedValueFits;
+    using Blob = std::vector<std::byte>;
+
+    constexpr auto kExpNull      = expected_value("null");
+    constexpr auto kExpBig       = expected_value("5000000000");
+    constexpr auto kExpSmall     = expected_value("7");
+    constexpr auto kExpDouble    = expected_value("1.5");
+    constexpr auto kExpText      = expected_value(R"("hello")");
+    constexpr auto kExpUuid      = expected_value(R"("550e8400-e29b-41d4-a716-446655440000")");
+    constexpr auto kExpBadUuid   = expected_value(R"("550e8400")");
+    constexpr auto kExpDate      = expected_value(R"("2024-01-15")");
+    constexpr auto kExpBadDate   = expected_value(R"("2024-02-30")");
+    constexpr auto kExpTime      = expected_value(R"("2024-01-15T10:30:00")");
+    constexpr auto kExpBadTime   = expected_value(R"("2024-01-15T10:61:00")");
+    constexpr auto kExpBlob      = expected_value(R"("DEADBEEF")");
+    constexpr auto kExpBlobLow   = expected_value(R"("deadbeef")");
+    constexpr auto kExpOddBlob   = expected_value(R"("DEADBEE")");
+    constexpr auto kExpNotHex    = expected_value(R"("ZZ")");
+    constexpr auto kExpEmptyBlob = expected_value(R"("")");
+    constexpr auto kExpGreen     = expected_value(R"("Green")");
+    constexpr auto kExpPurple    = expected_value(R"("Purple")");
+
+    // null: only a nullable member can be NULL.
+    static_assert(ExpectedValueFits<std::optional<double>, kExpNull>);
+    static_assert(ExpectedValueFits<std::optional<std::int64_t>, kExpNull>);
+    static_assert(ExpectedValueFits<std::optional<Color>, kExpNull>);
+    static_assert(!ExpectedValueFits<std::string, kExpNull>);
+    static_assert(!ExpectedValueFits<int, kExpNull>);
+    static_assert(!ExpectedValueFits<double, kExpNull>);
+    // int64: 5000000000 does not fit an int member.
+    static_assert(ExpectedValueFits<std::int64_t, kExpBig>);
+    static_assert(ExpectedValueFits<long long, kExpBig>);
+    static_assert(ExpectedValueFits<std::optional<std::int64_t>, kExpBig>);
+    static_assert(ExpectedValueFits<std::int64_t, kExpSmall>);
+    static_assert(ExpectedValueFits<int, kExpSmall>);
+    static_assert(!ExpectedValueFits<int, kExpBig>);
+    static_assert(!ExpectedValueFits<std::string, kExpBig>);
+    static_assert(ExpectedValueFits<std::optional<double>, kExpDouble>);
+    static_assert(!ExpectedValueFits<std::int64_t, kExpDouble>);
+    static_assert(ExpectedValueFits<std::string, kExpText>);
+    // UUID
+    static_assert(ExpectedValueFits<decltype(Ext::uuid_field), kExpUuid>);
+    static_assert(!ExpectedValueFits<decltype(Ext::uuid_field), kExpBadUuid>);
+    static_assert(!ExpectedValueFits<decltype(Ext::uuid_field), kExpSmall>);
+    // date / time
+    static_assert(ExpectedValueFits<decltype(Ext::date_field), kExpDate>);
+    static_assert(!ExpectedValueFits<decltype(Ext::date_field), kExpBadDate>);
+    static_assert(!ExpectedValueFits<decltype(Ext::date_field), kExpSmall>);
+    static_assert(ExpectedValueFits<decltype(Ext::datetime_field), kExpTime>);
+    static_assert(ExpectedValueFits<std::optional<decltype(Ext::datetime_field)>, kExpTime>);
+    static_assert(!ExpectedValueFits<decltype(Ext::datetime_field), kExpBadTime>);
+    // blob: upper- or lower-case hex, an even number of digits.
+    static_assert(ExpectedValueFits<Blob, kExpBlob>);
+    static_assert(ExpectedValueFits<Blob, kExpBlobLow>);
+    static_assert(ExpectedValueFits<Blob, kExpEmptyBlob>, "an empty blob is a valid value");
+    static_assert(!ExpectedValueFits<Blob, kExpOddBlob>);
+    static_assert(!ExpectedValueFits<Blob, kExpNotHex>);
+    static_assert(!ExpectedValueFits<Blob, kExpSmall>);
+    // enum: by enumerator name
+    static_assert(ExpectedValueFits<Color, kExpGreen>);
+    static_assert(ExpectedValueFits<std::optional<Color>, kExpGreen>);
+    static_assert(!ExpectedValueFits<Color, kExpPurple>);
+    static_assert(!ExpectedValueFits<Color, kExpSmall>);
+    static_assert(!ExpectedValueFits<Color, kExpNull>);
+
+    TEST(SpecLimitsTestParser, ExpectedFirstKeepsNullAndInt64Apart) {
+        using Kind = storm::benchmark::TypedValue::Kind;
+        EXPECT_TRUE(kExpNull.kind == Kind::Null);
+        EXPECT_TRUE(kExpBig.kind == Kind::Int64);
+        EXPECT_EQ(kExpBig.as_int64, 5000000000LL);
+        EXPECT_TRUE(kExpSmall.kind == Kind::Int);
+        EXPECT_TRUE(kExpUuid.kind == Kind::String);
+    }
+
+    // ------------------------------------------------------------------
+    // Per-dialect expected SQL (#844): expected_sql_sqlite / expected_sql_pg beside expected_sql.
+    // A case sets the shared key, or BOTH dialect keys; never both forms, and never one dialect
+    // alone (the other backend would run with no SQL check at all).
+    // ------------------------------------------------------------------
+    using storm::test::WellFormedExpectedSql;
+    constexpr auto kSqlShared = parse_test_case(R"({"expected_sql":"SELECT 1","dataset_size":5})");
+    constexpr auto kSqlPair =
+            parse_test_case(R"({"expected_sql_sqlite":"LIMIT -1","expected_sql_pg":"LIMIT ALL","dataset_size":5})");
+    constexpr auto kSqlNone  = parse_test_case(R"({"dataset_size":5})");
+    constexpr auto kSqlMixed = parse_test_case(
+            R"({"expected_sql":"SELECT 1","expected_sql_pg":"SELECT 2","expected_sql_sqlite":"SELECT 3","dataset_size":5})"
+    );
+    constexpr auto kSqlMixedOne =
+            parse_test_case(R"({"expected_sql":"SELECT 1","expected_sql_pg":"SELECT 2","dataset_size":5})");
+    constexpr auto kSqlOnlySqlite = parse_test_case(R"({"expected_sql_sqlite":"SELECT 3","dataset_size":5})");
+    constexpr auto kSqlOnlyPg     = parse_test_case(R"({"expected_sql_pg":"SELECT 2","dataset_size":5})");
+
+    static_assert(WellFormedExpectedSql<kSqlShared>);
+    static_assert(WellFormedExpectedSql<kSqlPair>);
+    static_assert(WellFormedExpectedSql<kSqlNone>, "result-only stays valid");
+    static_assert(!WellFormedExpectedSql<kSqlMixed>, "the shared key and the pair together");
+    static_assert(!WellFormedExpectedSql<kSqlMixedOne>);
+    static_assert(!WellFormedExpectedSql<kSqlOnlySqlite>, "one dialect alone leaves the other unchecked");
+    static_assert(!WellFormedExpectedSql<kSqlOnlyPg>);
+
+    TEST(SpecLimitsTestParser, ExpectedSqlPicksTheDialectsText) {
+        constexpr bool kSqlite = false;
+        constexpr bool kPg     = true;
+        EXPECT_EQ(kSqlShared.expected_sql_for(kSqlite), "SELECT 1");
+        EXPECT_EQ(kSqlShared.expected_sql_for(kPg), "SELECT 1");
+        EXPECT_EQ(kSqlPair.expected_sql_for(kSqlite), "LIMIT -1");
+        EXPECT_EQ(kSqlPair.expected_sql_for(kPg), "LIMIT ALL");
+        EXPECT_TRUE(kSqlNone.expected_sql_for(kSqlite).empty());
+        EXPECT_TRUE(kSqlNone.expected_sql_for(kPg).empty());
+    }
+
+    TEST(SpecLimitsTestParser, ExpectedSqlKeysDoNotShadowEachOther) {
+        // expected_sql_pg / expected_sql_sqlite share a prefix with expected_sql: the key match is exact.
+        EXPECT_TRUE(kSqlPair.expected_sql.empty());
+        EXPECT_EQ(kSqlShared.expected_sql_sqlite.view(), "");
+        EXPECT_EQ(kSqlShared.expected_sql_pg.view(), "");
+        EXPECT_EQ(kSqlPair.expected_sql_sqlite.view(), "LIMIT -1");
+        EXPECT_EQ(kSqlPair.expected_sql_pg.view(), "LIMIT ALL");
     }
 
 } // namespace

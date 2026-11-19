@@ -771,7 +771,7 @@ tests:
         combine: or
 
   # ============================================================================
-  # IS NULL / IS NOT NULL (fixed size)
+  # == null / != null, i.e. IS NULL / IS NOT NULL (fixed size)
   # ============================================================================
   - name: where_is_null
     category: WHERE_IS_NULL
@@ -782,7 +782,8 @@ tests:
     init_dataset_size: 10000
     where:
         field: score
-        op: IS NULL
+        op: ==
+        value: null
 
   - name: where_is_not_null
     category: WHERE_IS_NULL
@@ -793,7 +794,8 @@ tests:
     init_dataset_size: 10000
     where:
         field: score
-        op: IS NOT NULL
+        op: '!='
+        value: null
 
   # ============================================================================
   # Multi-Field DISTINCT (fixed size)

@@ -52,7 +52,7 @@ inline constexpr std::string_view WHERE_OR_COMBINE_FIRST =
 inline constexpr std::string_view WHERE_NO_COMBINE =
     R"({"where":{"conditions":[{"field":"a","op":"==","values":[1]},{"field":"b","op":"==","values":[2]}]},"dataset_size":5})";
 inline constexpr std::string_view WHERE_OPERANDS =
-    R"({"where":{"conditions":[{"field":"a","op":"IN","values":[1,2,3]},{"field":"b","op":"BETWEEN","values":[1.5,2.5]},{"field":"c","op":"IS NULL","values":[]}],"combine":"and"},"dataset_size":5})";
+    R"({"where":{"conditions":[{"field":"a","op":"IN","values":[1,2,3]},{"field":"b","op":"BETWEEN","values":[1.5,2.5]},{"field":"c","op":"==","values":[null]}],"combine":"and"},"dataset_size":5})";
 // 4 leaves + 3 combines = 7 nodes: exactly the cap. 5 leaves = 9 nodes: over it.
 inline constexpr std::string_view WHERE_4_CONDITIONS =
     R"({"where":{"conditions":[{"field":"a","op":"==","values":[1]},{"field":"b","op":"==","values":[1]},{"field":"c","op":"==","values":[1]},{"field":"d","op":"==","values":[1]}],"combine":"and"},"dataset_size":5})";
@@ -86,6 +86,20 @@ inline constexpr std::string_view WHERE_REPEATED_CONDITIONS =
 inline constexpr std::string_view WHERE_STRAY_BRACE =
     R"({"where":{"conditions":[{"field":"a","op":"IN","values":[1,},2]}]},"dataset_size":5})";
 
+// Typed values (#844). A JSON `null` is its own kind; an integer that does not fit 32 bits is an
+// int64. The kind records what was WRITTEN: whether it fits the field is the builder's check.
+inline constexpr std::string_view WHERE_NULL_VALUE =
+    R"({"where":{"conditions":[{"field":"a","op":"==","values":[null]},{"field":"b","op":"!=","values":[null]}],"combine":"and"},"dataset_size":5})";
+inline constexpr std::string_view WHERE_INT_RANGE_EDGES =
+    R"({"where":{"conditions":[{"field":"a","op":"IN","values":[2147483647,2147483648,-2147483648,-2147483649,5000000000]}]},"dataset_size":5})";
+inline constexpr std::string_view WHERE_NEGATIVE_INT64 =
+    R"({"where":{"conditions":[{"field":"a","op":"<","values":[-9000000000000000000]}]},"dataset_size":5})";
+inline constexpr std::string_view WHERE_INT64_MAX =
+    R"({"where":{"conditions":[{"field":"a","op":"==","values":[9223372036854775807]}]},"dataset_size":5})";
+// null is a value like any other: the key after it is still read.
+inline constexpr std::string_view WHERE_NULL_THEN_STRING =
+    R"({"where":{"conditions":[{"field":"a","op":"IN","values":[null,"x",7]}]},"dataset_size":5})";
+
 // The cases parsed by one parser. Exactly at the cap is legal; one more is not.
 template <auto Parse> struct Cases {
     static constexpr auto order_by_2 = Parse(ORDER_BY_2);
@@ -117,6 +131,12 @@ template <auto Parse> struct Cases {
     static constexpr auto where_empty_in = Parse(WHERE_EMPTY_IN);
     static constexpr auto where_repeated = Parse(WHERE_REPEATED_CONDITIONS);
     static constexpr auto where_stray_brace = Parse(WHERE_STRAY_BRACE);
+
+    static constexpr auto where_null = Parse(WHERE_NULL_VALUE);
+    static constexpr auto where_int_edges = Parse(WHERE_INT_RANGE_EDGES);
+    static constexpr auto where_negative_int64 = Parse(WHERE_NEGATIVE_INT64);
+    static constexpr auto where_int64_max = Parse(WHERE_INT64_MAX);
+    static constexpr auto where_null_then_string = Parse(WHERE_NULL_THEN_STRING);
 
     static_assert(order_by_2.within_limits() && !order_by_3.within_limits());
     static_assert(fks_2.within_limits() && !fks_3.within_limits());
@@ -184,13 +204,14 @@ template <auto Parse> auto expect_flat_where_builds_one_tree() -> void {
     // No `combine` means AND, in every parser (the benchmark parser used to fall through to OR).
     EXPECT_EQ(C::where_no_combine.where.nodes[C::where_no_combine.where.root].op.view(), "AND");
 
-    // Operands: an IN list, BETWEEN's two values, IS NULL's none.
+    // Operands: an IN list, BETWEEN's two values, one null (IS NULL is spelled `== null`, #844).
     constexpr auto &ops = C::where_operands.where;
     EXPECT_EQ(ops.nodes[0].value_count, 3U);
     EXPECT_EQ(ops.nodes[1].value_count, 2U);
     EXPECT_TRUE(ops.values[ops.nodes[1].first_value].kind == TypedValue::Kind::Double);
-    EXPECT_EQ(ops.nodes[2].value_count, 0U);
-    EXPECT_EQ(ops.value_count, 5U);
+    EXPECT_EQ(ops.nodes[2].value_count, 1U);
+    EXPECT_TRUE(ops.values[ops.nodes[2].first_value].kind == TypedValue::Kind::Null);
+    EXPECT_EQ(ops.value_count, 6U);
 }
 
 // Counts past each cap, and the key after the overflow is still read.
@@ -229,6 +250,48 @@ template <auto Parse> auto expect_malformed_and_repeated_input_is_handled() -> v
     EXPECT_EQ(C::fks_repeated.join.fks[0].view(), "b");
     EXPECT_EQ(C::group_repeated.group_by.declared_count, 2U);
     EXPECT_EQ(C::group_repeated.group_by.fields[0].view(), "b");
+}
+
+// Typed values (#844): null and int64 are kinds of their own, in every parser.
+template <auto Parse> auto expect_typed_values_parse() -> void {
+    using C = Cases<Parse>;
+    using Kind = storm::benchmark::TypedValue::Kind;
+
+    constexpr auto &nulls = C::where_null.where;
+    EXPECT_EQ(nulls.value_count, 2U);
+    EXPECT_TRUE(nulls.values[nulls.nodes[0].first_value].kind == Kind::Null);
+    EXPECT_TRUE(nulls.values[nulls.nodes[1].first_value].kind == Kind::Null);
+    EXPECT_TRUE(nulls.values[nulls.nodes[0].first_value].is_set());
+
+    // 32-bit edges stay Int; one past either end is Int64, with the full value kept.
+    constexpr auto &edges = C::where_int_edges.where;
+    ASSERT_EQ(edges.value_count, 5U);
+    EXPECT_TRUE(edges.values[0].kind == Kind::Int);
+    EXPECT_EQ(edges.values[0].as_int, 2147483647);
+    EXPECT_TRUE(edges.values[1].kind == Kind::Int64);
+    EXPECT_EQ(edges.values[1].as_int64, 2147483648LL);
+    EXPECT_TRUE(edges.values[2].kind == Kind::Int);
+    EXPECT_EQ(edges.values[2].as_int, std::numeric_limits<int>::min());
+    EXPECT_TRUE(edges.values[3].kind == Kind::Int64);
+    EXPECT_EQ(edges.values[3].as_int64, -2147483649LL);
+    EXPECT_TRUE(edges.values[4].kind == Kind::Int64);
+    EXPECT_EQ(edges.values[4].as_int64, 5000000000LL);
+
+    constexpr auto &negative = C::where_negative_int64.where;
+    EXPECT_TRUE(negative.values[0].kind == Kind::Int64);
+    EXPECT_EQ(negative.values[0].as_int64, -9000000000000000000LL);
+    constexpr auto &max64 = C::where_int64_max.where;
+    EXPECT_TRUE(max64.values[0].kind == Kind::Int64);
+    EXPECT_EQ(max64.values[0].as_int64, std::numeric_limits<std::int64_t>::max());
+
+    // null does not stall the parser: the string and the int after it are read.
+    constexpr auto &mixed = C::where_null_then_string.where;
+    ASSERT_EQ(mixed.value_count, 3U);
+    EXPECT_TRUE(mixed.values[0].kind == Kind::Null);
+    EXPECT_TRUE(mixed.values[1].kind == Kind::String);
+    EXPECT_EQ(mixed.values[1].as_string.view(), "x");
+    EXPECT_TRUE(mixed.values[2].kind == Kind::Int);
+    EXPECT_EQ(mixed.values[2].as_int, 7);
 }
 
 } // namespace storm::test::spec_limits

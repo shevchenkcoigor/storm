@@ -23,6 +23,10 @@ namespace {
         storm::test::spec_limits::expect_flat_where_builds_one_tree<parse_case>();
     }
 
+    TEST(SpecLimitsBenchmarkParser, TypedValuesParseAsNullAndInt64) {
+        storm::test::spec_limits::expect_typed_values_parse<parse_case>();
+    }
+
     TEST(SpecLimitsBenchmarkParser, WhereCountsPastItsCaps) {
         storm::test::spec_limits::expect_where_counts_past_its_caps<parse_case>();
     }

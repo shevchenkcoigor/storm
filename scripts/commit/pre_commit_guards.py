@@ -354,12 +354,24 @@ ATLAS_MIGRATION_CHECK = Guard(
     "atlas migration check self-test passed",
 )
 
+# --- unified YAML corpus splitter (#818, #844) ---
+# split_unified_cases.py is the one place that sees the YAML before the C++ parser, which cannot
+# report an overflow or a stray key, so it rejects a pinned-SQL form the parser would ignore or
+# mangle. The test also splits the real corpus (it asserts the per-dialect SQL cases are there),
+# so a corpus edit reruns it, and so does the C++ parser header whose buffer size it cross-checks. Needs PyYAML, like the splitter itself.
+SPLIT_UNIFIED_CASES = Guard(
+    "unified-cases splitter",
+    r"^(scripts/split_unified_cases\.py|scripts/ci/tests/test_split_unified_cases\.py|tests/test_cases/unified_cases\.yaml|tests/test_parser\.hpp)$",
+    (Step(None, script("scripts/ci/tests/test_split_unified_cases.py"), "unified-cases splitter self-test failed"),),
+    "unified-cases splitter self-test passed",
+)
+
 GUARDS = (
     AGENT_FRONTMATTER, TIDY_SKIPLIST, SWEEP_WORKFLOW, SESSION_START_HOOK, SELF_HEAL, CMAKE_FORMAT_TARGET, PYYAML_CHECK,
     CPM_CACHE_CHECK, CPM_COLD_CACHE, COVERAGE_GATE, SMART_SKIP, TIDY_PREREQS, ORM_BACKEND_IMPORTS, NO_STD_FORMAT,
     PRE_COMMIT_GUARDS,
     CI_DIGESTS, COVERAGE_PARALLEL, NINJALOG_STATS, RATIO_GATE, TIME_TRACE, SONAR_GATE, SHARED_TEST_HELPERS,
-    ATLAS_MIGRATION_CHECK,
+    ATLAS_MIGRATION_CHECK, SPLIT_UNIFIED_CASES,
 )
 
 # scripts/*/tests/ self-tests deliberately run by no guard, with where they DO run.
