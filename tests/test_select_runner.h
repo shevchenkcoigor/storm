@@ -10,7 +10,7 @@
  * - base_query<Tc, Model, ConnType>() — the case's filtered/joined QuerySet
  * - seed_records<Tc, Model, ConnType>() — insert the case's dataset
  * - expect_agg_value / verify_groups — the one aggregate-value check
- * - SelectRunner, AggregateRunner, ChainAggRunner, DistinctRunner, GroupByRunner:
+ * - SelectRunner, AggregateRunner (scalar, chain and group, #841), DistinctRunner:
  *   stateless, each a `static run<Tc>()` (#837)
  *
  * Include AFTER `import storm;` — it pulls the model headers it needs itself.
@@ -182,106 +182,20 @@ template <typename Model, typename ConnType> class SelectRunner {
 };
 
 // ---------------------------------------------------------------------------
-// AggregateRunner -- scalar aggregates (count, sum, avg, min, max, count_distinct)
-// ---------------------------------------------------------------------------
-template <typename Model, typename ConnType> class AggregateRunner {
-  private:
-    // #818: pin the statement's SQL text when the case declares expected_sql;
-    // a case without it is result-only, as before.
-    template <const auto &Tc> static auto expect_sql(auto &query) -> void {
-        if constexpr (!Tc.expected_sql.empty())
-            EXPECT_EQ(query.sql(), Tc.expected_sql.view())
-                << "YAML expected_sql (#818) of case " << Tc.bench.test_name.view();
-    }
-
-    // query_type names the QuerySet method, except count_field, which is COUNT(field).
-    static consteval auto method_name(std::string_view query_type) -> std::string_view {
-        return query_type == "count_field" ? "count" : query_type;
-    }
-
-  public:
-    template <const auto &Tc> static auto run() -> void {
-        static_assert(Tc.query_type != "count" || Tc.bench.aggregate.field.empty(),
-                      "query_type count is COUNT(*); use count_field for COUNT(field)");
-        auto qs = base_query<Tc, Model, ConnType>();
-        constexpr auto fn = member_function_named<decltype(qs)>(method_name(Tc.query_type.view()));
-        auto q = call_query_method<fn, field_or_null<Model>(Tc.bench.aggregate.field.view())>(qs);
-        expect_sql<Tc>(q);
-        auto r = q.execute();
-        ASSERT_TRUE(r.has_value()) << r.error().message();
-        using Value = std::remove_cvref_t<decltype(r.value())>;
-        constexpr bool exact_int = !std::is_same_v<Value, std::optional<double>> && Tc.expected.int_val != -1;
-        constexpr double expected = exact_int ? static_cast<double>(Tc.expected.int_val) : Tc.expected.dbl_val;
-        expect_agg_value(r.value(), expected, Tc.dataset.view() == "empty", Tc.query_type.view());
-    }
-};
-
-// ---------------------------------------------------------------------------
-// ChainAggRunner -- multi-aggregate chain queries (query_type == "chain")
+// AggregateRunner -- scalar aggregates, aggregate chains and GROUP BY (#841)
+//
+// One pipeline: base_query -> [group_by + having] -> aggregates 1..N -> check.
+// The parser rewrites every scalar and group_<func> case into `aggregations`
+// (normalise_aggregate_case), so a scalar aggregate is a chain of one and a
+// group case a chain of one after group_by.
 //
 // The chain is built by recursion over Tc.aggregations rather than one branch
 // per func ordering (#834): every step changes the statement's type, so step I
 // is applied to the result of step I-1. Only the orderings the YAML uses are
-// instantiated.
+// instantiated. The YAML func name IS the QuerySet / aggregate-chain member name.
 // ---------------------------------------------------------------------------
-template <typename Model, typename ConnType> class ChainAggRunner {
-    // The YAML func name IS the member name (sum/avg/min/max/count), on both
-    // QuerySet and the aggregate chain (#834).
-    template <const auto &Tc, std::size_t I> static auto apply_agg(auto &&q) {
-        constexpr auto &agg = Tc.aggregations[I];
-        constexpr auto fn = member_function_named<std::remove_cvref_t<decltype(q)>>(agg.func.view());
-        return call_query_method<fn, field_or_null<Model>(agg.field.view())>(std::forward<decltype(q)>(q));
-    }
-
-    template <const auto &Tc, std::size_t I = 0> static auto build_chain(auto &&q) {
-        auto next = apply_agg<Tc, I>(std::forward<decltype(q)>(q));
-        if constexpr (I + 1 == Tc.chain_len)
-            return next;
-        else
-            return build_chain<Tc, I + 1>(std::move(next));
-    }
-
-    // I must stay a constant: it indexes Tc.aggregations[I] and the tuple.
-    template <const auto &Tc> static auto check_values(const auto &values) -> void {
-        template for (constexpr std::size_t I : std::views::iota(0uz, Tc.chain_len))
-            expect_agg_value(std::get<I>(values), Tc.aggregations[I].res_value, Tc.dataset.view() == "empty",
-                             Tc.aggregations[I].func.view());
-    }
-
-  public:
-    template <const auto &Tc> static auto run() -> void {
-        static_assert(Tc.chain_len >= 2, "a chain case needs at least two aggregations");
-        static_assert(Tc.chain_len <= Tc.MAX_CHAIN, "chain case has more aggregations than MAX_CHAIN");
-        auto qs = base_query<Tc, Model, ConnType>();
-        auto r = build_chain<Tc>(qs).execute();
-        ASSERT_TRUE(r.has_value()) << r.error().message();
-        check_values<Tc>(r.value());
-    }
-};
-
-// ---------------------------------------------------------------------------
-// DistinctRunner -- DISTINCT projection (returns plf::hive<FieldType>)
-// ---------------------------------------------------------------------------
-template <typename Model, typename ConnType> class DistinctRunner {
-  public:
-    template <const auto &Tc> static auto run() -> void {
-        static_assert(Tc.bench.distinct.field_count() >= 1, "a distinct case needs at least one field");
-        auto qs = base_query<Tc, Model, ConnType>();
-        // One path for any number of fields: the shared builder expands the field pack.
-        auto r = BuilderFor<Tc, Model, ConnType>::build_distinct_stmt(qs).execute();
-        ASSERT_TRUE(r.has_value()) << r.error().message();
-        EXPECT_EQ(static_cast<int>(r.value().size()), Tc.expected.count);
-    }
-};
-
-// ---------------------------------------------------------------------------
-// GroupByRunner -- GROUP BY + aggregate (group_count, group_sum, ...)
-//
-// group_<func> calls func on the grouped query by name (#834), after the
-// GROUP BY fields and the optional HAVING.
-// ---------------------------------------------------------------------------
-template <typename Model, typename ConnType> class GroupByRunner {
-    static constexpr std::string_view GROUP_PREFIX = "group_";
+template <typename Model, typename ConnType> class AggregateRunner {
+    template <const auto &Tc> static constexpr bool is_group = Tc.bench.group_by.field_count() > 0;
 
     template <const auto &Tc, std::size_t... Is> static auto grouped(auto &qs, std::index_sequence<Is...>) {
         return qs.template group_by<FieldRef<dispatch_field<Model>(Tc.bench.group_by.fields[Is].view())>{}...>();
@@ -297,18 +211,86 @@ template <typename Model, typename ConnType> class GroupByRunner {
         }
     }
 
+    // The statement the aggregates are applied to: the base query, or it grouped (+ HAVING).
+    template <const auto &Tc> static auto aggregate_source() {
+        auto qs = base_query<Tc, Model, ConnType>();
+        if constexpr (is_group<Tc>)
+            return with_having<Tc>(grouped<Tc>(qs, std::make_index_sequence<Tc.bench.group_by.field_count()>{}));
+        else
+            return qs;
+    }
+
+    template <const auto &Tc, std::size_t I> static auto apply_agg(auto &&q) {
+        constexpr auto &agg = Tc.aggregations[I];
+        constexpr auto fn = member_function_named<std::remove_cvref_t<decltype(q)>>(agg.func.view());
+        return call_query_method<fn, field_or_null<Model>(agg.field.view())>(std::forward<decltype(q)>(q));
+    }
+
+    template <const auto &Tc, std::size_t I = 0> static auto build_chain(auto &&q) {
+        auto next = apply_agg<Tc, I>(std::forward<decltype(q)>(q));
+        if constexpr (I + 1 == Tc.chain_len)
+            return next;
+        else
+            return build_chain<Tc, I + 1>(std::move(next));
+    }
+
+    // #818: pin the statement's SQL text when the case declares expected_sql;
+    // a case without it is result-only, as before.
+    template <const auto &Tc> static auto expect_sql(auto &query) -> void {
+        if constexpr (!Tc.expected_sql.empty())
+            EXPECT_EQ(query.sql(), Tc.expected_sql.view())
+                << "YAML expected_sql (#818) of case " << Tc.bench.test_name.view();
+    }
+
+    // I must stay a constant: it indexes Tc.aggregations[I] and the tuple.
+    template <const auto &Tc> static auto check_chain(const auto &values) -> void {
+        template for (constexpr std::size_t I : std::views::iota(0uz, Tc.chain_len))
+            expect_agg_value(std::get<I>(values), Tc.aggregations[I].res_value, Tc.dataset.view() == "empty",
+                             Tc.aggregations[I].func.view());
+    }
+
+    template <const auto &Tc> static auto check(const auto &value) -> void {
+        if constexpr (is_group<Tc>) {
+            EXPECT_EQ(static_cast<int>(value.size()), Tc.expected.count);
+            if constexpr (Tc.expected.groups_count > 0)
+                verify_groups<Tc>(value);
+        } else if constexpr (Tc.chain_len == 1) {
+            expect_agg_value(value, Tc.aggregations[0].res_value, Tc.dataset.view() == "empty",
+                             Tc.aggregations[0].func.view());
+        } else {
+            check_chain<Tc>(value);
+        }
+    }
+
   public:
     template <const auto &Tc> static auto run() -> void {
-        constexpr std::string_view query_type = Tc.query_type.view();
-        static_assert(query_type.starts_with(GROUP_PREFIX), "GroupByRunner runs group_<func> cases only");
+        static_assert(Tc.chain_len >= 1, "an aggregate case needs at least one aggregation");
+        static_assert(Tc.query_type != "chain" || Tc.chain_len >= 2, "a chain case needs at least two aggregations");
+        static_assert(is_group<Tc> == Tc.query_type.view().starts_with("group_"),
+                      "group_by is valid on, and only on, group_<func> cases");
+        static_assert(Tc.chain_len <= Tc.MAX_CHAIN, "aggregate case has more aggregations than MAX_CHAIN");
+        static_assert(Tc.query_type != "count" || Tc.bench.aggregate.field.empty(),
+                      "query_type count is COUNT(*); use count_field for COUNT(field)");
+        auto q = build_chain<Tc>(aggregate_source<Tc>());
+        expect_sql<Tc>(q);
+        auto r = q.execute();
+        ASSERT_TRUE(r.has_value()) << r.error().message();
+        check<Tc>(r.value());
+    }
+};
+
+// ---------------------------------------------------------------------------
+// DistinctRunner -- DISTINCT projection (returns plf::hive<FieldType>)
+// ---------------------------------------------------------------------------
+template <typename Model, typename ConnType> class DistinctRunner {
+  public:
+    template <const auto &Tc> static auto run() -> void {
+        static_assert(Tc.bench.distinct.field_count() >= 1, "a distinct case needs at least one field");
         auto qs = base_query<Tc, Model, ConnType>();
-        auto g = with_having<Tc>(grouped<Tc>(qs, std::make_index_sequence<Tc.bench.group_by.field_count()>{}));
-        constexpr auto fn = member_function_named<decltype(g)>(query_type.substr(GROUP_PREFIX.size()));
-        auto r = call_query_method<fn, field_or_null<Model>(Tc.bench.aggregate.field.view())>(std::move(g)).execute();
+        // One path for any number of fields: the shared builder expands the field pack.
+        auto r = BuilderFor<Tc, Model, ConnType>::build_distinct_stmt(qs).execute();
         ASSERT_TRUE(r.has_value()) << r.error().message();
         EXPECT_EQ(static_cast<int>(r.value().size()), Tc.expected.count);
-        if constexpr (Tc.expected.groups_count > 0)
-            verify_groups<Tc>(r.value());
     }
 };
 

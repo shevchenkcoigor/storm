@@ -644,7 +644,7 @@ namespace storm::test {
         constexpr TestCase() = default;
 
         // #843: the spec's caps plus the chain's. A case past one does not compile (QueryBuilder
-        // for the spec's, the chain runner for MAX_CHAIN).
+        // for the spec's, the aggregate runner for MAX_CHAIN).
         [[nodiscard]] constexpr auto within_limits() const -> bool {
             return bench.within_limits() && chain_len <= MAX_CHAIN;
         }
@@ -775,7 +775,7 @@ namespace storm::test {
                 out.data()[n] = parse_chain_agg_spec(jj, pp);
             else
                 skip_braced(jj, pp, '{', '}');
-            ++n; // counts past MAX_CHAIN too, so ChainAggRunner can reject the overflow
+            ++n; // counts past MAX_CHAIN too, so AggregateRunner can reject the overflow
         });
         return n;
     }
@@ -877,10 +877,40 @@ namespace storm::test {
             parse_bench_field(tc.bench, ptr, kr, j, p);
     }
 
+    inline constexpr std::string_view GROUP_QUERY_PREFIX = "group_";
+
+    // #841: a scalar aggregate is a chain of one and a group_<func> case is a chain of one after
+    // group_by, so both are rewritten into `aggregations` here and ONE runner executes them.
+    // A scalar case declares its value as int_val or dbl_val (never both); a chain case already
+    // carries `aggregations` and is left alone.
+    constexpr void normalise_aggregate_case(TestCase& tc) {
+        const std::string_view query_type = tc.query_type.view();
+        const bool             is_group   = query_type.starts_with(GROUP_QUERY_PREFIX);
+        const bool is_scalar = query_type == "count" || query_type == "count_field" || query_type == "count_distinct" ||
+                               query_type == "sum" || query_type == "avg" || query_type == "min" || query_type == "max";
+        if (!is_group && !is_scalar)
+            return;
+        ChainAggSpec spec;
+        // count_field is COUNT(field): the QuerySet method is still count.
+        std::string_view func = query_type;
+        if (is_group)
+            func = query_type.substr(GROUP_QUERY_PREFIX.size());
+        else if (query_type == "count_field")
+            func = "count";
+        spec.func.append(func);
+        spec.field = tc.bench.aggregate.field;
+        // A group case is checked against group_keys / group_agg_*, not res_value.
+        if (!is_group)
+            spec.res_value = tc.expected.int_val != -1 ? static_cast<double>(tc.expected.int_val) : tc.expected.dbl_val;
+        tc.aggregations.data()[0] = spec;
+        tc.chain_len              = 1;
+    }
+
     constexpr void parse_test_case_into(std::string_view j, std::size_t& p, TestCase& tc) {
         parse_object(j, p, [&](const char* ptr, JsonKeyRef kr, std::string_view jj, std::size_t& pp) {
             parse_test_only_field(tc, ptr, kr, jj, pp);
         });
+        normalise_aggregate_case(tc);
     }
 
     template <typename T, std::size_t N, typename ParseIntoFn>
