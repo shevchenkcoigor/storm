@@ -23,6 +23,20 @@ mkdocs build --strict
 
 Documentation auto-deploys to GitHub Pages on push to `develop` when `docs/` or `mkdocs.yml` changes.
 
+## Updating the Vendored CPM.cmake
+
+`cmake/CPM_<version>.cmake` is the upstream CPM.cmake release asset, committed byte for byte, so
+configuring never downloads the bootstrap (#851). `cmake/cpm.cmake` includes it and records
+`CPM_DOWNLOAD_VERSION` and `CPM_SHA256`. The file is excluded from `cmake-format`.
+
+```bash
+scripts/update_cpm.py 0.40.6        # downloads the release, replaces cmake/CPM_*.cmake, prints two set() lines
+# paste those two lines over the ones in cmake/cpm.cmake
+scripts/ci/check_cpm_vendored.py    # name, version and SHA256 must agree
+```
+
+The same check runs in CI's `script-guards` job and in `commit.sh` when any of these files is staged.
+
 ## Adding a New Database Operation
 
 1. Create statement class in `src/orm/statements/` inheriting from `BaseStatement<T>`

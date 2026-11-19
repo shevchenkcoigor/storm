@@ -13,7 +13,8 @@ What is asserted:
     missing tool (the cmake-only-commit path);
   - absent, configured tree: the configure output is discarded (another step owned it) and the
     build output ALONE still names the missing tool;
-  - present: the real tool runs and the build succeeds, with no stub message.
+  - present: the real tool runs and the build succeeds, with no stub message;
+  - the vendored cmake/CPM_<version>.cmake is never handed to cmake-format (#851).
 
 Strategy: include the REAL cmake/format.cmake from a minimal harness project, with cmake-scripts'
 formatting.cmake replaced by a stub that mirrors upstream's cmake_format(): it creates
@@ -43,6 +44,7 @@ MISSING_TOOL_MSG = "cmake-format not found"
 FORMATTING_STUB = """function(clang_format TARGET_NAME)
 endfunction()
 function(cmake_format TARGET_NAME)
+  file(WRITE "${CMAKE_BINARY_DIR}/cmake-format-files.txt" "${ARGN}")
   if(CMAKE_FORMAT_EXE)
     add_custom_target(${TARGET_NAME} COMMAND ${CMAKE_FORMAT_EXE} -i ${ARGN})
     add_custom_target(cmake-format)
@@ -118,6 +120,19 @@ class CmakeFormatTargetTest(unittest.TestCase):
         self.assertEqual(built.returncode, 0, built.stdout[-300:])
         self.assertTrue((self.tmp / "tool-ran").exists(), "cmake-format did not run")
         self.assertNotIn(MISSING_TOOL_MSG, configured.stdout + built.stdout)
+
+    def test_vendored_cpm_is_not_handed_to_cmake_format(self):
+        # #851: cmake/CPM_<version>.cmake is upstream's file byte for byte; reformatting it
+        # would break the SHA256 scripts/ci/check_cpm_vendored.py pins.
+        cmake_dir = self.tmp / "src" / "cmake"
+        cmake_dir.mkdir()
+        (cmake_dir / "CPM_9.9.9.cmake").write_text("# vendored\n", encoding="utf-8")
+        (cmake_dir / "ours.cmake").write_text("# ours\n", encoding="utf-8")
+        configured = self.configure(self.write_fake_tool())
+        self.assertEqual(configured.returncode, 0, "harness configure failed: " + configured.stdout)
+        handed = (self.tmp / "build" / "cmake-format-files.txt").read_text(encoding="utf-8")
+        self.assertIn("ours.cmake", handed)
+        self.assertNotIn("CPM_9.9.9.cmake", handed)
 
 
 if __name__ == "__main__":

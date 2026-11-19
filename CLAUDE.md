@@ -139,7 +139,8 @@ cmake/
 ├── libcxx.cmake          # LIBCXX_ROOT validation, global -nostdinc++ flags, apply_clang_flags()
 ├── db.cmake              # find_package SQLite3 + PostgreSQL, link_sqlite/link_postgresql helpers
 ├── cpm-cache.cmake       # storm_verify_cpm_cache(): configure-time check for a CPM checkout left empty by an interrupted clone (#705)
-├── cpm.cmake             # CPM.cmake bootstrap (auto-downloaded on first configure)
+├── cpm.cmake             # CPM.cmake bootstrap: includes the vendored CPM_<version>.cmake, records its version + SHA256 (#851)
+├── CPM_0.40.5.cmake      # upstream CPM.cmake byte for byte, NOT formatted; bump with scripts/update_cpm.py
 ├── cmake-scripts.cmake   # Global CPM fetch of StableCoder/cmake-scripts (used by format + sanitizers)
 ├── coverage.cmake        # Coverage compile/link flags (must include before tests)
 ├── coverage-targets.cmake# Coverage cmake targets: coverage, coverage-html, coverage-clean
