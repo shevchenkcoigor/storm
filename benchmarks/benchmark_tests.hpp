@@ -8,7 +8,7 @@
 // (and the resulting `inline constexpr` array initializer) into the module
 // purview triggers a clang PCM deserialization bug ("declaration ID
 // out-of-range for AST file") when any TU imports the module and instantiates
-// the call. The parser primitives (parse_int, parse_string, parse_tests<N>,
+// the call. The parser primitives (parse_int, parse_str, parse_tests<N>,
 // count_tests, ...) serialize into the PCM fine — only the `consteval`
 // `#embed` driver is affected.
 //
@@ -25,6 +25,15 @@ import storm_benchmark_parser; // parse_tests<>, count_tests
 
 namespace storm::benchmark {
 
+    // Every case within the spec caps and its string buffers (#845). The select cases are also held
+    // to it by QueryBuilder (SpecWithinLimits); a write case is checked only here.
+    template <std::size_t N> consteval auto all_within_limits(const std::array<BenchmarkTest, N>& tests) -> bool {
+        for (const BenchmarkTest& t : tests)
+            if (!t.within_limits())
+                return false;
+        return true;
+    }
+
     consteval auto load_benchmark_tests() {
         static constexpr const char json_data[] = {
 // #embed is a C23 feature Clang offers as an extension in C++26 mode; it is the
@@ -38,7 +47,9 @@ namespace storm::benchmark {
         };
         constexpr std::string_view json_str(json_data);
         constexpr std::size_t      test_count = count_tests(json_str);
-        return parse_tests<test_count>(json_str);
+        constexpr auto             tests      = parse_tests<test_count>(json_str);
+        static_assert(all_within_limits(tests), "a benchmark case exceeds a spec cap or a string buffer (#843/#845)");
+        return tests;
     }
 
     inline constexpr auto BENCHMARK_TESTS = load_benchmark_tests();

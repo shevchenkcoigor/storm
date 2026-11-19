@@ -4,7 +4,7 @@ project(storm_tests LANGUAGES CXX)
 # YAML → JSON conversion for YAML-driven test cases. test_cases/<topic>.yaml
 # (where.yaml, writes.yaml, ...) is the single source of truth; the files are
 # converted to JSON at build time so the JSON can be embedded via C++26 #embed
-# in test_parser.hpp.
+# in test_unified_yaml_body.h.
 # ============================================================================
 
 find_package(Python3 REQUIRED COMPONENTS Interpreter)
@@ -17,10 +17,11 @@ set(TEST_CASES_DIR "${CMAKE_CURRENT_SOURCE_DIR}/test_cases")
 # wall). The split files are generated from the YAML, never hand-maintained.
 #
 # Issue #582: a second rule here also emitted the whole corpus as one
-# unified_cases.json, to feed test_parser.hpp's #ifndef default. Every includer
-# selects a slice, so nothing embedded it -- the rule generated a 53 KB file on
-# every build for a branch no TU took. It is gone along with the default, and so
-# is scripts/yaml_to_json_tests.py, which this rule was the only caller of.
+# unified_cases.json, to feed the corpus #ifndef default (then in
+# test_parser.hpp). Every includer selects a slice, so nothing embedded it --
+# the rule generated a 53 KB file on every build for a branch no TU took. It is
+# gone along with the default, and so is scripts/yaml_to_json_tests.py, which
+# this rule was the only caller of.
 set(SPLIT_CASES_SCRIPT "${CMAKE_SOURCE_DIR}/scripts/split_unified_cases.py")
 
 # #846: the authoring files are tests/test_cases/*.yaml, grouped by meaning for
@@ -35,9 +36,7 @@ list(SORT UNIFIED_CASES_YAMLS)
 
 # Single source of truth for the category split; mirrored by CATEGORIES in
 # scripts/split_unified_cases.py and by the tests/yaml/test_unified_yaml_*.cpp
-# TUs. A fourth consumer names `crud`:
-# tests/yaml/test_spec_limits_test_parser.cpp borrows that slice only to satisfy
-# test_parser.hpp's #error (#843, see below).
+# TUs.
 set(SPLIT_CATEGORIES select grouped aggregate crud)
 
 set(SPLIT_JSON_FILES "")
@@ -94,12 +93,13 @@ file(
 
 add_executable(${PROJECT_NAME} ${TEST_SOURCES})
 
-# The YAML corpus reaches these TUs through `#embed` (tests/test_parser.hpp),
-# and `#embed` is invisible to the dependency scanner: clang does not list the
-# embedded file in the depfile, so ninja records no edge from the object to the
-# JSON (`ninja -t deps` showed none). Editing a test_cases/*.yaml therefore
-# regenerated the JSON but left the objects stale — a green build still running
-# the previous corpus. OBJECT_DEPENDS states the edge explicitly.
+# The YAML corpus reaches these TUs through `#embed`
+# (tests/test_unified_yaml_body.h), and `#embed` is invisible to the dependency
+# scanner: clang does not list the embedded file in the depfile, so ninja
+# records no edge from the object to the JSON (`ninja -t deps` showed none).
+# Editing a test_cases/*.yaml therefore regenerated the JSON but left the
+# objects stale — a green build still running the previous corpus.
+# OBJECT_DEPENDS states the edge explicitly.
 #
 # set_property(SOURCE ... APPEND) rather than set_source_files_properties(): the
 # latter silently does nothing when the path matches no target source, so a
@@ -111,16 +111,6 @@ foreach(CATEGORY IN LISTS SPLIT_CATEGORIES)
     APPEND
     PROPERTY OBJECT_DEPENDS "${TEST_CASES_DIR}/unified_cases_${CATEGORY}.json")
 endforeach()
-
-# #843: the test-parser limits TU #embeds the crud slice only because
-# test_parser.hpp #errors without STORM_UNIFIED_CASES_FILE; it never evaluates
-# the cases (it does not include test_unified_yaml_body.h). The #embed must
-# still resolve, so this edge orders JSON generation before this compile (at the
-# cost of an occasional extra recompile when the crud slice changes).
-set_property(
-  SOURCE "${CMAKE_CURRENT_SOURCE_DIR}/yaml/test_spec_limits_test_parser.cpp"
-  APPEND
-  PROPERTY OBJECT_DEPENDS "${TEST_CASES_DIR}/unified_cases_crud.json")
 
 target_sources(
   ${PROJECT_NAME}
@@ -288,6 +278,12 @@ apply_clang_flags(${PROJECT_NAME})
 # breaks at an identical loop count; 4194304 moves it 4x), i.e. ~3.5x the worst
 # slice -- so the flag bought nothing and setting it to 1048576 would only have
 # been the default spelled out.
+#
+# #845 re-measured after merging the two spec parsers into one
+# (storm_benchmark_parser), the same way on a probe TU per slice: grouped 343186,
+# select 329288, aggregate 216883, crud 94718 (the corpus has grown since #582),
+# and benchmarks/tests/benchmark_tests.json 341492 -- ~3x under the default. The
+# table is in docs/internals/testing/TESTING.md.
 #
 # The flag was target-wide, but only these four slices were measured: the other
 # ~40 TUs in storm_tests (reflection-heavy consteval in crud/, query/, schema/)

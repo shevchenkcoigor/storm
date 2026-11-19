@@ -145,6 +145,10 @@ export namespace storm::benchmark {
     // many leaves there are. `node_count` and `value_count` count past the caps, so an overflow
     // is rejected (within_limits) instead of dropping entries silently.
     // ========================================================================
+    // How a `where:` block joins its conditions (#847). `Unknown` is any spelling other than the
+    // two accepted, which is_well_formed() rejects instead of reading it as AND.
+    enum class WhereCombine : unsigned char { And, Or, Unknown };
+
     struct WhereSpec {
         bool enabled = false;
 
@@ -159,6 +163,19 @@ export namespace storm::benchmark {
         // How many WHERE forms the case wrote (`where:` / `where_expr:`); more than one is rejected,
         // because two trees cannot share one set of nodes.
         std::size_t forms = 0;
+        // A `combine` that was neither "and" nor "or" (#847).
+        bool unknown_combine = false;
+
+        // The accepted `combine` spellings, exactly and case-sensitively: "and", "or" (#847).
+        [[nodiscard]] static constexpr auto combine_of(std::string_view spelling) -> WhereCombine {
+            if (spelling == "and") {
+                return WhereCombine::And;
+            }
+            if (spelling == "or") {
+                return WhereCombine::Or;
+            }
+            return WhereCombine::Unknown;
+        }
 
         constexpr void begin_form() {
             enabled = true;
@@ -191,7 +208,10 @@ export namespace storm::benchmark {
         }
 
         // Joins the `leaf_count` leaves added from `first_leaf` on, left to right: ((l0 op l1) op l2) ...
-        constexpr void join_leaves(std::size_t first_leaf, std::size_t leaf_count, bool use_or) {
+        // An unknown `combine` is recorded even for one leaf, where there is nothing to join.
+        constexpr void join_leaves(std::size_t first_leaf, std::size_t leaf_count, WhereCombine combine) {
+            unknown_combine   = unknown_combine || combine == WhereCombine::Unknown;
+            const bool use_or = combine == WhereCombine::Or;
             if (leaf_count == 0) {
                 return;
             }
@@ -210,13 +230,16 @@ export namespace storm::benchmark {
             return node_count <= MAX_NODES && value_count <= MAX_VALUES && forms <= 1;
         }
 
-        // The tree can be built: a root and children that exist, AND/OR joins with both children and
-        // no operands of their own, every leaf with the operands its operator reads, and no node
-        // stored that the root cannot reach (a dropped subtree would be silently ignored).
-        // A QueryBuilder constraint, separate from the caps above.
+        // The tree can be built: a known `combine` (#847), a root and children that exist, AND/OR joins with both
+        // children and no operands of their own, every leaf with the operands its operator reads, and no node stored
+        // that the root cannot reach (a dropped subtree would be silently ignored). A QueryBuilder constraint, separate
+        // from the caps above.
         [[nodiscard]] constexpr auto is_well_formed() const -> bool {
             if (!enabled) {
                 return true;
+            }
+            if (unknown_combine) {
+                return false;
             }
             const std::size_t stored = stored_node_count();
             if (root < 0 || static_cast<std::size_t>(root) >= stored) {
@@ -401,6 +424,9 @@ export namespace storm::benchmark {
         int dataset_size = 10000;
         int batch_size   = 1;
 
+        // Strings longer than their buffer (#845): kept truncated, counted, and rejected below.
+        std::size_t truncated_strings = 0;
+
         // Size profile for automatic iteration over sizes
         // Values: "none", "batch_standard", "batch_insert_edge", "batch_update_edge",
         //         "dataset_standard", "dataset_small"
@@ -412,12 +438,12 @@ export namespace storm::benchmark {
             add_capped(order_by, order_by_count, entry);
         }
 
-        // #843: false when a case listed more entries than a capped array holds. The
-        // parsers keep counting past a cap instead of dropping the extra entries
-        // silently; the consumer (QueryBuilder) rejects the case at compile time.
+        // #843: false when a case listed more entries than a capped array holds, or (#845) wrote a
+        // string longer than its buffer. The parser keeps counting past a cap instead of dropping
+        // the extra entries silently; the consumer (QueryBuilder) rejects the case at compile time.
         [[nodiscard]] constexpr auto within_limits() const -> bool {
             return where.within_limits() && order_by_count <= MAX_ORDER_BY && group_by.within_limits() &&
-                   distinct.within_limits() && join.within_limits();
+                   distinct.within_limits() && join.within_limits() && truncated_strings == 0;
         }
     };
 

@@ -55,9 +55,9 @@ from typing import Iterable, Iterator
 #   of which has a real compile-commands entry.
 #
 #   tests/test_parser.hpp is listed above for symmetry, but its standalone failure
-#   is neither storm nor a missing BMI: since #582 it #errors immediately unless
-#   the including TU defined STORM_UNIFIED_CASES_FILE, and what it imports is
-#   storm_benchmark_schema, not storm.
+#   is not storm: it imports storm_benchmark_schema and storm_benchmark_parser,
+#   whose BMIs a standalone parse does not have. (Until #845 it also #errored
+#   without STORM_UNIFIED_CASES_FILE; that guard moved to test_unified_yaml_body.h.)
 #
 #   The 12 *_body.h files are the compile-time TU-split bodies (each holds the
 #   shared TYPED_TEST_SUITE/TYPED_TEST content for one _sqlite.cpp/_pg.cpp pair):

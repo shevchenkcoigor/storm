@@ -26,6 +26,14 @@
  * test_parser.hpp, all of which it uses.
  */
 
+// Issue #582: there is no default corpus. A full-corpus default let a TU that forgot to select a
+// slice compile anyway, registering every case under one category with no diagnostic. Failing
+// here instead costs nothing and names the fix. (#845: the guard lives here, with the #embed, so
+// test_parser.hpp itself needs no corpus.)
+#ifndef STORM_UNIFIED_CASES_FILE
+#error "define STORM_UNIFIED_CASES_FILE to a corpus slice (see tests/yaml/test_unified_yaml_select.cpp)"
+#endif
+
 #include <gtest/gtest.h>
 
 #include "../shared/models/extended_types.h"
@@ -40,6 +48,27 @@ using storm::orm::statements::EraseStatement;
 using storm::orm::statements::SelectStatement;
 
 namespace storm::test {
+
+// `static` (internal linkage), NOT inline: STORM_UNIFIED_CASES_FILE differs per
+// TU, so this function's DEFINITION differs per TU. One external-linkage entity
+// with several definitions is [basic.def.odr] IFNDR. It is inert today only
+// because a consteval function is never odr-used and emits no symbol -- one
+// consteval->constexpr edit away from being live. Same discipline as
+// UNIFIED_TESTS below.
+static consteval auto load_unified_tests() {
+    static constexpr const char raw[] = {
+// #embed is a C23 feature Clang offers as an extension in C++26 mode; this is
+// the only portable way to embed the JSON test corpus at compile time. Suppress
+// -Wc23-extensions here so the -Werror policy (issue #317) stays clean.
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wc23-extensions"
+#embed STORM_UNIFIED_CASES_FILE
+#pragma clang diagnostic pop
+        , '\0'};
+    constexpr std::string_view json(raw, sizeof(raw) - 1);
+    constexpr std::size_t n = storm::benchmark::count_tests(json);
+    return storm::benchmark::parse_array_into<TestCase, n>(json, parse_test_case_into);
+}
 
 // YAML `model:` name -> model type (#834). Names are explicit rather than
 // derived from identifier_of: the corpus spells SimpleRecord as "simple".
@@ -171,6 +200,9 @@ template <const auto &Tc, typename Tag, typename ConnType>
 class UnifiedYamlBody : public UnifiedYamlFixture<Tag, ConnType> {
   protected:
     static constexpr auto &tc = Tc;
+    // Every case is held to the spec caps and its string buffers (#845), not only one that builds a
+    // QueryBuilder (SpecWithinLimits): a write case would otherwise run on a truncated string.
+    static_assert(Tc.within_limits(), "YAML case exceeds a spec cap or a string buffer (TESTING.md, #843/#845)");
 
     auto reset_tables() -> void {
         std::shared_ptr<ConnType> conn = // NOSONAR(S1659)
@@ -259,7 +291,7 @@ class UnifiedYamlBody : public UnifiedYamlFixture<Tag, ConnType> {
  * and static registration. @p Tag names the category (a C++ identifier, used
  * only to make the fixture type distinct per TU -- see the ODR note above);
  * @p SuiteName is the GTest suite name. The corpus is whichever slice
- * STORM_UNIFIED_CASES_FILE selected before test_parser.hpp was included.
+ * STORM_UNIFIED_CASES_FILE selected before this header was included.
  */
 #define STORM_REGISTER_UNIFIED_YAML_SUITE(Tag, SuiteName)                                                              \
     /* Anonymous namespace, so the tag is a DISTINCT type per TU no matter what                                        \

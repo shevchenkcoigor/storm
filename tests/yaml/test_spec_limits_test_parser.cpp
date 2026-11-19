@@ -1,9 +1,8 @@
-// Issue #843: the test-side parser (tests/test_parser.hpp) fills the same
-// BenchmarkTest spec as the benchmark parser, with its own code. It runs the same
-// shared cases (test_spec_limits.h), and the shared QueryBuilder must reject a
-// spec that overflows a cap.
-// NOLINTNEXTLINE(cppcoreguidelines-macro-usage) - #embed needs a literal filename
-#define STORM_UNIFIED_CASES_FILE "test_cases/unified_cases_crud.json"
+// Issue #843/#845: the test entry point (tests/test_parser.hpp) reads the test-only
+// keys and hands every other key to the one shared parser (storm_benchmark_parser).
+// It runs the shared cases (test_spec_limits.h), so a key the extension failed to
+// pass on would show here, and the shared QueryBuilder must reject a spec that
+// overflows a cap. No corpus: test_parser.hpp needs none since #845.
 
 #include <gtest/gtest.h>
 #include "test_db_helpers.h"
@@ -130,6 +129,12 @@ namespace {
     static_assert(!Buildable<C::fks_3>);
     static_assert(!Buildable<C::group_3>);
     static_assert(!Buildable<C::distinct_4>);
+    // #847: an unknown `combine` does not build; the same tree spelled "and"/"or" does.
+    static_assert(Buildable<C::where_or_first>);
+    static_assert(Buildable<C::where_no_combine>);
+    static_assert(!Buildable<C::where_combine_unknown>);
+    static_assert(!Buildable<C::where_combine_upper_case>);
+    static_assert(!Buildable<C::where_combine_unknown_one>);
 
     TEST(SpecLimitsTestParser, WhereExprBuildsTheSameTreeInPreOrder) {
         using storm::benchmark::TypedValue;
@@ -192,6 +197,33 @@ namespace {
 
     TEST(SpecLimitsTestParser, CountsPastEveryCapAndKeepsParsing) {
         storm::test::spec_limits::expect_counts_past_every_cap<parse_case>();
+    }
+
+    TEST(SpecLimitsTestParser, UnknownCombineIsRejected) {
+        storm::test::spec_limits::expect_unknown_combine_is_rejected<parse_case>();
+    }
+
+    TEST(SpecLimitsTestParser, EverySharedKeyIsRead) {
+        storm::test::spec_limits::expect_every_shared_key_is_read<parse_case>();
+    }
+
+    TEST(SpecLimitsTestParser, BracesInStringsAreText) {
+        storm::test::spec_limits::expect_braces_in_strings_are_text<parse_case>();
+    }
+
+    TEST(SpecLimitsTestParser, OverLongStringsAreRejected) {
+        storm::test::spec_limits::expect_over_long_strings_are_rejected<parse_case>();
+    }
+
+    TEST(SpecLimitsTestParser, CountTestsIgnoresBracesInStrings) {
+        using storm::test::spec_limits::TWO_OBJECTS_WITH_BRACES;
+        constexpr std::size_t n = storm::benchmark::count_tests(TWO_OBJECTS_WITH_BRACES);
+        EXPECT_EQ(n, 2U);
+        constexpr auto cases = storm::benchmark::parse_array_into<storm::test::TestCase, 2>(
+                TWO_OBJECTS_WITH_BRACES, storm::test::parse_test_case_into
+        );
+        EXPECT_EQ(cases[0].bench.model.view(), "m");
+        EXPECT_EQ(cases[1].bench.test_name.view(), "b]");
     }
 
     // ------------------------------------------------------------------
@@ -429,6 +461,40 @@ namespace {
         EXPECT_EQ(kSqlPair.expected_sql_for(kPg), "LIMIT ALL");
         EXPECT_TRUE(kSqlNone.expected_sql_for(kSqlite).empty());
         EXPECT_TRUE(kSqlNone.expected_sql_for(kPg).empty());
+    }
+
+    TEST(SpecLimitsTestParser, EscapeAtBufferEdgeIsKept) {
+        storm::test::spec_limits::expect_escape_at_buffer_edge_is_kept<parse_case>();
+    }
+
+    TEST(SpecLimitsTestParser, NonStringValueIsConsumed) {
+        storm::test::spec_limits::expect_non_string_value_is_consumed<parse_case>();
+    }
+
+    // An element past MAX_CHAIN that is not an object is still one element: it is counted, and the
+    // keys after the array are read.
+    constexpr std::string_view kChainOverflowScalarJson =
+            R"({"aggregations":[{"func":"sum"},{"func":"sum"},{"func":"sum"},{"func":"sum"},{"func":"sum"},7],"query_type":"agg","dataset_size":5})";
+    constexpr auto kChainOverflowScalar = parse_test_case(kChainOverflowScalarJson);
+
+    TEST(SpecLimitsTestParser, ChainOverflowScalarIsSkipped) {
+        EXPECT_EQ(kChainOverflowScalar.chain_len, 6U);
+        EXPECT_FALSE(kChainOverflowScalar.within_limits());
+        EXPECT_EQ(kChainOverflowScalar.query_type.view(), "agg");
+        EXPECT_EQ(kChainOverflowScalar.bench.dataset_size, 5);
+    }
+
+    // `dataset` (a string key) given a number: no phantom key is left for a count to see, so the
+    // first-row member count and the keys after it are exact.
+    constexpr std::string_view kNonStringDatasetJson =
+            R"({"dataset":5,"expected":{"first":{"a":1,"b":"x"}},"query_type":"select"})";
+    constexpr auto kNonStringDataset = parse_test_case(kNonStringDatasetJson);
+
+    TEST(SpecLimitsTestParser, NonStringDatasetLeavesNoPhantomKey) {
+        EXPECT_TRUE(kNonStringDataset.dataset.view().empty());
+        EXPECT_EQ(kNonStringDataset.expected.first.count, 2U);
+        EXPECT_EQ(kNonStringDataset.query_type.view(), "select");
+        EXPECT_TRUE(kNonStringDataset.within_limits());
     }
 
     TEST(SpecLimitsTestParser, ExpectedSqlKeysDoNotShadowEachOther) {

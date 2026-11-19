@@ -2,16 +2,18 @@
 
 /**
  * @file test_spec_limits.h
- * @brief One set of spec-limit cases, run against each parser that fills BenchmarkTest (#843).
+ * @brief One set of spec-limit cases, run through each entry point of the one spec parser (#843, #845).
  *
  * A spec array holds at most MAX_* entries. A parser must COUNT the entries it was
  * given, even past the cap, so a consumer can reject the overflow at compile time
  * (BenchmarkTest::within_limits) instead of silently checking less than the case
  * says; and an over-long array must leave the parser at the right position, so the
  * key after it is still read. The cases are written once here; each test TU passes
- * its parser as `Parse` (a constexpr `string_view -> BenchmarkTest`).
+ * its entry point as `Parse` (a constexpr `string_view -> BenchmarkTest`): the
+ * benchmark one (storm::benchmark::parse_test_object) and the test one
+ * (tests/test_parser.hpp, which forwards every shared key to the same parser).
  *
- * The marker key is `dataset_size` because both parsers read it (default 10000).
+ * The marker key is `dataset_size`, a shared key (default 10000).
  *
  * Include AFTER `import storm_benchmark_schema;` and `import std;`.
  */
@@ -42,7 +44,7 @@ inline constexpr std::string_view GROUP_REPEATED =
     R"({"group_by":{"fields":["a"],"fields":["b","c"]},"dataset_size":5})";
 
 // WHERE (#843): `where:` conditions and `combine` arrive as the converters emit them
-// ({conditions:[{field, op, values:[...]}], combine}); each parser must build the same tree.
+// ({conditions:[{field, op, values:[...]}], combine}); each entry point must build the same tree.
 inline constexpr std::string_view WHERE_SINGLE =
     R"({"where":{"conditions":[{"field":"age","op":">","values":[30]}]},"dataset_size":5})";
 inline constexpr std::string_view WHERE_AND =
@@ -100,6 +102,66 @@ inline constexpr std::string_view WHERE_INT64_MAX =
 inline constexpr std::string_view WHERE_NULL_THEN_STRING =
     R"({"where":{"conditions":[{"field":"a","op":"IN","values":[null,"x",7]}]},"dataset_size":5})";
 
+// `combine` is exactly "and" or "or" (#847). Any other spelling, a different case included, is
+// rejected rather than read as AND -- also when there is only one condition to join.
+inline constexpr std::string_view WHERE_COMBINE_UNKNOWN =
+    R"({"where":{"conditions":[{"field":"a","op":"==","values":[1]},{"field":"b","op":"==","values":[2]}],"combine":"xor"},"dataset_size":5})";
+inline constexpr std::string_view WHERE_COMBINE_UPPER_CASE =
+    R"({"where":{"conditions":[{"field":"a","op":"==","values":[1]},{"field":"b","op":"==","values":[2]}],"combine":"OR"},"dataset_size":5})";
+// A non-string `combine` (null, a number) is not a spelling either.
+inline constexpr std::string_view WHERE_COMBINE_NULL =
+    R"({"where":{"conditions":[{"field":"a","op":"==","values":[1]},{"field":"b","op":"==","values":[2]}],"combine":null},"dataset_size":5})";
+inline constexpr std::string_view WHERE_COMBINE_UNKNOWN_ONE_CONDITION =
+    R"({"where":{"conditions":[{"field":"a","op":"==","values":[1]}],"combine":"xor"},"dataset_size":5})";
+
+// Every shared key is read by one parser, whichever entry point a case comes through (#845).
+inline constexpr std::string_view ORDER_BY_COLLATE =
+    R"({"order_by":[{"field":"name","direction":"DESC","collate":"NOCASE"}],"dataset_size":5})";
+inline constexpr std::string_view NAME_KEY = R"({"name":"by_name","dataset_size":5})";
+inline constexpr std::string_view TEST_NAME_KEY = R"({"test_name":"by_test_name","dataset_size":5})";
+inline constexpr std::string_view BENCHMARK_KEYS =
+    R"({"test_category":"cat","description":"desc","operation":"op","iterations":7,"batch_size":3,"size_profile":"prof","setop":{"type":"union"},"dataset_size":5})";
+// A brace or bracket inside a string is text, not structure: skipping the value it sits in must
+// not miscount the nesting, or the parse loses every key after it.
+inline constexpr std::string_view BRACE_IN_SKIPPED_STRING =
+    R"({"extra":{"note":"a{b]c"},"description":"a{b]c","dataset_size":5})";
+inline constexpr std::string_view BRACKET_IN_SKIPPED_ARRAY = R"({"name":"n{1","extra":["x]","y\"]"],"dataset_size":5})";
+// Two objects whose strings carry an unbalanced brace and bracket; count_tests must still count 2.
+inline constexpr std::string_view TWO_OBJECTS_WITH_BRACES = R"([{"name":"a{","model":"m"},{"name":"b]"}])";
+
+// A string longer than its buffer is kept to the buffer, read to its closing quote (an escaped
+// quote included), and counted, so within_limits() rejects the case like any other cap.
+inline constexpr std::string_view MODEL_AT_CAPACITY = R"({"model":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","dataset_size":5})";
+inline constexpr std::string_view MODEL_OVER_CAPACITY =
+    R"({"model":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\"b,c","dataset_size":5})";
+inline constexpr std::string_view WHERE_FIELD_OVER_CAPACITY =
+    R"({"where":{"conditions":[{"field":"ffffffffffffffffffffffffffffffffffff","op":"==","values":[1]}]},"dataset_size":5})";
+
+// An escape whose backslash is the last character that fits the 31-character model buffer: the
+// unescaped quote is the 31st character. With nothing after it the string fits; with more text the
+// string is over-long, and the key after it is still read.
+inline constexpr std::string_view MODEL_ESCAPE_AT_EDGE_FITS =
+    R"({"model":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\"","dataset_size":5})";
+inline constexpr std::string_view MODEL_ESCAPE_AT_EDGE_OVER =
+    R"({"model":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\"xyz","dataset_size":5})";
+
+// A number where a string belongs: the value is consumed, the field stays empty, the next key is read.
+inline constexpr std::string_view NON_STRING_IN_STRING_SLOT = R"({"model":5,"name":"x","dataset_size":5})";
+
+// `\"` and `\\` unescape to the character after the backslash, and the key after the string is read.
+inline constexpr std::string_view ESCAPED_STRING = R"({"model":"a\"b\\c","dataset_size":5})";
+
+// Input that ends inside an array, after trailing whitespace, with no terminating NUL to read past:
+// the parser must stop at the end of the view rather than read one past it.
+template <std::size_t N> constexpr auto without_nul(const char (&text)[N]) -> std::array<char, N - 1> {
+    std::array<char, N - 1> out{};
+    for (std::size_t i = 0; i + 1 < N; ++i) {
+        out[i] = text[i];
+    }
+    return out;
+}
+inline constexpr auto UNTERMINATED_ARRAY = without_nul(R"({"order_by":[{"field":"a"}, )");
+
 // The cases parsed by one parser. Exactly at the cap is legal; one more is not.
 template <auto Parse> struct Cases {
     static constexpr auto order_by_2 = Parse(ORDER_BY_2);
@@ -137,6 +199,28 @@ template <auto Parse> struct Cases {
     static constexpr auto where_negative_int64 = Parse(WHERE_NEGATIVE_INT64);
     static constexpr auto where_int64_max = Parse(WHERE_INT64_MAX);
     static constexpr auto where_null_then_string = Parse(WHERE_NULL_THEN_STRING);
+
+    static constexpr auto where_combine_unknown = Parse(WHERE_COMBINE_UNKNOWN);
+    static constexpr auto where_combine_upper_case = Parse(WHERE_COMBINE_UPPER_CASE);
+    static constexpr auto where_combine_unknown_one = Parse(WHERE_COMBINE_UNKNOWN_ONE_CONDITION);
+    static constexpr auto where_combine_null = Parse(WHERE_COMBINE_NULL);
+
+    static constexpr auto brace_in_skipped_string = Parse(BRACE_IN_SKIPPED_STRING);
+    static constexpr auto bracket_in_skipped_array = Parse(BRACKET_IN_SKIPPED_ARRAY);
+    static constexpr auto model_at_capacity = Parse(MODEL_AT_CAPACITY);
+    static constexpr auto model_over_capacity = Parse(MODEL_OVER_CAPACITY);
+    static constexpr auto where_field_over_capacity = Parse(WHERE_FIELD_OVER_CAPACITY);
+    static constexpr auto unterminated_array =
+        Parse(std::string_view(UNTERMINATED_ARRAY.data(), UNTERMINATED_ARRAY.size()));
+
+    static constexpr auto order_by_collate = Parse(ORDER_BY_COLLATE);
+    static constexpr auto name_key = Parse(NAME_KEY);
+    static constexpr auto test_name_key = Parse(TEST_NAME_KEY);
+    static constexpr auto benchmark_keys = Parse(BENCHMARK_KEYS);
+    static constexpr auto escaped_string = Parse(ESCAPED_STRING);
+    static constexpr auto model_escape_at_edge_fits = Parse(MODEL_ESCAPE_AT_EDGE_FITS);
+    static constexpr auto model_escape_at_edge_over = Parse(MODEL_ESCAPE_AT_EDGE_OVER);
+    static constexpr auto non_string_in_string_slot = Parse(NON_STRING_IN_STRING_SLOT);
 
     static_assert(order_by_2.within_limits() && !order_by_3.within_limits());
     static_assert(fks_2.within_limits() && !fks_3.within_limits());
@@ -201,7 +285,7 @@ template <auto Parse> auto expect_flat_where_builds_one_tree() -> void {
 
     // `combine` before `conditions` is the same tree.
     EXPECT_EQ(C::where_or_first.where.nodes[C::where_or_first.where.root].op.view(), "OR");
-    // No `combine` means AND, in every parser (the benchmark parser used to fall through to OR).
+    // No `combine` means AND (the former benchmark parser used to fall through to OR).
     EXPECT_EQ(C::where_no_combine.where.nodes[C::where_no_combine.where.root].op.view(), "AND");
 
     // Operands: an IN list, BETWEEN's two values, one null (IS NULL is spelled `== null`, #844).
@@ -252,7 +336,7 @@ template <auto Parse> auto expect_malformed_and_repeated_input_is_handled() -> v
     EXPECT_EQ(C::group_repeated.group_by.fields[0].view(), "b");
 }
 
-// Typed values (#844): null and int64 are kinds of their own, in every parser.
+// Typed values (#844): null and int64 are kinds of their own.
 template <auto Parse> auto expect_typed_values_parse() -> void {
     using C = Cases<Parse>;
     using Kind = storm::benchmark::TypedValue::Kind;
@@ -292,6 +376,89 @@ template <auto Parse> auto expect_typed_values_parse() -> void {
     EXPECT_EQ(mixed.values[1].as_string.view(), "x");
     EXPECT_TRUE(mixed.values[2].kind == Kind::Int);
     EXPECT_EQ(mixed.values[2].as_int, 7);
+}
+
+// An unknown `combine` is not read as AND (#847): the spec is not well formed, so it cannot build.
+template <auto Parse> auto expect_unknown_combine_is_rejected() -> void {
+    using C = Cases<Parse>;
+    EXPECT_TRUE(C::where_and.where.is_well_formed());
+    EXPECT_TRUE(C::where_or_first.where.is_well_formed());
+    EXPECT_TRUE(C::where_no_combine.where.is_well_formed());
+    EXPECT_FALSE(C::where_combine_unknown.where.is_well_formed());
+    EXPECT_FALSE(C::where_combine_upper_case.where.is_well_formed());
+    EXPECT_FALSE(C::where_combine_unknown_one.where.is_well_formed());
+    EXPECT_FALSE(C::where_combine_null.where.is_well_formed());
+    // The rest of the case is still read.
+    EXPECT_EQ(C::where_combine_unknown.dataset_size, 5);
+}
+
+// One parser for every shared key (#845): each entry point reads all of them.
+template <auto Parse> auto expect_every_shared_key_is_read() -> void {
+    using C = Cases<Parse>;
+    ASSERT_EQ(C::order_by_collate.order_by_count, 1U);
+    EXPECT_EQ(C::order_by_collate.order_by[0].field.view(), "name");
+    EXPECT_EQ(C::order_by_collate.order_by[0].direction.view(), "DESC");
+    EXPECT_EQ(C::order_by_collate.order_by[0].collate.view(), "NOCASE");
+
+    EXPECT_EQ(C::name_key.test_name.view(), "by_name");
+    EXPECT_EQ(C::test_name_key.test_name.view(), "by_test_name");
+
+    constexpr auto &b = C::benchmark_keys;
+    EXPECT_EQ(b.test_category.view(), "cat");
+    EXPECT_EQ(b.description.view(), "desc");
+    EXPECT_EQ(b.operation.view(), "op");
+    EXPECT_EQ(b.iterations, 7);
+    EXPECT_EQ(b.batch_size, 3);
+    EXPECT_EQ(b.size_profile.view(), "prof");
+    EXPECT_TRUE(b.setop.enabled);
+    EXPECT_EQ(b.setop.type.view(), "union");
+    EXPECT_EQ(b.dataset_size, 5);
+
+    EXPECT_EQ(C::escaped_string.model.view(), "a\"b\\c");
+    EXPECT_EQ(C::escaped_string.dataset_size, 5);
+}
+
+// Braces and brackets inside strings do not end the value they sit in.
+template <auto Parse> auto expect_braces_in_strings_are_text() -> void {
+    using C = Cases<Parse>;
+    EXPECT_EQ(C::brace_in_skipped_string.description.view(), "a{b]c");
+    EXPECT_EQ(C::brace_in_skipped_string.dataset_size, 5);
+    EXPECT_EQ(C::bracket_in_skipped_array.test_name.view(), "n{1");
+    EXPECT_EQ(C::bracket_in_skipped_array.dataset_size, 5);
+    // An input cut off inside an array ends the parse at the end of the view.
+    EXPECT_EQ(C::unterminated_array.order_by_count, 1U);
+}
+
+// An over-long string is truncated to its buffer, read to its end, and rejected.
+template <auto Parse> auto expect_over_long_strings_are_rejected() -> void {
+    using C = Cases<Parse>;
+    EXPECT_TRUE(C::model_at_capacity.within_limits());
+    EXPECT_EQ(C::model_at_capacity.model.view().size(), 31U);
+    EXPECT_FALSE(C::model_over_capacity.within_limits());
+    EXPECT_EQ(C::model_over_capacity.model.view().size(), 31U);
+    EXPECT_EQ(C::model_over_capacity.dataset_size, 5);
+    EXPECT_FALSE(C::where_field_over_capacity.within_limits());
+    EXPECT_EQ(C::where_field_over_capacity.dataset_size, 5);
+}
+
+template <auto Parse> auto expect_escape_at_buffer_edge_is_kept() -> void {
+    using C = Cases<Parse>;
+    EXPECT_TRUE(C::model_escape_at_edge_fits.within_limits());
+    EXPECT_EQ(C::model_escape_at_edge_fits.model.view().size(), 31U);
+    EXPECT_EQ(C::model_escape_at_edge_fits.model.view().back(), '"');
+    EXPECT_EQ(C::model_escape_at_edge_fits.dataset_size, 5);
+    EXPECT_FALSE(C::model_escape_at_edge_over.within_limits());
+    EXPECT_EQ(C::model_escape_at_edge_over.model.view().size(), 31U);
+    EXPECT_EQ(C::model_escape_at_edge_over.model.view().back(), '"');
+    EXPECT_EQ(C::model_escape_at_edge_over.dataset_size, 5);
+}
+
+template <auto Parse> auto expect_non_string_value_is_consumed() -> void {
+    using C = Cases<Parse>;
+    EXPECT_TRUE(C::non_string_in_string_slot.model.view().empty());
+    EXPECT_EQ(C::non_string_in_string_slot.test_name.view(), "x");
+    EXPECT_EQ(C::non_string_in_string_slot.dataset_size, 5);
+    EXPECT_TRUE(C::non_string_in_string_slot.within_limits());
 }
 
 } // namespace storm::test::spec_limits

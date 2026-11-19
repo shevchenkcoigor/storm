@@ -356,8 +356,8 @@ ATLAS_MIGRATION_CHECK = Guard(
 
 # --- unified YAML corpus splitter (#818, #844) ---
 # split_unified_cases.py is the one place that sees the YAML before the C++ parser, which cannot
-# report an overflow or a stray key, so it rejects a pinned-SQL form the parser would ignore or
-# mangle. The test also splits the real corpus (it asserts the per-dialect SQL cases are there),
+# report a stray key (an over-long string it rejects at compile time since #845, but only the script
+# names the case and key), so it rejects a pinned-SQL form the parser would ignore or mangle. The test also splits the real corpus (it asserts the per-dialect SQL cases are there),
 # so a corpus edit reruns it, and so does the C++ parser header whose buffer size it cross-checks. Needs PyYAML, like the splitter itself.
 SPLIT_UNIFIED_CASES = Guard(
     "unified-cases splitter",

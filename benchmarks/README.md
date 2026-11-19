@@ -204,7 +204,7 @@ benchmarks/
 ├── register.cpp                # Storm-side bridge — `import storm_*` + builds the gbench registration table
 ├── bench_register.h            # POD-only handoff between main.cpp and register.cpp
 ├── benchmark_tests.hpp         # `#embed`-driven BENCHMARK_TESTS array (textual; consumed by register.cpp)
-├── parser.cppm                 # Compile-time JSON parser (storm_benchmark_parser module)
+├── parser.cppm                 # The one compile-time JSON spec parser (storm_benchmark_parser; the YAML tests use it too, #845)
 ├── schema.cppm                 # Benchmark test schema (storm_benchmark_schema module)
 ├── sizes.cppm                  # CRUD batch-size constexpr arrays (storm_benchmark_sizes module)
 ├── registry.cppm               # Compile-time model dispatch (storm_benchmark_registry module)
@@ -382,13 +382,15 @@ to JSON at build time (`scripts/yaml_to_json.py`) and loaded into the binary at 
 via C++26 `#embed`:
 
 ```cpp
-// In parser.cppm (storm_benchmark_parser module)
-constexpr const char* BENCHMARK_JSON =
+// In benchmark_tests.hpp (the parser itself is the storm_benchmark_parser module, parser.cppm)
+consteval auto load_benchmark_tests() {
+    static constexpr const char json_data[] = {
 #embed "tests/benchmark_tests.json"
-;
-
-// Parse JSON into C++ structs at compile time
-constexpr auto BENCHMARK_TESTS = parse_benchmark_tests();
+        , '\0'};
+    constexpr std::string_view json_str(json_data);
+    return parse_tests<count_tests(json_str)>(json_str);
+}
+inline constexpr auto BENCHMARK_TESTS = load_benchmark_tests();
 ```
 
 ### 2. Registration Bridges Compile-Time Data to Google Benchmark
