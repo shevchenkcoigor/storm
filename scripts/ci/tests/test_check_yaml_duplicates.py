@@ -1,0 +1,221 @@
+#!/usr/bin/env python3
+"""Tests for scripts/ci/check_yaml_duplicates.py.
+
+The checker fails when two cases of the YAML test corpus (tests/test_cases/*.yaml) have the
+same INPUT, wherever they live: the corpus is split by topic, so the same query is easy to
+add twice under two names in two files. The input is the case minus its name, description and
+`expected*` keys, normalised so that spelling does not matter (key order, condition order,
+`where` vs `where_expr`). Strategy: build a throwaway corpus per scenario and assert the exit
+code and message; a last scenario runs the checker over the real corpus, which must pass.
+Needs PyYAML, like the checker.
+
+    python3 scripts/ci/tests/test_check_yaml_duplicates.py
+"""
+import pathlib
+import subprocess
+import sys
+import unittest
+
+import yaml
+
+sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
+from fake_repo import FakeRepoBase  # noqa: E402
+
+REPO_ROOT = pathlib.Path(__file__).resolve().parents[3]
+CHECKER = REPO_ROOT / "scripts" / "ci" / "check_yaml_duplicates.py"
+
+CLEAN_MESSAGE = "no duplicate test inputs"
+
+
+def leaf(field, op, *values):
+    return {"field": field, "op": op, "values": list(values)}
+
+
+def where(*conditions, combine=None):
+    block = {"conditions": list(conditions)}
+    if combine is not None:
+        block["combine"] = combine
+    return block
+
+
+def expr_leaf(field, op, **value):
+    return {"field": field, "op": op, **value}
+
+
+def expr(op, left, right):
+    return {"op": op, "left": left, "right": right}
+
+
+def case(name, **fields):
+    base = {"name": name, "model": "person", "query_type": "select", "dataset": "main"}
+    base.update(fields)
+    base.setdefault("expected", {"count": 1})
+    return base
+
+
+class CheckerTest(FakeRepoBase):
+    CHECKER = CHECKER
+
+    def corpus(self, **files):
+        for filename, cases in files.items():
+            self.write("tests/test_cases/" + filename + ".yaml", yaml.safe_dump(cases, sort_keys=False))
+
+    def assert_passes(self):
+        proc = self.run_checker()
+        self.assertEqual(proc.returncode, 0, proc.stdout + proc.stderr)
+        self.assertIn(CLEAN_MESSAGE, proc.stdout)
+
+    def assert_duplicates(self, *members):
+        proc = self.assert_fails("duplicate test input")
+        for member in members:
+            self.assertIn(member, proc.stderr)
+
+    # --- what counts as the same input ---
+
+    def test_distinct_inputs_pass(self):
+        self.corpus(a=[case("one", where=where(leaf("age", ">", 30))),
+                       case("two", where=where(leaf("age", ">", 50)))])
+        self.assert_passes()
+
+    def test_same_input_under_two_names_in_one_file_fails(self):
+        self.corpus(a=[case("one", limit={"value": 2}), case("two", limit={"value": 2})])
+        self.assert_duplicates("a.yaml:one", "a.yaml:two")
+
+    def test_same_input_in_two_files_fails(self):
+        self.corpus(a=[case("age_gt_30", where=where(leaf("age", ">", 30)))],
+                    b=[case("select_age_gt_30", where=where(leaf("age", ">", 30)))])
+        self.assert_duplicates("a.yaml:age_gt_30", "b.yaml:select_age_gt_30")
+
+    def test_expected_results_do_not_make_inputs_distinct(self):
+        self.corpus(a=[case("one", expected={"count": 1}, description="first"),
+                       case("two", expected={"count": 2}, expected_first={"age": 22})])
+        self.assert_duplicates("a.yaml:one", "a.yaml:two")
+
+    def test_pinned_sql_text_makes_inputs_distinct(self):
+        # Condition order changes the emitted SQL text, so two cases that each pin their own
+        # `expected_sql` are two SQL-text tests, not one.
+        self.corpus(a=[case("ab", where=where(leaf("a", "==", 1), leaf("b", "==", 2)),
+                            expected_sql='SELECT * FROM "t" WHERE "a" = ? AND "b" = ?'),
+                       case("ba", where=where(leaf("b", "==", 2), leaf("a", "==", 1)),
+                            expected_sql='SELECT * FROM "t" WHERE "b" = ? AND "a" = ?')])
+        self.assert_passes()
+
+    def test_the_same_pinned_sql_text_is_still_a_duplicate(self):
+        self.corpus(a=[case("one", expected_sql="SELECT 1", expected_sql_pg="SELECT 1"),
+                       case("two", expected_sql="SELECT 1", expected_sql_pg="SELECT 1")])
+        self.assert_duplicates("a.yaml:one", "a.yaml:two")
+
+    def test_key_order_does_not_matter(self):
+        first = {"name": "one", "model": "person", "query_type": "select", "limit": {"value": 2, "offset": 1}}
+        second = {"limit": {"offset": 1, "value": 2}, "query_type": "select", "model": "person", "name": "two"}
+        self.corpus(a=[first, second])
+        self.assert_duplicates("a.yaml:one", "a.yaml:two")
+
+    def test_a_different_model_query_type_or_dataset_is_distinct(self):
+        self.corpus(a=[case("one"), case("two", model="order"), case("three", query_type="first"),
+                       case("four", dataset="empty")])
+        self.assert_passes()
+
+    # --- where normalisation ---
+
+    def test_condition_order_does_not_matter(self):
+        self.corpus(a=[case("one", where=where(leaf("age", ">", 30), leaf("name", "LIKE", "A%"))),
+                       case("two", where=where(leaf("name", "LIKE", "A%"), leaf("age", ">", 30)))])
+        self.assert_duplicates("a.yaml:one", "a.yaml:two")
+
+    def test_missing_combine_means_and(self):
+        pair = (leaf("age", ">", 30), leaf("age", "<", 50))
+        self.corpus(a=[case("one", where=where(*pair)), case("two", where=where(*pair, combine="and"))])
+        self.assert_duplicates("a.yaml:one", "a.yaml:two")
+
+    def test_and_and_or_are_distinct(self):
+        pair = (leaf("age", ">", 30), leaf("age", "<", 50))
+        self.corpus(a=[case("one", where=where(*pair, combine="and")),
+                       case("two", where=where(*pair, combine="or"))])
+        self.assert_passes()
+
+    def test_in_list_order_does_not_matter(self):
+        self.corpus(a=[case("one", where=where(leaf("age", "IN", 1, 2, 3))),
+                       case("two", where=where(leaf("age", "IN", 3, 1, 2)))])
+        self.assert_duplicates("a.yaml:one", "a.yaml:two")
+
+    def test_between_bound_order_matters(self):
+        self.corpus(a=[case("one", where=where(leaf("age", "BETWEEN", 1, 5))),
+                       case("two", where=where(leaf("age", "BETWEEN", 5, 1)))])
+        self.assert_passes()
+
+    def test_where_expr_equals_the_same_conditions(self):
+        self.corpus(a=[case("listed", where=where(leaf("age", ">", 30), leaf("salary", "<", 9), combine="or")),
+                       case("tree", where_expr=expr("OR", expr_leaf("salary", "<", value_int=9),
+                                                    expr_leaf("age", ">", value_int=30)))])
+        self.assert_duplicates("a.yaml:listed", "a.yaml:tree")
+
+    def test_nested_same_operator_tree_equals_a_flat_list(self):
+        flat = where(leaf("age", "==", 25), leaf("age", "==", 30), leaf("age", "==", 35), combine="or")
+        nested = expr("OR", expr_leaf("age", "==", value_int=25),
+                      expr("OR", expr_leaf("age", "==", value_int=30), expr_leaf("age", "==", value_int=35)))
+        self.corpus(a=[case("flat", where=flat), case("nested", where_expr=nested)])
+        self.assert_duplicates("a.yaml:flat", "a.yaml:nested")
+
+    def test_mixed_operator_trees_are_distinct_from_a_flat_list(self):
+        flat = where(leaf("a", "==", 1), leaf("b", "==", 2), leaf("c", "==", 3), combine="or")
+        mixed = expr("OR", expr_leaf("a", "==", value_int=1),
+                     expr("AND", expr_leaf("b", "==", value_int=2), expr_leaf("c", "==", value_int=3)))
+        self.corpus(a=[case("flat", where=flat), case("mixed", where_expr=mixed)])
+        self.assert_passes()
+
+    def test_typed_values_stay_distinct(self):
+        self.corpus(a=[case("int", where_expr=expr_leaf("salary", ">", value_int=30)),
+                       case("double", where_expr=expr_leaf("salary", ">", value_dbl=30.0))])
+        self.assert_passes()
+
+    def test_both_typed_operands_of_a_between_leaf_count(self):
+        # A where_expr leaf may carry value_int AND value_dbl: two operands, the BETWEEN bounds.
+        self.corpus(a=[case("low", where_expr=expr_leaf("age", "BETWEEN", value_int=1, value_dbl=5.0)),
+                       case("high", where_expr=expr_leaf("age", "BETWEEN", value_int=1, value_dbl=9.0))])
+        self.assert_passes()
+
+    def test_between_operand_order_in_a_where_expr_leaf_matters(self):
+        self.corpus(a=[case("int_first", where_expr=expr_leaf("age", "BETWEEN", value_int=1, value_dbl=5.0)),
+                       case("dbl_first", where_expr=expr_leaf("age", "BETWEEN", value_dbl=5.0, value_int=1))])
+        self.assert_passes()
+
+    # --- the escape hatch ---
+
+    def test_allow_duplicate_with_a_reason_exempts_the_case(self):
+        self.corpus(a=[case("one", limit={"value": 2}),
+                       case("two", limit={"value": 2}, allow_duplicate="same query, other runner")])
+        self.assert_passes()
+
+    def test_allow_duplicate_without_a_reason_fails(self):
+        self.corpus(a=[case("one", limit={"value": 2}, allow_duplicate="")])
+        self.assert_fails("allow_duplicate")
+
+    # --- robustness ---
+
+    def test_missing_corpus_fails(self):
+        self.assert_fails("tests/test_cases")
+
+    def test_a_malformed_where_names_the_case(self):
+        for broken in ("not a mapping", {"combine": "or"}):
+            self.corpus(a=[case("broken", where=broken)])
+            self.assert_fails("a.yaml:broken")
+
+    def test_a_malformed_where_expr_names_the_case(self):
+        self.corpus(a=[case("half_tree", where_expr={"op": "AND", "left": expr_leaf("a", "==", value_int=1)})])
+        self.assert_fails("a.yaml:half_tree")
+
+    def test_a_case_without_a_name_fails(self):
+        self.corpus(a=[{"model": "person", "query_type": "select"}])
+        self.assert_fails("name")
+
+
+class RealCorpusTest(unittest.TestCase):
+    def test_the_real_corpus_has_no_duplicate_inputs(self):
+        proc = subprocess.run([sys.executable, str(CHECKER), str(REPO_ROOT)], capture_output=True, text=True)
+        self.assertEqual(proc.returncode, 0, proc.stdout + proc.stderr)
+        self.assertIn(CLEAN_MESSAGE, proc.stdout)
+
+
+if __name__ == "__main__":
+    unittest.main()

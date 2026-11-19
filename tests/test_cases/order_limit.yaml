@@ -144,15 +144,6 @@
     offset: 0
   expected:
     count: 20
-- name: offset_zero
-  model: person
-  query_type: select
-  init_dataset_size: 20
-  limit:
-    value: 0
-    offset: 0
-  expected:
-    count: 20
 - name: limit_offset_partial_page
   model: person
   query_type: select

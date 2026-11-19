@@ -34,12 +34,21 @@ class TriggerTest(unittest.TestCase):
     def test_unrelated_files_trigger_nothing(self):
         self.assertEqual(pcg.triggered_guards(["docs/README.md", "src/orm/x.cpp"]), [])
 
-    def test_a_topic_yaml_triggers_the_unified_cases_splitter_self_test(self):
+    def test_a_topic_yaml_triggers_the_corpus_guards(self):
         # #846: the corpus is tests/test_cases/<topic>.yaml; a YAML-only commit skips every other
-        # local check, so this guard is the only one that must fire for it.
+        # local check, so these two guards are the only ones that must fire for it: the splitter's
+        # self-test, and the duplicate-input check over the corpus itself.
         hit = pcg.triggered_guards(["tests/test_cases/where.yaml"])
-        self.assertEqual(names(hit), ["unified-cases splitter"])
+        self.assertEqual(names(hit), ["unified-cases splitter", "duplicate YAML test inputs"])
         self.assertEqual(pcg.triggered_guards(["tests/test_cases/unified_cases_crud.json"]), [])
+
+    def test_the_duplicate_checker_runs_its_self_test_only_when_its_own_files_change(self):
+        guard = next(g for g in pcg.GUARDS if g.name == "duplicate YAML test inputs")
+        corpus_only = [s.command[-1] for s in pcg.triggered_steps(guard, ["tests/test_cases/where.yaml"])]
+        self.assertEqual([pathlib.Path(c).name for c in corpus_only], ["check_yaml_duplicates.py"])
+        own = [s.command[-1] for s in pcg.triggered_steps(guard, ["scripts/ci/check_yaml_duplicates.py"])]
+        self.assertEqual([pathlib.Path(c).name for c in own],
+                         ["test_check_yaml_duplicates.py", "check_yaml_duplicates.py"])
 
     def test_agent_file_triggers_frontmatter_only(self):
         hit = pcg.triggered_guards([".claude/agents/reviewer.md"])
@@ -99,7 +108,8 @@ class TriggerTest(unittest.TestCase):
         # scripts/ci/tests/fake_repo.py is imported by these checker self-tests; editing it must
         # rerun them, or a helper regression is only found by whichever test someone runs.
         self.assertEqual(set(names(pcg.triggered_guards(["scripts/ci/tests/fake_repo.py"]))),
-                         {"ORM backend neutrality", "no std::format in modules and shared test headers"})
+                         {"ORM backend neutrality", "no std::format in modules and shared test headers",
+                          "duplicate YAML test inputs"})
 
     def test_batch_two_self_tests_trigger_their_own_guard(self):
         for staged, guard in (("scripts/commit/tests/test_cmake_format_target.py", "cmake-format target"),
