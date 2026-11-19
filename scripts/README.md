@@ -8,10 +8,12 @@ self-tests in its own `tests/` folder, so a script and its test sit one `cd` apa
 | `tidy/` | clang-tidy runner (`run_clang_tidy.py`), its skip-list and the prerequisite verdict `commit.sh` asks for |
 | `coverage/` | `coverage-run-batched.sh`, the per-OS PostgreSQL socket default, the lcov line-coverage parser and the uncovered-lines report |
 | `commit/` | the pre-commit guard table (`pre_commit_guards.py`) and the staged-file skip planner (`smart_skip.py`) |
-| `ci/` | CI helpers and checkers: change classification, digest pins, agent frontmatter, ORM backend imports, no `std::format` in modules or shared test headers (`check_no_std_format.py`), SonarCloud gate, Atlas migration check (`atlas_migration_check.py`; needs the `atlas` CLI and a built `storm_schema`, so CI runs it, and its stub-driven test runs in `script-guards`) |
+| `ci/` | CI helpers and checkers: change classification, digest pins, vendored CPM.cmake consistency (`check_cpm_vendored.py`, #851), agent frontmatter, ORM backend imports, no `std::format` in modules or shared test headers (`check_no_std_format.py`), SonarCloud gate, Atlas migration check (`atlas_migration_check.py`; needs the `atlas` CLI and a built `storm_schema`, so CI runs it, and its stub-driven test runs in `script-guards`) |
 | `compile_time/` | compile-time measurement: `time_trace.py`, `ninjalog_stats.py`, `compile_time_probe.py` and their shared replay harness |
 
 `split_unified_cases.py` stays at the top level: `tests/CMakeLists.txt` invokes it at build time.
+`update_cpm.py` stays there too: a manual script that vendors a CPM.cmake release (see
+[COMMON_TASKS.md](../docs/internals/building/COMMON_TASKS.md#updating-the-vendored-cpmcmake)).
 
 ## Clang-Tidy Script
 

@@ -29,6 +29,8 @@ import unittest
 REPO_ROOT = pathlib.Path(__file__).resolve().parents[3]
 CPM_BOOTSTRAP = "cmake/cpm.cmake"  # only bootstraps CPM, declares no package
 
+VENDORED_CPM = re.compile(r"cmake/CPM_[^/]*\.cmake$")  # upstream's CPM.cmake (#851): defines the commands
+
 CALL = re.compile(r"\b(?:cpmaddpackage|cpmfindpackage|cpmdeclarepackage|fetchcontent_declare)"
                   r"\s*\((.*?)\)", re.IGNORECASE | re.DOTALL)
 COMMENT = re.compile(r"#[^\n]*")
@@ -60,7 +62,8 @@ def label(call):
 def tracked_cmake_files():
     listing = subprocess.run(["git", "-C", str(REPO_ROOT), "ls-files", "*.cmake", "*CMakeLists.txt"],
                              stdout=subprocess.PIPE, universal_newlines=True, check=True).stdout
-    return [name for name in listing.splitlines() if name and name != CPM_BOOTSTRAP]
+    return [name for name in listing.splitlines()
+            if name and name != CPM_BOOTSTRAP and not VENDORED_CPM.match(name)]
 
 
 class RepoPolicyTest(unittest.TestCase):

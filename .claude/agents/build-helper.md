@@ -23,7 +23,7 @@ CMakeLists.txt               # Root: library target, GLOB, options, includes cma
 cmake/
 ├── libcxx.cmake             # LIBCXX_ROOT validation, apply_clang_flags()
 ├── db.cmake                 # find_package SQLite3 + PostgreSQL, link_sqlite/link_postgresql helpers
-├── cpm.cmake                # CPM.cmake bootstrap
+├── cpm.cmake                # CPM.cmake bootstrap (includes vendored CPM_<version>.cmake; bump via scripts/update_cpm.py, #851)
 ├── cmake-scripts.cmake      # CPM fetch of StableCoder/cmake-scripts
 ├── coverage.cmake           # Coverage compile/link flags
 ├── coverage-targets.cmake   # Coverage targets: coverage, coverage-html, coverage-clean

@@ -155,6 +155,20 @@ CMAKE_FORMAT_TARGET = Guard(
     "cmake-format target self-test passed",
 )
 
+# --- vendored CPM.cmake (#851) ---
+# cmake/CPM_<version>.cmake is upstream's bootstrap vendored byte for byte; cmake/cpm.cmake
+# records its version and SHA256. The checker runs on the real tree (no network) after its
+# self-test, which feeds it trees built to break each rule.
+CPM_VENDORED = Guard(
+    "vendored CPM.cmake",
+    r"^(cmake/(cpm|CPM_[^/]+)\.cmake|scripts/ci/(tests/test_)?check_cpm_vendored\.py|scripts/update_cpm\.py)$",
+    (Step(r"^scripts/ci/(tests/test_)?check_cpm_vendored\.py$",
+          script("scripts/ci/tests/test_check_cpm_vendored.py"),
+          "vendored CPM.cmake self-test failed"),
+     Step(None, script("scripts/ci/check_cpm_vendored.py"), "vendored CPM.cmake is inconsistent")),
+    "vendored CPM.cmake consistent",
+)
+
 # --- PyYAML configure check (#703) ---
 # cmake/pyyaml.cmake turns a Python without PyYAML into a configure-time error instead of a
 # mid-build `No module named 'yaml'`. Needs plain cmake only.
@@ -368,7 +382,7 @@ SPLIT_UNIFIED_CASES = Guard(
 
 GUARDS = (
     AGENT_FRONTMATTER, TIDY_SKIPLIST, SWEEP_WORKFLOW, SESSION_START_HOOK, SELF_HEAL, CMAKE_FORMAT_TARGET, PYYAML_CHECK,
-    CPM_CACHE_CHECK, CPM_COLD_CACHE, COVERAGE_GATE, SMART_SKIP, TIDY_PREREQS, ORM_BACKEND_IMPORTS, NO_STD_FORMAT,
+    CPM_CACHE_CHECK, CPM_VENDORED, CPM_COLD_CACHE, COVERAGE_GATE, SMART_SKIP, TIDY_PREREQS, ORM_BACKEND_IMPORTS, NO_STD_FORMAT,
     PRE_COMMIT_GUARDS,
     CI_DIGESTS, COVERAGE_PARALLEL, NINJALOG_STATS, RATIO_GATE, TIME_TRACE, SONAR_GATE, SHARED_TEST_HELPERS,
     ATLAS_MIGRATION_CHECK, SPLIT_UNIFIED_CASES,
