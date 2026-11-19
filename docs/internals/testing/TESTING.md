@@ -163,7 +163,8 @@ checks **results** (`expected:`). SQL text is pinned separately in C++ (`test_sq
 
 A case may also carry an optional `expected_sql:` — the exact `sql()` text, compared **before** the
 statement executes. A case without it stays result-only. It is **prototyped on the aggregate runner only**
-(`AggregateRunner`, all 58 scalar-aggregate cases); other runners ignore the key.
+(`AggregateRunner`, the 58 scalar-aggregate cases); chain and group cases run through the same runner but
+the split script rejects the key outside the `aggregate` category.
 
 ```yaml
 - name: count_where_age_gte_35
@@ -233,8 +234,8 @@ aggregate or field. Names in the YAML are resolved by reflection at compile time
 
 ### Runner structure (#837)
 
-- **No base class.** Every runner (`SelectRunner`, `AggregateRunner`, `ChainAggRunner`, `DistinctRunner`,
-  `GroupByRunner`, `InsertRunner`, `UpdateRunner`, `EraseRunner`) is a stateless class with a
+- **No base class.** Every runner (`SelectRunner`, `AggregateRunner`, `DistinctRunner`,
+  `InsertRunner`, `UpdateRunner`, `EraseRunner`) is a stateless class with a
   `static run<Tc>()`. The two helpers the old `QueryRunnerBase` mixed are free functions:
   `base_query<Tc, Model, Conn>()` (the case's filtered/joined `QuerySet`) and
   `seed_records<Tc, Model, Conn>()` (insert the dataset). The query is a local, not runner state.
@@ -248,8 +249,13 @@ aggregate or field. Names in the YAML are resolved by reflection at compile time
 - **FK by member name.** `QueryBuilder`'s `fk_resolver` defaults to `member_name_resolver<Model>`, so a
   `join.fk:` is a member name on the model. The benchmark still passes its own (`registry::resolve_fk_field`).
 - **One value check.** `expect_agg_value(actual, expected, expect_null, what)` is chosen by result type
-  (`std::optional<double>` → near / `nullopt`, floating → near, integer → exact) and used by the scalar,
-  chain and group runners; `verify_groups` checks `group_keys` / `group_agg_*` (sorted by key).
+  (`std::optional<double>` → near / `nullopt`, floating → near, integer → exact) and used by
+  `AggregateRunner`; `verify_groups` checks `group_keys` / `group_agg_*` (sorted by key).
+- **One aggregate pipeline (#841).** `AggregateRunner` runs scalar, `chain` and `group_<func>` cases as
+  `base_query → [group_by + having] → aggregates 1..N → check`. The parser (`normalise_aggregate_case` in
+  `test_parser.hpp`) rewrites a scalar case (`int_val` / `dbl_val`) and a `group_<func>` case into a
+  one-element `aggregations` list (`res_value` = the int or double value), so the YAML corpus is unchanged.
+  The check follows the result shape: a scalar value, a tuple (chain), or the grouped rows.
 - **`query_type` → runner** is the `YAML_RUNNERS` table in `test_unified_yaml_body.h` (`{name, is_prefix,
   ^^Runner}`), spliced with `template [:runner:]<Model, Conn>::template run<tc>()`. A `query_type` missing from the
   table fails `KnownYamlQueryType` at compile time. To add a runner, add its rows there.

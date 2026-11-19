@@ -37,8 +37,8 @@ import yaml  # PyYAML required
 # query_type -> category, grouping the YAML_RUNNERS rows by runner:
 #   InsertRunner/UpdateRunner/EraseRunner -> crud
 #   SelectRunner                          -> select
-#   ChainAggRunner/DistinctRunner/GroupByRunner -> grouped
-#   AggregateRunner                       -> aggregate
+#   AggregateRunner (chain, group_<func>) / DistinctRunner -> grouped
+#   AggregateRunner (scalar aggregates)   -> aggregate
 WRITE_OPS = {"insert_one", "insert_batch", "update_batch", "erase_all", "erase_batch"}
 SELECT_OPS = {"select", "first", "one"}
 GROUPED_OPS = {
@@ -60,9 +60,9 @@ CATEGORIES = ("select", "grouped", "aggregate", "crud")
 EXPECTED_SQL_CAPACITY = 160
 
 
-# Categories whose runner compares expected_sql. Only AggregateRunner reads it
-# today; on any other category the key would be silently ignored and the case
-# would pass without ever comparing SQL.
+# Categories that accept expected_sql. The grouped category stays excluded because
+# DistinctRunner ignores the key: it would be silently skipped and the case would
+# pass without ever comparing SQL.
 EXPECTED_SQL_CATEGORIES = {"aggregate"}
 
 
