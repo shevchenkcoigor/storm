@@ -55,7 +55,7 @@ inline constexpr std::array YAML_MODELS{
 };
 
 // Dataset `extended` (#844): three ExtendedTypes rows, in this order. The typed-value cases in
-// unified_cases.yaml are written against these values (the table is repeated there).
+// tests/test_cases/typed_values.yaml are written against these values (the table is repeated there).
 inline auto extended_dataset() -> std::vector<ExtendedTypes> {
     using std::chrono::sys_days;
     using namespace std::chrono_literals;

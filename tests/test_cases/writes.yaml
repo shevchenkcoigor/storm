@@ -1,0 +1,314 @@
+- name: insert_one_person
+  model: person
+  query_type: insert_one
+  dataset: empty
+  expected:
+    count: 1
+- name: insert_batch_5_simple
+  model: simple
+  query_type: insert_batch
+  dataset: empty
+  insert_count: 5
+  expected:
+    count: 5
+- name: insert_small_batch_10
+  model: simple
+  query_type: insert_batch
+  dataset: empty
+  insert_count: 10
+  expected:
+    count: 10
+- name: insert_batch_50_simple
+  model: simple
+  query_type: insert_batch
+  dataset: empty
+  insert_count: 50
+  expected:
+    count: 50
+- name: insert_single
+  model: simple
+  query_type: insert_batch
+  dataset: empty
+  insert_count: 1
+  expected:
+    count: 1
+- name: insert_medium_batch
+  model: simple
+  query_type: insert_batch
+  dataset: empty
+  insert_count: 100
+  expected:
+    count: 100
+- name: insert_at_999_boundary
+  model: simple
+  query_type: insert_batch
+  dataset: empty
+  insert_count: 999
+  expected:
+    count: 999
+- name: insert_large_batch_500
+  model: simple
+  query_type: insert_batch
+  dataset: empty
+  insert_count: 500
+  expected:
+    count: 500
+- name: insert_empty_batch
+  model: simple
+  query_type: insert_batch
+  dataset: empty
+  insert_count: 0
+  expected:
+    count: 0
+- name: update_batch_3_of_10
+  model: simple
+  query_type: update_batch
+  dataset: custom
+  init_dataset_size: 10
+  update_count: 3
+  expected:
+    unchanged: 7
+- name: update_batch_5_update_3_unchanged_2
+  model: simple
+  query_type: update_batch
+  dataset: custom
+  init_dataset_size: 5
+  update_count: 3
+  expected:
+    unchanged: 2
+- name: update_batch_single_element
+  model: simple
+  query_type: update_batch
+  dataset: custom
+  init_dataset_size: 3
+  update_count: 1
+  expected:
+    unchanged: 2
+- name: update_batch_empty
+  model: simple
+  query_type: update_batch
+  dataset: custom
+  init_dataset_size: 5
+  update_count: 0
+  expected:
+    unchanged: 5
+- name: update_batch_all_5
+  model: simple
+  query_type: update_batch
+  dataset: custom
+  init_dataset_size: 5
+  update_count: 5
+  expected:
+    unchanged: 0
+- name: update_batch_large_50
+  model: simple
+  query_type: update_batch
+  dataset: custom
+  init_dataset_size: 50
+  update_count: 25
+  expected:
+    unchanged: 25
+- name: update_single_of_5
+  model: simple
+  query_type: update_batch
+  dataset: custom
+  init_dataset_size: 5
+  update_count: 1
+  expected:
+    unchanged: 4
+- name: update_small_batch_10_of_20
+  model: simple
+  query_type: update_batch
+  dataset: custom
+  init_dataset_size: 20
+  update_count: 10
+  expected:
+    unchanged: 10
+- name: update_medium_batch_100_of_103
+  model: simple
+  query_type: update_batch
+  dataset: custom
+  init_dataset_size: 103
+  update_count: 100
+  expected:
+    unchanged: 3
+- name: erase_all_empty_result
+  model: simple
+  query_type: erase_all
+  dataset: custom
+  init_dataset_size: 0
+  expected:
+    remaining: 0
+- name: erase_all_5_persons
+  model: person
+  query_type: erase_all
+  dataset: custom
+  init_dataset_size: 5
+  expected:
+    remaining: 0
+- name: erase_all_5_simple
+  model: simple
+  query_type: erase_all
+  dataset: custom
+  init_dataset_size: 5
+  expected:
+    remaining: 0
+- name: erase_batch_2_of_5_persons
+  model: person
+  query_type: erase_batch
+  dataset: custom
+  init_dataset_size: 5
+  erase_count: 2
+  expected:
+    remaining: 3
+- name: erase_batch_3_of_5
+  model: simple
+  query_type: erase_batch
+  dataset: custom
+  init_dataset_size: 5
+  erase_count: 3
+  expected:
+    remaining: 2
+- name: erase_batch_all_5
+  model: simple
+  query_type: erase_batch
+  dataset: custom
+  init_dataset_size: 5
+  erase_count: 5
+  expected:
+    remaining: 0
+- name: erase_single_of_5
+  model: simple
+  query_type: erase_batch
+  dataset: custom
+  init_dataset_size: 5
+  erase_count: 1
+  expected:
+    remaining: 4
+- name: erase_small_batch_10_of_15
+  model: simple
+  query_type: erase_batch
+  dataset: custom
+  init_dataset_size: 15
+  erase_count: 10
+  expected:
+    remaining: 5
+- name: erase_partial_chunked_799_of_1000
+  model: simple
+  query_type: erase_batch
+  dataset: custom
+  init_dataset_size: 1000
+  erase_count: 799
+  expected:
+    remaining: 201
+- name: erase_partial_chunked_800_of_1000
+  model: simple
+  query_type: erase_batch
+  dataset: custom
+  init_dataset_size: 1000
+  erase_count: 800
+  expected:
+    remaining: 200
+- name: erase_partial_chunked_850_of_1000
+  model: simple
+  query_type: erase_batch
+  dataset: custom
+  init_dataset_size: 1000
+  erase_count: 850
+  expected:
+    remaining: 150
+- name: erase_partial_chunked_1598_of_2000
+  model: simple
+  query_type: erase_batch
+  dataset: custom
+  init_dataset_size: 2000
+  erase_count: 1598
+  expected:
+    remaining: 402
+- name: erase_partial_chunked_1600_of_2000
+  model: simple
+  query_type: erase_batch
+  dataset: custom
+  init_dataset_size: 2000
+  erase_count: 1600
+  expected:
+    remaining: 400
+- name: erase_batch_empty
+  model: simple
+  query_type: erase_batch
+  dataset: custom
+  init_dataset_size: 5
+  erase_count: 0
+  expected:
+    remaining: 5
+- name: erase_bulk_small
+  model: simple
+  query_type: erase_batch
+  dataset: custom
+  init_dataset_size: 50
+  erase_count: 50
+  expected:
+    remaining: 0
+- name: erase_bulk_at_limit
+  model: simple
+  query_type: erase_batch
+  dataset: custom
+  init_dataset_size: 799
+  erase_count: 799
+  expected:
+    remaining: 0
+- name: erase_chunked_minimal
+  model: simple
+  query_type: erase_batch
+  dataset: custom
+  init_dataset_size: 800
+  erase_count: 800
+  expected:
+    remaining: 0
+- name: erase_chunked_with_remainder
+  model: simple
+  query_type: erase_batch
+  dataset: custom
+  init_dataset_size: 850
+  erase_count: 850
+  expected:
+    remaining: 0
+- name: erase_chunked_multiple_chunks
+  model: simple
+  query_type: erase_batch
+  dataset: custom
+  init_dataset_size: 1600
+  erase_count: 1600
+  expected:
+    remaining: 0
+- name: erase_chunked_exact_multiple
+  model: simple
+  query_type: erase_batch
+  dataset: custom
+  init_dataset_size: 1598
+  erase_count: 1598
+  expected:
+    remaining: 0
+- name: update_bulk_all_50
+  model: simple
+  query_type: update_batch
+  dataset: custom
+  init_dataset_size: 50
+  update_count: 50
+  expected:
+    unchanged: 0
+- name: update_chunked_all_850
+  model: simple
+  query_type: update_batch
+  dataset: custom
+  init_dataset_size: 850
+  update_count: 850
+  expected:
+    unchanged: 0
+- name: insert_large_batch_1000
+  model: simple
+  query_type: insert_batch
+  dataset: empty
+  insert_count: 1000
+  expected:
+    count: 1000

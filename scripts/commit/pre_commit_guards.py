@@ -361,7 +361,7 @@ ATLAS_MIGRATION_CHECK = Guard(
 # so a corpus edit reruns it, and so does the C++ parser header whose buffer size it cross-checks. Needs PyYAML, like the splitter itself.
 SPLIT_UNIFIED_CASES = Guard(
     "unified-cases splitter",
-    r"^(scripts/split_unified_cases\.py|scripts/ci/tests/test_split_unified_cases\.py|tests/test_cases/unified_cases\.yaml|tests/test_parser\.hpp)$",
+    r"^(scripts/split_unified_cases\.py|scripts/ci/tests/test_split_unified_cases\.py|tests/test_cases/[^/]+\.yaml|tests/test_parser\.hpp)$",
     (Step(None, script("scripts/ci/tests/test_split_unified_cases.py"), "unified-cases splitter self-test failed"),),
     "unified-cases splitter self-test passed",
 )

@@ -1,10 +1,15 @@
 #!/usr/bin/env python3
-"""Split the unified YAML test corpus into one JSON file per category.
+"""Split the YAML test corpus into one JSON file per category.
 
 Usage:
-    python3 split_unified_cases.py input.yaml output_dir
+    python3 split_unified_cases.py output_dir input.yaml [input.yaml ...]
 
-Writes <output_dir>/unified_cases_<category>.json for each category. There is no
+The corpus is several authoring files, tests/test_cases/<topic>.yaml (#846), grouped by
+meaning for humans: a case spans several topics and a topic spans several runners, so which
+file a case lives in is never an error. This script reads them ALL (in the order given --
+CMake passes them sorted), buckets every case by query_type and writes
+<output_dir>/unified_cases_<category>.json for each category. Case names must be unique
+across the whole corpus. There is no
 combined output: every includer of test_parser.hpp selects a slice via
 STORM_UNIFIED_CASES_FILE, which since #582 has no default (#error without it).
 
@@ -17,6 +22,11 @@ so each TU instantiates only the runners its own cases need, and a failing suite
 name points at a coherent area. A query_type absent from the tables below is a
 corpus/runner mismatch and is a hard error -- silently bucketing it would hide a
 case that no runner handles. (The C++ side rejects it too: KnownYamlQueryType.)
+
+A JSON whose bytes did not change is left untouched (mtime included). ninja re-runs this
+script whenever any YAML changes and, because CMake marks custom commands `restat`, then
+rebuilds only the TUs whose slice really changed -- editing one case recompiles one slice,
+not four.
 
 CATEGORIES below is mirrored by SPLIT_CATEGORIES in tests/CMakeLists.txt and by
 the set of tests/yaml/test_unified_yaml_*.cpp TUs. Changing one means changing
@@ -152,36 +162,65 @@ def categorize(case: dict, index: int) -> str:
     )
 
 
+def load_cases(path: pathlib.Path) -> list:
+    """Read one authoring file: a top-level list of cases, or empty (a new topic file)."""
+    if not path.is_file():
+        raise SystemExit(f"Error: corpus {path} is not an existing file")
+    with path.open(encoding="utf-8") as fh:
+        cases = yaml.safe_load(fh) or []
+    if not isinstance(cases, list):
+        raise SystemExit(f"Error: {path}: expected a top-level list of cases in the YAML corpus")
+    return cases
+
+
+def bucket_corpus(inputs: list[pathlib.Path]) -> dict[str, list]:
+    """Bucket every case of every file by category; reject a repeated case name anywhere."""
+    buckets: dict[str, list] = {name: [] for name in CATEGORIES}
+    seen_in: dict[str, pathlib.Path] = {}
+    for path in inputs:
+        for index, case in enumerate(load_cases(path)):
+            try:
+                category = categorize(case, index)
+                validate_expected_sql(case, category)
+            except SystemExit as err:
+                raise SystemExit(f"{err} (in {path})") from None
+            name = case.get("name")
+            if not isinstance(name, str) or not name:
+                raise SystemExit(f"Error: a case in {path} has no `name` string: {case!r:.80}")
+            if name in seen_in:
+                raise SystemExit(
+                    f"Error: duplicate case name {name!r} in {path} (first defined in "
+                    f"{seen_in[name]}). Names must be unique across all corpus files."
+                )
+            seen_in[name] = path
+            buckets[category].append(case)
+    return buckets
+
+
+def write_if_changed(out: pathlib.Path, text: str) -> None:
+    """Leave an unchanged file alone so its mtime does not trigger a recompile of its TU."""
+    if out.is_file() and out.read_text(encoding="utf-8") == text:
+        return
+    out.write_text(text, encoding="utf-8")
+
+
 def main() -> None:
     if len(sys.argv) < 3:
-        print("Usage: split_unified_cases.py input.yaml output_dir", file=sys.stderr)
+        print("Usage: split_unified_cases.py output_dir input.yaml [input.yaml ...]", file=sys.stderr)
         sys.exit(1)
 
-    # Resolve both paths up front and require them to already exist: this script
-    # only ever rewrites files CMake generates, so a mistyped argument should fail
+    # Resolve every path up front and require the output directory to already exist: this
+    # script only ever rewrites files CMake generates, so a mistyped argument should fail
     # here rather than read or write somewhere unexpected.
-    input_path = pathlib.Path(sys.argv[1]).resolve()
-    output_dir = pathlib.Path(sys.argv[2]).resolve()
+    output_dir = pathlib.Path(sys.argv[1]).resolve()
+    inputs = [pathlib.Path(arg).resolve() for arg in sys.argv[2:]]
 
-    if not input_path.is_file():
-        raise SystemExit(f"Error: corpus {input_path} is not an existing file")
     if not output_dir.is_dir():
         raise SystemExit(f"Error: output directory {output_dir} does not exist")
 
-    with input_path.open(encoding="utf-8") as fh:
-        cases = yaml.safe_load(fh) or []
+    buckets = bucket_corpus(inputs)
 
-    if not isinstance(cases, list):
-        print("Error: expected a top-level list in the YAML corpus", file=sys.stderr)
-        sys.exit(1)
-
-    buckets: dict[str, list] = {name: [] for name in CATEGORIES}
-    for index, case in enumerate(cases):
-        category = categorize(case, index)
-        validate_expected_sql(case, category)
-        buckets[category].append(case)
-
-    # A truncated, empty or all-comments YAML otherwise yields four empty JSONs,
+    # A truncated, empty or all-comments corpus otherwise yields four empty JSONs,
     # four suites registering zero tests, and a green ctest that verifies nothing.
     # Every category maps to runners that have cases today, so an empty
     # bucket means the corpus or the tables above are wrong, not that the corpus
@@ -189,9 +228,9 @@ def main() -> None:
     empty = [name for name in CATEGORIES if not buckets[name]]
     if empty:
         raise SystemExit(
-            f"Error: no cases for {', '.join(empty)} in {input_path}. An empty category "
-            f"would register a suite with zero tests and still pass. Check the corpus, "
-            f"or drop the category from CATEGORIES here, from the foreach() in "
+            f"Error: no cases for {', '.join(empty)} in {len(inputs)} corpus file(s). An empty "
+            f"category would register a suite with zero tests and still pass. Check the corpus, "
+            f"or drop the category from CATEGORIES here, from SPLIT_CATEGORIES in "
             f"tests/CMakeLists.txt, and delete its test TU."
         )
 
@@ -202,11 +241,11 @@ def main() -> None:
         out = (output_dir / f"unified_cases_{name}.json").resolve()
         if out.parent != output_dir:
             raise SystemExit(f"Error: refusing to write outside {output_dir}: {out}")
-        out.write_text(json.dumps(buckets[name], separators=(",", ":")) + "\n", encoding="utf-8")
+        write_if_changed(out, json.dumps(buckets[name], separators=(",", ":")) + "\n")
 
     total = sum(len(b) for b in buckets.values())
     parts = ", ".join(f"{name}={len(buckets[name])}" for name in CATEGORIES)
-    print(f"Split {total} cases -> {parts}")
+    print(f"Split {total} cases from {len(inputs)} file(s) -> {parts}")
 
 
 if __name__ == "__main__":

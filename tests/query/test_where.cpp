@@ -159,7 +159,7 @@ TYPED_TEST(WhereJoinTest, WhereWithJoin) {
     EXPECT_EQ(it->sender.age, 15);
 }
 
-// WhereWithJoinContentFilter: migrated to unified_cases.yaml (select_join_where_like_H)
+// WhereWithJoinContentFilter: migrated to tests/test_cases/*.yaml (select_join_where_like_H)
 
 // Test: WHERE with JOIN and multiple conditions
 TYPED_TEST(WhereJoinTest, WhereWithJoinMultipleConditions) {

@@ -205,7 +205,7 @@ TYPED_TEST(OrderByTest, OrderByBeforeLimitOffset) {
 // Edge Cases
 // ============================================================================
 
-// EmptyResult: migrated to unified_cases.yaml (order_by_empty_result_where_no_match)
+// EmptyResult: migrated to tests/test_cases/*.yaml (order_by_empty_result_where_no_match)
 
 TYPED_TEST(OrderByTest, BooleanField) {
     // Order by boolean field
@@ -552,6 +552,6 @@ TYPED_TEST(OrderByTest, EmptyResultWithMultipleOrderBy) {
     EXPECT_EQ(people.size(), 0);
 }
 
-// EmptyTableOrderBy: migrated to unified_cases.yaml (order_by_empty_table)
+// EmptyTableOrderBy: migrated to tests/test_cases/*.yaml (order_by_empty_table)
 
 // NOLINTEND(misc-const-correctness,performance-unnecessary-copy-initialization)

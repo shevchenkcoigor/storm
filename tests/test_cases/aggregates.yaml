@@ -1,0 +1,739 @@
+- name: count_where_age_gte_35
+  model: person
+  query_type: count
+  dataset: main
+  where:
+    conditions:
+    - field: age
+      op: '>='
+      values:
+      - 35
+  aggregate:
+    func: count
+    field: ''
+  expected_sql: 'SELECT COUNT(*) FROM "person" WHERE "age" >= ?'
+  expected:
+    int_val: 11
+- name: count_empty
+  model: person
+  query_type: count
+  dataset: empty
+  aggregate:
+    func: count
+    field: ''
+  expected_sql: 'SELECT COUNT(*) FROM "person"'
+  expected:
+    int_val: 0
+- name: sum_salary_standard5
+  model: person
+  query_type: sum
+  dataset: main
+  aggregate:
+    func: sum
+    field: salary
+  expected_sql: 'SELECT SUM("salary") FROM "person"'
+  expected:
+    dbl_val: 1702000.0
+- name: avg_age_standard5
+  model: person
+  query_type: avg
+  dataset: main
+  aggregate:
+    func: avg
+    field: age
+  expected_sql: 'SELECT AVG("age") FROM "person"'
+  expected:
+    dbl_val: 33.16
+- name: avg_salary_standard5
+  model: person
+  query_type: avg
+  dataset: main
+  aggregate:
+    func: avg
+    field: salary
+  expected_sql: 'SELECT AVG("salary") FROM "person"'
+  expected:
+    dbl_val: 68080.0
+- name: min_age_standard5
+  model: person
+  query_type: min
+  dataset: main
+  aggregate:
+    func: min
+    field: age
+  expected_sql: 'SELECT MIN("age") FROM "person"'
+  expected:
+    dbl_val: 22.0
+- name: max_age_standard5
+  model: person
+  query_type: max
+  dataset: main
+  aggregate:
+    func: max
+    field: age
+  expected_sql: 'SELECT MAX("age") FROM "person"'
+  expected:
+    dbl_val: 48.0
+- name: avg_salary_age_gt_30
+  model: person
+  query_type: avg
+  dataset: main
+  where:
+    conditions:
+    - field: age
+      op: '>'
+      values:
+      - 30
+  aggregate:
+    func: avg
+    field: salary
+  expected_sql: 'SELECT AVG("salary") FROM "person" WHERE "age" > ?'
+  expected:
+    dbl_val: 83692.30769230769
+- name: min_age_age_gt_30
+  model: person
+  query_type: min
+  dataset: main
+  where:
+    conditions:
+    - field: age
+      op: '>'
+      values:
+      - 30
+  aggregate:
+    func: min
+    field: age
+  expected_sql: 'SELECT MIN("age") FROM "person" WHERE "age" > ?'
+  expected:
+    dbl_val: 33.0
+- name: max_age_age_lte_40
+  model: person
+  query_type: max
+  dataset: main
+  where:
+    conditions:
+    - field: age
+      op: <=
+      values:
+      - 40
+  aggregate:
+    func: max
+    field: age
+  expected_sql: 'SELECT MAX("age") FROM "person" WHERE "age" <= ?'
+  expected:
+    dbl_val: 40.0
+- name: count_where_join_msg_value_gt15
+  model: message
+  query_type: count
+  dataset: main_msg
+  where:
+    conditions:
+    - field: value
+      op: '>'
+      values:
+      - 15
+  aggregate:
+    func: count
+    field: ''
+  join:
+    type: inner
+    related: Person
+    fk: sender
+  expected_sql: 'SELECT COUNT(*) FROM "message" t1 INNER JOIN "person" t2 ON t2."id" = t1."sender_id" WHERE t1."value" > ?'
+  expected:
+    int_val: 7
+- name: count_with_order_by_name
+  model: person
+  dataset: main
+  order_by:
+  - field: name
+    direction: ASC
+  aggregate:
+    func: count
+    field: ''
+  expected_sql: 'SELECT COUNT(*) FROM "person"'
+  expected:
+    int_val: 25
+  query_type: count
+- name: count_where_score_is_null
+  model: person
+  query_type: count
+  dataset: main
+  where:
+    conditions:
+    - field: score
+      op: ==
+      values:
+      - null
+  aggregate:
+    func: count
+    field: ''
+  expected_sql: 'SELECT COUNT(*) FROM "person" WHERE "score" IS NULL'
+  expected:
+    int_val: 10
+- name: count_where_score_is_not_null
+  model: person
+  query_type: count
+  dataset: main
+  where:
+    conditions:
+    - field: score
+      op: '!='
+      values:
+      - null
+  aggregate:
+    func: count
+    field: ''
+  expected_sql: 'SELECT COUNT(*) FROM "person" WHERE "score" IS NOT NULL'
+  expected:
+    int_val: 15
+- name: empty_count
+  model: person
+  dataset: empty
+  aggregate:
+    func: count
+    field: ''
+  expected_sql: 'SELECT COUNT(*) FROM "person"'
+  expected:
+    int_val: 0
+  query_type: count
+- name: empty_sum_age
+  model: person
+  dataset: empty
+  aggregate:
+    func: sum
+    field: age
+  expected_sql: 'SELECT SUM("age") FROM "person"'
+  expected:
+    int_val: 0
+  query_type: sum
+- name: empty_avg_salary
+  model: person
+  dataset: empty
+  aggregate:
+    func: avg
+    field: salary
+  expected_sql: 'SELECT AVG("salary") FROM "person"'
+  expected:
+    dbl_val: 0.0
+  query_type: avg
+- name: empty_min_age
+  model: person
+  dataset: empty
+  aggregate:
+    func: min
+    field: age
+  expected_sql: 'SELECT MIN("age") FROM "person"'
+  expected:
+    dbl_val: 0.0
+  query_type: min
+- name: empty_max_age
+  model: person
+  dataset: empty
+  aggregate:
+    func: max
+    field: age
+  expected_sql: 'SELECT MAX("age") FROM "person"'
+  expected:
+    dbl_val: 0.0
+  query_type: max
+- name: empty_count_with_where
+  model: person
+  dataset: empty
+  where:
+    conditions:
+    - field: age
+      op: '>'
+      values:
+      - 25
+  aggregate:
+    func: count
+    field: ''
+  expected_sql: 'SELECT COUNT(*) FROM "person" WHERE "age" > ?'
+  expected:
+    int_val: 0
+  query_type: count
+- name: empty_count_distinct
+  model: person
+  dataset: empty
+  aggregate:
+    func: count_distinct
+    field: age
+  expected_sql: 'SELECT COUNT(DISTINCT "age") FROM "person"'
+  expected:
+    int_val: 0
+  query_type: count_distinct
+- name: agg_sum_age
+  model: person
+  dataset: main
+  aggregate:
+    func: sum
+    field: age
+  expected_sql: 'SELECT SUM("age") FROM "person"'
+  expected:
+    int_val: 829
+  query_type: sum
+- name: agg_count_all
+  model: person
+  dataset: main
+  aggregate:
+    func: count
+    field: ''
+  expected_sql: 'SELECT COUNT(*) FROM "person"'
+  expected:
+    int_val: 25
+  query_type: count
+- name: agg_count_field_id
+  model: person
+  dataset: main
+  aggregate:
+    func: count_field
+    field: id
+  expected_sql: 'SELECT COUNT("id") FROM "person"'
+  expected:
+    int_val: 25
+  query_type: count_field
+- name: agg_avg_age
+  model: person
+  dataset: main
+  aggregate:
+    func: avg
+    field: age
+  expected_sql: 'SELECT AVG("age") FROM "person"'
+  expected:
+    dbl_val: 33.16
+  query_type: avg
+- name: agg_min_age
+  model: person
+  dataset: main
+  aggregate:
+    func: min
+    field: age
+  expected_sql: 'SELECT MIN("age") FROM "person"'
+  expected:
+    dbl_val: 22.0
+  query_type: min
+- name: agg_max_salary
+  model: person
+  dataset: main
+  aggregate:
+    func: max
+    field: salary
+  expected_sql: 'SELECT MAX("salary") FROM "person"'
+  expected:
+    dbl_val: 98000.0
+  query_type: max
+- name: agg_count_distinct_years_experience
+  model: person
+  dataset: main
+  aggregate:
+    func: count_distinct
+    field: years_experience
+  expected_sql: 'SELECT COUNT(DISTINCT "years_experience") FROM "person"'
+  expected:
+    int_val: 3
+  query_type: count_distinct
+- name: agg_count_distinct_age
+  model: person
+  dataset: main
+  aggregate:
+    func: count_distinct
+    field: age
+  expected_sql: 'SELECT COUNT(DISTINCT "age") FROM "person"'
+  expected:
+    int_val: 14
+  query_type: count_distinct
+- name: agg_where_count_age_gt_30
+  model: person
+  dataset: main
+  where:
+    conditions:
+    - field: age
+      op: '>'
+      values:
+      - 30
+  aggregate:
+    func: count
+    field: ''
+  expected_sql: 'SELECT COUNT(*) FROM "person" WHERE "age" > ?'
+  expected:
+    int_val: 13
+  query_type: count
+- name: agg_where_sum_age_gte_35
+  model: person
+  dataset: main
+  where:
+    conditions:
+    - field: age
+      op: '>='
+      values:
+      - 35
+  aggregate:
+    func: sum
+    field: age
+  expected_sql: 'SELECT SUM("age") FROM "person" WHERE "age" >= ?'
+  expected:
+    int_val: 442
+  query_type: sum
+- name: agg_where_avg_age_lt_40
+  model: person
+  dataset: main
+  where:
+    conditions:
+    - field: age
+      op: <
+      values:
+      - 40
+  aggregate:
+    func: avg
+    field: age
+  expected_sql: 'SELECT AVG("age") FROM "person" WHERE "age" < ?'
+  expected:
+    dbl_val: 29.95
+  query_type: avg
+- name: agg_where_min_age_gt_25
+  model: person
+  dataset: main
+  where:
+    conditions:
+    - field: age
+      op: '>'
+      values:
+      - 25
+  aggregate:
+    func: min
+    field: age
+  expected_sql: 'SELECT MIN("age") FROM "person" WHERE "age" > ?'
+  expected:
+    dbl_val: 27.0
+  query_type: min
+- name: agg_where_max_age_lte_40
+  model: person
+  dataset: main
+  where:
+    conditions:
+    - field: age
+      op: <=
+      values:
+      - 40
+  aggregate:
+    func: max
+    field: age
+  expected_sql: 'SELECT MAX("age") FROM "person" WHERE "age" <= ?'
+  expected:
+    dbl_val: 40.0
+  query_type: max
+- name: agg_where_sum_salary_gte_70000
+  model: person
+  dataset: main
+  where:
+    conditions:
+    - field: salary
+      op: '>='
+      values:
+      - 70000.0
+  aggregate:
+    func: sum
+    field: salary
+  expected_sql: 'SELECT SUM("salary") FROM "person" WHERE "salary" >= ?'
+  expected:
+    dbl_val: 1019000.0
+  query_type: sum
+- name: agg_where_count_age_gt_100_no_results
+  model: person
+  dataset: main
+  where:
+    conditions:
+    - field: age
+      op: '>'
+      values:
+      - 100
+  aggregate:
+    func: count
+    field: ''
+  expected_sql: 'SELECT COUNT(*) FROM "person" WHERE "age" > ?'
+  expected:
+    int_val: 0
+  query_type: count
+- name: agg_where_count_age_gt_0_all_results
+  model: person
+  dataset: main
+  where:
+    conditions:
+    - field: age
+      op: '>'
+      values:
+      - 0
+  aggregate:
+    func: count
+    field: ''
+  expected_sql: 'SELECT COUNT(*) FROM "person" WHERE "age" > ?'
+  expected:
+    int_val: 25
+  query_type: count
+- name: agg_where_count_distinct_age_gt_30
+  model: person
+  dataset: main
+  where:
+    conditions:
+    - field: age
+      op: '>'
+      values:
+      - 30
+  aggregate:
+    func: count_distinct
+    field: age
+  expected_sql: 'SELECT COUNT(DISTINCT "age") FROM "person" WHERE "age" > ?'
+  expected:
+    int_val: 8
+  query_type: count_distinct
+- name: agg_sum_salary_all
+  model: person
+  dataset: main
+  aggregate:
+    func: sum
+    field: salary
+  expected_sql: 'SELECT SUM("salary") FROM "person"'
+  expected:
+    dbl_val: 1702000.0
+  query_type: sum
+- name: agg_avg_salary_all
+  model: person
+  dataset: main
+  aggregate:
+    func: avg
+    field: salary
+  expected_sql: 'SELECT AVG("salary") FROM "person"'
+  expected:
+    dbl_val: 68080.0
+  query_type: avg
+- name: agg_sum_age_where_gt_30
+  model: person
+  dataset: main
+  where:
+    conditions:
+    - field: age
+      op: '>'
+      values:
+      - 30
+  aggregate:
+    func: sum
+    field: age
+  expected_sql: 'SELECT SUM("age") FROM "person" WHERE "age" > ?'
+  expected:
+    int_val: 508
+  query_type: sum
+- name: agg_avg_salary_where_age_gt_30
+  model: person
+  dataset: main
+  where:
+    conditions:
+    - field: age
+      op: '>'
+      values:
+      - 30
+  aggregate:
+    func: avg
+    field: salary
+  expected_sql: 'SELECT AVG("salary") FROM "person" WHERE "age" > ?'
+  expected:
+    dbl_val: 83692.31
+  query_type: avg
+- name: agg_min_salary_where_age_lte_30
+  model: person
+  dataset: main
+  where:
+    conditions:
+    - field: age
+      op: <=
+      values:
+      - 30
+  aggregate:
+    func: min
+    field: salary
+  expected_sql: 'SELECT MIN("salary") FROM "person" WHERE "age" <= ?'
+  expected:
+    dbl_val: 32000.0
+  query_type: min
+- name: agg_max_age_where_salary_gte_70000
+  model: person
+  dataset: main
+  where:
+    conditions:
+    - field: salary
+      op: '>='
+      values:
+      - 70000.0
+  aggregate:
+    func: max
+    field: age
+  expected_sql: 'SELECT MAX("age") FROM "person" WHERE "salary" >= ?'
+  expected:
+    dbl_val: 48.0
+  query_type: max
+- name: agg_join_count
+  model: message
+  dataset: main_msg
+  aggregate:
+    func: count
+    field: ''
+  expected_sql: 'SELECT COUNT(*) FROM "message"'
+  expected:
+    int_val: 8
+  query_type: count
+- name: agg_join_sum_value
+  model: message
+  dataset: main_msg
+  aggregate:
+    func: sum
+    field: value
+  expected_sql: 'SELECT SUM("value") FROM "message"'
+  expected:
+    int_val: 360
+  query_type: sum
+- name: agg_join_avg_value
+  model: message
+  dataset: main_msg
+  aggregate:
+    func: avg
+    field: value
+  expected_sql: 'SELECT AVG("value") FROM "message"'
+  expected:
+    dbl_val: 45.0
+  query_type: avg
+- name: agg_join_min_value
+  model: message
+  dataset: main_msg
+  aggregate:
+    func: min
+    field: value
+  expected_sql: 'SELECT MIN("value") FROM "message"'
+  expected:
+    dbl_val: 10.0
+  query_type: min
+- name: agg_join_max_value
+  model: message
+  dataset: main_msg
+  aggregate:
+    func: max
+    field: value
+  expected_sql: 'SELECT MAX("value") FROM "message"'
+  expected:
+    dbl_val: 80.0
+  query_type: max
+- name: agg_where_join_count_value_gt_30
+  model: message
+  dataset: main_msg
+  where:
+    conditions:
+    - field: value
+      op: '>'
+      values:
+      - 30
+  aggregate:
+    func: count
+    field: ''
+  expected_sql: 'SELECT COUNT(*) FROM "message" WHERE "value" > ?'
+  expected:
+    int_val: 5
+  query_type: count
+- name: agg_where_join_sum_value_gte_30
+  model: message
+  dataset: main_msg
+  where:
+    conditions:
+    - field: value
+      op: '>='
+      values:
+      - 30
+  aggregate:
+    func: sum
+    field: value
+  expected_sql: 'SELECT SUM("value") FROM "message" WHERE "value" >= ?'
+  expected:
+    int_val: 330
+  query_type: sum
+- name: agg_where_join_avg_value_lt_50
+  model: message
+  dataset: main_msg
+  where:
+    conditions:
+    - field: value
+      op: <
+      values:
+      - 50
+  aggregate:
+    func: avg
+    field: value
+  expected_sql: 'SELECT AVG("value") FROM "message" WHERE "value" < ?'
+  expected:
+    dbl_val: 25.0
+  query_type: avg
+- name: agg_where_join_count_no_results
+  model: message
+  dataset: main_msg
+  where:
+    conditions:
+    - field: value
+      op: '>'
+      values:
+      - 100
+  aggregate:
+    func: count
+    field: ''
+  expected_sql: 'SELECT COUNT(*) FROM "message" WHERE "value" > ?'
+  expected:
+    int_val: 0
+  query_type: count
+- name: agg_min_score_where_age_gt30
+  model: person
+  query_type: min
+  dataset: main
+  where:
+    conditions:
+    - field: age
+      op: '>'
+      values:
+      - 30
+  aggregate:
+    func: min
+    field: score
+  expected_sql: 'SELECT MIN("score") FROM "person" WHERE "age" > ?'
+  expected:
+    dbl_val: 50.0
+- name: agg_max_score_where_age_gt30
+  model: person
+  query_type: max
+  dataset: main
+  where:
+    conditions:
+    - field: age
+      op: '>'
+      values:
+      - 30
+  aggregate:
+    func: max
+    field: score
+  expected_sql: 'SELECT MAX("score") FROM "person" WHERE "age" > ?'
+  expected:
+    dbl_val: 70.0
+- name: agg_min_score
+  model: person
+  dataset: main
+  aggregate:
+    func: min
+    field: score
+  expected_sql: 'SELECT MIN("score") FROM "person"'
+  expected:
+    dbl_val: 40.0
+  query_type: min
+- name: agg_max_score
+  model: person
+  dataset: main
+  aggregate:
+    func: max
+    field: score
+  expected_sql: 'SELECT MAX("score") FROM "person"'
+  expected:
+    dbl_val: 95.0
+  query_type: max

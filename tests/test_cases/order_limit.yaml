@@ -1,0 +1,212 @@
+- name: order_by_age_asc_first_is_25
+  model: person
+  query_type: select
+  dataset: main
+  order_by:
+  - field: age
+    direction: ASC
+  expected:
+    count: 25
+    first:
+      age: 22
+- name: order_by_age_desc_first_is_40
+  model: person
+  query_type: select
+  dataset: main
+  order_by:
+  - field: age
+    direction: DESC
+  expected:
+    count: 25
+    first:
+      age: 48
+- name: order_by_name_asc_first_is_alice
+  model: person
+  query_type: select
+  dataset: main
+  order_by:
+  - field: name
+    direction: ASC
+  expected:
+    count: 25
+    first:
+      name: Alice
+- name: order_by_name_desc_first_is_jack
+  model: person
+  query_type: select
+  dataset: main
+  order_by:
+  - field: name
+    direction: DESC
+  expected:
+    count: 25
+    first:
+      name: Yara
+- name: order_by_age_desc_where_active
+  model: person
+  query_type: select
+  dataset: main
+  where:
+    conditions:
+    - field: is_active
+      op: ==
+      values:
+      - true
+  order_by:
+  - field: age
+    direction: DESC
+  expected:
+    count: 16
+- name: order_by_empty_result_where_no_match
+  model: person
+  query_type: select
+  dataset: main
+  where:
+    conditions:
+    - field: age
+      op: '>'
+      values:
+      - 100
+  order_by:
+  - field: age
+    direction: ASC
+  expected:
+    count: 0
+- name: order_by_empty_table
+  model: person
+  query_type: select
+  dataset: empty
+  order_by:
+  - field: age
+    direction: ASC
+  expected:
+    count: 0
+- name: limit_5_from_20
+  model: person
+  query_type: select
+  init_dataset_size: 20
+  limit:
+    value: 5
+    offset: 0
+  expected:
+    count: 5
+- name: offset_10_from_20
+  model: person
+  query_type: select
+  init_dataset_size: 20
+  limit:
+    value: 0
+    offset: 10
+  expected:
+    count: 10
+- name: limit_5_offset_10
+  model: person
+  query_type: select
+  init_dataset_size: 20
+  limit:
+    value: 5
+    offset: 10
+  expected:
+    count: 5
+- name: limit_exceeds_dataset
+  model: person
+  query_type: select
+  init_dataset_size: 20
+  limit:
+    value: 100
+    offset: 0
+  expected:
+    count: 20
+- name: offset_exceeds_dataset
+  model: person
+  query_type: select
+  init_dataset_size: 20
+  limit:
+    value: 0
+    offset: 100
+  expected:
+    count: 0
+- name: limit_1
+  model: person
+  query_type: select
+  init_dataset_size: 20
+  limit:
+    value: 1
+    offset: 0
+  expected:
+    count: 1
+- name: limit_zero
+  model: person
+  query_type: select
+  init_dataset_size: 20
+  limit:
+    value: 0
+    offset: 0
+  expected:
+    count: 20
+- name: offset_zero
+  model: person
+  query_type: select
+  init_dataset_size: 20
+  limit:
+    value: 0
+    offset: 0
+  expected:
+    count: 20
+- name: limit_offset_partial_page
+  model: person
+  query_type: select
+  init_dataset_size: 20
+  limit:
+    value: 10
+    offset: 15
+  expected:
+    count: 5
+- name: limit_offset_boundary
+  model: person
+  query_type: select
+  init_dataset_size: 20
+  limit:
+    value: 5
+    offset: 15
+  expected:
+    count: 5
+- name: limit_1_offset_1
+  model: person
+  query_type: select
+  init_dataset_size: 20
+  limit:
+    value: 1
+    offset: 1
+  expected:
+    count: 1
+- name: limit_where_age_gt25
+  model: person
+  query_type: select
+  init_dataset_size: 20
+  where:
+    conditions:
+    - field: age
+      op: '>'
+      values:
+      - 25
+  limit:
+    value: 3
+    offset: 0
+  expected:
+    count: 3
+- name: limit_offset_where_age_gt25
+  model: person
+  query_type: select
+  init_dataset_size: 20
+  where:
+    conditions:
+    - field: age
+      op: '>'
+      values:
+      - 25
+  limit:
+    value: 3
+    offset: 2
+  expected:
+    count: 3

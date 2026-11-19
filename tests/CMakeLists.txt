@@ -1,10 +1,10 @@
 project(storm_tests LANGUAGES CXX)
 
 # ============================================================================
-# YAML → JSON conversion for YAML-driven test cases.
-# test_cases/unified_cases.yaml is the single source of truth; it is converted
-# to JSON at configure time so the JSON can be embedded via C++26 #embed in
-# test_parser.hpp.
+# YAML → JSON conversion for YAML-driven test cases. test_cases/<topic>.yaml
+# (where.yaml, writes.yaml, ...) is the single source of truth; the files are
+# converted to JSON at build time so the JSON can be embedded via C++26 #embed
+# in test_parser.hpp.
 # ============================================================================
 
 find_package(Python3 REQUIRED COMPONENTS Interpreter)
@@ -22,7 +22,16 @@ set(TEST_CASES_DIR "${CMAKE_CURRENT_SOURCE_DIR}/test_cases")
 # every build for a branch no TU took. It is gone along with the default, and so
 # is scripts/yaml_to_json_tests.py, which this rule was the only caller of.
 set(SPLIT_CASES_SCRIPT "${CMAKE_SOURCE_DIR}/scripts/split_unified_cases.py")
-set(UNIFIED_CASES_YAML "${TEST_CASES_DIR}/unified_cases.yaml")
+
+# #846: the authoring files are tests/test_cases/*.yaml, grouped by meaning for
+# humans and discovered by glob -- adding a topic file needs no edit here
+# (CONFIGURE_DEPENDS re-globs on every build, so a new file is picked up without
+# a manual reconfigure). Which file a case lives in is never an error: the
+# script reads them all and buckets every case by query_type into the slices
+# below. The glob is sorted, so the order of cases inside a slice is
+# deterministic.
+file(GLOB UNIFIED_CASES_YAMLS CONFIGURE_DEPENDS "${TEST_CASES_DIR}/*.yaml")
+list(SORT UNIFIED_CASES_YAMLS)
 
 # Single source of truth for the category split; mirrored by CATEGORIES in
 # scripts/split_unified_cases.py and by the tests/yaml/test_unified_yaml_*.cpp
@@ -39,11 +48,15 @@ endforeach()
 
 add_custom_command(
   OUTPUT ${SPLIT_JSON_FILES}
-  COMMAND ${Python3_EXECUTABLE} "${SPLIT_CASES_SCRIPT}" "${UNIFIED_CASES_YAML}"
-          "${TEST_CASES_DIR}"
-  DEPENDS "${UNIFIED_CASES_YAML}" "${SPLIT_CASES_SCRIPT}"
-  COMMENT "Splitting unified_cases.yaml into per-category JSON"
+  COMMAND ${Python3_EXECUTABLE} "${SPLIT_CASES_SCRIPT}" "${TEST_CASES_DIR}"
+          ${UNIFIED_CASES_YAMLS}
+  DEPENDS ${UNIFIED_CASES_YAMLS} "${SPLIT_CASES_SCRIPT}"
+  COMMENT "Splitting tests/test_cases/*.yaml into per-category JSON"
   VERBATIM)
+# Editing one YAML re-runs the (cheap) script, but it rewrites only the JSONs
+# whose bytes changed, and CMake's Ninja generator marks custom commands
+# `restat`, so ninja then recompiles only the slice TUs whose JSON really
+# changed (#846).
 
 add_custom_target(generate_test_json ALL DEPENDS ${SPLIT_JSON_FILES})
 
@@ -84,7 +97,7 @@ add_executable(${PROJECT_NAME} ${TEST_SOURCES})
 # The YAML corpus reaches these TUs through `#embed` (tests/test_parser.hpp),
 # and `#embed` is invisible to the dependency scanner: clang does not list the
 # embedded file in the depfile, so ninja records no edge from the object to the
-# JSON (`ninja -t deps` showed none). Editing unified_cases.yaml therefore
+# JSON (`ninja -t deps` showed none). Editing a test_cases/*.yaml therefore
 # regenerated the JSON but left the objects stale — a green build still running
 # the previous corpus. OBJECT_DEPENDS states the edge explicitly.
 #

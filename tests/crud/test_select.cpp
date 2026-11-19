@@ -24,7 +24,7 @@ template <typename ConnType> class SelectTest : public StormTestFixture<Person, 
 
 TYPED_TEST_SUITE(SelectTest, DatabaseTypes);
 
-// SelectFromEmptyTable: migrated to unified_cases.yaml (select_empty_table)
+// SelectFromEmptyTable: migrated to tests/test_cases/*.yaml (select_empty_table)
 
 // Test: SELECT single row
 TYPED_TEST(SelectTest, SelectSingleRow) {
