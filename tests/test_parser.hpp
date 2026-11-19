@@ -2,614 +2,48 @@
 
 /**
  * @file test_parser.hpp
- * @brief Compile-time JSON parser for YAML-driven unit test cases.
+ * @brief The test-only keys of the YAML-driven unit test corpus (#845).
  *
- * Uses raw-pointer access (~2 steps/char) to stay within clang's default
- * constexpr step limit -- which since #582 is all this needs, no
- * -fconstexpr-steps override (see the measurement in tests/CMakeLists.txt).
- * Imports storm_benchmark_schema for struct definitions; does NOT import
- * storm_benchmark_parser.
+ * There is ONE spec parser: storm_benchmark_parser (benchmarks/parser.cppm)
+ * reads every key a benchmark case can carry. This header adds only what a test
+ * case carries beyond that -- `query_type`, `dataset`, `expected`,
+ * `expected_sql*`, `aggregations`, `where_expr`, the write counts -- and hands
+ * every other key to storm::benchmark::parse_bench_field, so no shared key is
+ * parsed in two places.
  *
- * Issue #561: the corpus path is a macro because #embed requires a literal
- * filename -- a TU selects its slice by defining STORM_UNIFIED_CASES_FILE
- * before including this header.
- *
- * Issue #582: there is no default. A full-corpus default let a TU that forgot
- * to select a slice compile anyway, registering all 247 cases under one
- * category with no diagnostic -- so the corpus had to keep being generated in
- * combined form for a branch nothing was meant to take. Failing here instead
- * costs nothing and names the fix.
+ * It holds no corpus, so a TU that only needs the parser (the spec-limits TU)
+ * includes it alone. The slice TUs select their corpus with
+ * STORM_UNIFIED_CASES_FILE, which test_unified_yaml_body.h #embeds (#561/#582).
  */
-
-#ifndef STORM_UNIFIED_CASES_FILE
-#error "test_parser.hpp: define STORM_UNIFIED_CASES_FILE to a per-category corpus (see tests/yaml/test_unified_yaml_select.cpp) before including"
-#endif
 
 #include <array>
 #include <string_view>
 
 import storm_benchmark_schema;
+import storm_benchmark_parser;
 
 namespace storm::test {
 
-    using storm::benchmark::AggregateSpec;
     using storm::benchmark::BenchmarkTest;
     using storm::benchmark::ConstexprString;
-    using storm::benchmark::DistinctSpec;
-    using storm::benchmark::GroupBySpec;
-    using storm::benchmark::HavingSpec;
-    using storm::benchmark::JoinSpec;
-    using storm::benchmark::LimitSpec;
-    using storm::benchmark::OrderBySpec;
+    using storm::benchmark::JsonKeyRef;
     using storm::benchmark::TypedValue;
     using storm::benchmark::WhereNode;
     using storm::benchmark::WhereSpec;
 
-    // ============================================================================
-    // Raw-pointer JSON primitives
-    // ============================================================================
-
-    constexpr void skip_ws(const char* ptr, std::size_t sz, std::size_t& p) { // NOSONAR(S6188)
-        while (p < sz) {
-            if (char c = ptr[p]; c != ' ' && c != '\n' && c != '\r' && c != '\t')
-                break;
-            ++p;
-        }
-    }
-    constexpr void skip_ws(std::string_view j, std::size_t& p) {
-        skip_ws(j.data(), j.size(), p);
-    }
-
-    constexpr void skip_char(std::string_view j, std::size_t& p, char c) {
-        skip_ws(j, p);
-        if (p < j.size() && j.data()[p] == c)
-            ++p;
-    }
-
-    constexpr auto parse_int(std::string_view j, std::size_t& p) -> int {
-        skip_ws(j, p);
-        const char*       ptr = j.data();
-        const std::size_t sz  = j.size();
-        int               v   = 0;
-        bool              neg = false;
-        if (p < sz && ptr[p] == '-') {
-            neg = true;
-            ++p;
-        }
-        while (p < sz && ptr[p] >= '0' && ptr[p] <= '9')
-            v = v * 10 + (ptr[p++] - '0');
-        return neg ? -v : v;
-    }
-
-    // A 64-bit integer literal. One that overflows int64 is a compile error (signed overflow in a
-    // constant expression), never a wrapped value.
-    constexpr auto parse_int64(std::string_view j, std::size_t& p) -> std::int64_t {
-        skip_ws(j, p);
-        const char*       ptr = j.data();
-        const std::size_t sz  = j.size();
-        std::int64_t      v   = 0;
-        bool              neg = false;
-        if (p < sz && ptr[p] == '-') {
-            neg = true;
-            ++p;
-        }
-        while (p < sz && ptr[p] >= '0' && ptr[p] <= '9') {
-            const int digit = ptr[p++] - '0';
-            v               = neg ? (v * 10) - digit : (v * 10) + digit;
-        }
-        return v;
-    }
-
-    constexpr auto parse_null(std::string_view j, std::size_t& p) -> bool {
-        if (j.substr(p, 4) != "null")
-            return false;
-        p += 4;
-        return true;
-    }
-
-    constexpr auto parse_frac(std::string_view j, std::size_t& p) -> double {
-        const char*       ptr  = j.data();
-        const std::size_t sz   = j.size();
-        double            frac = 0.1;
-        double            f    = 0.0;
-        while (p < sz && ptr[p] >= '0' && ptr[p] <= '9') {
-            f += (ptr[p++] - '0') * frac;
-            frac *= 0.1;
-        }
-        return f;
-    }
-
-    constexpr auto parse_double(std::string_view j, std::size_t& p) -> double {
-        skip_ws(j, p);
-        const char*       ptr = j.data();
-        const std::size_t sz  = j.size();
-        double            v   = 0.0;
-        bool              neg = false;
-        if (p < sz && ptr[p] == '-') {
-            neg = true;
-            ++p;
-        }
-        while (p < sz && ptr[p] >= '0' && ptr[p] <= '9')
-            v = v * 10.0 + (ptr[p++] - '0');
-        if (p < sz && ptr[p] == '.') {
-            ++p;
-            v += parse_frac(j, p);
-        }
-        return neg ? -v : v;
-    }
-    constexpr auto parse_bool_true(const char* ptr, std::size_t sz, std::size_t& p) -> bool {
-        if (p + 4 <= sz && ptr[p] == 't' && ptr[p + 1] == 'r' && ptr[p + 2] == 'u' && ptr[p + 3] == 'e') {
-            p += 4;
-            return true;
-        }
-        return false;
-    }
-    constexpr auto parse_bool(std::string_view j, std::size_t& p) -> bool {
-        skip_ws(j, p);
-        const char*       ptr = j.data();
-        const std::size_t sz  = j.size();
-        if (parse_bool_true(ptr, sz, p))
-            return true;
-        if (p + 5 <= sz && ptr[p] == 'f' && ptr[p + 1] == 'a' && ptr[p + 2] == 'l' && ptr[p + 3] == 's' &&
-            ptr[p + 4] == 'e') {
-            p += 5;
-        }
-        return false;
-    }
-
-    template <std::size_t N> constexpr auto parse_str(std::string_view j, std::size_t& p) -> ConstexprString<N> {
-        skip_ws(j, p);
-        const char*        ptr = j.data();
-        const std::size_t  sz  = j.size();
-        ConstexprString<N> r;
-        if (p < sz && ptr[p] == '"') {
-            ++p;
-            char*       rd = r.data.data();
-            std::size_t i  = 0;
-            while (p < sz && ptr[p] != '"' && i < N - 1) {
-                // #818: `\"` and `\\` unescape to the character after the backslash, so a
-                // pinned SQL string can carry the quoted identifiers Storm emits.
-                if (ptr[p] == '\\' && p + 1 < sz)
-                    ++p;
-                rd[i++] = ptr[p++];
-            }
-            r.len = i;
-            rd[i] = '\0';
-            if (p < sz && ptr[p] == '"')
-                ++p;
-        }
-        return r;
-    }
-
-    constexpr void skip_braced(std::string_view j, std::size_t& p, char open, char close) {
-        const char*       ptr   = j.data();
-        const std::size_t sz    = j.size();
-        int               depth = 0;
-        while (p < sz) {
-            char c = ptr[p++];
-            if (c == open)
-                ++depth;
-            else if (c == close) {
-                --depth;
-                if (depth == 0)
-                    return;
-            }
-        }
-    }
-
-    constexpr void skip_string(const char* ptr, std::size_t sz, std::size_t& p) {
-        ++p;
-        while (p < sz && ptr[p] != '"') {
-            if (ptr[p] == '\\')
-                ++p;
-            ++p;
-        }
-        if (p < sz)
-            ++p;
-    }
-
-    constexpr void skip_scalar(const char* ptr, std::size_t sz, std::size_t& p) {
-        while (p < sz) {
-            char c = ptr[p];
-            if (c == ',' || c == '}' || c == ']' || c == ' ' || c == '\n' || c == '\r' || c == '\t')
-                break;
-            ++p;
-        }
-    }
-
-    constexpr void skip_value(std::string_view j, std::size_t& p) {
-        skip_ws(j, p);
-        const char*       ptr = j.data();
-        const std::size_t sz  = j.size();
-        if (p >= sz)
-            return;
-        char first = ptr[p];
-        if (first == '"')
-            skip_string(ptr, sz, p);
-        else if (first == '[')
-            skip_braced(j, p, '[', ']');
-        else if (first == '{')
-            skip_braced(j, p, '{', '}');
-        else
-            skip_scalar(ptr, sz, p);
-    }
-
-    constexpr auto count_objects(std::string_view j) -> std::size_t {
-        std::size_t n = 0, p = 0;
-        skip_char(j, p, '[');
-        const char*       ptr = j.data();
-        const std::size_t sz  = j.size();
-        while (p < sz) {
-            skip_ws(ptr, sz, p);
-            if (p >= sz || ptr[p] == ']')
-                break;
-            if (ptr[p] == '{') {
-                ++n;
-                skip_braced(j, p, '{', '}');
-            }
-            skip_ws(ptr, sz, p);
-            if (p < sz && ptr[p] == ',')
-                ++p;
-        }
-        return n;
-    }
-
-    template <std::size_t M>
-    constexpr auto jkey_eq(const char* ptr, std::size_t start, std::size_t len, const char (&lit)[M]) noexcept -> bool {
-        constexpr std::size_t n = M - 1;
-        if (len != n)
-            return false;
-        for (std::size_t i = 0; i < n; ++i)
-            if (ptr[start + i] != lit[i])
-                return false;
-        return true;
-    }
-
-    struct JsonKeyRef {
-        std::size_t start = 0;
-        std::size_t len   = 0;
-    };
-
-    constexpr auto parse_key_ref(const char* ptr, std::size_t sz, std::size_t& p) -> JsonKeyRef { // NOSONAR(S6188)
-        skip_ws(ptr, sz, p);
-        JsonKeyRef ref;
-        if (p < sz && ptr[p] == '"') {
-            ++p;
-            ref.start = p;
-            while (p < sz && ptr[p] != '"')
-                ++p;
-            ref.len = p - ref.start;
-            if (p < sz)
-                ++p;
-        }
-        return ref;
-    }
-
-    constexpr auto at_end(const char* ptr, std::size_t sz, std::size_t& p, char close) -> bool {
-        skip_ws(ptr, sz, p);
-        if (p < sz && ptr[p] == close) {
-            ++p;
-            return true;
-        }
-        return false;
-    }
-
-    constexpr void skip_comma(const char* ptr, std::size_t sz, std::size_t& p) {
-        skip_ws(ptr, sz, p);
-        if (p < sz && ptr[p] == ',')
-            ++p;
-    }
-
-    // Walk every key-value pair in a JSON object; call fn(ptr, kr, j, p) per key.
-    template <typename Fn> constexpr void parse_object(std::string_view j, std::size_t& p, Fn fn) {
-        skip_char(j, p, '{');
-        const char*       ptr = j.data();
-        const std::size_t sz  = j.size();
-        while (p < sz) {
-            if (at_end(ptr, sz, p, '}'))
-                break;
-            skip_ws(ptr, sz, p);
-            auto kr = parse_key_ref(ptr, sz, p);
-            skip_ws(ptr, sz, p);
-            if (p < sz && ptr[p] == ':')
-                ++p;
-            fn(ptr, kr, j, p);
-            skip_comma(ptr, sz, p);
-        }
-    }
-
-    // Walk a JSON array; call fn(j, p) per element.
-    template <typename Fn> constexpr void parse_array(std::string_view j, std::size_t& p, Fn fn) {
-        skip_ws(j, p);
-        const char*       ptr = j.data();
-        const std::size_t sz  = j.size();
-        if (p >= sz || ptr[p] != '[') {
-            skip_value(j, p);
-            return;
-        }
-        ++p;
-        while (p < sz) {
-            skip_ws(ptr, sz, p);
-            if (ptr[p] == ']') {
-                ++p;
-                break;
-            }
-            fn(j, p);
-            skip_ws(ptr, sz, p);
-            if (p < sz && ptr[p] == ',')
-                ++p;
-        }
-    }
-
-    constexpr auto is_number_with_dot(std::string_view j, std::size_t p) -> bool {
-        const char*       ptr = j.data();
-        const std::size_t sz  = j.size();
-        while (p < sz) {
-            char c = ptr[p];
-            if (c == '.')
-                return true;
-            if (c == ',' || c == '}' || c == ']' || c == ' ' || c == '\n')
-                return false;
-            ++p;
-        }
-        return false;
-    }
-
-    constexpr auto parse_typed_value(std::string_view j, std::size_t& p) -> TypedValue {
-        skip_ws(j, p);
-        const char* ptr = j.data();
-        TypedValue  tv;
-        if (ptr[p] == '"') {
-            tv.kind      = TypedValue::Kind::String;
-            tv.as_string = parse_str<64>(j, p);
-        } else if (ptr[p] == 't' || ptr[p] == 'f') {
-            tv.kind    = TypedValue::Kind::Bool;
-            tv.as_bool = parse_bool(j, p);
-        } else if (ptr[p] == 'n' && parse_null(j, p)) {
-            tv = TypedValue::null_value();
-        } else if (is_number_with_dot(j, p)) {
-            tv.kind      = TypedValue::Kind::Double;
-            tv.as_double = parse_double(j, p);
-        } else {
-            tv = TypedValue::of_integer(parse_int64(j, p));
-        }
-        return tv;
-    }
-
-    // --- BenchmarkTest sub-object parsers ---
-
-    // Skips the next value. A token no parser consumes (a stray `}` in an array) is stepped over,
-    // or the loop around it would never end (#843).
-    constexpr void skip_or_step(std::string_view j, std::size_t& p) {
-        const std::size_t before = p;
-        skip_value(j, p);
-        if (p == before && p < j.size())
-            ++p;
-    }
-
-    // The next token is `c`. Skips whitespace first.
-    constexpr auto at_char(std::string_view j, std::size_t& p, char c) -> bool {
-        skip_ws(j, p);
-        return p < j.size() && j[p] == c;
-    }
-
-    // Adds one value to the WHERE pool, skipping a token that parses to nothing so no loop stalls.
-    constexpr void add_where_value(WhereSpec& w, std::string_view j, std::size_t& p) {
-        const std::size_t before = p;
-        const TypedValue  value  = parse_typed_value(j, p);
-        if (p == before)
-            skip_or_step(j, p);
-        else
-            w.add_value(value);
-    }
-
-    // One condition {field, op, values: [...]} becomes one leaf of the WHERE tree (#843).
-    constexpr void parse_where_leaf(WhereSpec& w, std::string_view j, std::size_t& p) {
-        WhereNode leaf;
-        leaf.first_value = w.value_count;
-        parse_object(j, p, [&](const char* ptr, JsonKeyRef kr, std::string_view jj, std::size_t& pp) {
-            if (jkey_eq(ptr, kr.start, kr.len, "field")) {
-                leaf.field = parse_str<32>(jj, pp);
-            } else if (jkey_eq(ptr, kr.start, kr.len, "op")) {
-                leaf.op = parse_str<16>(jj, pp);
-            } else if (jkey_eq(ptr, kr.start, kr.len, "values")) {
-                w.value_count = leaf.first_value; // a repeated key replaces the first (#843)
-                parse_array(jj, pp, [&](std::string_view jjj, std::size_t& ppp) { add_where_value(w, jjj, ppp); });
-            } else {
-                skip_value(jj, pp);
-            }
-        });
-        leaf.value_count = w.value_count - leaf.first_value;
-        w.add_node(leaf);
-    }
-
-    // {conditions: [...], combine: "and"|"or"}: the conditions are the leaves, joined left to right.
-    // AND when `combine` is absent; it may come before or after `conditions` (#843).
-    constexpr void parse_where_into(std::string_view j, std::size_t& p, WhereSpec& w) {
-        w.begin_form();
-        const std::size_t first_leaf  = w.node_count;
-        const std::size_t first_value = w.value_count;
-        std::size_t       leaves      = 0;
-        bool              use_or      = false;
-        parse_object(j, p, [&](const char* ptr, JsonKeyRef kr, std::string_view jj, std::size_t& pp) {
-            if (jkey_eq(ptr, kr.start, kr.len, "conditions")) {
-                // a repeated key replaces the first (#843)
-                w.node_count  = first_leaf;
-                w.value_count = first_value;
-                leaves        = 0;
-                parse_array(jj, pp, [&](std::string_view jjj, std::size_t& ppp) {
-                    if (at_char(jjj, ppp, '{')) {
-                        parse_where_leaf(w, jjj, ppp);
-                        ++leaves;
-                    } else {
-                        skip_or_step(jjj, ppp); // not a condition: skip it, or parse_array would never leave
-                    }
-                });
-            } else if (jkey_eq(ptr, kr.start, kr.len, "combine")) {
-                use_or = parse_str<8>(jj, pp) == "or";
-            } else {
-                skip_value(jj, pp);
-            }
-        });
-        w.join_leaves(first_leaf, leaves, use_or);
-    }
-
-    constexpr auto parse_order_by_entry(std::string_view j, std::size_t& p) -> OrderBySpec {
-        OrderBySpec ob;
-        ob.enabled = true;
-        parse_object(j, p, [&](const char* ptr, JsonKeyRef kr, std::string_view jj, std::size_t& pp) {
-            if (jkey_eq(ptr, kr.start, kr.len, "field"))
-                ob.field = parse_str<32>(jj, pp);
-            else if (jkey_eq(ptr, kr.start, kr.len, "direction"))
-                ob.direction = parse_str<8>(jj, pp);
-            else
-                skip_value(jj, pp);
-        });
-        return ob;
-    }
-
-    constexpr void parse_order_by_array(std::string_view j, std::size_t& p, BenchmarkTest& b) {
-        b.order_by_count = 0; // a repeated key replaces the first (#843)
-        parse_array(j, p, [&](std::string_view jj, std::size_t& pp) {
-            if (at_char(jj, pp, '{'))
-                b.add_order_by(parse_order_by_entry(jj, pp));
-            else
-                skip_or_step(jj, pp); // not an entry: skip it, or parse_array would never leave
-        });
-    }
-
-    constexpr auto parse_having(std::string_view j, std::size_t& p) -> HavingSpec {
-        HavingSpec h;
-        h.enabled = true;
-        parse_object(j, p, [&](const char* ptr, JsonKeyRef kr, std::string_view jj, std::size_t& pp) {
-            if (jkey_eq(ptr, kr.start, kr.len, "field"))
-                h.field = parse_str<32>(jj, pp);
-            else if (jkey_eq(ptr, kr.start, kr.len, "op"))
-                h.op = parse_str<16>(jj, pp);
-            else if (jkey_eq(ptr, kr.start, kr.len, "value"))
-                h.value = parse_typed_value(jj, pp);
-            else
-                skip_value(jj, pp);
-        });
-        return h;
-    }
-
-    // `add` receives every name; the spec decides what to keep (#843). An element that is not a
-    // string is skipped: parse_str does not advance past it, and parse_array would never leave.
-    template <typename AddFn> constexpr void parse_fields_array(std::string_view j, std::size_t& p, AddFn add) {
-        parse_array(j, p, [&](std::string_view jj, std::size_t& pp) {
-            if (at_char(jj, pp, '"'))
-                add(parse_str<32>(jj, pp));
-            else
-                skip_or_step(jj, pp);
-        });
-    }
-
-    constexpr auto parse_group_by(std::string_view j, std::size_t& p) -> GroupBySpec {
-        GroupBySpec g;
-        g.enabled = true;
-        parse_object(j, p, [&](const char* ptr, JsonKeyRef kr, std::string_view jj, std::size_t& pp) {
-            if (jkey_eq(ptr, kr.start, kr.len, "fields")) {
-                g.declared_count = 0; // a repeated key replaces the first (#843)
-                parse_fields_array(jj, pp, [&](const ConstexprString<32>& s) { g.add_field(s); });
-            } else if (jkey_eq(ptr, kr.start, kr.len, "having"))
-                g.having = parse_having(jj, pp);
-            else
-                skip_value(jj, pp);
-        });
-        return g;
-    }
-
-    constexpr auto parse_distinct(std::string_view j, std::size_t& p) -> DistinctSpec {
-        DistinctSpec d;
-        d.enabled = true;
-        parse_object(j, p, [&](const char* ptr, JsonKeyRef kr, std::string_view jj, std::size_t& pp) {
-            if (jkey_eq(ptr, kr.start, kr.len, "fields")) {
-                d.declared_count = 0; // a repeated key replaces the first (#843)
-                parse_fields_array(jj, pp, [&](const ConstexprString<32>& s) { d.add_field(s); });
-            } else
-                skip_value(jj, pp);
-        });
-        return d;
-    }
-
-    constexpr auto parse_limit(std::string_view j, std::size_t& p) -> LimitSpec {
-        LimitSpec lim;
-        lim.enabled = true;
-        parse_object(j, p, [&](const char* ptr, JsonKeyRef kr, std::string_view jj, std::size_t& pp) {
-            if (jkey_eq(ptr, kr.start, kr.len, "value"))
-                lim.value = parse_int(jj, pp);
-            else if (jkey_eq(ptr, kr.start, kr.len, "offset"))
-                lim.offset = parse_int(jj, pp);
-            else
-                skip_value(jj, pp);
-        });
-        return lim;
-    }
-
-    constexpr auto parse_aggregate(std::string_view j, std::size_t& p) -> AggregateSpec {
-        AggregateSpec agg;
-        agg.enabled = true;
-        parse_object(j, p, [&](const char* ptr, JsonKeyRef kr, std::string_view jj, std::size_t& pp) {
-            if (jkey_eq(ptr, kr.start, kr.len, "func"))
-                agg.func = parse_str<16>(jj, pp);
-            else if (jkey_eq(ptr, kr.start, kr.len, "field"))
-                agg.field = parse_str<32>(jj, pp);
-            else
-                skip_value(jj, pp);
-        });
-        return agg;
-    }
-
-    constexpr auto parse_join(std::string_view j, std::size_t& p) -> JoinSpec {
-        JoinSpec jn;
-        jn.enabled = true;
-        parse_object(j, p, [&](const char* ptr, JsonKeyRef kr, std::string_view jj, std::size_t& pp) {
-            if (jkey_eq(ptr, kr.start, kr.len, "type"))
-                jn.type = parse_str<8>(jj, pp);
-            else if (jkey_eq(ptr, kr.start, kr.len, "related"))
-                jn.related = parse_str<32>(jj, pp);
-            else if (jkey_eq(ptr, kr.start, kr.len, "fk"))
-                jn.fk = parse_str<32>(jj, pp);
-            else if (jkey_eq(ptr, kr.start, kr.len, "fks")) {
-                jn.fk_count = 0; // a repeated key replaces the first (#843)
-                parse_fields_array(jj, pp, [&](const ConstexprString<32>& s) { jn.add_fk(s); });
-            } else
-                skip_value(jj, pp);
-        });
-        return jn;
-    }
-
-    // Issue #72: `init_dataset_size` is the preferred config key; `dataset_size`
-    // stays a backward-compatible alias. Kept as a free predicate so
-    // parse_bench_field's branch count is unchanged.
-    constexpr auto is_init_dataset_size_key(const char* ptr, JsonKeyRef kr) -> bool {
-        return jkey_eq(ptr, kr.start, kr.len, "init_dataset_size") || jkey_eq(ptr, kr.start, kr.len, "dataset_size");
-    }
-
-    constexpr void
-    parse_bench_field(BenchmarkTest& b, const char* ptr, JsonKeyRef kr, std::string_view j, std::size_t& p) {
-        if (jkey_eq(ptr, kr.start, kr.len, "model"))
-            b.model = parse_str<32>(j, p);
-        else if (jkey_eq(ptr, kr.start, kr.len, "where"))
-            parse_where_into(j, p, b.where);
-        else if (jkey_eq(ptr, kr.start, kr.len, "order_by"))
-            parse_order_by_array(j, p, b);
-        else if (jkey_eq(ptr, kr.start, kr.len, "group_by"))
-            b.group_by = parse_group_by(j, p);
-        else if (jkey_eq(ptr, kr.start, kr.len, "distinct"))
-            b.distinct = parse_distinct(j, p);
-        else if (jkey_eq(ptr, kr.start, kr.len, "limit"))
-            b.limit = parse_limit(j, p);
-        else if (jkey_eq(ptr, kr.start, kr.len, "aggregate"))
-            b.aggregate = parse_aggregate(j, p);
-        else if (jkey_eq(ptr, kr.start, kr.len, "join"))
-            b.join = parse_join(j, p);
-        else if (is_init_dataset_size_key(ptr, kr))
-            b.dataset_size = parse_int(j, p);
-        else
-            skip_value(j, p);
-    }
+    using storm::benchmark::jkey_eq;
+    using storm::benchmark::parse_array;
+    using storm::benchmark::parse_bench_field;
+    using storm::benchmark::parse_bool;
+    using storm::benchmark::parse_double;
+    using storm::benchmark::parse_int;
+    using storm::benchmark::parse_object;
+    using storm::benchmark::parse_str;
+    using storm::benchmark::parse_typed_value;
+    using storm::benchmark::skip_braced;
+    using storm::benchmark::skip_or_step;
+    using storm::benchmark::skip_value;
+    using storm::benchmark::skip_ws;
 
     // --- Test-only sub-specs and structs ---
 
@@ -700,7 +134,7 @@ namespace storm::test {
 
     // --- Test-only parsers ---
 
-    constexpr void parse_first_row_into(std::string_view j, std::size_t& p, FirstRowSpec& f) {
+    constexpr void parse_first_row_into(std::string_view j, std::size_t& p, FirstRowSpec& f, std::size_t& truncated) {
         parse_object(j, p, [&](const char* ptr, JsonKeyRef kr, std::string_view jj, std::size_t& pp) {
             if (f.count >= FirstRowSpec::MAX_FIELDS) {
                 skip_value(jj, pp);
@@ -710,7 +144,9 @@ namespace storm::test {
             FirstRowField& field = f.fields.data()[f.count++];
             for (std::size_t i = 0; i < kr.len && i + 1 < field.name.data.size(); ++i)
                 field.name.data.data()[field.name.len++] = ptr[kr.start + i];
-            field.value = parse_typed_value(jj, pp);
+            if (field.name.len < kr.len)
+                ++truncated; // a member name longer than the buffer (#845)
+            field.value = parse_typed_value(jj, pp, truncated);
         });
     }
 
@@ -754,56 +190,56 @@ namespace storm::test {
     constexpr auto
     parse_expected_group_key(const char* ptr, JsonKeyRef kr, std::string_view jj, std::size_t& pp, ExpectedSpec& e)
             -> bool {
-        if (jkey_eq(ptr, kr.start, kr.len, "groups_count")) {
+        if (jkey_eq(ptr, kr, "groups_count")) {
             e.groups_count = static_cast<std::size_t>(parse_int(jj, pp));
             return true;
-        } else if (jkey_eq(ptr, kr.start, kr.len, "group_keys")) {
+        } else if (jkey_eq(ptr, kr, "group_keys")) {
             parse_int_array<ExpectedSpec::MAX_GROUPS>(jj, pp, e.group_keys);
             return true;
-        } else if (jkey_eq(ptr, kr.start, kr.len, "group_agg_int")) {
+        } else if (jkey_eq(ptr, kr, "group_agg_int")) {
             parse_int_array<ExpectedSpec::MAX_GROUPS>(jj, pp, e.group_agg_int);
             return true;
-        } else if (jkey_eq(ptr, kr.start, kr.len, "group_agg_dbl")) {
+        } else if (jkey_eq(ptr, kr, "group_agg_dbl")) {
             parse_double_array<ExpectedSpec::MAX_GROUPS>(jj, pp, e.group_agg_dbl);
             return true;
-        } else if (jkey_eq(ptr, kr.start, kr.len, "group_agg_null")) {
+        } else if (jkey_eq(ptr, kr, "group_agg_null")) {
             parse_bool_array<ExpectedSpec::MAX_GROUPS>(jj, pp, e.group_agg_null);
             return true;
         }
         return false;
     }
 
-    constexpr void parse_expected_into(std::string_view j, std::size_t& p, ExpectedSpec& e) {
+    constexpr void parse_expected_into(std::string_view j, std::size_t& p, ExpectedSpec& e, std::size_t& truncated) {
         parse_object(j, p, [&](const char* ptr, JsonKeyRef kr, std::string_view jj, std::size_t& pp) {
-            if (jkey_eq(ptr, kr.start, kr.len, "count"))
+            if (jkey_eq(ptr, kr, "count"))
                 e.count = parse_int(jj, pp);
-            else if (jkey_eq(ptr, kr.start, kr.len, "int_val"))
+            else if (jkey_eq(ptr, kr, "int_val"))
                 e.int_val = parse_int(jj, pp);
-            else if (jkey_eq(ptr, kr.start, kr.len, "dbl_val"))
+            else if (jkey_eq(ptr, kr, "dbl_val"))
                 e.dbl_val = parse_double(jj, pp);
-            else if (jkey_eq(ptr, kr.start, kr.len, "unchanged"))
+            else if (jkey_eq(ptr, kr, "unchanged"))
                 e.unchanged = parse_int(jj, pp);
-            else if (jkey_eq(ptr, kr.start, kr.len, "remaining"))
+            else if (jkey_eq(ptr, kr, "remaining"))
                 e.remaining = parse_int(jj, pp);
-            else if (jkey_eq(ptr, kr.start, kr.len, "first"))
-                parse_first_row_into(jj, pp, e.first);
+            else if (jkey_eq(ptr, kr, "first"))
+                parse_first_row_into(jj, pp, e.first, truncated);
             else if (!parse_expected_group_key(ptr, kr, jj, pp, e))
                 skip_value(jj, pp);
         });
     }
 
-    constexpr auto parse_chain_agg_spec(std::string_view j, std::size_t& p) -> ChainAggSpec {
+    constexpr auto parse_chain_agg_spec(std::string_view j, std::size_t& p, std::size_t& truncated) -> ChainAggSpec {
         ChainAggSpec spec;
         parse_object(j, p, [&](const char* ptr, JsonKeyRef kr, std::string_view jj, std::size_t& pp) {
-            if (jkey_eq(ptr, kr.start, kr.len, "func"))
-                spec.func = parse_str<16>(jj, pp);
-            else if (jkey_eq(ptr, kr.start, kr.len, "field"))
-                spec.field = parse_str<32>(jj, pp);
-            else if (jkey_eq(ptr, kr.start, kr.len, "result"))
+            if (jkey_eq(ptr, kr, "func"))
+                spec.func = parse_str<16>(jj, pp, truncated);
+            else if (jkey_eq(ptr, kr, "field"))
+                spec.field = parse_str<32>(jj, pp, truncated);
+            else if (jkey_eq(ptr, kr, "result"))
                 parse_object(jj, pp, [&](const char* rptr, JsonKeyRef rk, std::string_view rj, std::size_t& rp) {
-                    if (jkey_eq(rptr, rk.start, rk.len, "type"))
-                        spec.res_type = parse_str<8>(rj, rp);
-                    else if (jkey_eq(rptr, rk.start, rk.len, "value"))
+                    if (jkey_eq(rptr, rk, "type"))
+                        spec.res_type = parse_str<8>(rj, rp, truncated);
+                    else if (jkey_eq(rptr, rk, "value"))
                         spec.res_value = parse_double(rj, rp);
                     else
                         skip_value(rj, rp);
@@ -814,16 +250,19 @@ namespace storm::test {
         return spec;
     }
 
-    constexpr auto
-    parse_chain_agg_array(std::string_view j, std::size_t& p, std::array<ChainAggSpec, TestCase::MAX_CHAIN>& out)
-            -> std::size_t {
+    constexpr auto parse_chain_agg_array(
+            std::string_view                               j,
+            std::size_t&                                   p,
+            std::array<ChainAggSpec, TestCase::MAX_CHAIN>& out,
+            std::size_t&                                   truncated
+    ) -> std::size_t {
         std::size_t n = 0;
         parse_array(j, p, [&](std::string_view jj, std::size_t& pp) {
             if (n < TestCase::MAX_CHAIN)
-                out.data()[n] = parse_chain_agg_spec(jj, pp);
+                out.data()[n] = parse_chain_agg_spec(jj, pp, truncated);
             else
-                skip_braced(jj, pp, '{', '}');
-            ++n; // counts past MAX_CHAIN too, so AggregateRunner can reject the overflow
+                skip_or_step(jj, pp); // any value, an object or not
+            ++n;                      // counts past MAX_CHAIN too, so AggregateRunner can reject the overflow
         });
         return n;
     }
@@ -840,18 +279,24 @@ namespace storm::test {
     // One node's own keys: a leaf's field/op and its value, an inner node's op. `value_int` /
     // `value_dbl` each add one operand, typed by WHICH key was written, so 0.0 stays a double.
     constexpr void parse_where_node_leaf(
-            const char* ptr, JsonKeyRef kr, std::string_view jj, std::size_t& pp, WhereSpec& w, WhereNode& n
+            const char*      ptr,
+            JsonKeyRef       kr,
+            std::string_view jj,
+            std::size_t&     pp,
+            WhereSpec&       w,
+            WhereNode&       n,
+            std::size_t&     truncated
     ) {
-        if (jkey_eq(ptr, kr.start, kr.len, "field")) {
-            n.field = parse_str<32>(jj, pp);
-        } else if (jkey_eq(ptr, kr.start, kr.len, "op")) {
-            n.op = parse_str<16>(jj, pp);
-        } else if (jkey_eq(ptr, kr.start, kr.len, "value_int")) {
+        if (jkey_eq(ptr, kr, "field")) {
+            n.field = parse_str<32>(jj, pp, truncated);
+        } else if (jkey_eq(ptr, kr, "op")) {
+            n.op = parse_str<16>(jj, pp, truncated);
+        } else if (jkey_eq(ptr, kr, "value_int")) {
             TypedValue tv;
             tv.kind   = TypedValue::Kind::Int;
             tv.as_int = parse_int(jj, pp);
             w.add_value(tv);
-        } else if (jkey_eq(ptr, kr.start, kr.len, "value_dbl")) {
+        } else if (jkey_eq(ptr, kr, "value_dbl")) {
             TypedValue tv;
             tv.kind      = TypedValue::Kind::Double;
             tv.as_double = parse_double(jj, pp);
@@ -864,7 +309,7 @@ namespace storm::test {
     // The `where_expr:` tree, written as the tree itself. Nodes are numbered in pre-order from the
     // root. A node's slot is reserved before its children are read, and every node is counted, so a
     // tree past MAX_NODES is rejected instead of losing nodes (#843).
-    constexpr auto parse_where_expr_dfs(std::string_view j, std::size_t& p, WhereSpec& w)
+    constexpr auto parse_where_expr_dfs(std::string_view j, std::size_t& p, WhereSpec& w, std::size_t& truncated)
             -> int { // NOSONAR — recursive
         const std::size_t idx = w.add_node(WhereNode{});
         WhereNode         node;
@@ -873,12 +318,12 @@ namespace storm::test {
         bool        has_left = false, has_right = false;
         parse_object(j, p, [&](const char* ptr, JsonKeyRef kr, std::string_view jj, std::size_t& pp) {
             skip_ws(jj, pp);
-            if (jkey_eq(ptr, kr.start, kr.len, "left"))
+            if (jkey_eq(ptr, kr, "left"))
                 capture_child(jj, pp, has_left, left_pos);
-            else if (jkey_eq(ptr, kr.start, kr.len, "right"))
+            else if (jkey_eq(ptr, kr, "right"))
                 capture_child(jj, pp, has_right, right_pos);
             else
-                parse_where_node_leaf(ptr, kr, jj, pp, w, node);
+                parse_where_node_leaf(ptr, kr, jj, pp, w, node, truncated);
         });
         node.value_count = w.value_count - node.first_value;
         w.put_node(idx, node);
@@ -886,11 +331,11 @@ namespace storm::test {
         int right = -1;
         if (has_left) {
             std::size_t lp = left_pos;
-            left           = parse_where_expr_dfs(j, lp, w);
+            left           = parse_where_expr_dfs(j, lp, w, truncated);
         }
         if (has_right) {
             std::size_t rp = right_pos;
-            right          = parse_where_expr_dfs(j, rp, w);
+            right          = parse_where_expr_dfs(j, rp, w, truncated);
         }
         w.set_children(idx, left, right);
         return static_cast<int>(idx);
@@ -898,33 +343,33 @@ namespace storm::test {
 
     // --- Top-level TestCase parser ---
 
+    // A test-only key, or else a shared one (storm::benchmark::parse_bench_field).
     constexpr void
     parse_test_only_field(TestCase& tc, const char* ptr, JsonKeyRef kr, std::string_view j, std::size_t& p) {
-        if (jkey_eq(ptr, kr.start, kr.len, "name"))
-            tc.bench.test_name = parse_str<64>(j, p);
-        else if (jkey_eq(ptr, kr.start, kr.len, "query_type"))
-            tc.query_type = parse_str<32>(j, p);
-        else if (jkey_eq(ptr, kr.start, kr.len, "dataset"))
-            tc.dataset = parse_str<16>(j, p);
-        else if (jkey_eq(ptr, kr.start, kr.len, "expected_sql"))
-            tc.expected_sql = parse_str<EXPECTED_SQL_CAPACITY>(j, p);
-        else if (jkey_eq(ptr, kr.start, kr.len, "expected_sql_sqlite"))
-            tc.expected_sql_sqlite = parse_str<EXPECTED_SQL_CAPACITY>(j, p);
-        else if (jkey_eq(ptr, kr.start, kr.len, "expected_sql_pg"))
-            tc.expected_sql_pg = parse_str<EXPECTED_SQL_CAPACITY>(j, p);
-        else if (jkey_eq(ptr, kr.start, kr.len, "expected"))
-            parse_expected_into(j, p, tc.expected);
-        else if (jkey_eq(ptr, kr.start, kr.len, "erase_count"))
+        std::size_t& truncated = tc.bench.truncated_strings;
+        if (jkey_eq(ptr, kr, "query_type"))
+            tc.query_type = parse_str<32>(j, p, truncated);
+        else if (jkey_eq(ptr, kr, "dataset"))
+            tc.dataset = parse_str<16>(j, p, truncated);
+        else if (jkey_eq(ptr, kr, "expected_sql"))
+            tc.expected_sql = parse_str<EXPECTED_SQL_CAPACITY>(j, p, truncated);
+        else if (jkey_eq(ptr, kr, "expected_sql_sqlite"))
+            tc.expected_sql_sqlite = parse_str<EXPECTED_SQL_CAPACITY>(j, p, truncated);
+        else if (jkey_eq(ptr, kr, "expected_sql_pg"))
+            tc.expected_sql_pg = parse_str<EXPECTED_SQL_CAPACITY>(j, p, truncated);
+        else if (jkey_eq(ptr, kr, "expected"))
+            parse_expected_into(j, p, tc.expected, truncated);
+        else if (jkey_eq(ptr, kr, "erase_count"))
             tc.erase_count = parse_int(j, p);
-        else if (jkey_eq(ptr, kr.start, kr.len, "insert_count"))
+        else if (jkey_eq(ptr, kr, "insert_count"))
             tc.insert_count = parse_int(j, p);
-        else if (jkey_eq(ptr, kr.start, kr.len, "update_count"))
+        else if (jkey_eq(ptr, kr, "update_count"))
             tc.update_count = parse_int(j, p);
-        else if (jkey_eq(ptr, kr.start, kr.len, "aggregations"))
-            tc.chain_len = parse_chain_agg_array(j, p, tc.aggregations);
-        else if (jkey_eq(ptr, kr.start, kr.len, "where_expr")) {
+        else if (jkey_eq(ptr, kr, "aggregations"))
+            tc.chain_len = parse_chain_agg_array(j, p, tc.aggregations, truncated);
+        else if (jkey_eq(ptr, kr, "where_expr")) {
             tc.bench.where.begin_form();
-            tc.bench.where.root = parse_where_expr_dfs(j, p, tc.bench.where);
+            tc.bench.where.root = parse_where_expr_dfs(j, p, tc.bench.where, truncated);
         } else
             parse_bench_field(tc.bench, ptr, kr, j, p);
     }
@@ -963,47 +408,6 @@ namespace storm::test {
             parse_test_only_field(tc, ptr, kr, jj, pp);
         });
         normalise_aggregate_case(tc);
-    }
-
-    template <typename T, std::size_t N, typename ParseIntoFn>
-    constexpr auto parse_array_into(std::string_view j, ParseIntoFn fn) -> std::array<T, N> {
-        std::array<T, N>  arr{};
-        std::size_t       p   = 0;
-        const char*       ptr = j.data();
-        const std::size_t sz  = j.size();
-        skip_char(j, p, '[');
-        for (std::size_t i = 0; i < N; ++i) {
-            skip_ws(ptr, sz, p);
-            if (p >= sz || ptr[p] == ']')
-                break;
-            fn(j, p, arr.data()[i]);
-            skip_ws(ptr, sz, p);
-            if (p < sz && ptr[p] == ',')
-                ++p;
-        }
-        return arr;
-    }
-
-    // `static` (internal linkage), NOT inline: STORM_UNIFIED_CASES_FILE differs per
-    // TU, so this function's DEFINITION differs per TU. One external-linkage entity
-    // with several definitions is [basic.def.odr] IFNDR. It is inert today only
-    // because a consteval function is never odr-used and emits no symbol -- one
-    // consteval->constexpr edit away from being live. Same discipline as
-    // UNIFIED_TESTS in test_unified_yaml_body.h.
-    static consteval auto load_unified_tests() {
-        static constexpr const char raw[] = {
-// #embed is a C23 feature Clang offers as an extension in C++26 mode; this is
-// the only portable way to embed the JSON test corpus at compile time. Suppress
-// -Wc23-extensions here so the -Werror policy (issue #317) stays clean.
-#pragma clang diagnostic push
-#pragma clang diagnostic ignored "-Wc23-extensions"
-#embed STORM_UNIFIED_CASES_FILE
-#pragma clang diagnostic pop
-                , '\0'
-        };
-        constexpr std::string_view json(raw, sizeof(raw) - 1);
-        constexpr std::size_t      n = count_objects(json);
-        return parse_array_into<TestCase, n>(json, parse_test_case_into);
     }
 
 } // namespace storm::test

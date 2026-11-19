@@ -4,8 +4,9 @@
 A case may pin the SQL text it emits: one `expected_sql` for both backends, or BOTH
 `expected_sql_sqlite` and `expected_sql_pg` when the text differs per dialect
 (NULLS FIRST/LAST, LIMIT ALL vs LIMIT -1). The script is the one place that sees the
-YAML before the C++ parser (which cannot report an overflow or a stray key), so it
-must reject what the parser would silently mangle or never compare. Strategy: run the
+YAML before the C++ parser. The parser cannot report a stray key; it does reject an
+over-long string at compile time, but the script keeps that check so the error names the
+case and the key. So the script must reject what the parser would mangle or never compare. Strategy: run the
 real script over a throwaway corpus (one valid case per category, plus the case under
 test) and assert the exit status and message; a last scenario runs it over the real
 corpus. Stdlib unittest only, no syntax newer than Python 3.9.
@@ -216,9 +217,8 @@ class UnsupportedCategoryTest(unittest.TestCase):
 
 
 class TextRulesTest(unittest.TestCase):
-    """The C++ parser unescapes only a quote and a backslash, ignores string boundaries when
-    skipping braces, and stops copying at capacity -- so every key is held to the same rules
-    as expected_sql."""
+    """The C++ parser unescapes only a quote and a backslash and holds a fixed capacity -- so
+    every key is held to the same rules as expected_sql."""
 
     KEYS = ("expected_sql_sqlite", "expected_sql_pg")
 
@@ -233,8 +233,6 @@ class TextRulesTest(unittest.TestCase):
             "non-string": 7,
             "non-ascii": "SELECT 'é'",
             "newline": "SELECT 1\nFROM t",
-            "brace": "SELECT {1}",
-            "bracket": "SELECT [1]",
             "over capacity": "S" * CAPACITY,
         }
         for key in self.KEYS:
@@ -250,6 +248,17 @@ class TextRulesTest(unittest.TestCase):
                 run = run_splitter(self._pair_with(key, "S" * (CAPACITY - 1)))
                 self.assertEqual(run.returncode, 0, run.stderr)
 
+    def test_braces_and_brackets_are_accepted(self):
+        # #845: the C++ parser skips a string whole when it skips a braced value, so a brace or
+        # bracket inside the text no longer miscounts the nesting.
+        for key in self.KEYS:
+            with self.subTest(key=key):
+                run = run_splitter(self._pair_with(key, "SELECT '{1}', '[2]'"))
+                self.assertEqual(run.returncode, 0, run.stderr)
+        with self.subTest(key="expected_sql"):
+            run = run_splitter(case("text_rules", SELECT_QUERY, expected_sql="SELECT '{1}', '[2]'"))
+            self.assertEqual(run.returncode, 0, run.stderr)
+
     def test_quoted_identifiers_survive_the_json_hop(self):
         run = run_splitter(case("quoted", SELECT_QUERY, **PAIR))
         written = [c for c in run.outputs["select"] if c["name"] == "quoted"][0]
@@ -258,8 +267,8 @@ class TextRulesTest(unittest.TestCase):
 
 class CapacityTest(unittest.TestCase):
     def test_the_script_and_the_cpp_parser_agree_on_the_capacity(self):
-        # The C++ parser stops copying at capacity and cannot report an overflow, so the script's
-        # limit must be exactly the buffer the three keys are parsed into.
+        # The C++ parser rejects an over-long string at compile time; the script checks first so the
+        # error names the case and the key, so its limit must be exactly the buffer the keys are parsed into.
         header = PARSER_HEADER.read_text(encoding="utf-8")
         match = re.search(r"EXPECTED_SQL_CAPACITY\s*=\s*(\d+)\s*;", header)
         self.assertIsNotNone(match, "EXPECTED_SQL_CAPACITY not found in tests/test_parser.hpp")

@@ -203,7 +203,7 @@ group cases share `AggregateRunner` but the split script still rejects the key o
 - Write the string from the case, not by pasting the code's output — a pinned wrong string passes forever.
 - The capacity is `EXPECTED_SQL_CAPACITY` (160) in `tests/test_parser.hpp`, mirrored in
   `scripts/split_unified_cases.py`, which fails the build on a string of 160 or more characters (the C++ parser
-  cannot report an overflow), on non-printable or non-ASCII text, on `{ } [ ]` (the parser's brace skipper ignores string boundaries), and on `expected_sql` in a category whose
+  rejects every over-long case at compile time too, #845; the script keeps its check so the error names the case and the key), on non-printable or non-ASCII text, and on `expected_sql` in a category whose
   runner does not read it yet (it would pass without ever comparing SQL). The parser unescapes `\"` and `\\`, which is how the quoted identifiers survive the JSON hop.
 - Write paths (`to_sql()` inlines bound values), set-ops and upsert still need C++ tests.
 - **Build cost** (Release, warm, aggregate TU, 3 runs each): 25.5–27.3 s before, 26.9–27.0 s after
@@ -287,7 +287,7 @@ aggregate or field. Names in the YAML are resolved by reflection at compile time
 ### Typed values and one null spelling (#844)
 
 A YAML value is read in the **type of the field it is compared with** (WHERE operands) or the member it is
-checked against (`expected.first`). The parsers only record what was written, as a `TypedValue` kind: `Null`
+checked against (`expected.first`). The parser only records what was written, as a `TypedValue` kind: `Null`
 (`null`), `Int` (fits 32 bits), `Int64` (wider; the one rule is `TypedValue::of_integer`), `Double`, `Bool`,
 `String`. A value that does not fit its field is a **compile error, never a coercion** (`SpecValuesFit` for
 WHERE, `ExpectedValueFits` for `expected.first`; both are `value_fits<FieldType>`, once, in
@@ -325,6 +325,58 @@ WHERE, `ExpectedValueFits` for `expected.first`; both are `value_fits<FieldType>
   and reverted: it moved the other three TUs by less than the measurement noise, so the ~1 s they gained is not
   the fixture (unexplained).
 
+### One spec parser (#845)
+
+There is one JSON spec parser, `storm_benchmark_parser` (`benchmarks/parser.cppm`). It reads every key a
+`BenchmarkTest` holds, with each accepted alias listed once: `test_name` / `name`, `test_category` / `category`,
+`init_dataset_size` / `dataset_size`. `tests/test_parser.hpp` adds only the test-only keys (`query_type`,
+`dataset`, `expected`, `expected_sql`, `expected_sql_sqlite`, `expected_sql_pg`, `aggregations`, `where_expr`,
+`insert_count` / `update_count` / `erase_count`) and passes every other key to `parse_bench_field`, so no key is
+parsed in two places. Add a shared key in `parse_bench_field` / `parse_bench_scalar`; a test-only key in
+`parse_test_only_field`.
+
+- **No corpus in the parser header.** `test_parser.hpp` holds no `#embed`; the corpus driver
+  (`load_unified_tests()`) and the `STORM_UNIFIED_CASES_FILE` `#error` (#582) live in `test_unified_yaml_body.h`,
+  which only the four slice TUs include. A parser-only TU (`test_spec_limits_test_parser.cpp`) includes
+  `test_parser.hpp` alone.
+- **`combine` is `and` or `or`**, exactly and case-sensitively (`WhereSpec::combine_of`). Any other spelling,
+  `OR` included, makes the spec ill-formed, so the case does not compile (`SpecWellFormed`, #847), also when the
+  `where:` has a single condition. A non-string `combine` (`combine: null`, a number) is rejected the same way.
+  `yaml_to_json.py` and `split_unified_cases.py` pass the YAML value through unchanged.
+- **Strings.** A brace or bracket inside a string is text: skipping a `{...}` / `[...]` value steps over its
+  strings whole (escapes included), so `split_unified_cases.py` no longer rejects `{ } [ ]` in pinned SQL. A
+  string longer than its buffer keeps what fits, is still read to its closing quote, and is counted in
+  `BenchmarkTest::truncated_strings`, so `within_limits()` rejects the case like an over-long array. A value that is not a string where a string belongs (`"model": 5`) is consumed whole and leaves the field
+  empty; a string cut off by the end of the input after a backslash stops at the end of the input.
+- **Why the raw-pointer primitives.** The parser indexes a `const char*`, not `std::string_view::operator[]`:
+  each call is constexpr steps. Measured by bisecting `-fconstexpr-steps` on a probe TU per corpus (the #582
+  method; clang's default limit is 1,048,576):
+
+  | Corpus | string_view parser (before) | raw-pointer test parser (before) | one parser (after) |
+  |---|---|---|---|
+  | grouped slice | 756,670 ¹ | 328,364 | 343,186 |
+  | select slice | 770,488 ¹ | 316,287 | 329,288 |
+  | aggregate slice | 571,967 ¹ | 210,589 | 216,883 |
+  | crud slice | 267,513 ¹ | 94,231 | 94,718 |
+  | `benchmark_tests.json` | 863,276 | 377,373 ¹ | 341,492 |
+
+  ¹ that parser skipped the keys it did not know, so it parsed fewer keys than the "after" column. The test slices
+  cost 0.5–4.5% more than the old test parser: the dispatcher knows the benchmark keys too, a skipped value
+  steps over its strings, and an over-long string is read to its end. The benchmark corpus, which was at 82% of
+  the default limit, is at 33%. No `-fconstexpr-steps` flag is needed.
+- **Where the steps go** (grouped / crud, bisected one change at a time): `jkey_eq` is written out in full rather
+  than forwarding to a helper (−4.4% / −4.6%: one call per candidate key is the dispatch's cost, the length is
+  already compared first); `parse_str` copies in one loop and reads an over-long tail in a second one, so a
+  string that fits pays no per-character overflow test (−3% / −4%); skipping strings inside a skipped value
+  costs 0.4%. Dispatching keys on a `switch` on their length was tried and dropped: −2% on grouped, +4% on crud
+  and the benchmark corpus.
+- **Every case is checked against the caps.** `UnifiedYamlBody` static_asserts `TestCase::within_limits()`, so a
+  case that does not build a `QueryBuilder` (a write) is rejected too. It is a separate constant evaluation: the
+  real crud TU's step maximum is still the parse (94,718), and its compile time moved within noise.
+  `load_benchmark_tests()` (`benchmarks/benchmark_tests.hpp`) static_asserts the same over `BENCHMARK_TESTS`
+  (`all_within_limits`), so a benchmark write case is held to the string buffers as well; `register.cpp`'s
+  Release compile time moved within noise (21.4 s either way).
+
 ### Spec limits are compile errors (#843)
 
 A few spec arrays are capped (`BenchmarkTest::MAX_ORDER_BY`, `JoinSpec::MAX_FKS`, `GroupBySpec::MAX_FIELDS`,
@@ -332,8 +384,8 @@ A few spec arrays are capped (`BenchmarkTest::MAX_ORDER_BY`, `JoinSpec::MAX_FKS`
 dropped the extra entries and the case passed while checking less than it said.
 
 - **Counting is in the schema.** `benchmarks/schema.cppm` owns the rule, once, in `add_capped`: `add_order_by`,
-  `add_fk` and `add_field` count every entry and store only what fits. Both parsers (`benchmarks/parser.cppm`,
-  `tests/test_parser.hpp`) call them and still read an over-long array to its end, so the key after it is parsed.
+  `add_fk` and `add_field` count every entry and store only what fits. The parser (`benchmarks/parser.cppm`)
+  calls them and still reads an over-long array to its end, so the key after it is parsed.
   An element of the wrong kind (a number in a list of names) is skipped, not counted, and a repeated key replaces
   the first instead of adding to it.
 - **The check is one concept.** `BenchmarkTest::within_limits()` is false when any count passed its cap;
@@ -341,9 +393,10 @@ dropped the extra entries and the case passed while checking less than it said.
   over-cap case fails at the `QueryBuilder` use site (`BuilderFor` in `test_select_runner.h`).
 - **To raise a limit**, change the `MAX_*` constant next to its struct and keep the current corpus maximum plus headroom;
   every slot costs compile time per case (~190 ms/case, #561).
-- **Tested once, run against both parsers.** `tests/test_spec_limits.h` holds the cases;
-  `tests/yaml/test_spec_limits_benchmark_parser.cpp` and `test_spec_limits_test_parser.cpp` each pass their parser to it.
-  Merging the two parsers is #845.
+- **Tested once, run through both entry points.** `tests/test_spec_limits.h` holds the cases;
+  `tests/yaml/test_spec_limits_benchmark_parser.cpp` (`parse_test_object`) and `test_spec_limits_test_parser.cpp`
+  (`parse_test_case_into`, which forwards every shared key) each pass their entry point to it. There is one parser
+  since #845; the second TU checks that the test-side extension hands every shared key on.
 - **WHERE.** 7 nodes is 4 conditions (4 leaves + 3 joins); the value pool of 10 is shared by the whole tree. The
   corpus needs at most 5 nodes and 3 values. A repeated `conditions` or `values` key replaces the first; a
   non-condition element is skipped, and a stray `}` inside an array is stepped over so the parse ends.

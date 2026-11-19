@@ -10,7 +10,7 @@ file a case lives in is never an error. This script reads them ALL (in the order
 CMake passes them sorted), buckets every case by query_type and writes
 <output_dir>/unified_cases_<category>.json for each category. Case names must be unique
 across the whole corpus. There is no
-combined output: every includer of test_parser.hpp selects a slice via
+combined output: every includer of test_unified_yaml_body.h selects a slice via
 STORM_UNIFIED_CASES_FILE, which since #582 has no default (#error without it).
 
 Issue #561: the 247-case corpus compiled as a single TU took 53 s -- 89% of it
@@ -31,9 +31,7 @@ not four.
 CATEGORIES below is mirrored by SPLIT_CATEGORIES in tests/CMakeLists.txt and by
 the set of tests/yaml/test_unified_yaml_*.cpp TUs. Changing one means changing
 all three: adding a category here alone writes a JSON nothing embeds, which
-drops those cases from the suite with a green build. One more TU names `crud`:
-tests/yaml/test_spec_limits_test_parser.cpp borrows that slice to satisfy
-test_parser.hpp's #embed guard (#843); renaming `crud` means updating it too.
+drops those cases from the suite with a green build.
 """
 
 from __future__ import annotations
@@ -64,9 +62,9 @@ AGGREGATE_OPS = {"count", "count_field", "count_distinct", "sum", "avg", "min", 
 
 CATEGORIES = ("select", "grouped", "aggregate", "crud")
 
-# Mirrors EXPECTED_SQL_CAPACITY in tests/test_parser.hpp (#818). The C++ parser
-# cannot report an overflow: it stops copying at capacity and desyncs from the
-# JSON, so the length is enforced here, at the one place that sees the YAML.
+# Mirrors EXPECTED_SQL_CAPACITY in tests/test_parser.hpp (#818). Since #845 the C++
+# parser rejects every over-long case at compile time; the script keeps its check so the
+# error names the case and the key.
 EXPECTED_SQL_CAPACITY = 160
 
 
@@ -90,10 +88,6 @@ def validate_sql_text(name: str, key: str, sql: object) -> None:
     # (non-ASCII, newline, tab) into a multi-character escape it cannot undo.
     if not (sql.isascii() and sql.isprintable()):
         raise SystemExit(f"Error: case {name!r}: {key} must be printable ASCII")
-    # test_parser.hpp's skip_braced ignores string boundaries, so a brace or bracket
-    # inside any string value shifts its nesting depth and miscounts the objects.
-    if any(ch in sql for ch in "{}[]"):
-        raise SystemExit(f"Error: case {name!r}: {key} must not contain any of {{ }} [ ]")
     if len(sql) >= EXPECTED_SQL_CAPACITY:
         raise SystemExit(
             f"Error: case {name!r}: {key} is {len(sql)} chars, capacity is "
