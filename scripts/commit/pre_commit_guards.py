@@ -380,12 +380,29 @@ SPLIT_UNIFIED_CASES = Guard(
     "unified-cases splitter self-test passed",
 )
 
+# --- duplicate YAML test inputs ---
+# The corpus is split by topic, so the same query is easy to add twice under two names in two
+# files. check_yaml_duplicates.py hashes each case's normalised input and fails on a shared hash
+# (`allow_duplicate: <reason>` marks a deliberate repeat). It reads the corpus itself, so any
+# corpus edit triggers it; its self-test runs only when the checker or its fake-repo helper change.
+YAML_DUPLICATES = Guard(
+    "duplicate YAML test inputs",
+    r"^(tests/test_cases/[^/]+\.yaml|scripts/ci/(tests/test_)?check_yaml_duplicates\.py|scripts/ci/tests/fake_repo\.py)$",
+    (
+        Step(r"^scripts/ci/(tests/test_check_yaml_duplicates|check_yaml_duplicates|tests/fake_repo)\.py$",
+             script("scripts/ci/tests/test_check_yaml_duplicates.py"),
+             "duplicate-YAML-input checker self-test failed"),
+        Step(None, script("scripts/ci/check_yaml_duplicates.py"), "duplicate test inputs in the YAML corpus"),
+    ),
+    "no duplicate YAML test inputs",
+)
+
 GUARDS = (
     AGENT_FRONTMATTER, TIDY_SKIPLIST, SWEEP_WORKFLOW, SESSION_START_HOOK, SELF_HEAL, CMAKE_FORMAT_TARGET, PYYAML_CHECK,
     CPM_CACHE_CHECK, CPM_VENDORED, CPM_COLD_CACHE, COVERAGE_GATE, SMART_SKIP, TIDY_PREREQS, ORM_BACKEND_IMPORTS, NO_STD_FORMAT,
     PRE_COMMIT_GUARDS,
     CI_DIGESTS, COVERAGE_PARALLEL, NINJALOG_STATS, RATIO_GATE, TIME_TRACE, SONAR_GATE, SHARED_TEST_HELPERS,
-    ATLAS_MIGRATION_CHECK, SPLIT_UNIFIED_CASES,
+    ATLAS_MIGRATION_CHECK, SPLIT_UNIFIED_CASES, YAML_DUPLICATES,
 )
 
 # scripts/*/tests/ self-tests deliberately run by no guard, with where they DO run.

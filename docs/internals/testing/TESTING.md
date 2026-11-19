@@ -167,8 +167,21 @@ rewrites only a JSON whose bytes changed, so editing one case recompiles one sli
 checks **results** (`expected:`). SQL text is pinned separately in C++ (`test_sql_verify.cpp`,
 `test_fields_sql_parity.cpp`).
 
+**No two cases may run the same input (`scripts/ci/check_yaml_duplicates.py`).** Because the corpus is split
+by topic, the same query is easy to add twice under two names in two files; `commit.sh` and CI's `script-guards`
+reject it, naming both as `<file>:<case>`. A case's *input* is the case minus `name`, `description`, the result
+keys `expected*` and `allow_duplicate` (a pinned `expected_sql*` stays in: the text it pins depends on how the
+query was written), normalised before hashing, so there is no spelling rule to follow when writing a case: key
+order, the order of `where` conditions, and `where` vs `where_expr` (flattened to one AND/OR tree; nested
+same-operator nodes merged; `IN` lists sorted, `BETWEEN` bounds not) all hash alike. Typed values stay distinct
+(`value_int: 30` is not `value_dbl: 30.0`). Not caught: filters that are equal only by logic (`a > 5` vs
+`NOT (a <= 5)`) and cases whose input differs only by a defaulted key written out. A case that pins
+`expected_sql*` is compared by that text too, so reordering its conditions makes it a different test. Before adding a case, run
+`python3 scripts/ci/check_yaml_duplicates.py`. A deliberate repeat (same query, different intent) carries
+`allow_duplicate: <reason>` and is left out of the comparison; an empty reason is an error.
+
 A case may also carry an optional `expected_sql:` — the exact `sql()` text, compared **before** the
-statement executes. A case without it stays result-only. It is read by `AggregateRunner` (all 58 scalar-aggregate
+statement executes. A case without it stays result-only. It is read by `AggregateRunner` (all 51 scalar-aggregate
 cases) and by `SelectRunner` on `query_type: select` (#844); `first` / `one` and the other runners reject it
 (a compile error and a `split_unified_cases.py` error), since they would pass without comparing SQL. Chain and
 group cases share `AggregateRunner` but the split script still rejects the key outside `aggregate` and `select`.

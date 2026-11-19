@@ -4,18 +4,6 @@
   dataset: main
   expected:
     count: 25
-- name: select_where_age_gt_30
-  model: person
-  query_type: select
-  dataset: main
-  where:
-    conditions:
-    - field: age
-      op: '>'
-      values:
-      - 30
-  expected:
-    count: 13
 - name: select_with_limit
   model: person
   query_type: select
@@ -40,15 +28,6 @@
   dataset: empty
   expected:
     count: 0
-- name: select_all_order_by_asc
-  model: person
-  query_type: select
-  dataset: main
-  order_by:
-  - field: age
-    direction: ASC
-  expected:
-    count: 25
 - name: select_salary_gt_75000
   model: person
   query_type: select
@@ -91,15 +70,6 @@
   dataset: empty
   expected:
     count: 0
-- name: first_standard5
-  model: person
-  query_type: first
-  dataset: main
-  expected:
-    count: 1
-    first:
-      name: Alice
-      age: 25
 - name: first_where_no_match
   model: person
   query_type: first

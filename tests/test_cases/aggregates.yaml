@@ -187,16 +187,6 @@
   expected_sql: 'SELECT COUNT(*) FROM "person" WHERE "score" IS NOT NULL'
   expected:
     int_val: 15
-- name: empty_count
-  model: person
-  dataset: empty
-  aggregate:
-    func: count
-    field: ''
-  expected_sql: 'SELECT COUNT(*) FROM "person"'
-  expected:
-    int_val: 0
-  query_type: count
 - name: empty_sum_age
   model: person
   dataset: empty
@@ -293,26 +283,6 @@
   expected:
     int_val: 25
   query_type: count_field
-- name: agg_avg_age
-  model: person
-  dataset: main
-  aggregate:
-    func: avg
-    field: age
-  expected_sql: 'SELECT AVG("age") FROM "person"'
-  expected:
-    dbl_val: 33.16
-  query_type: avg
-- name: agg_min_age
-  model: person
-  dataset: main
-  aggregate:
-    func: min
-    field: age
-  expected_sql: 'SELECT MIN("age") FROM "person"'
-  expected:
-    dbl_val: 22.0
-  query_type: min
 - name: agg_max_salary
   model: person
   dataset: main
@@ -407,22 +377,6 @@
   expected:
     dbl_val: 27.0
   query_type: min
-- name: agg_where_max_age_lte_40
-  model: person
-  dataset: main
-  where:
-    conditions:
-    - field: age
-      op: <=
-      values:
-      - 40
-  aggregate:
-    func: max
-    field: age
-  expected_sql: 'SELECT MAX("age") FROM "person" WHERE "age" <= ?'
-  expected:
-    dbl_val: 40.0
-  query_type: max
 - name: agg_where_sum_salary_gte_70000
   model: person
   dataset: main
@@ -487,26 +441,6 @@
   expected:
     int_val: 8
   query_type: count_distinct
-- name: agg_sum_salary_all
-  model: person
-  dataset: main
-  aggregate:
-    func: sum
-    field: salary
-  expected_sql: 'SELECT SUM("salary") FROM "person"'
-  expected:
-    dbl_val: 1702000.0
-  query_type: sum
-- name: agg_avg_salary_all
-  model: person
-  dataset: main
-  aggregate:
-    func: avg
-    field: salary
-  expected_sql: 'SELECT AVG("salary") FROM "person"'
-  expected:
-    dbl_val: 68080.0
-  query_type: avg
 - name: agg_sum_age_where_gt_30
   model: person
   dataset: main
@@ -523,22 +457,6 @@
   expected:
     int_val: 508
   query_type: sum
-- name: agg_avg_salary_where_age_gt_30
-  model: person
-  dataset: main
-  where:
-    conditions:
-    - field: age
-      op: '>'
-      values:
-      - 30
-  aggregate:
-    func: avg
-    field: salary
-  expected_sql: 'SELECT AVG("salary") FROM "person" WHERE "age" > ?'
-  expected:
-    dbl_val: 83692.31
-  query_type: avg
 - name: agg_min_salary_where_age_lte_30
   model: person
   dataset: main
