@@ -1,0 +1,368 @@
+- name: where_or_age_lt26_or_gt35
+  model: person
+  query_type: select
+  dataset: main
+  where_expr:
+    op: OR
+    left:
+      field: age
+      op: <
+      value_int: 26
+    right:
+      field: age
+      op: '>'
+      value_int: 35
+  expected:
+    count: 14
+- name: where_multiple_or_age_eq
+  model: person
+  query_type: select
+  dataset: main
+  where_expr:
+    op: OR
+    left:
+      field: age
+      op: ==
+      value_int: 25
+    right:
+      op: OR
+      left:
+        field: age
+        op: ==
+        value_int: 30
+      right:
+        field: age
+        op: ==
+        value_int: 35
+  expected:
+    count: 8
+- name: complex_nested_or_and
+  model: person
+  query_type: select
+  dataset: main
+  where_expr:
+    op: AND
+    left:
+      op: OR
+      left:
+        field: age
+        op: <
+        value_int: 28
+      right:
+        field: age
+        op: '>'
+        value_int: 38
+    right:
+      field: salary
+      op: '>'
+      value_dbl: 70000.0
+  expected:
+    count: 6
+- name: where_age_eq_30
+  model: person
+  query_type: select
+  dataset: main
+  where:
+    conditions:
+    - field: age
+      op: ==
+      values:
+      - 30
+  expected:
+    count: 3
+- name: where_age_gt_30
+  model: person
+  query_type: select
+  dataset: main
+  where:
+    conditions:
+    - field: age
+      op: '>'
+      values:
+      - 30
+  expected:
+    count: 13
+- name: where_age_gte_30
+  model: person
+  query_type: select
+  dataset: main
+  where:
+    conditions:
+    - field: age
+      op: '>='
+      values:
+      - 30
+  expected:
+    count: 16
+- name: where_age_lt_30
+  model: person
+  query_type: select
+  dataset: main
+  where:
+    conditions:
+    - field: age
+      op: <
+      values:
+      - 30
+  expected:
+    count: 9
+- name: where_age_lte_30
+  model: person
+  query_type: select
+  dataset: main
+  where:
+    conditions:
+    - field: age
+      op: <=
+      values:
+      - 30
+  expected:
+    count: 12
+- name: where_age_ne_30
+  model: person
+  query_type: select
+  dataset: main
+  where:
+    conditions:
+    - field: age
+      op: '!='
+      values:
+      - 30
+  expected:
+    count: 22
+- name: where_age_gt_100
+  model: person
+  query_type: select
+  dataset: main
+  where:
+    conditions:
+    - field: age
+      op: '>'
+      values:
+      - 100
+  expected:
+    count: 0
+- name: where_age_gt_0
+  model: person
+  query_type: select
+  dataset: main
+  where:
+    conditions:
+    - field: age
+      op: '>'
+      values:
+      - 0
+  expected:
+    count: 25
+- name: where_name_eq_alice
+  model: person
+  query_type: select
+  dataset: main
+  where:
+    conditions:
+    - field: name
+      op: ==
+      values:
+      - Alice
+  expected:
+    count: 1
+- name: where_name_like_A
+  model: person
+  query_type: select
+  dataset: main
+  where:
+    conditions:
+    - field: name
+      op: LIKE
+      values:
+      - A%
+  expected:
+    count: 1
+- name: where_name_like_C
+  model: person
+  query_type: select
+  dataset: main
+  where:
+    conditions:
+    - field: name
+      op: LIKE
+      values:
+      - C%
+  expected:
+    count: 1
+- name: where_name_like_contains_an
+  model: person
+  query_type: select
+  dataset: main
+  where:
+    conditions:
+    - field: name
+      op: LIKE
+      values:
+      - '%an%'
+  expected:
+    count: 3
+- name: where_name_like_ends_e
+  model: person
+  query_type: select
+  dataset: main
+  where:
+    conditions:
+    - field: name
+      op: LIKE
+      values:
+      - '%e'
+  expected:
+    count: 4
+- name: where_name_ne_alice
+  model: person
+  query_type: select
+  dataset: main
+  where:
+    conditions:
+    - field: name
+      op: '!='
+      values:
+      - Alice
+  expected:
+    count: 24
+- name: where_age_between_28_35
+  model: person
+  query_type: select
+  dataset: main
+  where:
+    conditions:
+    - field: age
+      op: BETWEEN
+      values:
+      - 28
+      - 35
+  expected:
+    count: 10
+- name: where_age_in_25_35
+  model: person
+  query_type: select
+  dataset: main
+  where:
+    conditions:
+    - field: age
+      op: IN
+      values:
+      - 25
+      - 35
+  expected:
+    count: 5
+# An empty IN is valid: the ORM emits "1 = 0" (always false), so no row matches.
+- name: where_age_in_empty_list
+  model: person
+  query_type: select
+  dataset: main
+  where:
+    conditions:
+    - field: age
+      op: IN
+      values: []
+  expected:
+    count: 0
+- name: where_age_gt_28_and_active
+  model: person
+  query_type: select
+  dataset: main
+  where:
+    conditions:
+    - field: age
+      op: '>'
+      values:
+      - 28
+    - field: is_active
+      op: ==
+      values:
+      - true
+  expected:
+    count: 9
+- name: where_age_lt_27_or_gt_34
+  model: person
+  query_type: select
+  dataset: main
+  where_expr:
+    op: OR
+    left:
+      field: age
+      op: <
+      value_int: 27
+    right:
+      field: age
+      op: '>'
+      value_int: 34
+  expected:
+    count: 16
+- name: where_age_gt_24_salary_gt_20000_active
+  model: person
+  query_type: select
+  dataset: main
+  where_expr:
+    op: AND
+    left:
+      op: AND
+      left:
+        field: age
+        op: '>'
+        value_int: 24
+      right:
+        field: salary
+        op: '>'
+        value_dbl: 20000.0
+    right:
+      field: is_active
+      op: ==
+      value_int: 1
+  expected:
+    count: 15
+- name: where_score_is_null
+  model: person
+  query_type: select
+  dataset: main
+  where:
+    conditions:
+    - field: score
+      op: ==
+      values:
+      - null
+  expected:
+    count: 10
+- name: where_score_is_not_null
+  model: person
+  query_type: select
+  dataset: main
+  where:
+    conditions:
+    - field: score
+      op: '!='
+      values:
+      - null
+  expected:
+    count: 15
+- name: where_nickname_is_null
+  model: person
+  query_type: select
+  dataset: main
+  where:
+    conditions:
+    - field: nickname
+      op: ==
+      values:
+      - null
+  expected:
+    count: 14
+- name: where_nickname_is_not_null
+  model: person
+  query_type: select
+  dataset: main
+  where:
+    conditions:
+    - field: nickname
+      op: '!='
+      values:
+      - null
+  expected:
+    count: 11

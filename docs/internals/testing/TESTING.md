@@ -156,8 +156,14 @@ total, measured alongside [Local Test Suite Speed](#local-test-suite-speed):
 
 ## YAML-driven cases and `expected_sql` (#818)
 
-`tests/test_cases/unified_cases.yaml` is split by `scripts/split_unified_cases.py` into one JSON per
-category, `#embed`ded into `tests/yaml/test_unified_yaml_*.cpp` and run on SQLite and PostgreSQL. A case
+The corpus is the topic files `tests/test_cases/*.yaml` (`select`, `where`, `order_limit`, `aggregates`,
+`group_by`, `chain`, `distinct`, `writes`, `typed_values`; #846). They are authoring groups only: a case spans
+several topics and a topic spans several runners, so a case in the "wrong" file is not an error, and a new
+topic file is picked up by a CMake glob with no edit. `scripts/split_unified_cases.py` reads all of them, buckets
+every case by `query_type` into one JSON per category (`select` / `grouped` / `aggregate` / `crud`, the compile
+slices -- unchanged), and rejects an unknown `query_type` or a case name repeated anywhere in the corpus. It
+rewrites only a JSON whose bytes changed, so editing one case recompiles one slice. The JSONs are
+`#embed`ded into `tests/yaml/test_unified_yaml_*.cpp` and run on SQLite and PostgreSQL. A case
 checks **results** (`expected:`). SQL text is pinned separately in C++ (`test_sql_verify.cpp`,
 `test_fields_sql_parity.cpp`).
 
@@ -305,7 +311,7 @@ WHERE, `ExpectedValueFits` for `expected.first`; both are `value_fits<FieldType>
   silently read as empty.
 - **Dataset `extended`** (`model: extended` = `ExtendedTypes`): three rows, `alpha` / `beta` / `gamma`, defined in
   `extended_dataset()` in `test_unified_yaml_body.h` and tabulated in the comment above the `typed_*` cases in
-  `unified_cases.yaml`. Quote hex and numeric-looking strings (`'0102'`, or YAML reads an int).
+  `typed_values.yaml`. Quote hex and numeric-looking strings (`'0102'`, or YAML reads an int).
 - A blob is checked in `expected.first` only; a WHERE on a blob column compiles only where the field proxy
   accepts a blob operand.
 - Not covered here: HAVING values (still one int) and write values (Phase 7 of #838).

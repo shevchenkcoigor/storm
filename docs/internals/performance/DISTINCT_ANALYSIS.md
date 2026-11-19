@@ -103,7 +103,7 @@ auto ids = qs.distinct().execute();
 - Exact SQL text for the main shapes
 - A raw-SQL workaround for DISTINCT over a column of the *joined* table, which the ORM cannot express yet (#804)
 
-Empty-table cases and further chain cases also live in `tests/test_cases/unified_cases.yaml` (`distinct_*`).
+Empty-table cases and further chain cases also live in `tests/test_cases/distinct.yaml` (`distinct_*`).
 
 ## Why DISTINCT Achieves 100% Efficiency
 

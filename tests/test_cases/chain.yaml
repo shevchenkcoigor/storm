@@ -1,0 +1,409 @@
+- name: full_chain_select_dept8
+  model: person
+  query_type: select
+  dataset: main
+  where:
+    conditions:
+    - field: age
+      op: '>'
+      values:
+      - 25
+  order_by:
+  - field: age
+    direction: ASC
+  limit:
+    value: 2
+    offset: 1
+  expected:
+    count: 2
+- name: full_chain_count_dept8
+  model: person
+  dataset: main
+  where:
+    conditions:
+    - field: age
+      op: '>='
+      values:
+      - 30
+  aggregate:
+    func: count
+    field: ''
+  expected_sql: 'SELECT COUNT(*) FROM "person" WHERE "age" >= ?'
+  expected:
+    int_val: 16
+  query_type: count
+- name: full_chain_distinct_dept8
+  model: person
+  query_type: distinct
+  dataset: main
+  where:
+    conditions:
+    - field: age
+      op: <
+      values:
+      - 35
+  order_by:
+  - field: department
+    direction: ASC
+  distinct:
+    fields:
+    - department
+  expected:
+    count: 5
+- name: chain_sum_count_standard5
+  model: person
+  dataset: main
+  aggregations:
+  - func: sum
+    field: age
+    result:
+      type: int
+      value: 829
+  - func: count
+    field: ''
+    result:
+      type: int
+      value: 25
+  expected: {}
+  query_type: chain
+- name: chain_sum_count_avg_standard5
+  model: person
+  dataset: main
+  aggregations:
+  - func: sum
+    field: age
+    result:
+      type: int
+      value: 829
+  - func: count
+    field: ''
+    result:
+      type: int
+      value: 25
+  - func: avg
+    field: salary
+    result:
+      type: double
+      value: 68080.0
+  expected: {}
+  query_type: chain
+- name: chain_all_five_standard5
+  model: person
+  dataset: main
+  aggregations:
+  - func: sum
+    field: age
+    result:
+      type: int
+      value: 829
+  - func: count
+    field: ''
+    result:
+      type: int
+      value: 25
+  - func: avg
+    field: salary
+    result:
+      type: double
+      value: 68080.0
+  - func: min
+    field: years_experience
+    result:
+      type: double
+      value: 5.0
+  - func: max
+    field: age
+    result:
+      type: double
+      value: 48.0
+  expected: {}
+  query_type: chain
+- name: chain_sum_count_where_age_gt30
+  model: person
+  dataset: main
+  where:
+    conditions:
+    - field: age
+      op: '>'
+      values:
+      - 30
+  aggregations:
+  - func: sum
+    field: age
+    result:
+      type: int
+      value: 508
+  - func: count
+    field: ''
+    result:
+      type: int
+      value: 13
+  expected: {}
+  query_type: chain
+- name: chain_sum_count_avg_join
+  model: message
+  dataset: main_msg
+  aggregations:
+  - func: sum
+    field: value
+    result:
+      type: int
+      value: 360
+  - func: count
+    field: ''
+    result:
+      type: int
+      value: 8
+  - func: avg
+    field: value
+    result:
+      type: double
+      value: 45.0
+  join:
+    type: inner
+    related: Person
+    fk: sender
+  expected: {}
+  query_type: chain
+- name: chain_sum_count_avg_empty
+  model: person
+  dataset: empty
+  aggregations:
+  - func: sum
+    field: age
+    result:
+      type: int
+      value: 0
+  - func: count
+    field: ''
+    result:
+      type: int
+      value: 0
+  - func: avg
+    field: salary
+    result:
+      type: double
+      value: 0.0
+  query_type: chain
+- name: chain_count_sum_standard5
+  model: person
+  dataset: main
+  aggregations:
+  - func: count
+    field: ''
+    result:
+      type: int
+      value: 25
+  - func: sum
+    field: age
+    result:
+      type: int
+      value: 829
+  expected: {}
+  query_type: chain
+- name: chain_count_sum_avg_standard5
+  model: person
+  dataset: main
+  aggregations:
+  - func: count
+    field: ''
+    result:
+      type: int
+      value: 25
+  - func: sum
+    field: age
+    result:
+      type: int
+      value: 829
+  - func: avg
+    field: salary
+    result:
+      type: double
+      value: 68080.0
+  expected: {}
+  query_type: chain
+- name: chain_avg_count_standard5
+  model: person
+  dataset: main
+  aggregations:
+  - func: avg
+    field: salary
+    result:
+      type: double
+      value: 68080.0
+  - func: count
+    field: ''
+    result:
+      type: int
+      value: 25
+  expected: {}
+  query_type: chain
+- name: chain_avg_min_age_standard5
+  model: person
+  dataset: main
+  aggregations:
+  - func: avg
+    field: salary
+    result:
+      type: double
+      value: 68080.0
+  - func: min
+    field: age
+    result:
+      type: double
+      value: 22.0
+  expected: {}
+  query_type: chain
+- name: chain_avg_max_age_standard5
+  model: person
+  dataset: main
+  aggregations:
+  - func: avg
+    field: salary
+    result:
+      type: double
+      value: 68080.0
+  - func: max
+    field: age
+    result:
+      type: double
+      value: 48.0
+  expected: {}
+  query_type: chain
+- name: chain_min_max_age_standard5
+  model: person
+  dataset: main
+  aggregations:
+  - func: min
+    field: age
+    result:
+      type: double
+      value: 22.0
+  - func: max
+    field: age
+    result:
+      type: double
+      value: 48.0
+  expected: {}
+  query_type: chain
+- name: chain_min_sum_score5
+  model: person
+  dataset: main
+  aggregations:
+  - func: min
+    field: score
+    result:
+      type: double
+      value: 40.0
+  - func: sum
+    field: age
+    result:
+      type: int
+      value: 829
+  expected: {}
+  query_type: chain
+- name: chain_sum_avg_score5
+  model: person
+  dataset: main
+  aggregations:
+  - func: sum
+    field: score
+    result:
+      type: int
+      value: 1108
+  - func: avg
+    field: salary
+    result:
+      type: double
+      value: 68080.0
+  expected: {}
+  query_type: chain
+- name: chain_max_avg_score5
+  model: person
+  dataset: main
+  aggregations:
+  - func: max
+    field: score
+    result:
+      type: double
+      value: 95.0
+  - func: avg
+    field: salary
+    result:
+      type: double
+      value: 68080.0
+  expected: {}
+  query_type: chain
+- name: chain_max_min_score5
+  model: person
+  dataset: main
+  aggregations:
+  - func: max
+    field: score
+    result:
+      type: double
+      value: 95.0
+  - func: min
+    field: score
+    result:
+      type: double
+      value: 40.0
+  expected: {}
+  query_type: chain
+- name: chain_count_sum_min_max_score5
+  model: person
+  dataset: main
+  aggregations:
+  - func: count
+    field: ''
+    result:
+      type: int
+      value: 25
+  - func: sum
+    field: age
+    result:
+      type: int
+      value: 829
+  - func: min
+    field: score
+    result:
+      type: double
+      value: 40.0
+  - func: max
+    field: score
+    result:
+      type: double
+      value: 95.0
+  expected: {}
+  query_type: chain
+- name: chain_count_sum_avg_min_max_score5
+  model: person
+  dataset: main
+  aggregations:
+  - func: count
+    field: ''
+    result:
+      type: int
+      value: 25
+  - func: sum
+    field: age
+    result:
+      type: int
+      value: 829
+  - func: avg
+    field: salary
+    result:
+      type: double
+      value: 68080.0
+  - func: min
+    field: score
+    result:
+      type: double
+      value: 40.0
+  - func: max
+    field: score
+    result:
+      type: double
+      value: 95.0
+  expected: {}
+  query_type: chain

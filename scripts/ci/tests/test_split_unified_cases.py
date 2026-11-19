@@ -13,6 +13,7 @@ corpus. Stdlib unittest only, no syntax newer than Python 3.9.
     python3 scripts/ci/tests/test_split_unified_cases.py
 """
 import json
+import os
 import pathlib
 import re
 import subprocess
@@ -28,7 +29,7 @@ except ImportError:
 
 REPO_ROOT = pathlib.Path(__file__).resolve().parents[3]
 SPLITTER = REPO_ROOT / "scripts" / "split_unified_cases.py"
-REAL_CORPUS = REPO_ROOT / "tests" / "test_cases" / "unified_cases.yaml"
+CORPUS_DIR = REPO_ROOT / "tests" / "test_cases"
 
 # One case per category, so no category is empty (an empty one is itself an error).
 BASE_CASES = [
@@ -78,7 +79,7 @@ def run_splitter(case):
         out_dir.mkdir()
         corpus.write_text(json.dumps(BASE_CASES + [case]), encoding="utf-8")  # JSON is YAML
         completed = subprocess.run(
-            [sys.executable, str(SPLITTER), str(corpus), str(out_dir)],
+            [sys.executable, str(SPLITTER), str(out_dir), str(corpus)],
             capture_output=True,
             text=True,
             check=False,
@@ -87,6 +88,34 @@ def run_splitter(case):
         for path in out_dir.glob("unified_cases_*.json"):
             outputs[path.stem[len("unified_cases_"):]] = json.loads(path.read_text(encoding="utf-8"))
         return Run(completed, outputs)
+
+
+def run_on_files(files, extra_args=()):
+    """Split several authoring files (name -> list of cases) in the given order; returns
+    (completed, out_dir path string, outputs per category, mtimes kept for a rerun)."""
+    tmp = tempfile.TemporaryDirectory()
+    root = pathlib.Path(tmp.name)
+    out_dir = root / "out"
+    out_dir.mkdir()
+    paths = []
+    for name, cases in files.items():
+        path = root / name
+        path.write_text(json.dumps(cases), encoding="utf-8")  # JSON is YAML
+        paths.append(str(path))
+    completed = subprocess.run(
+        [sys.executable, str(SPLITTER), str(out_dir), *paths, *extra_args],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    return tmp, out_dir, paths, completed
+
+
+def read_slices(out_dir):
+    return {
+        p.stem[len("unified_cases_"):]: json.loads(p.read_text(encoding="utf-8"))
+        for p in out_dir.glob("unified_cases_*.json")
+    }
 
 
 def case(name, query, **keys):
@@ -243,12 +272,157 @@ class CapacityTest(unittest.TestCase):
                 self.assertRegex(header, r"ConstexprString<EXPECTED_SQL_CAPACITY>\s+" + key + r"\s*;")
 
 
+class MultiFileTest(unittest.TestCase):
+    """#846: the corpus is several topic files; the slices are still bucketed by query_type."""
+
+    def test_cases_of_every_file_are_bucketed_by_query_type_in_argument_order(self):
+        tmp, out_dir, _, completed = run_on_files(
+            {
+                "a.yaml": [case("a_select", SELECT_QUERY), case("a_count", AGGREGATE_QUERY)],
+                "b.yaml": [case("b_select", SELECT_QUERY), case("b_insert", CRUD_QUERY),
+                           case("b_group", GROUPED_QUERY)],
+            }
+        )
+        with tmp:
+            self.assertEqual(completed.returncode, 0, completed.stderr)
+            slices = read_slices(out_dir)
+            names = {k: [c["name"] for c in v] for k, v in slices.items()}
+            self.assertEqual(names["select"], ["a_select", "b_select"])
+            self.assertEqual(names["aggregate"], ["a_count"])
+            self.assertEqual(names["crud"], ["b_insert"])
+            self.assertEqual(names["grouped"], ["b_group"])
+
+    def test_a_topic_file_may_feed_one_slice_only(self):
+        tmp, _, _, completed = run_on_files(
+            {
+                "all.yaml": BASE_CASES,
+                "selects_only.yaml": [case("only_select", SELECT_QUERY)],
+            }
+        )
+        with tmp:
+            self.assertEqual(completed.returncode, 0, completed.stderr)
+
+    def test_a_duplicate_name_across_files_is_a_hard_error_naming_both_files(self):
+        tmp, _, _, completed = run_on_files(
+            {
+                "one.yaml": BASE_CASES + [case("dup", SELECT_QUERY)],
+                "two.yaml": [case("dup", AGGREGATE_QUERY)],
+            }
+        )
+        with tmp:
+            self.assertNotEqual(completed.returncode, 0)
+            self.assertIn("duplicate", completed.stderr.lower())
+            self.assertIn("'dup'", completed.stderr)
+            self.assertIn("one.yaml", completed.stderr)
+            self.assertIn("two.yaml", completed.stderr)
+
+    def test_a_duplicate_name_inside_one_file_is_a_hard_error(self):
+        tmp, _, _, completed = run_on_files(
+            {"one.yaml": BASE_CASES + [case("dup", SELECT_QUERY), case("dup", SELECT_QUERY)]}
+        )
+        with tmp:
+            self.assertNotEqual(completed.returncode, 0)
+            self.assertIn("duplicate", completed.stderr.lower())
+
+    def test_an_unknown_query_type_in_a_later_file_is_a_hard_error_naming_the_file(self):
+        tmp, _, _, completed = run_on_files(
+            {
+                "ok.yaml": BASE_CASES,
+                "bad.yaml": [case("weird", {"query_type": "no_such_op"})],
+            }
+        )
+        with tmp:
+            self.assertNotEqual(completed.returncode, 0)
+            self.assertIn("unknown query_type", completed.stderr)
+            self.assertIn("bad.yaml", completed.stderr)
+
+    def test_a_non_list_file_among_several_is_rejected_naming_it(self):
+        tmp, _, _, completed = run_on_files({"ok.yaml": BASE_CASES, "map.yaml": {"name": "x"}})
+        with tmp:
+            self.assertNotEqual(completed.returncode, 0)
+            self.assertIn("map.yaml", completed.stderr)
+
+    def test_an_all_comments_file_contributes_nothing_and_is_not_an_error(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = pathlib.Path(tmp)
+            out_dir = root / "out"
+            out_dir.mkdir()
+            good = root / "good.yaml"
+            good.write_text(json.dumps(BASE_CASES), encoding="utf-8")
+            empty = root / "empty.yaml"
+            empty.write_text("# nothing here yet\n", encoding="utf-8")
+            completed = subprocess.run(
+                [sys.executable, str(SPLITTER), str(out_dir), str(good), str(empty)],
+                capture_output=True, text=True, check=False)
+            self.assertEqual(completed.returncode, 0, completed.stderr)
+
+    def test_a_case_without_a_name_is_rejected_as_such(self):
+        tmp, _, _, completed = run_on_files(
+            {"a.yaml": BASE_CASES + [{"query_type": "select"}, {"query_type": "select"}]})
+        with tmp:
+            self.assertNotEqual(completed.returncode, 0)
+            self.assertIn("name", completed.stderr)
+            self.assertNotIn("duplicate", completed.stderr.lower())
+
+    def test_no_input_file_is_a_usage_error(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            completed = subprocess.run(
+                [sys.executable, str(SPLITTER), tmp], capture_output=True, text=True, check=False)
+            self.assertNotEqual(completed.returncode, 0)
+            self.assertIn("Usage", completed.stderr)
+
+    def test_a_missing_input_file_is_a_hard_error(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            completed = subprocess.run(
+                [sys.executable, str(SPLITTER), tmp, str(pathlib.Path(tmp) / "nope.yaml")],
+                capture_output=True, text=True, check=False)
+            self.assertNotEqual(completed.returncode, 0)
+            self.assertIn("nope.yaml", completed.stderr)
+
+
+class RewriteOnlyWhenChangedTest(unittest.TestCase):
+    """#846: ninja runs the splitter whenever ANY yaml changes (restat). A JSON whose bytes did
+    not change must keep its mtime, so only the slices an edit really touched recompile."""
+
+    def test_only_the_slice_whose_content_changed_is_rewritten(self):
+        files = {"a.yaml": BASE_CASES}
+        tmp, out_dir, paths, completed = run_on_files(files)
+        with tmp:
+            self.assertEqual(completed.returncode, 0, completed.stderr)
+            stale = 1_000_000_000  # an old, recognisable mtime
+            for p in out_dir.glob("unified_cases_*.json"):
+                os.utime(p, (stale, stale))
+            extra = BASE_CASES + [case("new_select", SELECT_QUERY)]
+            pathlib.Path(paths[0]).write_text(json.dumps(extra), encoding="utf-8")
+            rerun = subprocess.run(
+                [sys.executable, str(SPLITTER), str(out_dir), *paths],
+                capture_output=True, text=True, check=False)
+            self.assertEqual(rerun.returncode, 0, rerun.stderr)
+            mtimes = {p.stem[len("unified_cases_"):]: int(p.stat().st_mtime)
+                      for p in out_dir.glob("unified_cases_*.json")}
+            self.assertGreater(mtimes["select"], stale)
+            for untouched in ("grouped", "aggregate", "crud"):
+                self.assertEqual(mtimes[untouched], stale, untouched + " was rewritten unchanged")
+
+
 class RealCorpusTest(unittest.TestCase):
+    def test_the_real_corpus_is_split_into_topic_files_not_one_big_file(self):
+        self.assertFalse((CORPUS_DIR / "unified_cases.yaml").exists(),
+                         "unified_cases.yaml was replaced by topic files (#846)")
+        self.assertGreater(len(sorted(CORPUS_DIR.glob("*.yaml"))), 1)
+
+    def test_every_hand_written_file_in_the_corpus_dir_is_a_yaml_the_glob_sees(self):
+        # CMake globs *.yaml; a foo.yml or a subdirectory would be skipped silently and its
+        # cases would never run, with a green build.
+        stray = [p.name for p in CORPUS_DIR.iterdir() if p.suffix not in (".yaml", ".json")]
+        self.assertEqual(stray, [], "only *.yaml topic files (and generated *.json) belong here")
+
     def test_the_real_corpus_splits_and_pins_per_dialect_sql(self):
         with tempfile.TemporaryDirectory() as tmp:
             out_dir = pathlib.Path(tmp)
             completed = subprocess.run(
-                [sys.executable, str(SPLITTER), str(REAL_CORPUS), str(out_dir)],
+                [sys.executable, str(SPLITTER), str(out_dir),
+                 *map(str, sorted(CORPUS_DIR.glob("*.yaml")))],
                 capture_output=True,
                 text=True,
                 check=False,

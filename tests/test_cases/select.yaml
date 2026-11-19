@@ -1,0 +1,336 @@
+- name: select_all_standard5
+  model: person
+  query_type: select
+  dataset: main
+  expected:
+    count: 25
+- name: select_where_age_gt_30
+  model: person
+  query_type: select
+  dataset: main
+  where:
+    conditions:
+    - field: age
+      op: '>'
+      values:
+      - 30
+  expected:
+    count: 13
+- name: select_with_limit
+  model: person
+  query_type: select
+  dataset: main
+  limit:
+    value: 3
+    offset: 0
+  expected:
+    count: 3
+- name: select_with_limit_offset
+  model: person
+  query_type: select
+  dataset: main
+  limit:
+    value: 2
+    offset: 1
+  expected:
+    count: 2
+- name: select_empty_table
+  model: person
+  query_type: select
+  dataset: empty
+  expected:
+    count: 0
+- name: select_all_order_by_asc
+  model: person
+  query_type: select
+  dataset: main
+  order_by:
+  - field: age
+    direction: ASC
+  expected:
+    count: 25
+- name: select_salary_gt_75000
+  model: person
+  query_type: select
+  dataset: main
+  where:
+    conditions:
+    - field: salary
+      op: '>'
+      values:
+      - 75000.0
+  expected:
+    count: 10
+- name: select_salary_eq_70000
+  model: person
+  query_type: select
+  dataset: main
+  where:
+    conditions:
+    - field: salary
+      op: ==
+      values:
+      - 70000.0
+  expected:
+    count: 1
+- name: select_salary_lte_60000
+  model: person
+  query_type: select
+  dataset: main
+  where:
+    conditions:
+    - field: salary
+      op: <=
+      values:
+      - 60000.0
+  expected:
+    count: 9
+- name: first_empty
+  model: person
+  query_type: first
+  dataset: empty
+  expected:
+    count: 0
+- name: first_standard5
+  model: person
+  query_type: first
+  dataset: main
+  expected:
+    count: 1
+    first:
+      name: Alice
+      age: 25
+- name: first_where_no_match
+  model: person
+  query_type: first
+  dataset: main
+  where:
+    conditions:
+    - field: age
+      op: '>'
+      values:
+      - 100
+  expected:
+    count: 0
+- name: first_where_bob
+  model: person
+  query_type: first
+  dataset: main
+  where:
+    conditions:
+    - field: name
+      op: ==
+      values:
+      - Bob
+  expected:
+    count: 1
+    first:
+      name: Bob
+      age: 30
+- name: first_order_by_age_asc
+  model: person
+  query_type: first
+  dataset: main
+  order_by:
+  - field: age
+    direction: ASC
+  expected:
+    count: 1
+    first:
+      name: Paul
+      age: 22
+- name: first_order_by_age_desc
+  model: person
+  query_type: first
+  dataset: main
+  order_by:
+  - field: age
+    direction: DESC
+  expected:
+    count: 1
+    first:
+      name: Olivia
+      age: 48
+- name: one_single_row
+  model: person
+  query_type: one
+  dataset: main
+  where:
+    conditions:
+    - field: name
+      op: ==
+      values:
+      - Bob
+  expected:
+    count: 1
+    first:
+      name: Bob
+      age: 30
+- name: one_where_no_match
+  model: person
+  query_type: one
+  dataset: main
+  where:
+    conditions:
+    - field: age
+      op: '>'
+      values:
+      - 100
+  expected:
+    count: 0
+- name: select_where_salary_gt60k
+  model: person
+  query_type: select
+  dataset: main
+  where:
+    conditions:
+    - field: salary
+      op: '>'
+      values:
+      - 60000.0
+  expected:
+    count: 16
+- name: select_where_salary_eq60k
+  model: person
+  query_type: select
+  dataset: main
+  where:
+    conditions:
+    - field: salary
+      op: ==
+      values:
+      - 60000.0
+  expected:
+    count: 0
+- name: select_join_where_value_gt25
+  model: message
+  query_type: select
+  dataset: main_msg
+  where:
+    conditions:
+    - field: value
+      op: '>'
+      values:
+      - 25
+  join:
+    type: inner
+    related: Person
+    fk: sender
+  expected:
+    count: 6
+- name: select_join_where_like_H
+  model: message
+  query_type: select
+  dataset: main_msg
+  where:
+    conditions:
+    - field: content
+      op: LIKE
+      values:
+      - H%
+  join:
+    type: inner
+    related: Person
+    fk: sender
+  expected:
+    count: 2
+- name: first_alice_all_fields
+  model: person
+  query_type: first
+  dataset: main
+  expected:
+    count: 1
+    first:
+      name: Alice
+      age: 25
+      salary: 55000.0
+      is_active: true
+      years_experience: 5
+      department: Engineering
+- name: select_order_by_salary_desc_first
+  model: person
+  query_type: select
+  dataset: main
+  order_by:
+  - field: salary
+    direction: DESC
+  expected:
+    count: 25
+    first:
+      name: Olivia
+      salary: 98000.0
+- name: select_order_by_salary_asc_first
+  model: person
+  query_type: select
+  dataset: main
+  order_by:
+  - field: salary
+    direction: ASC
+  expected:
+    count: 25
+    first:
+      name: Paul
+      salary: 32000.0
+- name: first_where_department_engineering
+  model: person
+  query_type: first
+  dataset: main
+  where:
+    conditions:
+    - field: department
+      op: ==
+      values:
+      - Engineering
+  expected:
+    count: 1
+    first:
+      name: Alice
+      department: Engineering
+      is_active: true
+- name: select_where_active_order_by_age_asc
+  model: person
+  query_type: select
+  dataset: main
+  where:
+    conditions:
+    - field: is_active
+      op: ==
+      values:
+      - true
+  order_by:
+  - field: age
+    direction: ASC
+  expected:
+    count: 16
+    first:
+      name: Yara
+      age: 22
+      is_active: true
+- name: one_where_olivia_salary
+  model: person
+  query_type: one
+  dataset: main
+  where:
+    conditions:
+    - field: name
+      op: ==
+      values:
+      - Olivia
+  expected:
+    count: 1
+    first:
+      name: Olivia
+      age: 48
+      salary: 98000.0
+      department: Sales
+- name: first_order_by_experience_desc
+  model: person
+  query_type: first
+  dataset: main
+  order_by:
+  - field: years_experience
+    direction: DESC
+  expected:
+    count: 1
+    first:
+      years_experience: 15

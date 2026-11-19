@@ -1065,7 +1065,7 @@ self-skipped).
 
 **`#embed` is invisible to the dependency scanner.** Clang does not list an
 embedded file in the depfile, so ninja recorded no edge from the consuming object
-to the JSON (`ninja -t deps` showed none). Editing `unified_cases.yaml`
+to the JSON (`ninja -t deps` showed none). Editing a `tests/test_cases/*.yaml`
 regenerated the JSON and left the objects stale — the suite kept running the
 previous corpus, green. The benchmark corpus had the identical bug.
 

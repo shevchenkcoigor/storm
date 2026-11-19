@@ -1,0 +1,231 @@
+- name: distinct_dept_all
+  model: person
+  query_type: distinct
+  dataset: main
+  distinct:
+    fields:
+    - department
+  expected:
+    count: 5
+- name: distinct_dept_order_limit2
+  model: person
+  query_type: distinct
+  dataset: main
+  order_by:
+  - field: department
+    direction: ASC
+  distinct:
+    fields:
+    - department
+  limit:
+    value: 2
+    offset: 0
+  expected:
+    count: 2
+- name: distinct_dept_order_limit2_offset1
+  model: person
+  query_type: distinct
+  dataset: main
+  order_by:
+  - field: department
+    direction: ASC
+  distinct:
+    fields:
+    - department
+  limit:
+    value: 2
+    offset: 1
+  expected:
+    count: 2
+- name: distinct_dept_age_multi_order_limit5
+  model: person
+  query_type: distinct
+  dataset: main
+  order_by:
+  - field: department
+    direction: ASC
+  distinct:
+    fields:
+    - department
+    - age
+  limit:
+    value: 5
+    offset: 0
+  expected:
+    count: 5
+# (department, age) alone has 24 groups -- Ivy and Quinn are both Engineering/30 --
+# so 25 only if the THIRD field is honored (#835: a third entry used to be ignored).
+- name: distinct_dept_age_name_three_fields
+  model: person
+  query_type: distinct
+  dataset: main
+  distinct:
+    fields:
+    - department
+    - age
+    - name
+  expected:
+    count: 25
+- name: distinct_name_where_age_gt25_order_by_name
+  model: person
+  query_type: distinct
+  dataset: main
+  where:
+    conditions:
+    - field: age
+      op: '>'
+      values:
+      - 25
+  order_by:
+  - field: name
+    direction: ASC
+  distinct:
+    fields:
+    - name
+  expected:
+    count: 20
+- name: distinct_age_standard5
+  model: person
+  query_type: distinct
+  dataset: main
+  distinct:
+    fields:
+    - age
+  expected:
+    count: 14
+- name: distinct_age_name_where_salary_gte60k
+  model: person
+  query_type: distinct
+  dataset: main
+  where:
+    conditions:
+    - field: salary
+      op: '>='
+      values:
+      - 60000.0
+  order_by:
+  - field: age
+    direction: ASC
+  distinct:
+    fields:
+    - age
+    - name
+  expected:
+    count: 16
+- name: distinct_name_limit_offset
+  model: person
+  query_type: distinct
+  init_dataset_size: 20
+  distinct:
+    fields:
+    - name
+  limit:
+    value: 5
+    offset: 3
+  expected:
+    count: 5
+- name: distinct_name_age_limit
+  model: person
+  query_type: distinct
+  init_dataset_size: 20
+  distinct:
+    fields:
+    - name
+    - age
+  limit:
+    value: 10
+    offset: 0
+  expected:
+    count: 10
+- name: distinct_name_where_age_gt30_limit
+  model: person
+  query_type: distinct
+  init_dataset_size: 20
+  where:
+    conditions:
+    - field: age
+      op: '>'
+      values:
+      - 30
+  distinct:
+    fields:
+    - name
+  limit:
+    value: 3
+    offset: 0
+  expected:
+    count: 3
+- name: distinct_empty_name
+  model: person
+  query_type: distinct
+  dataset: empty
+  distinct:
+    fields:
+    - name
+  expected:
+    count: 0
+- name: distinct_two_fields_empty
+  model: person
+  query_type: distinct
+  dataset: empty
+  distinct:
+    fields:
+    - name
+    - age
+  expected:
+    count: 0
+- name: distinct_join_where_like_o
+  model: message
+  query_type: distinct
+  dataset: main_msg
+  where:
+    conditions:
+    - field: content
+      op: LIKE
+      values:
+      - '%o%'
+  distinct:
+    fields:
+    - content
+  join:
+    type: inner
+    related: Person
+    fk: sender
+  expected:
+    count: 4
+- name: distinct_where_order_limit_all
+  model: person
+  query_type: distinct
+  dataset: main
+  where:
+    conditions:
+    - field: age
+      op: '>'
+      values:
+      - 20
+  order_by:
+  - field: name
+    direction: ASC
+  distinct:
+    fields:
+    - name
+  limit:
+    value: 10
+    offset: 0
+  expected:
+    count: 10
+- name: distinct_where_no_match
+  model: person
+  query_type: distinct
+  dataset: main
+  where:
+    conditions:
+    - field: age
+      op: '>'
+      values:
+      - 100
+  distinct:
+    fields:
+    - name
+  expected:
+    count: 0

@@ -34,6 +34,13 @@ class TriggerTest(unittest.TestCase):
     def test_unrelated_files_trigger_nothing(self):
         self.assertEqual(pcg.triggered_guards(["docs/README.md", "src/orm/x.cpp"]), [])
 
+    def test_a_topic_yaml_triggers_the_unified_cases_splitter_self_test(self):
+        # #846: the corpus is tests/test_cases/<topic>.yaml; a YAML-only commit skips every other
+        # local check, so this guard is the only one that must fire for it.
+        hit = pcg.triggered_guards(["tests/test_cases/where.yaml"])
+        self.assertEqual(names(hit), ["unified-cases splitter"])
+        self.assertEqual(pcg.triggered_guards(["tests/test_cases/unified_cases_crud.json"]), [])
+
     def test_agent_file_triggers_frontmatter_only(self):
         hit = pcg.triggered_guards([".claude/agents/reviewer.md"])
         self.assertEqual(names(hit), ["agent frontmatter"])
