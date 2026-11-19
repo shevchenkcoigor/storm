@@ -285,6 +285,44 @@ namespace {
     static_assert(!BuildableOn<Ext, kStringOnInt64>);
     static_assert(!BuildableOn<Ext, kDoubleOnInt64>, "a fraction is not an integer");
 
+    // The kind a value was written as must match the field (#848): a Double or Bool never reads
+    // as an integer, and an optional field reads as its inner type.
+    constexpr auto kOptDoubleDouble = where_case("opt_double", "==", "1.5");
+    constexpr auto kOptDoubleIn     = where_case("opt_double", "IN", "1.5,2.5");
+    constexpr auto kOptDoubleInt    = where_case("opt_double", ">", "2");
+    constexpr auto kBoolOnBool      = where_case("is_active", "==", "true");
+    constexpr auto kDoubleOnInt     = where_case("age", "==", "1.5");
+    constexpr auto kDoubleOnId      = where_case("id", ">", "0.5");
+    constexpr auto kBoolOnInt       = where_case("age", "==", "true");
+    constexpr auto kBoolOnDouble    = where_case("salary", "==", "true");
+    constexpr auto kBoolOnOptDouble = where_case("opt_double", "==", "true");
+    constexpr auto kDoubleOnBool    = where_case("is_active", "==", "1.5");
+    constexpr auto kDoubleOnOptInt  = where_case("score", "==", "1.5");
+    static_assert(BuildableOn<Ext, kOptDoubleDouble>);
+    static_assert(BuildableOn<Ext, kOptDoubleIn>);
+    static_assert(BuildableOn<Ext, kOptDoubleInt>, "an integer literal on an optional floating column");
+    static_assert(BuildableOn<Person, kBoolOnBool>);
+    static_assert(!BuildableOn<Person, kDoubleOnInt>, "a Double on an int field");
+    static_assert(!BuildableOn<Person, kDoubleOnId>, "a Double on an int field");
+    static_assert(!BuildableOn<Person, kBoolOnInt>, "a Bool on an int field");
+    static_assert(!BuildableOn<Person, kBoolOnDouble>, "a Bool on a floating field");
+    static_assert(!BuildableOn<Ext, kBoolOnOptDouble>, "a Bool on an optional floating field");
+    static_assert(!BuildableOn<Person, kDoubleOnBool>, "a Double on a bool field");
+    static_assert(!BuildableOn<Person, kDoubleOnOptInt>, "a Double on an optional int field");
+
+    // The same predicate gates typed_value_as itself, so no kind can reach it for a field it cannot fill.
+    using storm::orm::query_builder::ValueFits;
+    constexpr auto kDoubleValue = kOptDoubleDouble.where.values[0];
+    constexpr auto kBoolValue   = kBoolOnBool.where.values[0];
+    static_assert(ValueFits<std::optional<double>, kDoubleValue>);
+    static_assert(ValueFits<double, kDoubleValue>);
+    static_assert(!ValueFits<int, kDoubleValue>);
+    static_assert(!ValueFits<std::optional<int>, kDoubleValue>);
+    static_assert(ValueFits<bool, kBoolValue>);
+    static_assert(ValueFits<std::optional<bool>, kBoolValue>);
+    static_assert(!ValueFits<int, kBoolValue>);
+    static_assert(!ValueFits<std::optional<double>, kBoolValue>);
+
     // UUID: a canonical 36-character string.
     constexpr auto kUuidOk        = where_case("uuid_field", "==", R"("550e8400-e29b-41d4-a716-446655440000")");
     constexpr auto kUuidNe        = where_case("uuid_field", "!=", R"("550e8400-e29b-41d4-a716-446655440000")");
