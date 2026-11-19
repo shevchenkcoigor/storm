@@ -42,17 +42,41 @@ export namespace storm::benchmark {
     // ========================================================================
     // TypedValue — tagged union of supported leaf value types
     // ========================================================================
+    //
+    // The kind records what was WRITTEN, never what a field can hold (#844): `Null` is a JSON
+    // null, `Int` an integer that fits 32 bits, `Int64` one that does not. A UUID, date, time,
+    // enumerator name or blob is a `String`; the field's type decides how it reads.
     struct TypedValue {
-        enum class Kind : unsigned char { None, Int, Double, Bool, String };
+        enum class Kind : unsigned char { None, Int, Double, Bool, String, Null, Int64 };
 
         Kind                kind      = Kind::None;
         int                 as_int    = 0;
+        std::int64_t        as_int64  = 0;
         double              as_double = 0.0;
         bool                as_bool   = false;
         ConstexprString<64> as_string;
 
         constexpr auto is_set() const -> bool {
             return kind != Kind::None;
+        }
+
+        static constexpr auto null_value() -> TypedValue {
+            TypedValue tv;
+            tv.kind = Kind::Null;
+            return tv;
+        }
+
+        // The one rule for an integer literal: 32 bits stay `Int`, anything wider is `Int64`.
+        static constexpr auto of_integer(std::int64_t value) -> TypedValue {
+            TypedValue tv;
+            if (value >= std::numeric_limits<int>::min() && value <= std::numeric_limits<int>::max()) {
+                tv.kind   = Kind::Int;
+                tv.as_int = static_cast<int>(value);
+            } else {
+                tv.kind = Kind::Int64;
+            }
+            tv.as_int64 = value;
+            return tv;
         }
     };
 
@@ -83,7 +107,7 @@ export namespace storm::benchmark {
     // WhereSpec::values[first_value .. first_value + value_count):
     //   Comparison (>, <, ==, ...): 1 value      LIKE: 1 string
     //   BETWEEN: 2 values                        IN: N values
-    //   IS NULL / IS NOT NULL: 0 values
+    //   a value of `null` (== null / != null): 1 value, lowered to IS [NOT] NULL (#844)
     // An INNER node has op "AND" or "OR" and the indices of its two children.
     // ========================================================================
     struct WhereNode {
@@ -107,9 +131,6 @@ export namespace storm::benchmark {
             }
             if (op == "BETWEEN") {
                 return value_count == 2;
-            }
-            if (op == "IS NULL" || op == "IS NOT NULL") {
-                return value_count == 0;
             }
             return value_count == 1;
         }

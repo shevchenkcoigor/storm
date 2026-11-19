@@ -261,7 +261,7 @@ every query shape, changing only how they are spelled:
 These deltas are the ones that move most between sessions — a factor of 3 — so the honest reading
 is their **ceiling**, not their value: together the two levers are worth **at most ~13%, and
 possibly ~5%**. The rest of the ~4.7 s is the distinct query shapes themselves — the six
-comparison operators, `IN`/`BETWEEN`/`LIKE`/`IS NULL`, the `AND`/`OR` combinations the testing
+comparison operators, `IN`/`BETWEEN`/`LIKE`/`== null`, the `AND`/`OR` combinations the testing
 checklist requires. Cutting them is the same trade as
 [dropping the second backend](#dropping-the-second-backend-from-typed_test), and gets the same
 answer: the coverage is cheap. So the only levers inside a test file cost either failure

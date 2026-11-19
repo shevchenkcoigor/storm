@@ -81,6 +81,32 @@ namespace storm::test {
         return neg ? -v : v;
     }
 
+    // A 64-bit integer literal. One that overflows int64 is a compile error (signed overflow in a
+    // constant expression), never a wrapped value.
+    constexpr auto parse_int64(std::string_view j, std::size_t& p) -> std::int64_t {
+        skip_ws(j, p);
+        const char*       ptr = j.data();
+        const std::size_t sz  = j.size();
+        std::int64_t      v   = 0;
+        bool              neg = false;
+        if (p < sz && ptr[p] == '-') {
+            neg = true;
+            ++p;
+        }
+        while (p < sz && ptr[p] >= '0' && ptr[p] <= '9') {
+            const int digit = ptr[p++] - '0';
+            v               = neg ? (v * 10) - digit : (v * 10) + digit;
+        }
+        return v;
+    }
+
+    constexpr auto parse_null(std::string_view j, std::size_t& p) -> bool {
+        if (j.substr(p, 4) != "null")
+            return false;
+        p += 4;
+        return true;
+    }
+
     constexpr auto parse_frac(std::string_view j, std::size_t& p) -> double {
         const char*       ptr  = j.data();
         const std::size_t sz   = j.size();
@@ -339,12 +365,13 @@ namespace storm::test {
         } else if (ptr[p] == 't' || ptr[p] == 'f') {
             tv.kind    = TypedValue::Kind::Bool;
             tv.as_bool = parse_bool(j, p);
+        } else if (ptr[p] == 'n' && parse_null(j, p)) {
+            tv = TypedValue::null_value();
         } else if (is_number_with_dot(j, p)) {
             tv.kind      = TypedValue::Kind::Double;
             tv.as_double = parse_double(j, p);
         } else {
-            tv.kind   = TypedValue::Kind::Int;
-            tv.as_int = parse_int(j, p);
+            tv = TypedValue::of_integer(parse_int64(j, p));
         }
         return tv;
     }
@@ -636,6 +663,10 @@ namespace storm::test {
         // #818: optional. When set, a runner that supports it pins the statement's
         // sql() text against this; empty = result-only check, as before.
         ConstexprString<EXPECTED_SQL_CAPACITY> expected_sql;
+        // #844: the text differs per backend once ORDER BY / LIMIT cases pin it (NULLS FIRST/LAST,
+        // LIMIT ALL vs LIMIT -1). A case sets expected_sql, or BOTH of these; never both forms.
+        ConstexprString<EXPECTED_SQL_CAPACITY> expected_sql_sqlite;
+        ConstexprString<EXPECTED_SQL_CAPACITY> expected_sql_pg;
         ExpectedSpec                           expected;
         int                                    insert_count = 0, update_count = 0, erase_count = 0;
         std::size_t                            chain_len = 0;
@@ -647,6 +678,23 @@ namespace storm::test {
         // for the spec's, the aggregate runner for MAX_CHAIN).
         [[nodiscard]] constexpr auto within_limits() const -> bool {
             return bench.within_limits() && chain_len <= MAX_CHAIN;
+        }
+
+        // The SQL text to pin for a backend: the shared text, or that dialect's own. Empty means
+        // the case does not pin SQL.
+        [[nodiscard]] constexpr auto expected_sql_for(bool pg_dialect) const -> std::string_view {
+            if (!expected_sql.empty())
+                return expected_sql.view();
+            return pg_dialect ? expected_sql_pg.view() : expected_sql_sqlite.view();
+        }
+
+        // Either the shared key or BOTH dialect keys, never both forms: one dialect alone would
+        // leave the other backend running with no SQL check at all (#844).
+        [[nodiscard]] constexpr auto expected_sql_well_formed() const -> bool {
+            const bool has_dialect_key = !expected_sql_sqlite.empty() || !expected_sql_pg.empty();
+            if (!expected_sql.empty())
+                return !has_dialect_key;
+            return expected_sql_sqlite.empty() == expected_sql_pg.empty();
         }
     };
 
@@ -860,6 +908,10 @@ namespace storm::test {
             tc.dataset = parse_str<16>(j, p);
         else if (jkey_eq(ptr, kr.start, kr.len, "expected_sql"))
             tc.expected_sql = parse_str<EXPECTED_SQL_CAPACITY>(j, p);
+        else if (jkey_eq(ptr, kr.start, kr.len, "expected_sql_sqlite"))
+            tc.expected_sql_sqlite = parse_str<EXPECTED_SQL_CAPACITY>(j, p);
+        else if (jkey_eq(ptr, kr.start, kr.len, "expected_sql_pg"))
+            tc.expected_sql_pg = parse_str<EXPECTED_SQL_CAPACITY>(j, p);
         else if (jkey_eq(ptr, kr.start, kr.len, "expected"))
             parse_expected_into(j, p, tc.expected);
         else if (jkey_eq(ptr, kr.start, kr.len, "erase_count"))

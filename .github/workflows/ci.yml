@@ -178,7 +178,7 @@ jobs:
   # trigger. A new guard is covered here by adding its row, with no edit to this
   # file; scripts/commit/tests/test_pre_commit_guards.py fails if a self-test is in
   # neither the table nor its NOT_GUARDED list. Pure bash/python/perl plus cmake >=
-  # 3.16 and ninja for test_cmake_format_target.py (scripts/README.md lists each
+  # 3.16 and ninja for test_cmake_format_target.py, PyYAML for test_split_unified_cases.py (scripts/README.md lists each
   # self-test's prerequisites); no compiler, so it runs on every PR.
   script-guards:
     name: pre-commit guards (all, #708)
@@ -191,6 +191,12 @@ jobs:
       # an image change cannot turn a guard red for a reason unrelated to it.
       - name: Ensure ninja
         run: command -v ninja || { sudo apt-get update -qq && sudo apt-get install -y -qq ninja-build; }
+
+      # test_split_unified_cases.py runs the real split_unified_cases.py, which imports yaml.
+      # Installed only if absent, for the same reason as ninja; a missing module must fail the
+      # guard, never skip it.
+      - name: Ensure PyYAML
+        run: python3 -c 'import yaml' 2>/dev/null || { sudo apt-get update -qq && sudo apt-get install -y -qq python3-yaml && python3 -c 'import yaml'; }
 
       - name: Run every guard in scripts/commit/pre_commit_guards.py
         run: ./scripts/commit/pre_commit_guards.py --all

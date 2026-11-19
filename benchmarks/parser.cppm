@@ -76,6 +76,32 @@ export namespace storm::benchmark {
         return negative ? -result : result;
     }
 
+    // A 64-bit integer literal. One that overflows int64 is a compile error (signed overflow in a
+    // constant expression), never a wrapped value.
+    constexpr auto parse_int64(std::string_view json, std::size_t& pos) -> std::int64_t {
+        skip_whitespace(json, pos);
+        std::int64_t result   = 0;
+        bool         negative = false;
+        if (pos < json.size() && json[pos] == '-') {
+            negative = true;
+            pos++;
+        }
+        while (pos < json.size() && json[pos] >= '0' && json[pos] <= '9') {
+            const int digit = json[pos] - '0';
+            result          = negative ? (result * 10) - digit : (result * 10) + digit;
+            pos++;
+        }
+        return result;
+    }
+
+    constexpr auto parse_null(std::string_view json, std::size_t& pos) -> bool {
+        if (json.substr(pos, 4) != "null") {
+            return false;
+        }
+        pos += 4;
+        return true;
+    }
+
     constexpr auto parse_double(std::string_view json, std::size_t& pos) -> double {
         skip_whitespace(json, pos);
         double result   = 0.0;
@@ -204,7 +230,8 @@ export namespace storm::benchmark {
     // ========================================================================
     // TypedValue — sniff the next JSON token and populate a tagged union.
     //
-    // Lookahead: " → string, t/f → bool, digit/-  → scan ahead for '.' → double else int.
+    // Lookahead: " → string, t/f → bool, n → null, digit/-  → scan ahead for '.' → double else int
+    // (an integer wider than 32 bits is Int64).
     // ========================================================================
     constexpr auto parse_typed_value(std::string_view json, std::size_t& pos) -> TypedValue {
         skip_whitespace(json, pos);
@@ -225,6 +252,9 @@ export namespace storm::benchmark {
             tv.as_bool = parse_bool(json, pos);
             return tv;
         }
+        if (c == 'n' && parse_null(json, pos)) {
+            return TypedValue::null_value();
+        }
         // Number — peek ahead for '.' to decide int vs double
         bool has_dot = false;
         for (std::size_t q = pos; q < json.size(); q++) {
@@ -241,8 +271,7 @@ export namespace storm::benchmark {
             tv.kind      = TypedValue::Kind::Double;
             tv.as_double = parse_double(json, pos);
         } else {
-            tv.kind   = TypedValue::Kind::Int;
-            tv.as_int = parse_int(json, pos);
+            tv = TypedValue::of_integer(parse_int64(json, pos));
         }
         return tv;
     }

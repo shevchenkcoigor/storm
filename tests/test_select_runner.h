@@ -36,6 +36,28 @@ using storm::orm::query_builder::call_query_method;
 using storm::orm::query_builder::dispatch_field;
 using storm::orm::query_builder::field_or_null;
 using storm::orm::query_builder::member_function_named;
+using storm::orm::query_builder::value_fits;
+
+// #818/#844: a case sets expected_sql, or BOTH expected_sql_sqlite and expected_sql_pg, never both
+// forms; one dialect alone would leave the other backend with no SQL check.
+template <const auto &Tc>
+concept WellFormedExpectedSql = Tc.expected_sql_well_formed();
+
+// Pin the statement's SQL text when the case declares it (the shared text, or this backend's
+// own); a case without any is result-only.
+template <const auto &Tc, typename ConnType> auto expect_sql(auto &query) -> void {
+    static_assert(WellFormedExpectedSql<Tc>,
+                  "a case sets expected_sql, or BOTH expected_sql_sqlite and expected_sql_pg, never both forms");
+    constexpr std::string_view text = Tc.expected_sql_for(storm::test::is_postgresql<ConnType>());
+    if constexpr (!text.empty())
+        EXPECT_EQ(query.sql(), text) << "YAML expected_sql (#818, #844) of case " << Tc.bench.test_name.view();
+}
+
+// A value written in `expected.first` can be read as the row member's type (#844): null only for
+// an optional member, an integer wider than 32 bits only for a wide enough member, a string only
+// for a text, UUID, date, time, enum (by name) or blob (hex) member.
+template <typename Member, auto Expected>
+concept ExpectedValueFits = value_fits<Member>(Expected);
 
 // One check for an aggregate value (#837), chosen by the result type: MIN/MAX/AVG
 // read back as std::optional<double> (#416) — a near match, or nullopt when
@@ -109,28 +131,65 @@ template <const auto &Tc> auto verify_groups(const auto &rows) -> void {
 // SelectRunner -- plain SELECT queries (select / first / one)
 // ---------------------------------------------------------------------------
 template <typename Model, typename ConnType> class SelectRunner {
-    // Compare one row member against its expected value, dispatching on the
-    // member's C++ type. A YAML value of the wrong kind fails to compile.
+    // Compare one row member against its expected value, dispatching on the member's C++ type
+    // (an optional reads as its inner type, null meaning "no value"). A YAML value that does not
+    // fit the member fails to compile (ExpectedValueFits).
     // Expected is a parser TypedValue; deduced (not named) so this header does not
     // need the benchmark schema module that only the YAML TUs import.
-    template <auto Expected, typename Member> static auto expect_member_eq(const Member &actual) -> void {
+    template <auto Expected> static consteval auto expected_as_double() -> double {
         using Kind = typename decltype(Expected)::Kind;
-        if constexpr (std::is_same_v<Member, std::string>) {
-            static_assert(Expected.kind == Kind::String, "expected.first: string member needs a string value");
-            EXPECT_EQ(actual, Expected.as_string.view());
-        } else if constexpr (std::is_same_v<Member, bool>) {
-            static_assert(Expected.kind == Kind::Bool, "expected.first: bool member needs a bool value");
-            EXPECT_EQ(actual, Expected.as_bool);
-        } else if constexpr (std::is_floating_point_v<Member>) {
-            static_assert(Expected.kind == Kind::Double || Expected.kind == Kind::Int,
-                          "expected.first: floating member needs a numeric value");
-            constexpr double expected =
-                Expected.kind == Kind::Double ? Expected.as_double : static_cast<double>(Expected.as_int);
+        if constexpr (Expected.kind == Kind::Double)
+            return Expected.as_double;
+        else if constexpr (Expected.kind == Kind::Int64)
+            return static_cast<double>(Expected.as_int64);
+        else
+            return static_cast<double>(Expected.as_int);
+    }
+
+    template <auto Expected, typename T> static auto expect_value_eq(const T &actual) -> void {
+        using Kind = typename decltype(Expected)::Kind;
+        constexpr std::string_view text = Expected.as_string.view();
+        if constexpr (std::is_same_v<T, std::string>) {
+            EXPECT_EQ(actual, text);
+        } else if constexpr (std::is_same_v<T, bool>) {
+            EXPECT_EQ(actual, Expected.kind == Kind::Int ? Expected.as_int != 0 : Expected.as_bool);
+        } else if constexpr (std::is_floating_point_v<T>) {
+            constexpr double expected = expected_as_double<Expected>();
             EXPECT_NEAR(actual, expected, 0.01);
+        } else if constexpr (std::is_enum_v<T>) {
+            constexpr auto enumerator = storm::orm::query_builder::find_enumerator<T>(text);
+            EXPECT_TRUE(actual == [:enumerator:]) << "expected enumerator " << text;
+        } else if constexpr (std::is_same_v<T, storm::orm::utilities::UUID>) {
+            EXPECT_EQ(actual.value, text);
+        } else if constexpr (std::is_same_v<T, std::chrono::year_month_day>) {
+            constexpr auto expected = *storm::orm::query_builder::iso_date_of(text);
+            EXPECT_TRUE(actual == expected) << "expected date " << text;
+        } else if constexpr (std::is_same_v<T, std::chrono::system_clock::time_point>) {
+            constexpr auto expected = *storm::orm::query_builder::iso_datetime_of(text);
+            EXPECT_TRUE(actual == expected) << "expected date-time " << text;
+        } else if constexpr (storm::orm::query_builder::BlobType<T>) {
+            EXPECT_TRUE(actual == storm::orm::query_builder::blob_from_hex<T>(text)) << "expected blob " << text;
         } else {
-            static_assert(std::is_integral_v<Member>, "expected.first: unsupported member type");
-            static_assert(Expected.kind == Kind::Int, "expected.first: integer member needs an int value");
-            EXPECT_EQ(actual, Expected.as_int);
+            static_assert(std::is_integral_v<T>, "expected.first: unsupported member type");
+            if constexpr (Expected.kind == Kind::Int64)
+                EXPECT_EQ(static_cast<long long>(actual), Expected.as_int64);
+            else
+                EXPECT_EQ(actual, Expected.as_int);
+        }
+    }
+
+    template <auto Expected, typename Member> static auto expect_member_eq(const Member &actual) -> void {
+        static_assert(ExpectedValueFits<Member, Expected>, "expected.first: the value does not fit the member's type");
+        using Kind = typename decltype(Expected)::Kind;
+        if constexpr (storm::orm::utilities::is_optional_v<Member>) {
+            if constexpr (Expected.kind == Kind::Null) {
+                EXPECT_FALSE(actual.has_value());
+            } else {
+                ASSERT_TRUE(actual.has_value());
+                expect_value_eq<Expected>(*actual);
+            }
+        } else {
+            expect_value_eq<Expected>(actual);
         }
     }
 
@@ -153,6 +212,10 @@ template <typename Model, typename ConnType> class SelectRunner {
 
     template <const auto &Tc> static auto run() -> void { // NOSONAR(S3776) -- inherent constexpr dispatch
         auto qs = base_query<Tc, Model, ConnType>();
+        // SQL is pinned on `select`; first / one would ignore it and pass without comparing (#844).
+        static_assert(Tc.query_type == "select" ||
+                          (Tc.expected_sql.empty() && Tc.expected_sql_sqlite.empty() && Tc.expected_sql_pg.empty()),
+                      "expected_sql is supported on query_type select only");
         if constexpr (Tc.query_type == "first") {
             auto r = qs.first().execute();
             ASSERT_TRUE(r.has_value()) << r.error().message();
@@ -170,7 +233,9 @@ template <typename Model, typename ConnType> class SelectRunner {
                 EXPECT_FALSE(r.has_value());
             }
         } else {
-            auto result = qs.select().execute();
+            auto query = qs.select();
+            expect_sql<Tc, ConnType>(query);
+            auto result = query.execute();
             ASSERT_TRUE(result.has_value()) << result.error().message();
             EXPECT_EQ(static_cast<int>(result.value().size()), Tc.expected.count);
             if constexpr (Tc.expected.count > 0) {
@@ -205,6 +270,9 @@ template <typename Model, typename ConnType> class AggregateRunner {
         constexpr auto &having = Tc.bench.group_by.having;
         if constexpr (having.enabled) {
             constexpr auto fi = dispatch_field<Model>(having.field.view());
+            static_assert(
+                having.value.kind == std::remove_cvref_t<decltype(having.value)>::Kind::Int,
+                "a HAVING value is a 32-bit int; null, int64, double and strings are not supported here (#844)");
             return std::forward<decltype(g)>(g).having(build_compare_expr<fi, having.op>(having.value.as_int));
         } else {
             return std::forward<decltype(g)>(g);
@@ -232,14 +300,6 @@ template <typename Model, typename ConnType> class AggregateRunner {
             return next;
         else
             return build_chain<Tc, I + 1>(std::move(next));
-    }
-
-    // #818: pin the statement's SQL text when the case declares expected_sql;
-    // a case without it is result-only, as before.
-    template <const auto &Tc> static auto expect_sql(auto &query) -> void {
-        if constexpr (!Tc.expected_sql.empty())
-            EXPECT_EQ(query.sql(), Tc.expected_sql.view())
-                << "YAML expected_sql (#818) of case " << Tc.bench.test_name.view();
     }
 
     // I must stay a constant: it indexes Tc.aggregations[I] and the tuple.
@@ -272,7 +332,7 @@ template <typename Model, typename ConnType> class AggregateRunner {
         static_assert(Tc.query_type != "count" || Tc.bench.aggregate.field.empty(),
                       "query_type count is COUNT(*); use count_field for COUNT(field)");
         auto q = build_chain<Tc>(aggregate_source<Tc>());
-        expect_sql<Tc>(q);
+        expect_sql<Tc, ConnType>(q);
         auto r = q.execute();
         ASSERT_TRUE(r.has_value()) << r.error().message();
         check<Tc>(r.value());

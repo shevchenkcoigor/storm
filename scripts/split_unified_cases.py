@@ -60,41 +60,72 @@ CATEGORIES = ("select", "grouped", "aggregate", "crud")
 EXPECTED_SQL_CAPACITY = 160
 
 
-# Categories that accept expected_sql. The grouped category stays excluded because
-# DistinctRunner ignores the key: it would be silently skipped and the case would
+# Categories whose runner compares the pinned SQL: AggregateRunner (#818) and SelectRunner on
+# `select` (#844). On any other category the keys would be silently ignored and the case would
 # pass without ever comparing SQL.
-EXPECTED_SQL_CATEGORIES = {"aggregate"}
+EXPECTED_SQL_CATEGORIES = {"aggregate", "select"}
+
+# One text for both backends, or one per dialect (#844): NULLS FIRST/LAST and LIMIT ALL vs
+# LIMIT -1 differ, so a single string cannot describe both.
+SHARED_SQL_KEY = "expected_sql"
+DIALECT_SQL_KEYS = ("expected_sql_sqlite", "expected_sql_pg")
+SQL_KEYS = (SHARED_SQL_KEY,) + DIALECT_SQL_KEYS
+
+
+def validate_sql_text(name: str, key: str, sql: object) -> None:
+    """Reject a pinned SQL text the C++ parser would mangle or silently truncate."""
+    if not isinstance(sql, str) or not sql:
+        raise SystemExit(f"Error: case {name!r}: {key} must be a non-empty string")
+    # The C++ parser only unescapes \" and \\; json.dumps would turn anything else
+    # (non-ASCII, newline, tab) into a multi-character escape it cannot undo.
+    if not (sql.isascii() and sql.isprintable()):
+        raise SystemExit(f"Error: case {name!r}: {key} must be printable ASCII")
+    # test_parser.hpp's skip_braced ignores string boundaries, so a brace or bracket
+    # inside any string value shifts its nesting depth and miscounts the objects.
+    if any(ch in sql for ch in "{}[]"):
+        raise SystemExit(f"Error: case {name!r}: {key} must not contain any of {{ }} [ ]")
+    if len(sql) >= EXPECTED_SQL_CAPACITY:
+        raise SystemExit(
+            f"Error: case {name!r}: {key} is {len(sql)} chars, capacity is "
+            f"{EXPECTED_SQL_CAPACITY - 1}. Raise EXPECTED_SQL_CAPACITY here and in "
+            f"tests/test_parser.hpp together."
+        )
 
 
 def validate_expected_sql(case: dict, category: str) -> None:
-    """Reject an expected_sql that is unsupported, or that the C++ parser would
+    """Reject pinned SQL that is unsupported, ill-formed, or that the C++ parser would
     mangle or silently truncate."""
-    sql = case.get("expected_sql")
-    if sql is None:
+    present = [key for key in SQL_KEYS if key in case]
+    if not present:
         return
     name = case.get("name", "<unnamed>")
     if category not in EXPECTED_SQL_CATEGORIES:
         raise SystemExit(
-            f"Error: case {name!r} ({category}): expected_sql is not supported by this "
+            f"Error: case {name!r} ({category}): {', '.join(present)} is not supported by this "
             f"category's runner yet, so it would be silently ignored. Supported: "
             f"{', '.join(sorted(EXPECTED_SQL_CATEGORIES))}."
         )
-    if not isinstance(sql, str) or not sql:
-        raise SystemExit(f"Error: case {name!r}: expected_sql must be a non-empty string")
-    # The C++ parser only unescapes \" and \\; json.dumps would turn anything else
-    # (non-ASCII, newline, tab) into a multi-character escape it cannot undo.
-    if not (sql.isascii() and sql.isprintable()):
-        raise SystemExit(f"Error: case {name!r}: expected_sql must be printable ASCII")
-    # test_parser.hpp's skip_braced ignores string boundaries, so a brace or bracket
-    # inside any string value shifts its nesting depth and miscounts the objects.
-    if any(ch in sql for ch in "{}[]"):
-        raise SystemExit(f"Error: case {name!r}: expected_sql must not contain any of {{ }} [ ]")
-    if len(sql) >= EXPECTED_SQL_CAPACITY:
+    # `first` / `one` share the select category, but SelectRunner pins SQL on `select` only.
+    if category == "select" and case.get("query_type") != "select":
         raise SystemExit(
-            f"Error: case {name!r}: expected_sql is {len(sql)} chars, capacity is "
-            f"{EXPECTED_SQL_CAPACITY - 1}. Raise EXPECTED_SQL_CAPACITY here and in "
-            f"tests/test_parser.hpp together."
+            f"Error: case {name!r}: {', '.join(present)} is supported on query_type select only, "
+            f"not {case.get('query_type')!r}: that runner would ignore it and the case would "
+            f"pass without comparing SQL."
         )
+    has_dialect = [key for key in DIALECT_SQL_KEYS if key in case]
+    if SHARED_SQL_KEY in case and has_dialect:
+        raise SystemExit(
+            f"Error: case {name!r}: {SHARED_SQL_KEY} and {', '.join(has_dialect)} together -- "
+            f"set {SHARED_SQL_KEY}, or both {' and '.join(DIALECT_SQL_KEYS)}, never both forms."
+        )
+    missing = [key for key in DIALECT_SQL_KEYS if has_dialect and key not in case]
+    if missing:
+        raise SystemExit(
+            f"Error: case {name!r}: {', '.join(has_dialect)} without {', '.join(missing)} -- "
+            f"a dialect left out would run with no SQL check at all."
+        )
+    for key in present:
+        validate_sql_text(name, key, case[key])
 
 
 def categorize(case: dict, index: int) -> str:

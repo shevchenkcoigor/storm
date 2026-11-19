@@ -28,6 +28,7 @@
 
 #include <gtest/gtest.h>
 
+#include "../shared/models/extended_types.h"
 #include "../shared/models/message.h"
 #include "../shared/models/people_25.h"
 #include "../shared/models/person.h"
@@ -50,7 +51,56 @@ inline constexpr std::array YAML_MODELS{
     YamlModel{.name = "person", .type = ^^Person},
     YamlModel{.name = "message", .type = ^^Message},
     YamlModel{.name = "simple", .type = ^^SimpleRecord},
+    YamlModel{.name = "extended", .type = ^^ExtendedTypes},
 };
+
+// Dataset `extended` (#844): three ExtendedTypes rows, in this order. The typed-value cases in
+// unified_cases.yaml are written against these values (the table is repeated there).
+inline auto extended_dataset() -> std::vector<ExtendedTypes> {
+    using std::chrono::sys_days;
+    using namespace std::chrono_literals;
+    const auto bytes = [](std::initializer_list<unsigned> values) {
+        std::vector<std::byte> out;
+        for (const unsigned v : values)
+            out.push_back(static_cast<std::byte>(v));
+        return out;
+    };
+    return {
+        ExtendedTypes{
+            .big_num = 5000000000LL,
+            .opt_double = std::nullopt,
+            .label = "alpha",
+            .color = Color::Red,
+            .date_field = 2024y / 1 / 15,
+            .datetime_field = sys_days{2024y / 1 / 15} + 10h + 30min,
+            .raw_data = bytes({0xDE, 0xAD, 0xBE, 0xEF}),
+            .uuid_field = storm::UUID{"550e8400-e29b-41d4-a716-446655440000"},
+            .opt_color = std::nullopt,
+        },
+        ExtendedTypes{
+            .big_num = -5000000000LL,
+            .opt_double = 1.5,
+            .label = "beta",
+            .color = Color::Green,
+            .date_field = 2024y / 6 / 30,
+            .datetime_field = sys_days{2024y / 6 / 30} + 23h + 59min + 59s,
+            .raw_data = bytes({0x00, 0xFF}),
+            .uuid_field = storm::UUID{"6ba7b810-9dad-11d1-80b4-00c04fd430c8"},
+            .opt_color = Color::Blue,
+        },
+        ExtendedTypes{
+            .big_num = 42,
+            .opt_double = 2.5,
+            .label = "gamma",
+            .color = Color::Blue,
+            .date_field = 2023y / 12 / 31,
+            .datetime_field = sys_days{2023y / 12 / 31},
+            .raw_data = bytes({0x01, 0x02}),
+            .uuid_field = storm::UUID{"123e4567-e89b-12d3-a456-426614174000"},
+            .opt_color = Color::Green,
+        },
+    };
+}
 
 consteval auto yaml_model_index(std::string_view name) -> std::size_t {
     for (std::size_t i = 0; i < YAML_MODELS.size(); ++i)
@@ -110,7 +160,7 @@ concept KnownYamlQueryType = yaml_runner_index(Tc.query_type.view()) < YAML_RUNN
 
 // Per-category fixture; Tag distinguishes the TUs -- see the ODR note above.
 template <typename Tag, typename ConnType>
-class UnifiedYamlFixture : public StormTestFixture<Person, ConnType, SimpleRecord, Message> {};
+class UnifiedYamlFixture : public StormTestFixture<Person, ConnType, SimpleRecord, Message, ExtendedTypes> {};
 
 /**
  * One test case's body. @p Tc is the case (an NTTP reference into the TU's
@@ -127,10 +177,11 @@ class UnifiedYamlBody : public UnifiedYamlFixture<Tag, ConnType> {
             DefaultConnection<ConnType>::get();
         ASSERT_NE(conn, nullptr);
         storm::test::rollback_test_txn<ConnType>(conn);
-        ASSERT_TRUE((storm::test::ensure_tables<ConnType, Person, SimpleRecord, Message>(conn)));
+        ASSERT_TRUE((storm::test::ensure_tables<ConnType, Person, SimpleRecord, Message, ExtendedTypes>(conn)));
         ASSERT_TRUE((EraseStatement<Person, ConnType>{}).query_all().execute().has_value());
         ASSERT_TRUE((EraseStatement<SimpleRecord, ConnType>{}).query_all().execute().has_value());
         ASSERT_TRUE((EraseStatement<Message, ConnType>{}).query_all().execute().has_value());
+        ASSERT_TRUE((EraseStatement<ExtendedTypes, ConnType>{}).query_all().execute().has_value());
     }
 
     auto seed_main_msg() -> void {
@@ -171,6 +222,8 @@ class UnifiedYamlBody : public UnifiedYamlFixture<Tag, ConnType> {
                 std::vector<Person>(storm::test::PEOPLE_25.begin(), storm::test::PEOPLE_25.end()))));
         } else if constexpr (tc.dataset == "main_msg") {
             seed_main_msg();
+        } else if constexpr (tc.dataset == "extended") {
+            ASSERT_TRUE((storm::test::batch_insert<ExtendedTypes, ConnType>(extended_dataset())));
         } else if constexpr (tc.bench.dataset_size > 0 && tc.dataset.empty()) {
             std::vector<Person> seed;
             seed.reserve(static_cast<std::size_t>(tc.bench.dataset_size));
