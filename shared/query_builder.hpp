@@ -422,6 +422,11 @@ namespace storm::orm::query_builder {
         }
     }
 
+    // value_fits as a constraint: typed_value_as only reads a value its field can hold, so a kind
+    // that never set the member it would read is a constraint violation, not a runtime 0 (#848).
+    template <typename FieldType, auto tv>
+    concept ValueFits = value_fits<FieldType>(tv);
+
     // One WHERE leaf (node N) fits its field. A field the model lacks is not this check's to
     // report: the builder's own static_assert names it.
     template <typename Model, auto Spec, std::size_t N> consteval auto where_leaf_fits() -> bool {
@@ -533,10 +538,13 @@ namespace storm::orm::query_builder {
         // ----------------------------------------------------------------
         // The value in the field's type (an optional field reads as its inner type), chosen by the
         // KIND the value was written as (#843, #844): `1` for a bool field is true, and an integer
-        // for a floating field is that number. SpecValuesFit has already checked that it fits, so
-        // nothing here can fail. Not consteval: a UUID or a blob owns heap memory, which cannot
-        // leave a constant expression.
-        template <typename FieldType, auto tv> static auto typed_value_as() {
+        // for a floating field is that number. ValueFits (the check SpecValuesFit runs per leaf) is
+        // also this function's constraint, and a null has no member to read, so it never reads a
+        // member the value did not set. Not consteval: a UUID or a blob owns heap memory, which
+        // cannot leave a constant expression.
+        template <typename FieldType, auto tv>
+            requires ValueFits<FieldType, tv> && (tv.kind != decltype(tv.kind)::Null)
+        static auto typed_value_as() {
             using T               = orm::utilities::optional_inner_type_t<FieldType>;
             constexpr bool is_int = tv.kind == decltype(tv.kind)::Int;
             constexpr bool is_i64 = tv.kind == decltype(tv.kind)::Int64;

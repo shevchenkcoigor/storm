@@ -291,7 +291,8 @@ checked against (`expected.first`). The parser only records what was written, as
 (`null`), `Int` (fits 32 bits), `Int64` (wider; the one rule is `TypedValue::of_integer`), `Double`, `Bool`,
 `String`. A value that does not fit its field is a **compile error, never a coercion** (`SpecValuesFit` for
 WHERE, `ExpectedValueFits` for `expected.first`; both are `value_fits<FieldType>`, once, in
-`shared/query_builder.hpp`):
+`shared/query_builder.hpp`). `typed_value_as` itself is constrained by the same predicate (`ValueFits`, #848),
+so it can never read a member the value did not set (a Double or Bool on an integer or optional field, or a null):
 
 | Field type | Written as | Rejected |
 |---|---|---|

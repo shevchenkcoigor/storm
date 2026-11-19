@@ -36,7 +36,6 @@ using storm::orm::query_builder::call_query_method;
 using storm::orm::query_builder::dispatch_field;
 using storm::orm::query_builder::field_or_null;
 using storm::orm::query_builder::member_function_named;
-using storm::orm::query_builder::value_fits;
 
 // #818/#844: a case sets expected_sql, or BOTH expected_sql_sqlite and expected_sql_pg, never both
 // forms; one dialect alone would leave the other backend with no SQL check.
@@ -57,7 +56,7 @@ template <const auto &Tc, typename ConnType> auto expect_sql(auto &query) -> voi
 // an optional member, an integer wider than 32 bits only for a wide enough member, a string only
 // for a text, UUID, date, time, enum (by name) or blob (hex) member.
 template <typename Member, auto Expected>
-concept ExpectedValueFits = value_fits<Member>(Expected);
+concept ExpectedValueFits = storm::orm::query_builder::ValueFits<Member, Expected>;
 
 // One check for an aggregate value (#837), chosen by the result type: MIN/MAX/AVG
 // read back as std::optional<double> (#416) — a near match, or nullopt when
