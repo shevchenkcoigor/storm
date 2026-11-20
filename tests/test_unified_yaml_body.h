@@ -90,8 +90,9 @@ inline auto extended_dataset() -> std::vector<ExtendedTypes> {
     using namespace std::chrono_literals;
     const auto bytes = [](std::initializer_list<unsigned> values) {
         std::vector<std::byte> out;
+        out.reserve(values.size());
         for (const unsigned v : values)
-            out.push_back(static_cast<std::byte>(v));
+            out.emplace_back(static_cast<std::byte>(v));
         return out;
     };
     return {
@@ -102,6 +103,7 @@ inline auto extended_dataset() -> std::vector<ExtendedTypes> {
             .color = Color::Red,
             .date_field = 2024y / 1 / 15,
             .datetime_field = sys_days{2024y / 1 / 15} + 10h + 30min,
+            .duration_field = 90s,
             .raw_data = bytes({0xDE, 0xAD, 0xBE, 0xEF}),
             .uuid_field = storm::UUID{"550e8400-e29b-41d4-a716-446655440000"},
             .opt_color = std::nullopt,

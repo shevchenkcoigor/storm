@@ -389,6 +389,68 @@ class MultiFileTest(unittest.TestCase):
             self.assertIn("nope.yaml", completed.stderr)
 
 
+class UnquotedTemporalScalarTest(unittest.TestCase):
+    """PyYAML reads an unquoted 2024-01-15 as a date; json.dumps then dies with an unrelated TypeError
+    (or, for a time point, would emit a value the C++ parser never sees as text). The corpus quotes them
+    ('2024-01-15'), so the script says which case and which key forgot to (#853)."""
+
+    def split_text(self, yaml_text):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = pathlib.Path(tmp)
+            out_dir = root / "out"
+            out_dir.mkdir()
+            corpus = root / "corpus.yaml"
+            corpus.write_text(yaml_text, encoding="utf-8")
+            return subprocess.run(
+                [sys.executable, str(SPLITTER), str(out_dir), str(corpus)],
+                capture_output=True, text=True, check=False)
+
+    BASE = (
+        "- {name: base_grouped, query_type: group_count}\n"
+        "- {name: base_aggregate, query_type: count}\n"
+        "- {name: base_crud, query_type: insert_one}\n"
+    )
+
+    def test_an_unquoted_date_is_rejected_naming_the_case_and_the_key(self):
+        completed = self.split_text(
+            self.BASE + "- name: d\n  query_type: select\n  where:\n    conditions:\n"
+            "    - field: date_field\n      op: ==\n      values:\n      - 2024-01-15\n")
+        self.assertNotEqual(completed.returncode, 0)
+        self.assertIn("'d'", completed.stderr)
+        self.assertIn("values", completed.stderr)
+        self.assertIn("quote", completed.stderr)
+        self.assertNotIn("Traceback", completed.stderr)
+
+    def test_an_unquoted_expected_first_date_is_rejected(self):
+        completed = self.split_text(
+            self.BASE + "- name: e\n  query_type: select\n  expected:\n    first:\n"
+            "      date_field: 2024-01-15\n")
+        self.assertNotEqual(completed.returncode, 0)
+        self.assertIn("date_field", completed.stderr)
+
+    def test_an_unquoted_datetime_is_rejected(self):
+        completed = self.split_text(
+            self.BASE + "- name: t\n  query_type: select\n  expected:\n    first:\n"
+            "      datetime_field: 2024-01-15T10:30:00\n")
+        self.assertNotEqual(completed.returncode, 0)
+        self.assertIn("datetime_field", completed.stderr)
+
+    def test_an_unquoted_date_used_as_a_key_is_rejected(self):
+        completed = self.split_text(
+            self.BASE + "- name: k\n  query_type: select\n  expected:\n    first:\n"
+            "      2024-01-15: x\n")
+        self.assertNotEqual(completed.returncode, 0)
+        self.assertIn("'k'", completed.stderr)
+        self.assertIn("quote", completed.stderr)
+        self.assertNotIn("Traceback", completed.stderr)
+
+    def test_a_quoted_date_is_accepted(self):
+        completed = self.split_text(
+            self.BASE + "- name: q\n  query_type: select\n  expected:\n    first:\n"
+            "      date_field: '2024-01-15'\n")
+        self.assertEqual(completed.returncode, 0, completed.stderr)
+
+
 class RewriteOnlyWhenChangedTest(unittest.TestCase):
     """#846: ninja runs the splitter whenever ANY yaml changes (restat). A JSON whose bytes did
     not change must keep its mtime, so only the slices an edit really touched recompile."""

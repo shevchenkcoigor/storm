@@ -36,6 +36,7 @@ drops those cases from the suite with a green build.
 
 from __future__ import annotations
 
+import datetime
 import json
 import pathlib
 import sys
@@ -132,6 +133,27 @@ def validate_expected_sql(case: dict, category: str) -> None:
         validate_sql_text(name, key, case[key])
 
 
+def reject_unquoted_temporal(name: str, value: object, path: str) -> None:
+    """PyYAML reads an unquoted 2024-01-15 (or 2024-01-15T10:30:00) as a date/datetime, which JSON cannot
+    carry. A date or time point is a STRING in the corpus, so say which case and key forgot the quotes
+    instead of dying later in json.dumps with an unrelated TypeError (#853). A date used as a mapping key
+    is caught too. A bare time of day or `0102` is not a date for PyYAML (it loads as an int), so it is
+    not detectable here: quote those."""
+    if isinstance(value, datetime.date):  # datetime.datetime is a date
+        raise SystemExit(
+            f"Error: case {name!r}: {path} is an unquoted {type(value).__name__} ({value.isoformat()}); "
+            f"PyYAML reads it as {type(value).__name__}, not text. Write it as a quoted string: "
+            f"'{value.isoformat()}'."
+        )
+    if isinstance(value, dict):
+        for key, item in value.items():
+            reject_unquoted_temporal(name, key, f"{path}.<key {key!s}>" if path else f"<key {key!s}>")
+            reject_unquoted_temporal(name, item, f"{path}.{key}" if path else str(key))
+    elif isinstance(value, list):
+        for position, item in enumerate(value):
+            reject_unquoted_temporal(name, item, f"{path}[{position}]")
+
+
 def categorize(case: dict, index: int) -> str:
     """Map one case to its category (the runner group in YAML_RUNNERS)."""
     if not isinstance(case, dict):
@@ -181,6 +203,10 @@ def bucket_corpus(inputs: list[pathlib.Path]) -> dict[str, list]:
             name = case.get("name")
             if not isinstance(name, str) or not name:
                 raise SystemExit(f"Error: a case in {path} has no `name` string: {case!r:.80}")
+            try:
+                reject_unquoted_temporal(name, case, "")
+            except SystemExit as err:
+                raise SystemExit(f"{err} (in {path})") from None
             if name in seen_in:
                 raise SystemExit(
                     f"Error: duplicate case name {name!r} in {path} (first defined in "

@@ -281,7 +281,9 @@ aggregate or field. Names in the YAML are resolved by reflection at compile time
   test-only `where_expr:` is written as the tree itself (nodes numbered in pre-order from the root). `QueryBuilder`
   builds the tree (`build_where_node`), and every leaf goes through the shared `build_compare_expr` resolver, so an
   unknown or ill-typed operator is a compile error. The operands of all leaves live in one pool
-  (`WhereSpec::values`), typed by the key that wrote them: `value_dbl: 0.0` is a double, not the int 0. A case that
+  (`WhereSpec::values`), typed by the key that wrote them: `value_dbl: 0.0` is a double, not the int 0. A leaf also takes the general
+  `value:` key, read by the same `parse_typed_value` as `where:` (so `null`, int64, strings, UUIDs and dates work in
+  the tree too, #853). A case that
   writes both `where:` and `where_expr:` does not compile (two trees cannot share one set of nodes).
 - **FK by member name.** `QueryBuilder`'s `fk_resolver` defaults to `member_name_resolver<Model>`, so a
   `join.fk:` is a member name on the model. The benchmark still passes its own (`registry::resolve_fk_field`).
@@ -310,8 +312,10 @@ so it can never read a member the value did not set (a Double or Bool on an inte
 | Field type | Written as | Rejected |
 |---|---|---|
 | nullable (`std::optional<T>`) | `null` with `==` / `!=` (WHERE) or as the expected value | `null` on a NOT NULL column; with any other operator; inside `IN`; `IS NULL` / `IS NOT NULL` |
-| integer / floating / bool | a number (an int64 literal needs a 64-bit field; a fraction needs a floating field) | out of range for the field, a string |
-| `storm::UUID` | `'550e8400-e29b-41d4-a716-446655440000'` (8-4-4-4-12 hex) | any other string or a number |
+| integer / floating | a number (an int64 literal needs a 64-bit field; a fraction needs a floating field; an integer written for a `float` must be exact in it: `16777217` is rejected) | out of range for the field, a string |
+| bool | `true` / `false`, or the integer `0` / `1` | any other integer (`7`), a string |
+| `std::chrono::duration` | an integer in the range of the duration's `rep`, `Int` or `Int64` alike (`expected.first` only, see below) | out of range for the `rep`, a fraction, a string |
+| `storm::UUID` | `'550e8400-e29b-41d4-a716-446655440000'` (8-4-4-4-12 **lower-case** hex) | upper-case hex (`storm::UUID` keeps its text verbatim: SQLite compares TEXT case-sensitively, PostgreSQL returns lower case), any other string or a number |
 | `std::chrono::year_month_day` | `'2024-01-15'` (ISO date; the day must exist) | `'2023-02-29'`, words, a number |
 | `std::chrono::system_clock::time_point` | `'2024-01-15T10:30:00'` (UTC) | an out-of-range time, a number |
 | enum | the enumerator **name** (`Green`) | an unknown name, a number |
@@ -326,8 +330,14 @@ so it can never read a member the value did not set (a Double or Bool on an inte
 - **Dataset `extended`** (`model: extended` = `ExtendedTypes`): three rows, `alpha` / `beta` / `gamma`, defined in
   `extended_dataset()` in `test_unified_yaml_body.h` and tabulated in the comment above the `typed_*` cases in
   `typed_values.yaml`. Quote hex and numeric-looking strings (`'0102'`, or YAML reads an int).
-- A blob is checked in `expected.first` only; a WHERE on a blob column compiles only where the field proxy
-  accepts a blob operand.
+- **A blob or a duration is checked in `expected.first` only** (#853). `ExpressionVariant` has no `ComparisonExpr`
+  arm for either, so a WHERE on such a column cannot be built: the constraint rejects it (`NoWhereComparison`,
+  `where_leaf_fits`) instead of failing deep inside `make_shared`. Engine support is tracked in #863.
+- **A joined WHERE** is not checked against the base model by `QueryBuilder`'s class constraint (the WHERE may target
+  the related model, whose field of the same name can have another type); `apply_where`'s per-`WhereModel`
+  `static_assert` is the check that knows which model it is.
+- **Unquoted dates** (`2024-01-15`) are read by PyYAML as a date, not text: `split_unified_cases.py` rejects them
+  naming the case and key. `0102` and a bare time of day (`10:30:00`) are not detectable after loading (PyYAML reads them as the octal 66 and the base-60 integer 37800), so quote them.
 - Not covered here: HAVING values (still one int) and write values (Phase 7 of #838).
 - **Build cost** (Debug, one TU touched and rebuilt alone, 3 runs each, quiet machine, `a4a11fc` vs #844):
   select 9.5–9.7 s → 14.2–14.9 s (+51%), aggregate 9.4–9.5 → 10.5–10.6 s (+12%), grouped 13.9–14.4 → 15.2–15.3 s
