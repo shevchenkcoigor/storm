@@ -80,16 +80,6 @@ export namespace storm::benchmark {
         }
     };
 
-    // Extract numeric value with correct type (int or double).
-    // TypedValue must be passed as NTTP so if constexpr can dispatch on kind.
-    template <TypedValue tv> consteval auto numeric_value() {
-        if constexpr (tv.kind == TypedValue::Kind::Double) {
-            return tv.as_double;
-        } else {
-            return tv.as_int;
-        }
-    }
-
     // The one rule for every capped spec array (#843): count the entry always, store it only
     // while there is room. A count past the array's size is what within_limits() rejects.
     template <typename Array, typename Value>

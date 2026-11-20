@@ -276,8 +276,9 @@ namespace storm::test {
             skip_value(jj, pp);
     }
 
-    // One node's own keys: a leaf's field/op and its value, an inner node's op. `value_int` /
-    // `value_dbl` each add one operand, typed by WHICH key was written, so 0.0 stays a double.
+    // One node's own keys: a leaf's field/op and its value, an inner node's op. `value` adds one operand
+    // of any type the shared parser reads (null, int64, string, ...); `value_int` / `value_dbl` each add
+    // one, typed by WHICH key was written, so 0.0 stays a double.
     constexpr void parse_where_node_leaf(
             const char*      ptr,
             JsonKeyRef       kr,
@@ -291,6 +292,8 @@ namespace storm::test {
             n.field = parse_str<32>(jj, pp, truncated);
         } else if (jkey_eq(ptr, kr, "op")) {
             n.op = parse_str<16>(jj, pp, truncated);
+        } else if (jkey_eq(ptr, kr, "value")) {
+            w.add_value(parse_typed_value(jj, pp, truncated)); // any typed operand: null, int64, string (#853)
         } else if (jkey_eq(ptr, kr, "value_int")) {
             TypedValue tv;
             tv.kind   = TypedValue::Kind::Int;

@@ -168,6 +168,8 @@ template <typename Model, typename ConnType> class SelectRunner {
             EXPECT_TRUE(actual == expected) << "expected date-time " << text;
         } else if constexpr (storm::orm::query_builder::BlobType<T>) {
             EXPECT_TRUE(actual == storm::orm::query_builder::blob_from_hex<T>(text)) << "expected blob " << text;
+        } else if constexpr (storm::orm::query_builder::DurationType<T>) {
+            expect_value_eq<Expected>(actual.count()); // a duration is its rep (#853)
         } else {
             static_assert(std::is_integral_v<T>, "expected.first: unsupported member type");
             if constexpr (Expected.kind == Kind::Int64)

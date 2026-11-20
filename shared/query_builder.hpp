@@ -261,13 +261,19 @@ namespace storm::orm::query_builder {
         return (c >= '0' && c <= '9') || (c >= 'a' && c <= 'f') || (c >= 'A' && c <= 'F');
     }
 
-    // 8-4-4-4-12 hex digits, the form storm::UUID stores.
+    // storm::UUID keeps its text verbatim, so one spelling is accepted: a stored lower-case UUID is never
+    // matched by an upper-case literal on SQLite (TEXT compare), and PostgreSQL returns lower case (#853).
+    consteval auto is_lower_hex_digit(char c) -> bool {
+        return (c >= '0' && c <= '9') || (c >= 'a' && c <= 'f');
+    }
+
+    // 8-4-4-4-12 lower-case hex digits, the form storm::UUID stores.
     consteval auto uuid_text_is_valid(std::string_view s) -> bool {
         if (s.size() != 36)
             return false;
         for (std::size_t i = 0; i < s.size(); ++i) {
             const bool dash = i == 8 || i == 13 || i == 18 || i == 23;
-            if (dash ? s[i] != '-' : !is_hex_digit(s[i]))
+            if (dash ? s[i] != '-' : !is_lower_hex_digit(s[i]))
                 return false;
         }
         return true;
@@ -365,23 +371,27 @@ namespace storm::orm::query_builder {
             return v >= 0 && static_cast<unsigned long long>(v) <= std::numeric_limits<T>::max();
     }
 
-    template <typename T> consteval auto int_fits(long long v) -> bool {
-        if constexpr (std::is_same_v<T, bool> || std::is_floating_point_v<T> || DurationType<T>)
-            return true;
+    // An integer a floating type holds exactly, not rounded (16777217 is not a float).
+    template <std::floating_point T> consteval auto integer_exact_in_floating(long long v) -> bool {
+        // Range-check in the floating domain first: converting 2^63 back to long long is UB.
+        const auto f = static_cast<T>(v);
+        return f >= -0x1p63 && f < 0x1p63 && static_cast<long long>(f) == v;
+    }
+
+    // One rule for an Int and an Int64 literal alike (#853): an INTEGER literal must be held exactly by the field.
+    // (A Double literal is not range-checked here: a fraction written for a float field rounds, as in C++.)
+    // bool takes 0 / 1 only, a floating field an exactly representable integer, a duration the range of
+    // its rep, an integral field its range.
+    template <typename T> consteval auto integer_fits(long long v) -> bool {
+        if constexpr (std::is_same_v<T, bool>)
+            return v == 0 || v == 1;
+        else if constexpr (DurationType<T>)
+            return integer_fits<typename T::rep>(v);
+        else if constexpr (std::is_floating_point_v<T>)
+            return integer_exact_in_floating<T>(v);
         else if constexpr (std::is_integral_v<T>)
             return integer_in_range<T>(v);
         else
-            return false;
-    }
-
-    template <typename T> consteval auto int64_fits(long long v) -> bool {
-        if constexpr (std::is_integral_v<T> && !std::is_same_v<T, bool>)
-            return integer_in_range<T>(v);
-        else if constexpr (std::is_floating_point_v<T>) {
-            // Range-check in the floating domain first: converting 2^63 back to long long is UB.
-            const auto f = static_cast<T>(v);
-            return f >= -0x1p63 && f < 0x1p63 && static_cast<long long>(f) == v; // exact, not rounded
-        } else
             return false;
     }
 
@@ -412,9 +422,9 @@ namespace storm::orm::query_builder {
         case Kind::Double:
             return std::is_floating_point_v<T>;
         case Kind::Int:
-            return int_fits<T>(tv.as_int);
+            return integer_fits<T>(tv.as_int);
         case Kind::Int64:
-            return int64_fits<T>(tv.as_int64);
+            return integer_fits<T>(tv.as_int64);
         case Kind::String:
             return string_fits<T>(tv.as_string.view());
         default:
@@ -427,6 +437,10 @@ namespace storm::orm::query_builder {
     template <typename FieldType, auto tv>
     concept ValueFits = value_fits<FieldType>(tv);
 
+    // A column type the WHERE engine has no comparison for (ExpressionVariant lists no arm for it).
+    template <typename T>
+    concept NoWhereComparison = BlobType<T> || DurationType<T>;
+
     // One WHERE leaf (node N) fits its field. A field the model lacks is not this check's to
     // report: the builder's own static_assert names it.
     template <typename Model, auto Spec, std::size_t N> consteval auto where_leaf_fits() -> bool {
@@ -437,6 +451,11 @@ namespace storm::orm::query_builder {
             return true;
         } else {
             using FieldType = typename[:std::meta::type_of(dispatch_field<Model>(node.field.view())):];
+            // ExpressionVariant has no ComparisonExpr arm for a blob or a duration: a WHERE on such a column
+            // cannot be built, so the constraint says so here instead of failing deep inside make_shared (#853).
+            // Deliberately also rejects `optional<blob> == null` (a NullCheckExpr would build) until #863 lifts it.
+            if (NoWhereComparison<orm::utilities::optional_inner_type_t<FieldType>>)
+                return false;
             // One spelling for a null check: `== null` / `!= null` (#844). The operator names
             // IS NULL / IS NOT NULL are not part of the YAML.
             if (node.op == kIsNullOp || node.op == kIsNotNullOp)
@@ -460,7 +479,11 @@ namespace storm::orm::query_builder {
         }
     }
 
-    // Every value in the WHERE tree can be read as the type of the field it is compared with.
+    // Every value in the WHERE tree can be read as the type of the field it is compared with. QueryBuilder
+    // applies it to the base model only for a spec without a join: a joined WHERE may target the related
+    // model, and apply_where's per-WhereModel static_assert is the check that knows which (#853). That also
+    // means a joined WHERE on a blob or duration column is reported by that static_assert's generic message,
+    // not by NoWhereComparison's (until #863 gives the engine the arms).
     template <typename Model, auto Spec>
     concept SpecValuesFit = []<std::size_t... Ns>(std::index_sequence<Ns...>) consteval {
         return (where_leaf_fits<Model, Spec, Ns>() && ...);
@@ -531,7 +554,7 @@ namespace storm::orm::query_builder {
             auto spec,
             auto fk_resolver  = member_name_resolver<Model>,
             typename ConnType = storm::db::sqlite::Connection>
-        requires SpecWithinLimits<spec> && SpecWellFormed<spec> && SpecValuesFit<Model, spec>
+        requires SpecWithinLimits<spec> && SpecWellFormed<spec> && (spec.join.enabled || SpecValuesFit<Model, spec>)
     class QueryBuilder {
         // ----------------------------------------------------------------
         // typed_value_as
