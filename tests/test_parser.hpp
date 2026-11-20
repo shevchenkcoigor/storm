@@ -139,12 +139,12 @@ namespace storm::test {
             return pg_dialect ? expected_sql_pg.view() : expected_sql_sqlite.view();
         }
 
-        // A collation (WHERE leaf or ORDER BY) exists on SQLite only.
+        // A collation (WHERE / HAVING leaf or ORDER BY) exists on SQLite only.
         [[nodiscard]] constexpr auto needs_sqlite() const -> bool {
             bool order_collate = false;
             for (const auto& ob : bench.order_by)
                 order_collate = order_collate || (ob.enabled && !ob.collate.empty());
-            return bench.where.any_collate() || order_collate;
+            return bench.where.any_collate() || bench.group_by.having.any_collate() || order_collate;
         }
 
         // `backends` names only sqlite, and a case that needs SQLite says so.

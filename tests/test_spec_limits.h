@@ -27,8 +27,8 @@ inline constexpr std::string_view ORDER_BY_3 =
     R"({"order_by":[{"field":"a"},{"field":"b"},{"field":"c"}],"dataset_size":5})";
 inline constexpr std::string_view FKS_2 = R"({"join":{"type":"inner","fks":["a","b"]},"dataset_size":5})";
 inline constexpr std::string_view FKS_3 = R"({"join":{"type":"inner","fks":["a","b","c"]},"dataset_size":5})";
-inline constexpr std::string_view GROUP_2 = R"({"group_by":{"fields":["a","b"]},"dataset_size":5})";
-inline constexpr std::string_view GROUP_3 = R"({"group_by":{"fields":["a","b","c"]},"dataset_size":5})";
+inline constexpr std::string_view GROUP_4 = R"({"group_by":{"fields":["a","b","c","d"]},"dataset_size":5})";
+inline constexpr std::string_view GROUP_5 = R"({"group_by":{"fields":["a","b","c","d","e"]},"dataset_size":5})";
 inline constexpr std::string_view DISTINCT_3 = R"({"distinct":{"fields":["a","b","c"]},"dataset_size":5})";
 inline constexpr std::string_view VALUES_4 = R"({"values":{"fields":["a","b","c","d"]},"dataset_size":5})";
 inline constexpr std::string_view VALUES_5 = R"({"values":{"fields":["a","b","c","d","e"]},"dataset_size":5})";
@@ -111,12 +111,31 @@ inline constexpr std::string_view WHERE_INT64_MAX =
 inline constexpr std::string_view WHERE_NULL_THEN_STRING =
     R"({"where":{"conditions":[{"field":"a","op":"IN","values":[null,"x",7]}]},"dataset_size":5})";
 
-// HAVING takes a bare scalar `value`, like a WHERE value (#857). The old {kind, value} object was
-// read as 0 and its body skipped; it is now rejected, so it cannot bind the wrong number.
-inline constexpr std::string_view HAVING_SCALAR_VALUE =
+// HAVING is the same tree of conditions as WHERE (#868): one leaf, an OR of two, an unknown `combine`.
+inline constexpr std::string_view HAVING_LEAF =
+    R"({"group_by":{"fields":["age"],"having":{"conditions":[{"field":"age","op":">","values":[30]}]}},"dataset_size":5})";
+inline constexpr std::string_view HAVING_OR =
+    R"({"group_by":{"fields":["age"],"having":{"conditions":[{"field":"age","op":">","values":[30]},{"field":"age","op":"<","values":[20]}],"combine":"or"}},"dataset_size":5})";
+inline constexpr std::string_view HAVING_UNKNOWN_COMBINE =
+    R"({"group_by":{"fields":["age"],"having":{"conditions":[{"field":"age","op":">","values":[30]}],"combine":"xor"}},"dataset_size":5})";
+
+// A HAVING tree is checked like WHERE (#868): a pattern is text, IN takes no null, a leaf needs `values`,
+// and a collation makes the case SQLite-only.
+inline constexpr std::string_view HAVING_LIKE_INT =
+    R"({"group_by":{"fields":["age"],"having":{"conditions":[{"field":"age","op":"LIKE","values":[5]}]}},"dataset_size":5})";
+inline constexpr std::string_view HAVING_IN_NULL =
+    R"({"group_by":{"fields":["age"],"having":{"conditions":[{"field":"age","op":"IN","values":[null,1]}]}},"dataset_size":5})";
+inline constexpr std::string_view HAVING_FLAT_LEGACY =
     R"({"group_by":{"fields":["age"],"having":{"field":"age","op":">","value":30}},"dataset_size":5})";
-inline constexpr std::string_view HAVING_OBJECT_VALUE =
-    R"({"group_by":{"fields":["age"],"having":{"field":"age","op":">","value":{"kind":"int","value":30}}},"dataset_size":5})";
+inline constexpr std::string_view HAVING_COLLATE =
+    R"({"group_by":{"fields":["name"],"having":{"conditions":[{"field":"name","op":"==","collate":"NOCASE","values":["a"]}]}},"dataset_size":5})";
+
+// PostgreSQL rejects a HAVING column that is neither grouped nor aggregated, SQLite accepts it: so a HAVING
+// leaf on a field outside GROUP BY is rejected on both (#868).
+inline constexpr std::string_view HAVING_UNGROUPED =
+    R"({"group_by":{"fields":["age"],"having":{"conditions":[{"field":"name","op":"==","values":["a"]}]}},"dataset_size":5})";
+inline constexpr std::string_view HAVING_GROUPED_SECOND =
+    R"({"group_by":{"fields":["age","name"],"having":{"conditions":[{"field":"name","op":"==","values":["a"]}]}},"dataset_size":5})";
 
 // `combine` is exactly "and" or "or" (#847). Any other spelling, a different case included, is
 // rejected rather than read as AND -- also when there is only one condition to join.
@@ -184,8 +203,8 @@ template <auto Parse> struct Cases {
     static constexpr auto order_by_3 = Parse(ORDER_BY_3);
     static constexpr auto fks_2 = Parse(FKS_2);
     static constexpr auto fks_3 = Parse(FKS_3);
-    static constexpr auto group_2 = Parse(GROUP_2);
-    static constexpr auto group_3 = Parse(GROUP_3);
+    static constexpr auto group_4 = Parse(GROUP_4);
+    static constexpr auto group_5 = Parse(GROUP_5);
     static constexpr auto distinct_3 = Parse(DISTINCT_3);
     static constexpr auto distinct_4 = Parse(DISTINCT_4);
     static constexpr auto values_4 = Parse(VALUES_4);
@@ -221,8 +240,15 @@ template <auto Parse> struct Cases {
     static constexpr auto where_int64_max = Parse(WHERE_INT64_MAX);
     static constexpr auto where_null_then_string = Parse(WHERE_NULL_THEN_STRING);
 
-    static constexpr auto having_scalar = Parse(HAVING_SCALAR_VALUE);
-    static constexpr auto having_object = Parse(HAVING_OBJECT_VALUE);
+    static constexpr auto having_leaf = Parse(HAVING_LEAF);
+    static constexpr auto having_or = Parse(HAVING_OR);
+    static constexpr auto having_unknown_combine = Parse(HAVING_UNKNOWN_COMBINE);
+    static constexpr auto having_like_int = Parse(HAVING_LIKE_INT);
+    static constexpr auto having_in_null = Parse(HAVING_IN_NULL);
+    static constexpr auto having_flat_legacy = Parse(HAVING_FLAT_LEGACY);
+    static constexpr auto having_collate = Parse(HAVING_COLLATE);
+    static constexpr auto having_ungrouped = Parse(HAVING_UNGROUPED);
+    static constexpr auto having_grouped_second = Parse(HAVING_GROUPED_SECOND);
 
     static constexpr auto where_combine_unknown = Parse(WHERE_COMBINE_UNKNOWN);
     static constexpr auto where_combine_upper_case = Parse(WHERE_COMBINE_UPPER_CASE);
@@ -248,7 +274,7 @@ template <auto Parse> struct Cases {
 
     static_assert(order_by_2.within_limits() && !order_by_3.within_limits());
     static_assert(fks_2.within_limits() && !fks_3.within_limits());
-    static_assert(group_2.within_limits() && !group_3.within_limits());
+    static_assert(group_4.within_limits() && !group_5.within_limits());
     static_assert(distinct_3.within_limits() && !distinct_4.within_limits());
     static_assert(where_4.within_limits() && !where_5.within_limits());
     static_assert(where_10_values.within_limits() && !where_11_values.within_limits());
@@ -267,18 +293,18 @@ template <auto Parse> auto expect_counts_past_every_cap() -> void {
     using C = Cases<Parse>;
     EXPECT_EQ(C::order_by_3.order_by_count, 3U);
     EXPECT_EQ(C::fks_3.join.fk_count, 3U);
-    EXPECT_EQ(C::group_3.group_by.declared_count, 3U);
+    EXPECT_EQ(C::group_5.group_by.declared_count, 5U);
     EXPECT_EQ(C::distinct_4.distinct.declared_count, 4U);
 
     EXPECT_EQ(C::order_by_3.dataset_size, 5);
     EXPECT_EQ(C::fks_3.dataset_size, 5);
-    EXPECT_EQ(C::group_3.dataset_size, 5);
+    EXPECT_EQ(C::group_5.dataset_size, 5);
     EXPECT_EQ(C::distinct_4.dataset_size, 5);
 
     EXPECT_EQ(C::order_by_3.order_by[0].field.view(), "a");
     EXPECT_EQ(C::order_by_3.order_by[1].field.view(), "b");
     EXPECT_EQ(C::fks_3.join.fks[1].view(), "b");
-    EXPECT_EQ(C::group_3.group_by.fields[1].view(), "b");
+    EXPECT_EQ(C::group_5.group_by.fields[1].view(), "b");
     EXPECT_EQ(C::distinct_4.distinct.fields[2].view(), "c");
 }
 
@@ -430,19 +456,26 @@ template <auto Parse> auto expect_unknown_combine_is_rejected() -> void {
     EXPECT_EQ(C::where_combine_unknown.dataset_size, 5);
 }
 
-// A HAVING value is read as the number written, and a non-scalar one is rejected (#857).
-template <auto Parse> auto expect_having_value_is_scalar() -> void {
+// HAVING is read as a tree, with the WHERE rules: a leaf keeps its operand, `combine` joins the
+// conditions, and an unknown `combine` is not read as AND (#868).
+template <auto Parse> auto expect_having_is_a_tree() -> void {
     using C = Cases<Parse>;
     using Kind = storm::benchmark::TypedValue::Kind;
 
-    constexpr auto &scalar = C::having_scalar;
-    EXPECT_TRUE(scalar.within_limits());
-    EXPECT_TRUE(scalar.group_by.having.value.kind == Kind::Int);
-    EXPECT_EQ(scalar.group_by.having.value.as_int, 30);
+    constexpr auto &leaf = C::having_leaf.group_by.having;
+    EXPECT_TRUE(C::having_leaf.within_limits());
+    EXPECT_TRUE(leaf.is_well_formed());
+    EXPECT_EQ(leaf.node_count, 1U);
+    EXPECT_TRUE(leaf.values[0].kind == Kind::Int);
+    EXPECT_EQ(leaf.values[0].as_int, 30);
 
-    EXPECT_FALSE(C::having_object.within_limits());
-    // The rest of the case is still read.
-    EXPECT_EQ(C::having_object.dataset_size, 5);
+    constexpr auto &either = C::having_or.group_by.having;
+    EXPECT_TRUE(either.is_well_formed());
+    EXPECT_EQ(either.node_count, 3U);
+    EXPECT_EQ(either.nodes[either.root].op.view(), "OR");
+
+    EXPECT_FALSE(C::having_unknown_combine.group_by.having.is_well_formed());
+    EXPECT_EQ(C::having_unknown_combine.dataset_size, 5);
 }
 
 // One parser for every shared key (#845): each entry point reads all of them.
