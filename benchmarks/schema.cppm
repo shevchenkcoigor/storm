@@ -307,6 +307,9 @@ export namespace storm::benchmark {
         ConstexprString<32> field;
         ConstexprString<16> op;
         TypedValue          value;
+        // `value` was an object or array, not a scalar (#857). Rejected by GroupBySpec::within_limits()
+        // instead of being read as 0.
+        bool value_not_scalar = false;
     };
 
     // ========================================================================
@@ -341,6 +344,10 @@ export namespace storm::benchmark {
     // GroupBySpec — one or more GROUP BY fields (max 2), optional HAVING.
     struct GroupBySpec : CappedFields<2> {
         HavingSpec having;
+
+        [[nodiscard]] constexpr auto within_limits() const -> bool {
+            return CappedFields<2>::within_limits() && !having.value_not_scalar;
+        }
     };
 
     // DistinctSpec — SELECT DISTINCT over 1..3 fields.

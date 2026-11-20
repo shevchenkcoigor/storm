@@ -543,9 +543,13 @@ export namespace storm::benchmark {
                 h.field = parse_str<32>(jj, pp, truncated);
             else if (jkey_eq(ptr, kr, "op"))
                 h.op = parse_str<16>(jj, pp, truncated);
-            else if (jkey_eq(ptr, kr, "value"))
-                h.value = parse_typed_value(jj, pp, truncated);
-            else
+            else if (jkey_eq(ptr, kr, "value")) {
+                if (at_char(jj, pp, '{') || at_char(jj, pp, '[')) {
+                    h.value_not_scalar = true; // a {kind, value} object would read as 0 (#857)
+                    skip_value(jj, pp);
+                } else
+                    h.value = parse_typed_value(jj, pp, truncated);
+            } else
                 skip_value(jj, pp);
         });
         return h;
