@@ -356,7 +356,12 @@ so it can never read a member the value did not set (a Double or Bool on an inte
   `static_assert` is the check that knows which model it is.
 - **Unquoted dates** (`2024-01-15`) are read by PyYAML as a date, not text: `split_unified_cases.py` rejects them
   naming the case and key. `0102` and a bare time of day (`10:30:00`) are not detectable after loading (PyYAML reads them as the octal 66 and the base-60 integer 37800), so quote them.
-- Not covered here: HAVING values (still one int) and write values (Phase 7 of #838).
+- **HAVING is the WHERE tree (#868).** `group_by.having` is a `WhereSpec` (`HavingSpec` is an alias): the same
+  `conditions` / `combine` YAML, operators, typed values and limits (7 nodes, 10 values) as `where`, built by
+  `QueryBuilder::with_having` through the same `build_where_node`. GROUP BY takes up to 4 fields (more is a
+  compile error); a case with more than one field pins `expected.count` only, because `group_keys` /
+  `group_agg_*` are per single key. A HAVING condition compares fields, not aggregates (a Storm limit).
+- Not covered here: write values (Phase 7 of #838).
 - **Build cost** (Debug, one TU touched and rebuilt alone, 3 runs each, quiet machine, `a4a11fc` vs #844):
   select 9.5–9.7 s → 14.2–14.9 s (+51%), aggregate 9.4–9.5 → 10.5–10.6 s (+12%), grouped 13.9–14.4 → 15.2–15.3 s
   (+8%), crud 6.1–6.4 → 6.9–7.0 s (+11%), measured with the first 22 cases. Where it goes (CPU seconds, select

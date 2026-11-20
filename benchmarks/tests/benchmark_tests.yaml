@@ -662,9 +662,10 @@ tests:
     group_by:
         fields: [age]
         having:
-          field: age
-          op: ">"
-          value: 30
+          conditions:
+          - field: age
+            op: ">"
+            values: [30]
     aggregate:
         func: count
 
@@ -678,9 +679,10 @@ tests:
     group_by:
         fields: [age]
         having:
-          field: age
-          op: ">"
-          value: 30
+          conditions:
+          - field: age
+            op: ">"
+            values: [30]
     aggregate:
         func: sum
         field: salary

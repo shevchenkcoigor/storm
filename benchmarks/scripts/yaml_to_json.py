@@ -67,24 +67,19 @@ def transform_where(w: dict) -> dict:
     - Multi-condition (AND/OR): {conditions: [...], combine: "and"/"or"}
     """
     if "conditions" in w:
-        return {
-            "conditions": [transform_condition(c) for c in w["conditions"]],
-            "combine": w["combine"],
-        }
+        out = {"conditions": [transform_condition(c) for c in w["conditions"]]}
+        if "combine" in w:  # absent means AND, as the C++ parser reads it
+            out["combine"] = w["combine"]
+        return out
 
     return {"conditions": [transform_condition(w)]}
-
-
-def transform_having(h: dict) -> dict:
-    """HAVING is copied as is: `value` stays a bare scalar, as parse_having expects."""
-    return dict(h)
 
 
 def transform_group_by(g: dict) -> dict:
     out = {}
     for k, v in g.items():
         if k == "having":
-            out[k] = transform_having(v)
+            out[k] = transform_where(v)  # HAVING is the WHERE tree (#868)
         else:
             out[k] = v
     return out

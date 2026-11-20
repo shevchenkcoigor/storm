@@ -48,8 +48,8 @@ namespace {
         storm::test::spec_limits::expect_unknown_combine_is_rejected<parse_case>();
     }
 
-    TEST(SpecLimitsBenchmarkParser, HavingValueIsScalarAndObjectIsRejected) {
-        storm::test::spec_limits::expect_having_value_is_scalar<parse_case>();
+    TEST(SpecLimitsBenchmarkParser, HavingIsATree) {
+        storm::test::spec_limits::expect_having_is_a_tree<parse_case>();
     }
 
     TEST(SpecLimitsBenchmarkParser, EverySharedKeyIsRead) {

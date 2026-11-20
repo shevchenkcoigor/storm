@@ -443,8 +443,8 @@ namespace storm::orm::query_builder {
 
     // One WHERE leaf (node N) fits its field. A field the model lacks is not this check's to
     // report: the builder's own static_assert names it.
-    template <typename Model, auto Spec, std::size_t N> consteval auto where_leaf_fits() -> bool {
-        constexpr auto& node = Spec.where.nodes[N];
+    template <typename Model, const auto& Tree, std::size_t N> consteval auto where_leaf_fits() -> bool {
+        constexpr auto& node = Tree.nodes[N];
         if constexpr (!node.is_leaf()) {
             return true;
         } else if constexpr (!has_field<Model>(node.field.view())) {
@@ -463,12 +463,12 @@ namespace storm::orm::query_builder {
             if (node.op == "LIKE" || node.op == "ILIKE") { // a pattern is text, never a number or null
                 if (node.value_count != 1)
                     return false;
-                const auto& pattern = Spec.where.values[node.first_value];
+                const auto& pattern = Tree.values[node.first_value];
                 return pattern.kind == std::remove_cvref_t<decltype(pattern.kind)>::String;
             }
             bool any_null = false;
             for (std::size_t i = 0; i < node.value_count; ++i) {
-                const auto& tv = Spec.where.values[node.first_value + i];
+                const auto& tv = Tree.values[node.first_value + i];
                 any_null       = any_null || tv.kind == std::remove_cvref_t<decltype(tv.kind)>::Null;
                 if (!value_fits<FieldType>(tv))
                     return false;
@@ -486,22 +486,15 @@ namespace storm::orm::query_builder {
     // not by NoWhereComparison's (until #863 gives the engine the arms).
     template <typename Model, auto Spec>
     concept SpecValuesFit = []<std::size_t... Ns>(std::index_sequence<Ns...>) consteval {
-        return (where_leaf_fits<Model, Spec, Ns>() && ...);
+        return (where_leaf_fits<Model, Spec.where, Ns>() && ...);
     }(std::make_index_sequence<Spec.where.node_count>{});
 
-    // Extract numeric value from any TypedValue-like NTTP (duck-typed on Kind/as_double/as_int).
-    template <auto tv> consteval auto spec_numeric_value() {
-        using Kind = std::remove_cvref_t<decltype(tv)>::Kind;
-        static_assert(
-                tv.kind == Kind::Int || tv.kind == Kind::Double,
-                "a HAVING value is an int or a double; null, int64 and strings are WHERE-only (#844)"
-        );
-        if constexpr (tv.kind == std::remove_cvref_t<decltype(tv)>::Kind::Double) {
-            return tv.as_double;
-        } else {
-            return tv.as_int;
-        }
-    }
+    // The same check for the HAVING tree (#868). HAVING is always built on the base model, so unlike
+    // SpecValuesFit this one has no join exemption.
+    template <typename Model, auto Spec>
+    concept SpecHavingValuesFit = []<std::size_t... Ns>(std::index_sequence<Ns...>) consteval {
+        return (where_leaf_fits<Model, Spec.group_by.having, Ns>() && ...);
+    }(std::make_index_sequence<Spec.group_by.having.node_count>{});
 
     // A collation applies to a comparison, not to a pattern here. SQLite's docs only say LIKE is ASCII
     // case-insensitive and switched by `case_sensitive_like`; they are silent on COLLATE, and sqlite3 shows
@@ -570,14 +563,16 @@ namespace storm::orm::query_builder {
     // The WHERE tree can be built (#843): children exist, joins are AND/OR, and each leaf has the
     // operands its operator reads. Without it a leaf would index the shared value pool past its own.
     template <auto Spec>
-    concept SpecWellFormed = Spec.where.is_well_formed();
+    concept SpecWellFormed = Spec.where.is_well_formed() && Spec.group_by.having.is_well_formed() &&
+                             Spec.group_by.having_fields_are_grouped();
 
     template <
             typename Model,
             auto spec,
             auto fk_resolver  = member_name_resolver<Model>,
             typename ConnType = storm::db::sqlite::Connection>
-        requires SpecWithinLimits<spec> && SpecWellFormed<spec> && (spec.join.enabled || SpecValuesFit<Model, spec>)
+        requires SpecWithinLimits<spec> && SpecWellFormed<spec> && (spec.join.enabled || SpecValuesFit<Model, spec>) &&
+                 SpecHavingValuesFit<Model, spec>
     class QueryBuilder {
         // ----------------------------------------------------------------
         // typed_value_as
@@ -630,12 +625,12 @@ namespace storm::orm::query_builder {
         // ----------------------------------------------------------------
         // WHERE — one tree of WhereNodes (#843)
         // ----------------------------------------------------------------
-        // A leaf: its operands are spec.where.values[first_value .. first_value + value_count).
-        template <typename WhereModel, std::size_t N> static auto build_where_leaf() {
-            constexpr auto& cond  = spec.where.nodes[N];
-            constexpr auto& pool  = spec.where.values;
+        // A leaf: its operands are Tree.values[first_value .. first_value + value_count).
+        template <const auto& Tree, typename WhereModel, std::size_t N> static auto build_where_leaf() {
+            constexpr auto& cond  = Tree.nodes[N];
+            constexpr auto& pool  = Tree.values;
             constexpr auto  first = cond.first_value;
-            static_assert(has_field<WhereModel>(cond.field.view()), "WHERE condition field not found on model");
+            static_assert(has_field<WhereModel>(cond.field.view()), "condition field not found on model");
             constexpr auto             fi = dispatch_field<WhereModel>(cond.field.view());
             constexpr std::string_view op = cond.op.view();
             using FieldType               = typename[:std::meta::type_of(fi):];
@@ -656,8 +651,8 @@ namespace storm::orm::query_builder {
                 );
             } else if constexpr (op == "IN") {
                 return []<std::size_t... Is>(std::index_sequence<Is...>) {
-                    return build_compare_expr<fi, spec.where.nodes[N].op, spec.where.nodes[N].collate>(
-                            typed_value_as<FieldType, spec.where.values[spec.where.nodes[N].first_value + Is]>()...
+                    return build_compare_expr<fi, Tree.nodes[N].op, Tree.nodes[N].collate>(
+                            typed_value_as<FieldType, Tree.values[Tree.nodes[N].first_value + Is]>()...
                     );
                 }(std::make_index_sequence<cond.value_count>{});
             } else if constexpr (pool[first].kind == Kind::String && !NonTextString<Inner>) {
@@ -668,17 +663,17 @@ namespace storm::orm::query_builder {
         }
 
         // The tree below node N as one expression: a leaf is a comparison, an inner node AND/OR.
-        template <typename WhereModel, std::size_t N> static auto build_where_node() {
-            constexpr auto& node = spec.where.nodes[N];
+        template <const auto& Tree, typename WhereModel, std::size_t N> static auto build_where_node() {
+            constexpr auto& node = Tree.nodes[N];
             if constexpr (node.is_leaf()) {
-                return build_where_leaf<WhereModel, N>();
+                return build_where_leaf<Tree, WhereModel, N>();
             } else if constexpr (node.op == "AND") {
-                return build_where_node<WhereModel, static_cast<std::size_t>(node.left)>() &&
-                       build_where_node<WhereModel, static_cast<std::size_t>(node.right)>();
+                return build_where_node<Tree, WhereModel, static_cast<std::size_t>(node.left)>() &&
+                       build_where_node<Tree, WhereModel, static_cast<std::size_t>(node.right)>();
             } else {
-                static_assert(node.op == "OR", "a WHERE join node is AND or OR");
-                return build_where_node<WhereModel, static_cast<std::size_t>(node.left)>() ||
-                       build_where_node<WhereModel, static_cast<std::size_t>(node.right)>();
+                static_assert(node.op == "OR", "a condition-tree join node is AND or OR");
+                return build_where_node<Tree, WhereModel, static_cast<std::size_t>(node.left)>() ||
+                       build_where_node<Tree, WhereModel, static_cast<std::size_t>(node.right)>();
             }
         }
 
@@ -687,7 +682,7 @@ namespace storm::orm::query_builder {
                 // The class constraint checked the base model; a WHERE on a related model reads
                 // its values as that model's field types.
                 static_assert(SpecValuesFit<WhereModel, spec>, "a WHERE value does not fit its field's type");
-                qs = qs.where(build_where_node<WhereModel, static_cast<std::size_t>(spec.where.root)>());
+                qs = qs.where(build_where_node<spec.where, WhereModel, static_cast<std::size_t>(spec.where.root)>());
             }
         }
 
@@ -809,16 +804,8 @@ namespace storm::orm::query_builder {
                         .template group_by<selector_for<dispatch_field<Model>(spec.group_by.fields[Is].view())>()...>();
             }(std::make_index_sequence<spec.group_by.field_count()>{});
 
-            if constexpr (spec.group_by.having.enabled) {
-                static_assert(has_field<Model>(spec.group_by.having.field.view()), "HAVING field not found on model");
-                constexpr auto hf = dispatch_field<Model>(spec.group_by.having.field.view());
-                gb                = gb.having(
-                        build_compare_expr<hf, spec.group_by.having.op>(
-                                auto{spec_numeric_value<spec.group_by.having.value>()}
-                        )
-                );
-            }
-            return apply_aggregate(gb);
+            auto having = with_having(std::move(gb));
+            return apply_aggregate(having);
         }
 
         static consteval auto resolve_setop() -> std::meta::info {
@@ -891,6 +878,21 @@ namespace storm::orm::query_builder {
         }
 
       public:
+        // GROUP BY ... HAVING: the HAVING tree is built exactly like the WHERE tree, over the base model.
+        // Public: the test runner's aggregate pipeline chains aggregates onto the same grouped statement.
+        static auto with_having(auto&& grouped) {
+            if constexpr (spec.group_by.having.enabled) {
+                return std::forward<decltype(grouped)>(grouped).having(
+                        build_where_node<
+                                spec.group_by.having,
+                                Model,
+                                static_cast<std::size_t>(spec.group_by.having.root)>()
+                );
+            } else {
+                return std::forward<decltype(grouped)>(grouped);
+            }
+        }
+
         static auto build_distinct_stmt(auto& qs) {
             return [&]<std::size_t... Is>(std::index_sequence<Is...>) {
                 return qs

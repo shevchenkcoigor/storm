@@ -101,7 +101,7 @@ namespace {
     static_assert(SpecWithinLimits<C::order_by_2>);
     static_assert(!SpecWithinLimits<C::order_by_3>);
     static_assert(!SpecWithinLimits<C::fks_3>);
-    static_assert(!SpecWithinLimits<C::group_3>);
+    static_assert(!SpecWithinLimits<C::group_5>);
     static_assert(!SpecWithinLimits<C::distinct_4>);
     // Positive controls: the negatives below must fail BECAUSE of the cap, not for some unrelated reason.
     static_assert(Buildable<C::order_by_2>);
@@ -110,8 +110,19 @@ namespace {
     static_assert(Buildable<C::where_operands>);
     static_assert(Buildable<C::where_empty_in>);
     static_assert(Buildable<C::fks_2>);
-    static_assert(Buildable<C::group_2>);
+    static_assert(Buildable<C::group_4>);
     static_assert(Buildable<C::distinct_3>);
+    // HAVING is built like WHERE and checked like it (#868): positive control, then what it must reject.
+    static_assert(Buildable<C::having_leaf>);
+    static_assert(Buildable<C::having_or>);
+    static_assert(!Buildable<C::having_like_int>);
+    static_assert(!Buildable<C::having_in_null>);
+    static_assert(!Buildable<C::having_flat_legacy>);
+    static_assert(!Buildable<C::having_unknown_combine>);
+    static_assert(Buildable<C::having_grouped_second>);
+    static_assert(!Buildable<C::having_ungrouped>);
+    // needs_sqlite() (TestCase) reads this, so a HAVING collation makes the case SQLite-only.
+    static_assert(C::having_collate.group_by.having.any_collate() && !C::having_leaf.group_by.having.any_collate());
     static_assert(!Buildable<C::where_5>);
     static_assert(!Buildable<C::where_11_values>);
     static_assert(!Buildable<C::where_twice>);
@@ -127,7 +138,7 @@ namespace {
     static_assert(!Buildable<kJoinWithField>);
     static_assert(!Buildable<C::order_by_3>);
     static_assert(!Buildable<C::fks_3>);
-    static_assert(!Buildable<C::group_3>);
+    static_assert(!Buildable<C::group_5>);
     static_assert(!Buildable<C::distinct_4>);
     // #847: an unknown `combine` does not build; the same tree spelled "and"/"or" does.
     static_assert(Buildable<C::where_or_first>);
@@ -207,8 +218,8 @@ namespace {
         storm::test::spec_limits::expect_unknown_combine_is_rejected<parse_case>();
     }
 
-    TEST(SpecLimitsTestParser, HavingValueIsScalarAndObjectIsRejected) {
-        storm::test::spec_limits::expect_having_value_is_scalar<parse_case>();
+    TEST(SpecLimitsTestParser, HavingIsATree) {
+        storm::test::spec_limits::expect_having_is_a_tree<parse_case>();
     }
 
     TEST(SpecLimitsTestParser, EverySharedKeyIsRead) {

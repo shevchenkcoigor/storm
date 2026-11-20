@@ -110,7 +110,8 @@ template <const auto &Tc, typename Model, typename ConnType> auto seed_records()
 // Per-group check: sorted by key, each group's key and aggregate against the case.
 // MIN/MAX/AVG groups read back as std::optional<double> (#416).
 template <const auto &Tc> auto verify_groups(const auto &rows) -> void {
-    static_assert(Tc.bench.group_by.field_count() == 1, "per-group expectations need a single GROUP BY field");
+    static_assert(Tc.bench.group_by.field_count() == 1,
+                  "per-group expectations need a single GROUP BY field; a multi-field case pins expected.count only");
     using Row = std::ranges::range_value_t<std::remove_cvref_t<decltype(rows)>>;
     using Agg = std::tuple_element_t<1, Row>;
     std::vector<std::pair<int, Agg>> groups;
@@ -335,17 +336,9 @@ template <typename Model, typename ConnType> class AggregateRunner {
         return qs.template group_by<FieldRef<dispatch_field<Model>(Tc.bench.group_by.fields[Is].view())>{}...>();
     }
 
+    // HAVING is a tree built by the shared builder, like WHERE (#868).
     template <const auto &Tc> static auto with_having(auto &&g) {
-        constexpr auto &having = Tc.bench.group_by.having;
-        if constexpr (having.enabled) {
-            constexpr auto fi = dispatch_field<Model>(having.field.view());
-            static_assert(
-                having.value.kind == std::remove_cvref_t<decltype(having.value)>::Kind::Int,
-                "a HAVING value is a 32-bit int; null, int64, double and strings are not supported here (#844)");
-            return std::forward<decltype(g)>(g).having(build_compare_expr<fi, having.op>(having.value.as_int));
-        } else {
-            return std::forward<decltype(g)>(g);
-        }
+        return BuilderFor<Tc, Model, ConnType>::with_having(std::forward<decltype(g)>(g));
     }
 
     // The statement the aggregates are applied to: the base query, or it grouped (+ HAVING).

@@ -18,7 +18,7 @@
 //                   "combine": "and" },
 //     "order_by": [ { "field": "salary", "direction": "DESC", "collate": "NOCASE" } ],
 //     "group_by": { "fields": ["department"],
-//                   "having": { "field": "age", "op": ">", "value": 30 } },
+//                   "having": { "conditions": [{ "field": "age", "op": ">", "values": [30] }] } },
 //     "distinct": { "fields": ["name", "age"] },
 //     "limit":    { "value": 10, "offset": 20 },
 //     "aggregate": { "func": "sum", "field": "salary" },
@@ -537,26 +537,6 @@ export namespace storm::benchmark {
         });
     }
 
-    constexpr auto parse_having(std::string_view j, std::size_t& p, std::size_t& truncated) -> HavingSpec {
-        HavingSpec h;
-        h.enabled = true;
-        parse_object(j, p, [&](const char* ptr, JsonKeyRef kr, std::string_view jj, std::size_t& pp) {
-            if (jkey_eq(ptr, kr, "field"))
-                h.field = parse_str<32>(jj, pp, truncated);
-            else if (jkey_eq(ptr, kr, "op"))
-                h.op = parse_str<16>(jj, pp, truncated);
-            else if (jkey_eq(ptr, kr, "value")) {
-                if (at_char(jj, pp, '{') || at_char(jj, pp, '[')) {
-                    h.value_not_scalar = true; // a {kind, value} object would read as 0 (#857)
-                    skip_value(jj, pp);
-                } else
-                    h.value = parse_typed_value(jj, pp, truncated);
-            } else
-                skip_value(jj, pp);
-        });
-        return h;
-    }
-
     // `add` receives every name; the spec decides what to keep (#843). An element that is not a
     // string is skipped, so it adds no empty name.
     template <typename AddFn>
@@ -577,7 +557,7 @@ export namespace storm::benchmark {
                 g.declared_count = 0; // a repeated key replaces the first (#843)
                 parse_fields_array(jj, pp, truncated, [&](const ConstexprString<32>& s) { g.add_field(s); });
             } else if (jkey_eq(ptr, kr, "having"))
-                g.having = parse_having(jj, pp, truncated);
+                parse_where(g.having, jj, pp, truncated);
             else
                 skip_value(jj, pp);
         });

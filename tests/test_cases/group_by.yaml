@@ -619,9 +619,10 @@
     fields:
     - age
     having:
-      field: age
-      op: '>'
-      value: 30
+      conditions:
+      - field: age
+        op: '>'
+        values: [30]
   expected:
     count: 8
     groups_count: 8
@@ -657,9 +658,10 @@
     fields:
     - years_experience
     having:
-      field: years_experience
-      op: '>'
-      value: 5
+      conditions:
+      - field: years_experience
+        op: '>'
+        values: [5]
   expected:
     count: 2
     groups_count: 2
@@ -677,9 +679,10 @@
     fields:
     - age
     having:
-      field: age
-      op: '>'
-      value: 100
+      conditions:
+      - field: age
+        op: '>'
+        values: [100]
   expected:
     count: 0
     groups_count: 0
@@ -694,9 +697,10 @@
     fields:
     - age
     having:
-      field: age
-      op: '>'
-      value: 25
+      conditions:
+      - field: age
+        op: '>'
+        values: [25]
   limit:
     value: 2
     offset: 0
@@ -955,3 +959,115 @@
     - 1
     - 1
     - 1
+- name: having_tree_and_range
+  model: person
+  query_type: group_count
+  dataset: main
+  group_by:
+    fields:
+    - years_experience
+    having:
+      conditions:
+      - field: years_experience
+        op: '>'
+        values: [5]
+      - field: years_experience
+        op: '<'
+        values: [15]
+  expected:
+    count: 1
+    groups_count: 1
+    group_keys:
+    - 10
+    group_agg_int:
+    - 8
+- name: having_tree_or_ends
+  model: person
+  query_type: group_count
+  dataset: main
+  group_by:
+    fields:
+    - years_experience
+    having:
+      conditions:
+      - field: years_experience
+        op: '=='
+        values: [5]
+      - field: years_experience
+        op: '=='
+        values: [15]
+      combine: or
+  expected:
+    count: 2
+    groups_count: 2
+    group_keys:
+    - 5
+    - 15
+    group_agg_int:
+    - 10
+    - 7
+- name: having_in_list
+  model: person
+  query_type: group_count
+  dataset: main
+  group_by:
+    fields:
+    - years_experience
+    having:
+      conditions:
+      - field: years_experience
+        op: IN
+        values: [5, 15]
+  expected:
+    count: 2
+    groups_count: 2
+    group_keys:
+    - 5
+    - 15
+    group_agg_int:
+    - 10
+    - 7
+- name: having_between
+  model: person
+  query_type: group_count
+  dataset: main
+  group_by:
+    fields:
+    - years_experience
+    having:
+      conditions:
+      - field: years_experience
+        op: BETWEEN
+        values: [6, 20]
+  expected:
+    count: 2
+    groups_count: 2
+    group_keys:
+    - 10
+    - 15
+    group_agg_int:
+    - 8
+    - 7
+- name: group_count_by_3_fields
+  model: person
+  query_type: group_count
+  dataset: main
+  group_by:
+    fields:
+    - department
+    - age
+    - name
+  expected:
+    count: 25
+- name: group_count_by_4_fields
+  model: person
+  query_type: group_count
+  dataset: main
+  group_by:
+    fields:
+    - years_experience
+    - department
+    - age
+    - name
+  expected:
+    count: 25

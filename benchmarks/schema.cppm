@@ -303,18 +303,8 @@ export namespace storm::benchmark {
         ConstexprString<16> collate;   // "NOCASE" / "BINARY" / "RTRIM" (empty = none)
     };
 
-    // ========================================================================
-    // HavingSpec — HAVING clause, only valid nested inside GroupBySpec.
-    // ========================================================================
-    struct HavingSpec {
-        bool                enabled = false;
-        ConstexprString<32> field;
-        ConstexprString<16> op;
-        TypedValue          value;
-        // `value` was an object or array, not a scalar (#857). Rejected by GroupBySpec::within_limits()
-        // instead of being read as 0.
-        bool value_not_scalar = false;
-    };
+    // HavingSpec -- the HAVING clause is the same tree of conditions as WHERE (#868), nested in GroupBySpec.
+    using HavingSpec = WhereSpec;
 
     // ========================================================================
     // CappedFields<N> — up to N field names, counting past N (#843) so an overflow is detectable.
@@ -345,12 +335,32 @@ export namespace storm::benchmark {
         }
     };
 
-    // GroupBySpec — one or more GROUP BY fields (max 2), optional HAVING.
-    struct GroupBySpec : CappedFields<2> {
+    // GroupBySpec — one or more GROUP BY fields (max 4), optional HAVING tree.
+    struct GroupBySpec : CappedFields<4> {
         HavingSpec having;
 
         [[nodiscard]] constexpr auto within_limits() const -> bool {
-            return CappedFields<2>::within_limits() && !having.value_not_scalar;
+            return CappedFields<4>::within_limits() && having.within_limits();
+        }
+
+        // Every HAVING leaf names a GROUP BY field: PostgreSQL rejects any other bare column there, and
+        // SQLite would run it, so the case would pass on one backend only (#868).
+        [[nodiscard]] constexpr auto having_fields_are_grouped() const -> bool {
+            for (std::size_t i = 0; i < having.stored_node_count(); ++i) {
+                if (having.nodes[i].is_leaf() && !groups_field(having.nodes[i].field.view())) {
+                    return false;
+                }
+            }
+            return true;
+        }
+
+        [[nodiscard]] constexpr auto groups_field(std::string_view name) const -> bool {
+            for (std::size_t i = 0; i < MAX_FIELDS; ++i) {
+                if (fields[i].view() == name) {
+                    return true;
+                }
+            }
+            return false;
         }
     };
 
