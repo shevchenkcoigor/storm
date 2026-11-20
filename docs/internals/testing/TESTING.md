@@ -262,6 +262,12 @@ aggregate or field. Names in the YAML are resolved by reflection at compile time
   `values[0]` and compile to `LIKE ''`. In the WHERE tree the leaves share one value pool, so the count a leaf CARRIES is
   checked too (`WhereNode::operands_match_op`, via the `SpecWellFormed` constraint on `QueryBuilder`): a leaf short of
   values would otherwise read the next leaf's operand, and extra values would be dropped silently (#843).
+- **`ILIKE`** (#814) resolves to `Field::ilike` like `LIKE` does: one string value. A WHERE leaf may carry `collate:`
+  (`NOCASE` / `BINARY` / `RTRIM`, built as `field.collate(...)`); it is not allowed on `LIKE` / `ILIKE` (`CollateApplies`,
+  SQLite's LIKE ignores collations) nor on an AND/OR node. (SQLite documents LIKE only as ASCII case-insensitive and controlled by `case_sensitive_like`; that a collation does not change it was checked with `sqlite3`, not taken from its docs. `CollatedField` has no `ilike`.) A collation exists on SQLite only, so a case using one
+  (WHERE leaf or `order_by[].collate`) must say `backends: [sqlite]`: that is the only accepted list, anything else is
+  a compile error, and the case is not registered for PostgreSQL at all (absent from that suite, not a pass).
+  A `where_expr:` leaf takes `values: [...]` like the flat form, so `BETWEEN` / `IN` / `LIKE` work inside the tree.
 - **`order_by[].collate`** is an enumerator name of `Collate` (other than `None`) matched case-insensitively (`NOCASE` → `NoCase`);
   an unknown name is a compile error (`ValidCollate`) instead of falling back to `NoCase`.
 - **`distinct.fields`** takes any number of fields through one path (`QueryBuilder::build_distinct_stmt`); a

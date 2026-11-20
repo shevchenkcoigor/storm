@@ -88,7 +88,7 @@ namespace storm::orm::query_builder {
     //
     // A symbolic YAML operator (> >= < <= == !=) is the C++ operator's own symbol,
     // found via operator_of/symbol_of. A word operator maps to a member name by
-    // lower-casing and turning spaces into underscores: LIKE -> like,
+    // lower-casing and turning spaces into underscores: LIKE -> like, ILIKE -> ilike,
     // IS NOT NULL -> is_not_null. No per-operator branch.
     // ========================================================================
     consteval auto ascii_lower(char c) -> char {
@@ -179,7 +179,7 @@ namespace storm::orm::query_builder {
         // where.cppm's OrderableOperand — otherwise rejection lands deep inside
         // resolve_operator's reflection lookup instead of at this named gate.
         constexpr bool is_uuid = std::is_same_v<orm::utilities::optional_inner_type_t<FieldType>, orm::utilities::UUID>;
-        if (op == "==" || op == "!=" || op == "LIKE" || op == "IN") {
+        if (op == "==" || op == "!=" || op == "LIKE" || op == "ILIKE" || op == "IN") {
             return true;
         }
         if (op == ">" || op == ">=" || op == "<" || op == "<=" || op == "BETWEEN") {
@@ -460,7 +460,7 @@ namespace storm::orm::query_builder {
             // IS NULL / IS NOT NULL are not part of the YAML.
             if (node.op == kIsNullOp || node.op == kIsNotNullOp)
                 return false;
-            if (node.op == "LIKE") { // a pattern is text, never a number or null
+            if (node.op == "LIKE" || node.op == "ILIKE") { // a pattern is text, never a number or null
                 if (node.value_count != 1)
                     return false;
                 const auto& pattern = Spec.where.values[node.first_value];
@@ -503,18 +503,41 @@ namespace storm::orm::query_builder {
         }
     }
 
+    // A collation applies to a comparison, not to a pattern here. SQLite's docs only say LIKE is ASCII
+    // case-insensitive and switched by `case_sensitive_like`; they are silent on COLLATE, and sqlite3 shows
+    // `n COLLATE BINARY LIKE 'a%'` still matching `Alice`, so such a case would test nothing. ILIKE has no
+    // CollatedField member at all. The names NOCASE/BINARY/RTRIM exist on SQLite only (PostgreSQL has none).
+    // (PostgreSQL's own LIKE does honour a COLLATE; that is outside what these SQLite-only cases can say.)
+    template <auto op_str, auto collate_str>
+    concept CollateApplies = collate_str.view().empty() || (op_str.view() != "LIKE" && op_str.view() != "ILIKE");
+
+    // The Collate enumerator named `name`; the caller has checked ValidCollate.
+    consteval auto collate_of(std::string_view name) -> storm::orm::utilities::Collate {
+        return std::meta::extract<storm::orm::utilities::Collate>(find_collate(name));
+    }
+
+    // The proxy a condition is built on: the field, or the field.collate(...) of a collated leaf.
+    template <auto fi, auto collate_str> auto field_proxy() {
+        if constexpr (collate_str.view().empty())
+            return storm::meta::FieldRef<fi>{};
+        else
+            return storm::meta::FieldRef<fi>{}.collate(collate_of(collate_str.view()));
+    }
+
     // The WHERE/HAVING condition `FieldRef<fi> <op> vs...` for a YAML operator.
     // Shared by QueryBuilder and the test runners' where-tree builder, so the
     // operator-name mapping exists once (#835).
-    template <auto fi, auto op_str, typename... Ts>
+    template <auto fi, auto op_str, auto collate_str = orm::utilities::ConstexprString<16>{}, typename... Ts>
         requires ValidOperator<op_str, typename storm::meta::FieldRef<fi>::FieldType> &&
-                 ValidValueCount<op_str, sizeof...(Ts)>
+                 ValidValueCount<op_str, sizeof...(Ts)> && ValidCollate<collate_str> &&
+                 CollateApplies<op_str, collate_str>
     auto build_compare_expr(Ts&&... vs) {
-        constexpr auto method = resolve_operator<storm::meta::FieldRef<fi>, op_str, std::remove_cvref_t<Ts>...>();
+        using Proxy           = decltype(field_proxy<fi, collate_str>());
+        constexpr auto method = resolve_operator<Proxy, op_str, std::remove_cvref_t<Ts>...>();
         // The operator templates are instantiated for the decayed type, so their
         // forwarding parameter is an rvalue reference: pass a copy of each value, which
         // also lets a caller hand over a const lvalue.
-        return (storm::meta::FieldRef<fi>{}.[:method:](std::remove_cvref_t<Ts>(vs)...));
+        return (field_proxy<fi, collate_str>().[:method:](std::remove_cvref_t<Ts>(vs)...));
     }
 
     // Default FK resolver (#837): a JOIN names its FK by the member name on Model,
@@ -620,27 +643,27 @@ namespace storm::orm::query_builder {
             using Kind  = decltype(pool[first].kind);
             using Inner = orm::utilities::optional_inner_type_t<FieldType>;
 
-            if constexpr (op == "LIKE") {
-                return build_compare_expr<fi, cond.op>(pool[first].as_string.view());
+            if constexpr (op == "LIKE" || op == "ILIKE") {
+                return build_compare_expr<fi, cond.op, cond.collate>(pool[first].as_string.view());
             } else if constexpr (cond.value_count == 1 && pool[first].kind == Kind::Null) {
                 // `== null` / `!= null`: the same IS [NOT] NULL as `== std::nullopt` (#844).
                 constexpr auto null_op =
                         orm::utilities::ConstexprString<16>(op == "==" ? kIsNullOp.data() : kIsNotNullOp.data());
-                return build_compare_expr<fi, null_op>();
+                return build_compare_expr<fi, null_op, cond.collate>();
             } else if constexpr (op == "BETWEEN") {
-                return build_compare_expr<fi, cond.op>(
+                return build_compare_expr<fi, cond.op, cond.collate>(
                         typed_value_as<FieldType, pool[first]>(), typed_value_as<FieldType, pool[first + 1]>()
                 );
             } else if constexpr (op == "IN") {
                 return []<std::size_t... Is>(std::index_sequence<Is...>) {
-                    return build_compare_expr<fi, spec.where.nodes[N].op>(
+                    return build_compare_expr<fi, spec.where.nodes[N].op, spec.where.nodes[N].collate>(
                             typed_value_as<FieldType, spec.where.values[spec.where.nodes[N].first_value + Is]>()...
                     );
                 }(std::make_index_sequence<cond.value_count>{});
             } else if constexpr (pool[first].kind == Kind::String && !NonTextString<Inner>) {
-                return build_compare_expr<fi, cond.op>(pool[first].as_string.view());
+                return build_compare_expr<fi, cond.op, cond.collate>(pool[first].as_string.view());
             } else {
-                return build_compare_expr<fi, cond.op>(typed_value_as<FieldType, pool[first]>());
+                return build_compare_expr<fi, cond.op, cond.collate>(typed_value_as<FieldType, pool[first]>());
             }
         }
 
@@ -702,7 +725,7 @@ namespace storm::orm::query_builder {
         // ORDER BY
         // ----------------------------------------------------------------
         static consteval auto parse_collate(std::string_view s) -> Collate {
-            return std::meta::extract<Collate>(find_collate(s));
+            return collate_of(s);
         }
 
         static consteval auto enabled_order_by_count() -> std::size_t {

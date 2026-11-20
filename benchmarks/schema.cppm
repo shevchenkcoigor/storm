@@ -103,6 +103,9 @@ export namespace storm::benchmark {
     struct WhereNode {
         ConstexprString<32> field;
         ConstexprString<16> op;
+        // "NOCASE" / "BINARY" / "RTRIM" (empty = none): the leaf compares through field.collate(...).
+        // SQLite only: PostgreSQL has no such collations, so a case using it is `backends: [sqlite]`.
+        ConstexprString<16> collate;
         std::size_t         first_value = 0;
         std::size_t         value_count = 0;
         int                 left        = -1;
@@ -243,6 +246,16 @@ export namespace storm::benchmark {
             return reachable_from_root(stored) == stored;
         }
 
+        // Does any stored leaf compare through a collation? Such a case runs on SQLite only.
+        [[nodiscard]] constexpr auto any_collate() const -> bool {
+            for (std::size_t i = 0; i < stored_node_count(); ++i) {
+                if (!nodes[i].collate.empty()) {
+                    return true;
+                }
+            }
+            return false;
+        }
+
         // The nodes actually stored, for a reader that runs before the limits are checked.
         [[nodiscard]] constexpr auto stored_node_count() const -> std::size_t {
             return node_count < MAX_NODES ? node_count : MAX_NODES;
@@ -254,7 +267,8 @@ export namespace storm::benchmark {
             if (node.is_leaf()) {
                 return !is_join && node.operands_match_op();
             }
-            if (!is_join || node.left < 0 || node.right < 0 || !node.field.view().empty() || node.value_count != 0) {
+            if (!is_join || node.left < 0 || node.right < 0 || !node.field.view().empty() || node.value_count != 0 ||
+                !node.collate.empty()) {
                 return false;
             }
             return static_cast<std::size_t>(node.left) < stored && static_cast<std::size_t>(node.right) < stored;
