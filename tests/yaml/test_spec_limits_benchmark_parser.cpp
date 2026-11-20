@@ -36,6 +36,10 @@ namespace {
         storm::test::spec_limits::expect_malformed_and_repeated_input_is_handled<parse_case>();
     }
 
+    TEST(SpecLimitsBenchmarkParser, ValuesCapsAndOneResultShapePerCase) {
+        storm::test::spec_limits::expect_values_limits_and_single_result_shape<parse_case>();
+    }
+
     TEST(SpecLimitsBenchmarkParser, CountsPastEveryCapAndKeepsParsing) {
         storm::test::spec_limits::expect_counts_past_every_cap<parse_case>();
     }

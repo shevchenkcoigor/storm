@@ -304,3 +304,342 @@
     count: 1
     first:
       years_experience: 15
+- name: values_name_order_limit3
+  model: person
+  query_type: values
+  dataset: main
+  order_by:
+  - field: name
+    direction: ASC
+  limit:
+    value: 3
+    offset: 0
+  values:
+    fields:
+    - name
+  expected_sql_sqlite: SELECT "name" FROM "person" ORDER BY "name" ASC LIMIT 3
+  expected_sql_pg: SELECT "name" FROM "person" ORDER BY "name" ASC NULLS FIRST LIMIT 3
+  expected:
+    count: 3
+    rows:
+    - [Alice]
+    - [Bob]
+    - [Charlie]
+- name: values_age_keeps_duplicates
+  model: person
+  query_type: values
+  dataset: main
+  order_by:
+  - field: age
+    direction: ASC
+  limit:
+    value: 4
+    offset: 0
+  values:
+    fields:
+    - age
+  expected:
+    count: 4
+    rows:
+    - [22]
+    - [22]
+    - [25]
+    - [25]
+- name: values_salary_double_desc
+  model: person
+  query_type: values
+  dataset: main
+  order_by:
+  - field: salary
+    direction: DESC
+  limit:
+    value: 2
+    offset: 0
+  values:
+    fields:
+    - salary
+  expected:
+    count: 2
+    rows:
+    - [98000.0]
+    - [95000.0]
+- name: values_tuple_name_age
+  model: person
+  query_type: values
+  dataset: main
+  order_by:
+  - field: name
+    direction: ASC
+  limit:
+    value: 2
+    offset: 0
+  values:
+    fields:
+    - name
+    - age
+  expected:
+    count: 2
+    rows:
+    - [Alice, 25]
+    - [Bob, 30]
+- name: values_tuple_three_columns
+  model: person
+  query_type: values
+  dataset: main
+  where:
+    conditions:
+    - field: name
+      op: ==
+      values:
+      - Paul
+  values:
+    fields:
+    - name
+    - is_active
+    - salary
+  expected:
+    count: 1
+    rows:
+    - [Paul, false, 32000.0]
+- name: values_optional_null
+  model: person
+  query_type: values
+  dataset: main
+  where:
+    conditions:
+    - field: name
+      op: ==
+      values:
+      - Charlie
+  values:
+    fields:
+    - score
+    - nickname
+  expected:
+    count: 1
+    rows:
+    - [null, null]
+- name: values_optional_present
+  model: person
+  query_type: values
+  dataset: main
+  where:
+    conditions:
+    - field: name
+      op: ==
+      values:
+      - Alice
+  values:
+    fields:
+    - score
+    - nickname
+  expected:
+    count: 1
+    rows:
+    - [85, Ali]
+- name: values_where_count_only
+  model: person
+  query_type: values
+  dataset: main
+  where:
+    conditions:
+    - field: age
+      op: '>'
+      values:
+      - 40
+  values:
+    fields:
+    - name
+  expected:
+    count: 4
+- name: values_empty_table
+  model: person
+  query_type: values
+  dataset: empty
+  values:
+    fields:
+    - name
+  expected:
+    count: 0
+- name: values_offset_only
+  model: person
+  query_type: values
+  dataset: main
+  where:
+    conditions:
+    - field: age
+      op: '>'
+      values:
+      - 40
+  order_by:
+  - field: name
+    direction: ASC
+  limit:
+    value: 0
+    offset: 1
+  values:
+    fields:
+    - name
+  expected_sql_sqlite: SELECT "name" FROM "person" WHERE "age" > ? ORDER BY "name" ASC LIMIT -1 OFFSET 1
+  expected_sql_pg: SELECT "name" FROM "person" WHERE "age" > ? ORDER BY "name" ASC NULLS FIRST LIMIT ALL OFFSET 1
+  expected:
+    count: 3
+    rows:
+    - [Leo]
+    - [Olivia]
+    - [Victor]
+- name: values_join_message_content
+  model: message
+  query_type: values
+  dataset: main_msg
+  order_by:
+  - field: value
+    direction: ASC
+  limit:
+    value: 2
+    offset: 0
+  join:
+    type: inner
+    related: Person
+    fk: sender
+  values:
+    fields:
+    - content
+    - value
+  expected:
+    count: 2
+    rows:
+    - [Hello, 10]
+    - [World, 20]
+- name: rows_all
+  model: person
+  query_type: rows
+  dataset: main
+  expected:
+    count: 25
+- name: rows_empty_table
+  model: person
+  query_type: rows
+  dataset: empty
+  expected:
+    count: 0
+- name: rows_where_age_gt40
+  model: person
+  query_type: rows
+  dataset: main
+  where:
+    conditions:
+    - field: age
+      op: '>'
+      values:
+      - 40
+  expected:
+    count: 4
+- name: rows_order_by_salary_first_row
+  model: person
+  query_type: rows
+  dataset: main
+  order_by:
+  - field: salary
+    direction: ASC
+  limit:
+    value: 3
+    offset: 0
+  expected:
+    count: 3
+    first:
+      name: Paul
+      salary: 32000.0
+- name: rows_join_message
+  model: message
+  query_type: rows
+  dataset: main_msg
+  where:
+    conditions:
+    - field: value
+      op: '>'
+      values:
+      - 25
+  join:
+    type: inner
+    related: Person
+    fk: sender
+  expected:
+    count: 6
+- name: first_join_order_by_value_desc
+  model: message
+  query_type: first
+  dataset: main_msg
+  order_by:
+  - field: value
+    direction: DESC
+  join:
+    type: inner
+    related: Person
+    fk: sender
+  expected:
+    count: 1
+    first:
+      content: Quick note
+      value: 80
+- name: first_left_join_where
+  model: message
+  query_type: first
+  dataset: main_msg
+  where:
+    conditions:
+    - field: value
+      op: ==
+      values:
+      - 30
+  join:
+    type: left
+    related: Person
+    fk: sender
+  expected:
+    count: 1
+    first:
+      content: Hi there
+- name: first_order_by_offset
+  model: person
+  query_type: first
+  dataset: main
+  order_by:
+  - field: salary
+    direction: ASC
+  limit:
+    value: 0
+    offset: 1
+  expected:
+    count: 1
+    first:
+      name: Yara
+      salary: 35000.0
+- name: one_join_unique_value
+  model: message
+  query_type: one
+  dataset: main_msg
+  where:
+    conditions:
+    - field: value
+      op: ==
+      values:
+      - 80
+  join:
+    type: inner
+    related: Person
+    fk: sender
+  expected:
+    count: 1
+    first:
+      content: Quick note
+- name: one_join_many_rows_fails
+  model: message
+  query_type: one
+  dataset: main_msg
+  join:
+    type: inner
+    related: Person
+    fk: sender
+  expected:
+    count: 0

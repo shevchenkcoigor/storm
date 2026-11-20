@@ -45,11 +45,11 @@ import yaml  # PyYAML required
 
 # query_type -> category, grouping the YAML_RUNNERS rows by runner:
 #   InsertRunner/UpdateRunner/EraseRunner -> crud
-#   SelectRunner                          -> select
+#   SelectRunner / ValuesRunner           -> select
 #   AggregateRunner (chain, group_<func>) / DistinctRunner -> grouped
 #   AggregateRunner (scalar aggregates)   -> aggregate
 WRITE_OPS = {"insert_one", "insert_batch", "update_batch", "erase_all", "erase_batch"}
-SELECT_OPS = {"select", "first", "one"}
+SELECT_OPS = {"select", "first", "one", "rows", "values"}
 GROUPED_OPS = {
     "chain",
     "distinct",
@@ -73,6 +73,9 @@ EXPECTED_SQL_CAPACITY = 160
 # `select` (#844). On any other category the keys would be silently ignored and the case would
 # pass without ever comparing SQL.
 EXPECTED_SQL_CATEGORIES = {"aggregate", "select"}
+# Within the select category only these query_types pin SQL: SelectRunner on `select`, ValuesRunner
+# on `values` (#867). `first` / `one` / `rows` would ignore it.
+SQL_PINNING_SELECT_OPS = {"select", "values"}
 
 # One text for both backends, or one per dialect (#844): NULLS FIRST/LAST and LIMIT ALL vs
 # LIMIT -1 differ, so a single string cannot describe both.
@@ -110,10 +113,10 @@ def validate_expected_sql(case: dict, category: str) -> None:
             f"category's runner yet, so it would be silently ignored. Supported: "
             f"{', '.join(sorted(EXPECTED_SQL_CATEGORIES))}."
         )
-    # `first` / `one` share the select category, but SelectRunner pins SQL on `select` only.
-    if category == "select" and case.get("query_type") != "select":
+    # `first` / `one` / `rows` share the select category, but only select and values pin SQL.
+    if category == "select" and case.get("query_type") not in SQL_PINNING_SELECT_OPS:
         raise SystemExit(
-            f"Error: case {name!r}: {', '.join(present)} is supported on query_type select only, "
+            f"Error: case {name!r}: {', '.join(present)} is supported on query_type select and values only, "
             f"not {case.get('query_type')!r}: that runner would ignore it and the case would "
             f"pass without comparing SQL."
         )

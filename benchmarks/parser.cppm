@@ -584,17 +584,19 @@ export namespace storm::benchmark {
         return g;
     }
 
-    constexpr auto parse_distinct(std::string_view j, std::size_t& p, std::size_t& truncated) -> DistinctSpec {
-        DistinctSpec d;
-        d.enabled = true;
+    // `{fields: [...]}` into a CappedFields spec: DISTINCT and values (#867) share this shape.
+    template <typename Spec>
+    constexpr auto parse_capped_fields(std::string_view j, std::size_t& p, std::size_t& truncated) -> Spec {
+        Spec spec;
+        spec.enabled = true;
         parse_object(j, p, [&](const char* ptr, JsonKeyRef kr, std::string_view jj, std::size_t& pp) {
             if (jkey_eq(ptr, kr, "fields")) {
-                d.declared_count = 0; // a repeated key replaces the first (#843)
-                parse_fields_array(jj, pp, truncated, [&](const ConstexprString<32>& s) { d.add_field(s); });
+                spec.declared_count = 0; // a repeated key replaces the first (#843)
+                parse_fields_array(jj, pp, truncated, [&](const ConstexprString<32>& s) { spec.add_field(s); });
             } else
                 skip_value(jj, pp);
         });
-        return d;
+        return spec;
     }
 
     constexpr auto parse_limit(std::string_view j, std::size_t& p) -> LimitSpec {
@@ -705,7 +707,9 @@ export namespace storm::benchmark {
         else if (jkey_eq(ptr, kr, "group_by"))
             b.group_by = parse_group_by(j, p, truncated);
         else if (jkey_eq(ptr, kr, "distinct"))
-            b.distinct = parse_distinct(j, p, truncated);
+            b.distinct = parse_capped_fields<DistinctSpec>(j, p, truncated);
+        else if (jkey_eq(ptr, kr, "values"))
+            b.values = parse_capped_fields<ValuesSpec>(j, p, truncated);
         else if (jkey_eq(ptr, kr, "limit"))
             b.limit = parse_limit(j, p);
         else if (jkey_eq(ptr, kr, "aggregate"))

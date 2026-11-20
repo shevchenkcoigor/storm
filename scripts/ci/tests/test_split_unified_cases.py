@@ -131,6 +131,11 @@ class SharedKeyTest(unittest.TestCase):
         run = run_splitter(case("c", AGGREGATE_QUERY, expected_sql='SELECT COUNT(*) FROM "t"'))
         self.assertEqual(run.returncode, 0, run.stderr)
 
+    def test_shared_expected_sql_is_accepted_on_values(self):
+        # ValuesRunner pins SQL too (#867).
+        run = run_splitter(case("c", {"query_type": "values"}, expected_sql='SELECT "id" FROM "t"'))
+        self.assertEqual(run.returncode, 0, run.stderr)
+
     def test_shared_expected_sql_is_accepted_on_select(self):
         # SelectRunner pins SQL too (#844), so select cases can state ORDER BY / LIMIT text.
         run = run_splitter(case("c", SELECT_QUERY, expected_sql='SELECT "id" FROM "t"'))
@@ -144,6 +149,13 @@ class DialectPairTest(unittest.TestCase):
         written = [c for c in run.outputs["select"] if c["name"] == "pair_select"]
         self.assertEqual(len(written), 1)
         self.assertEqual(written[0]["expected_sql_sqlite"], PAIR["expected_sql_sqlite"])
+        self.assertEqual(written[0]["expected_sql_pg"], PAIR["expected_sql_pg"])
+
+    def test_pair_is_accepted_on_values_and_reaches_the_json(self):
+        run = run_splitter(case("pair_values", {"query_type": "values"}, **PAIR))
+        self.assertEqual(run.returncode, 0, run.stderr)
+        written = [c for c in run.outputs["select"] if c["name"] == "pair_values"]
+        self.assertEqual(len(written), 1)
         self.assertEqual(written[0]["expected_sql_pg"], PAIR["expected_sql_pg"])
 
     def test_pair_is_accepted_on_aggregate(self):
@@ -202,10 +214,11 @@ class UnsupportedCategoryTest(unittest.TestCase):
                     self.assertIn("unsupported", run.stderr)
                     self.assertIn(category, run.stderr)
 
-    def test_first_and_one_are_rejected_in_the_select_category(self):
-        # They share the `select` category with `select` but SelectRunner pins SQL only on
-        # `select`; the C++ static_assert would catch it later, this fails before the build.
-        for query_type in ("first", "one"):
+    def test_first_one_and_rows_are_rejected_in_the_select_category(self):
+        # They share the `select` category with `select` and `values`, but only those two pin SQL
+        # (SelectRunner on `select`, ValuesRunner on `values`, #867); the C++ static_assert would
+        # catch it later, this fails before the build.
+        for query_type in ("first", "one", "rows"):
             with self.subTest(query_type=query_type):
                 run = run_splitter(case("pinned", {"query_type": query_type}, expected_sql="SELECT 1"))
                 self.assertNotEqual(run.returncode, 0)

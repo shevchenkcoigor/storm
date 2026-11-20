@@ -10,7 +10,9 @@
  * - base_query<Tc, Model, ConnType>() — the case's filtered/joined QuerySet
  * - seed_records<Tc, Model, ConnType>() — insert the case's dataset
  * - expect_agg_value / verify_groups — the one aggregate-value check
- * - SelectRunner, AggregateRunner (scalar, chain and group, #841), DistinctRunner:
+ * - ExpectedValue — one actual value against one expected cell (expected.first / expected.rows)
+ * - SelectRunner (select / first / one / rows), ValuesRunner (#867), AggregateRunner (scalar, chain
+ *   and group, #841), DistinctRunner:
  *   stateless, each a `static run<Tc>()` (#837)
  *
  * Include AFTER `import storm;` — it pulls the model headers it needs itself.
@@ -127,9 +129,9 @@ template <const auto &Tc> auto verify_groups(const auto &rows) -> void {
 }
 
 // ---------------------------------------------------------------------------
-// SelectRunner -- plain SELECT queries (select / first / one)
+// ExpectedValue -- an actual value against an expected cell (`expected.first`, `expected.rows`)
 // ---------------------------------------------------------------------------
-template <typename Model, typename ConnType> class SelectRunner {
+struct ExpectedValue {
     // Compare one row member against its expected value, dispatching on the member's C++ type
     // (an optional reads as its inner type, null meaning "no value"). A YAML value that does not
     // fit the member fails to compile (ExpectedValueFits).
@@ -171,7 +173,7 @@ template <typename Model, typename ConnType> class SelectRunner {
         } else if constexpr (storm::orm::query_builder::DurationType<T>) {
             expect_value_eq<Expected>(actual.count()); // a duration is its rep (#853)
         } else {
-            static_assert(std::is_integral_v<T>, "expected.first: unsupported member type");
+            static_assert(std::is_integral_v<T>, "expected value: unsupported member type");
             if constexpr (Expected.kind == Kind::Int64)
                 EXPECT_EQ(static_cast<long long>(actual), Expected.as_int64);
             else
@@ -180,7 +182,7 @@ template <typename Model, typename ConnType> class SelectRunner {
     }
 
     template <auto Expected, typename Member> static auto expect_member_eq(const Member &actual) -> void {
-        static_assert(ExpectedValueFits<Member, Expected>, "expected.first: the value does not fit the member's type");
+        static_assert(ExpectedValueFits<Member, Expected>, "expected value: the value does not fit the member's type");
         using Kind = typename decltype(Expected)::Kind;
         if constexpr (storm::orm::utilities::is_optional_v<Member>) {
             if constexpr (Expected.kind == Kind::Null) {
@@ -193,13 +195,18 @@ template <typename Model, typename ConnType> class SelectRunner {
             expect_value_eq<Expected>(actual);
         }
     }
+};
 
+// ---------------------------------------------------------------------------
+// SelectRunner -- plain SELECT queries (select / first / one / rows)
+// ---------------------------------------------------------------------------
+template <typename Model, typename ConnType> class SelectRunner {
     template <const auto &Tc, std::size_t I, typename Row> static auto verify_first_field(const Row &row) -> void {
         constexpr auto &field = Tc.expected.first.fields[I];
         static_assert(storm::orm::query_builder::has_field<Row>(field.name.view()),
                       "expected.first names a member the row type does not have");
         constexpr auto member = dispatch_field<Row>(field.name.view());
-        expect_member_eq<field.value>(row.[:member:]);
+        ExpectedValue::expect_member_eq<field.value>(row.[:member:]);
     }
 
   public:
@@ -225,6 +232,15 @@ template <typename Model, typename ConnType> class SelectRunner {
                 ASSERT_TRUE(r.value().has_value());
                 verify_first_row<Tc>(r.value().value());
             }
+        } else if constexpr (Tc.query_type == "rows") {
+            int count = 0;
+            for (auto &&row : qs.rows()) {
+                ASSERT_TRUE(row.has_value()) << row.error().message();
+                if (count == 0)
+                    verify_first_row<Tc>(row.value());
+                ++count;
+            }
+            EXPECT_EQ(count, Tc.expected.count);
         } else if constexpr (Tc.query_type == "one") {
             auto r = qs.get().execute();
             if constexpr (Tc.expected.count == 1) {
@@ -243,6 +259,58 @@ template <typename Model, typename ConnType> class SelectRunner {
                 ASSERT_FALSE(result.value().empty());
                 verify_first_row<Tc>(*result.value().begin());
             }
+        }
+    }
+};
+
+// ---------------------------------------------------------------------------
+// ValuesRunner -- column projection values<f1, ...>() (#867): one column yields
+// plf::hive<T>, several yield plf::hive<std::tuple<...>>. `expected.rows` is
+// checked cell by cell, in result order, so more than one row needs an ORDER BY.
+// ---------------------------------------------------------------------------
+template <typename Model, typename ConnType> class ValuesRunner {
+    template <const auto &Tc> static consteval auto rows_match_fields() -> bool {
+        constexpr auto &rows = Tc.expected.rows;
+        for (std::size_t r = 0; r < rows.row_count && r < rows.MAX_ROWS; ++r)
+            if (rows.columns[r] != Tc.bench.values.field_count())
+                return false;
+        return true;
+    }
+
+    // One field projects as the bare value, several as a tuple.
+    template <std::size_t C, typename Row> static auto cell_of(const Row &row) -> const auto & {
+        if constexpr (requires { std::tuple_size<Row>::value; })
+            return std::get<C>(row);
+        else
+            return row;
+    }
+
+    template <const auto &Tc, std::size_t R, typename Row> static auto verify_row(const Row &row) -> void {
+        template for (constexpr std::size_t C : std::views::iota(0uz, Tc.bench.values.field_count()))
+            ExpectedValue::expect_member_eq<Tc.expected.rows.cells[R][C]>(cell_of<C>(row));
+    }
+
+  public:
+    template <const auto &Tc> static auto run() -> void {
+        constexpr auto &rows = Tc.expected.rows;
+        static_assert(Tc.bench.values.field_count() >= 1, "a values case needs at least one field");
+        static_assert(rows.row_count <= rows.MAX_ROWS, "expected.rows has more rows than RowsSpec::MAX_ROWS");
+        static_assert(rows_match_fields<Tc>(),
+                      "every expected.rows row needs one cell per values field, and at most MAX_COLUMNS");
+        static_assert(rows.row_count == 0 || static_cast<int>(rows.row_count) == Tc.expected.count,
+                      "expected.rows lists every result row, so it must agree with expected.count");
+        static_assert(rows.row_count <= 1 || Tc.bench.order_by_count > 0,
+                      "expected.rows is compared in result order: more than one row needs an order_by");
+        auto qs = base_query<Tc, Model, ConnType>();
+        auto query = BuilderFor<Tc, Model, ConnType>::build_values_stmt(qs);
+        expect_sql<Tc, ConnType>(query);
+        auto result = query.execute();
+        ASSERT_TRUE(result.has_value()) << result.error().message();
+        ASSERT_EQ(static_cast<int>(result.value().size()), Tc.expected.count);
+        auto it = result.value().begin();
+        template for (constexpr std::size_t R : std::views::iota(0uz, rows.row_count)) {
+            verify_row<Tc, R>(*it);
+            ++it;
         }
     }
 };

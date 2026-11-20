@@ -182,9 +182,10 @@ same-operator nodes merged; `IN` lists sorted, `BETWEEN` bounds not) all hash al
 
 A case may also carry an optional `expected_sql:` — the exact `sql()` text, compared **before** the
 statement executes. A case without it stays result-only. It is read by `AggregateRunner` (all 51 scalar-aggregate
-cases) and by `SelectRunner` on `query_type: select` (#844); `first` / `one` and the other runners reject it
-(a compile error and a `split_unified_cases.py` error), since they would pass without comparing SQL. Chain and
-group cases share `AggregateRunner` but the split script still rejects the key outside `aggregate` and `select`.
+cases), by `SelectRunner` on `query_type: select` (#844) and by `ValuesRunner` on `values` (#867); `first` /
+`one` / `rows` and the other runners reject it (a compile error and a `split_unified_cases.py` error), since they
+would pass without comparing SQL. Chain and group cases share `AggregateRunner` but the split script still rejects
+the key outside `aggregate` and `select`.
 
 ```yaml
 - name: count_where_age_gte_35
@@ -241,6 +242,17 @@ aggregate or field. Names in the YAML are resolved by reflection at compile time
   `ValidAggregate` kept as the allow-list of names a YAML `func` may reach there; the test runners have no allow-list. Chains are built by recursion over
   `aggregations:`, one step per entry. A name that is not a member function template of the query type is a
   compile error, but any such member would be called, so a `func:` must be an aggregate.
+- **Projections and terminals (#867)** — `query_type: values` plus `values: {fields: [...]}` (1..4 fields, like
+  `distinct:`) runs `values<f...>()`: one field yields `plf::hive<T>`, several `plf::hive<std::tuple<...>>`.
+  `expected.rows: [[a, b], ...]` lists every result row, one typed cell per field (each cell is checked like an
+  `expected.first` value, so `null` and the #844 typed values work); it must agree with `count`, has at most 8 rows
+  of 4 cells, and more than one row needs an `order_by` because rows are compared in result order. `where`,
+  `order_by`, `limit` / `offset` and `join` compose with it. `query_type: rows` iterates `rows()` (every row must
+  be `has_value()`, `count` is checked, `expected.first` is checked on the first row). `first` / `one` run on
+  `select` shapes (where, order, offset, inner / left join); the projection, aggregate, group and set-op
+  statements have no `first()` / `get()` in the API, so there is nothing to spell. A case names ONE result shape
+  (set-op, aggregate or group, distinct, values): two would silently run the first one in `build_terminal`, so
+  `BenchmarkTest::within_limits()` is false and the case does not compile.
 - **`expected.first:`** keys are row **member names**. Each is compared according to the member's C++ type
   (string, bool, floating with a 0.01 tolerance, integer, and the typed values of #844 below). A key with no
   matching member, or a value that does not fit the member (`ExpectedValueFits`), is a compile error. Before
@@ -277,7 +289,7 @@ aggregate or field. Names in the YAML are resolved by reflection at compile time
 
 ### Runner structure (#837)
 
-- **No base class.** Every runner (`SelectRunner`, `AggregateRunner`, `DistinctRunner`,
+- **No base class.** Every runner (`SelectRunner`, `ValuesRunner`, `AggregateRunner`, `DistinctRunner`,
   `InsertRunner`, `UpdateRunner`, `EraseRunner`) is a stateless class with a
   `static run<Tc>()`. The two helpers the old `QueryRunnerBase` mixed are free functions:
   `base_query<Tc, Model, Conn>()` (the case's filtered/joined `QuerySet`) and
