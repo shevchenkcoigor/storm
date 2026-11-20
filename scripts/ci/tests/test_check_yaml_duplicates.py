@@ -180,6 +180,33 @@ class CheckerTest(FakeRepoBase):
                        case("dbl_first", where_expr=expr_leaf("age", "BETWEEN", value_dbl=5.0, value_int=1))])
         self.assert_passes()
 
+    def test_a_collate_makes_inputs_distinct(self):
+        # #866: NOCASE and BINARY compare differently, so the same condition under each is two tests.
+        nocase = {**leaf("name", "==", "alice"), "collate": "NOCASE"}
+        binary = {**leaf("name", "==", "alice"), "collate": "BINARY"}
+        self.corpus(a=[case("nocase", where=where(nocase)), case("binary", where=where(binary)),
+                       case("none", where=where(leaf("name", "==", "alice")))])
+        self.assert_passes()
+
+    def test_the_same_collate_is_still_a_duplicate(self):
+        nocase = {**leaf("name", "==", "alice"), "collate": "NOCASE"}
+        self.corpus(a=[case("one", where=where(nocase)), case("two", where=where(dict(nocase)))])
+        self.assert_fails("one")
+
+    def test_collate_spelling_case_does_not_matter(self):
+        upper = {**leaf("name", "==", "alice"), "collate": "NOCASE"}
+        lower = {**leaf("name", "==", "alice"), "collate": "nocase"}
+        self.corpus(a=[case("upper", where=where(upper)), case("lower", where=where(lower))])
+        self.assert_fails("upper")
+
+    def test_a_values_list_in_a_where_expr_leaf_counts(self):
+        # #866: a where_expr leaf may carry `values:` like the flat form, and equals it.
+        tree = {"field": "age", "op": "BETWEEN", "values": [1, 5]}
+        self.corpus(a=[case("low", where_expr=dict(tree)),
+                       case("high", where_expr={**tree, "values": [1, 9]}),
+                       case("flat", where=where(leaf("age", "BETWEEN", 1, 5)))])
+        self.assert_fails("flat")
+
     # --- the escape hatch ---
 
     def test_allow_duplicate_with_a_reason_exempts_the_case(self):

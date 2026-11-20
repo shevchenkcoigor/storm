@@ -102,10 +102,14 @@ namespace storm::test {
         ConstexprString<EXPECTED_SQL_CAPACITY> expected_sql_sqlite;
         ConstexprString<EXPECTED_SQL_CAPACITY> expected_sql_pg;
         ExpectedSpec                           expected;
-        int                                    insert_count = 0, update_count = 0, erase_count = 0;
-        std::size_t                            chain_len = 0;
-        static constexpr std::size_t           MAX_CHAIN = 5;
-        std::array<ChainAggSpec, MAX_CHAIN>    aggregations{};
+        // `backends: [sqlite]`: the case runs on SQLite only. Required by a feature PostgreSQL lacks (a WHERE
+        // collate); the case is not registered for PG (absent from that suite, not a pass). Any other list is rejected.
+        bool                                sqlite_only     = false;
+        bool                                unknown_backend = false;
+        int                                 insert_count = 0, update_count = 0, erase_count = 0;
+        std::size_t                         chain_len = 0;
+        static constexpr std::size_t        MAX_CHAIN = 5;
+        std::array<ChainAggSpec, MAX_CHAIN> aggregations{};
         constexpr TestCase() = default;
 
         // #843: the spec's caps plus the chain's. A case past one does not compile (QueryBuilder
@@ -120,6 +124,19 @@ namespace storm::test {
             if (!expected_sql.empty())
                 return expected_sql.view();
             return pg_dialect ? expected_sql_pg.view() : expected_sql_sqlite.view();
+        }
+
+        // A collation (WHERE leaf or ORDER BY) exists on SQLite only.
+        [[nodiscard]] constexpr auto needs_sqlite() const -> bool {
+            bool order_collate = false;
+            for (const auto& ob : bench.order_by)
+                order_collate = order_collate || (ob.enabled && !ob.collate.empty());
+            return bench.where.any_collate() || order_collate;
+        }
+
+        // `backends` names only sqlite, and a case that needs SQLite says so.
+        [[nodiscard]] constexpr auto backends_well_formed() const -> bool {
+            return !unknown_backend && (sqlite_only || !needs_sqlite());
         }
 
         // Either the shared key or BOTH dialect keys, never both forms: one dialect alone would
@@ -292,8 +309,16 @@ namespace storm::test {
             n.field = parse_str<32>(jj, pp, truncated);
         } else if (jkey_eq(ptr, kr, "op")) {
             n.op = parse_str<16>(jj, pp, truncated);
+        } else if (jkey_eq(ptr, kr, "collate")) {
+            n.collate = parse_str<16>(jj, pp, truncated);
         } else if (jkey_eq(ptr, kr, "value")) {
             w.add_value(parse_typed_value(jj, pp, truncated)); // any typed operand: null, int64, string (#853)
+        } else if (jkey_eq(ptr, kr, "values")) {
+            // the same operand list as the flat `where:` form, so BETWEEN / IN / LIKE work in the tree
+            w.value_count = n.first_value; // a repeated key replaces the first, as in the flat form
+            parse_array(jj, pp, [&](std::string_view jjj, std::size_t& ppp) {
+                add_where_value(w, jjj, ppp, truncated);
+            });
         } else if (jkey_eq(ptr, kr, "value_int")) {
             TypedValue tv;
             tv.kind   = TypedValue::Kind::Int;
@@ -346,6 +371,21 @@ namespace storm::test {
 
     // --- Top-level TestCase parser ---
 
+    // `backends: [sqlite]` is the only accepted list; anything else (an unknown name, PG alone, two
+    // entries) is recorded and rejected by backends_well_formed().
+    constexpr void parse_backends_into(std::string_view j, std::size_t& p, TestCase& tc, std::size_t& truncated) {
+        std::size_t listed = 0;
+        tc.sqlite_only     = false; // a repeated key replaces the first, as everywhere else
+        tc.unknown_backend = false;
+        parse_array(j, p, [&](std::string_view jj, std::size_t& pp) {
+            const auto name    = parse_str<16>(jj, pp, truncated);
+            tc.sqlite_only     = name.view() == "sqlite";
+            tc.unknown_backend = tc.unknown_backend || name.view() != "sqlite";
+            ++listed;
+        });
+        tc.unknown_backend = tc.unknown_backend || listed != 1;
+    }
+
     // A test-only key, or else a shared one (storm::benchmark::parse_bench_field).
     constexpr void
     parse_test_only_field(TestCase& tc, const char* ptr, JsonKeyRef kr, std::string_view j, std::size_t& p) {
@@ -358,6 +398,8 @@ namespace storm::test {
             tc.expected_sql = parse_str<EXPECTED_SQL_CAPACITY>(j, p, truncated);
         else if (jkey_eq(ptr, kr, "expected_sql_sqlite"))
             tc.expected_sql_sqlite = parse_str<EXPECTED_SQL_CAPACITY>(j, p, truncated);
+        else if (jkey_eq(ptr, kr, "backends"))
+            parse_backends_into(j, p, tc, truncated);
         else if (jkey_eq(ptr, kr, "expected_sql_pg"))
             tc.expected_sql_pg = parse_str<EXPECTED_SQL_CAPACITY>(j, p, truncated);
         else if (jkey_eq(ptr, kr, "expected"))

@@ -366,3 +366,214 @@
       - null
   expected:
     count: 11
+- name: where_name_ilike_lower_a
+  model: person
+  query_type: select
+  dataset: main
+  where:
+    conditions:
+    - field: name
+      op: ILIKE
+      values:
+      - a%
+  expected:
+    count: 1
+- name: where_name_ilike_upper_contains_an
+  model: person
+  query_type: select
+  dataset: main
+  where:
+    conditions:
+    - field: name
+      op: ILIKE
+      values:
+      - '%AN%'
+  expected:
+    count: 3
+- name: where_ilike_and_age_gt
+  model: person
+  query_type: select
+  dataset: main
+  where:
+    combine: and
+    conditions:
+    - field: name
+      op: ILIKE
+      values:
+      - '%an%'
+    - field: age
+      op: '>'
+      values:
+      - 0
+  expected:
+    count: 3
+- name: where_name_eq_lowercase_alice_is_case_sensitive
+  model: person
+  query_type: select
+  dataset: main
+  where:
+    conditions:
+    - field: name
+      op: ==
+      values:
+      - alice
+  expected:
+    count: 0
+- name: where_name_eq_alice_collate_nocase
+  model: person
+  query_type: select
+  dataset: main
+  backends:
+  - sqlite
+  where:
+    conditions:
+    - field: name
+      op: ==
+      collate: NOCASE
+      values:
+      - alice
+  expected:
+    count: 1
+- name: where_name_eq_lowercase_alice_collate_binary
+  model: person
+  query_type: select
+  dataset: main
+  backends:
+  - sqlite
+  where:
+    conditions:
+    - field: name
+      op: ==
+      collate: BINARY
+      values:
+      - alice
+  expected:
+    count: 0
+- name: where_name_ne_alice_collate_nocase
+  model: person
+  query_type: select
+  dataset: main
+  backends:
+  - sqlite
+  where:
+    conditions:
+    - field: name
+      op: '!='
+      collate: NOCASE
+      values:
+      - ALICE
+  expected:
+    count: 24
+- name: where_name_in_collate_nocase
+  model: person
+  query_type: select
+  dataset: main
+  backends:
+  - sqlite
+  where:
+    conditions:
+    - field: name
+      op: IN
+      collate: NOCASE
+      values:
+      - ALICE
+      - bob
+  expected:
+    count: 2
+- name: where_name_between_collate_nocase
+  model: person
+  query_type: select
+  dataset: main
+  backends:
+  - sqlite
+  where:
+    conditions:
+    - field: name
+      op: BETWEEN
+      collate: NOCASE
+      values:
+      - alice
+      - bob
+  expected:
+    count: 2
+- name: where_name_between_collate_binary
+  model: person
+  query_type: select
+  dataset: main
+  backends:
+  - sqlite
+  where:
+    conditions:
+    - field: name
+      op: BETWEEN
+      collate: BINARY
+      values:
+      - alice
+      - bob
+  expected:
+    count: 0
+- name: where_name_in_strings
+  model: person
+  query_type: select
+  dataset: main
+  where:
+    conditions:
+    - field: name
+      op: IN
+      values:
+      - Alice
+      - Bob
+      - Nobody
+  expected:
+    count: 2
+- name: where_name_between_strings
+  model: person
+  query_type: select
+  dataset: main
+  where:
+    conditions:
+    - field: name
+      op: BETWEEN
+      values:
+      - Alice
+      - Bob
+  expected:
+    count: 2
+- name: where_expr_between_or_like
+  model: person
+  query_type: select
+  dataset: main
+  where_expr:
+    op: OR
+    left:
+      field: age
+      op: BETWEEN
+      values:
+      - 22
+      - 24
+    right:
+      field: name
+      op: LIKE
+      values:
+      - A%
+  expected:
+    count: 3
+- name: where_expr_in_and_ilike
+  model: person
+  query_type: select
+  dataset: main
+  where_expr:
+    op: AND
+    left:
+      field: age
+      op: IN
+      values:
+      - 25
+      - 30
+    right:
+      field: name
+      op: ILIKE
+      values:
+      - b%
+  expected:
+    count: 1

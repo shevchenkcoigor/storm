@@ -464,6 +464,8 @@ export namespace storm::benchmark {
                 leaf.field = parse_str<32>(jj, pp, truncated);
             } else if (jkey_eq(ptr, kr, "op")) {
                 leaf.op = parse_str<16>(jj, pp, truncated);
+            } else if (jkey_eq(ptr, kr, "collate")) {
+                leaf.collate = parse_str<16>(jj, pp, truncated);
             } else if (jkey_eq(ptr, kr, "values")) {
                 w.value_count = leaf.first_value; // a repeated key replaces the first (#843)
                 parse_array(jj, pp, [&](std::string_view jjj, std::size_t& ppp) {

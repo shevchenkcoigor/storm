@@ -14,7 +14,9 @@ are two tests. The input is normalised before hashing, so the way it was written
     tree) are both turned into one tree, so the same filter in either form hashes alike;
   * AND/OR are commutative and associative: nested same-operator nodes are flattened and
     the operands sorted;
-  * IN lists are sorted; BETWEEN bounds are not (the order is the range).
+  * IN lists are sorted; BETWEEN bounds are not (the order is the range);
+  * a leaf's `collate` is part of its identity (case-insensitive, like the C++ lookup), and a
+    where_expr leaf's `values: [...]` counts like the flat form's (#866).
 Typed values stay distinct (`value_int: 30` is not `value_dbl: 30.0`, #844), and a case that
 differs in any other key (model, dataset, limit, ...) is a different case.
 
@@ -54,9 +56,12 @@ def dump(node):
     return json.dumps(node, sort_keys=True, separators=(",", ":"))
 
 
-def leaf(field, op, values):
+def leaf(field, op, values, collate=None):
     ordered = sorted(values, key=dump) if op in SORTED_VALUE_OPS else list(values)
-    return {"field": field, "op": op, "values": ordered}
+    node = {"field": field, "op": op, "values": ordered}
+    if collate:  # only when set, so a case without one hashes as before (#866)
+        node["collate"] = str(collate).upper()  # the C++ side matches the name case-insensitively
+    return node
 
 
 def group(combine, children):
@@ -71,18 +76,19 @@ def group(combine, children):
 
 def expr_values(node):
     """Every typed operand of a where_expr leaf, in the order written (BETWEEN's bounds)."""
-    return [node[key] for key in node if key in TYPED_VALUE_KEYS]
+    listed = list(node.get("values", []))  # `values: [...]`, as in the flat form (#866)
+    return listed + [node[key] for key in node if key in TYPED_VALUE_KEYS]
 
 
 def tree_of_expr(node):
     if "left" in node and "right" in node:
         return group(str(node["op"]).lower(), [tree_of_expr(node["left"]), tree_of_expr(node["right"])])
-    return leaf(node["field"], node["op"], expr_values(node))
+    return leaf(node["field"], node["op"], expr_values(node), node.get("collate"))
 
 
 def tree_of_conditions(block):
     combine = str(block.get("combine", DEFAULT_COMBINE)).lower()
-    return group(combine, [leaf(c["field"], c["op"], c.get("values", [])) for c in block["conditions"]])
+    return group(combine, [leaf(c["field"], c["op"], c.get("values", []), c.get("collate")) for c in block["conditions"]])
 
 
 def is_input_key(key):

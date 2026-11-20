@@ -494,6 +494,47 @@ namespace {
     static_assert(!WellFormedExpectedSql<kSqlOnlySqlite>, "one dialect alone leaves the other unchecked");
     static_assert(!WellFormedExpectedSql<kSqlOnlyPg>);
 
+    // ------------------------------------------------------------------
+    // `backends:` and a WHERE collate (#866): a collation exists on SQLite only, so a case using one
+    // must say `backends: [sqlite]`; any other list is rejected rather than read as "all backends".
+    // ------------------------------------------------------------------
+    constexpr auto kCollateSqlite = parse_test_case(
+            R"({"backends":["sqlite"],"where":{"conditions":[{"field":"name","op":"==","collate":"NOCASE","values":["a"]}]},"dataset_size":5})"
+    );
+    constexpr auto kCollateAllBackends = parse_test_case(
+            R"({"where":{"conditions":[{"field":"name","op":"==","collate":"NOCASE","values":["a"]}]},"dataset_size":5})"
+    );
+    constexpr auto kPlainAllBackends =
+            parse_test_case(R"({"where":{"conditions":[{"field":"name","op":"==","values":["a"]}]},"dataset_size":5})");
+    constexpr auto kBackendsPg     = parse_test_case(R"({"backends":["pg"],"dataset_size":5})");
+    constexpr auto kBackendsTwo    = parse_test_case(R"({"backends":["sqlite","pg"],"dataset_size":5})");
+    constexpr auto kBackendsEmpty  = parse_test_case(R"({"backends":[],"dataset_size":5})");
+    constexpr auto kBackendsSqlite = parse_test_case(R"({"backends":["sqlite"],"dataset_size":5})");
+
+    static_assert(kCollateSqlite.backends_well_formed() && kCollateSqlite.sqlite_only);
+    static_assert(kCollateSqlite.bench.where.nodes[0].collate == "NOCASE");
+    static_assert(!kCollateAllBackends.backends_well_formed(), "a collate with no `backends: [sqlite]`");
+    static_assert(kPlainAllBackends.backends_well_formed() && !kPlainAllBackends.sqlite_only);
+    static_assert(kBackendsSqlite.backends_well_formed());
+    static_assert(!kBackendsPg.backends_well_formed(), "an unknown backend name");
+    static_assert(!kBackendsTwo.backends_well_formed(), "only the one-entry [sqlite] list is accepted");
+    static_assert(!kBackendsEmpty.backends_well_formed());
+
+    constexpr auto kInnerCollate = parse_test_case(
+            R"({"backends":["sqlite"],"where_expr":{"op":"AND","collate":"NOCASE","left":{"field":"age","op":">","value_int":1},"right":{"field":"age","op":"<","value_int":9}},"dataset_size":5})"
+    );
+    static_assert(!kInnerCollate.bench.where.is_well_formed(), "a collate on an AND/OR node is never applied");
+    constexpr auto kTreeValues = parse_test_case(
+            R"({"where_expr":{"op":"OR","left":{"field":"age","op":"BETWEEN","values":[1,2]},"right":{"field":"age","op":"IN","values":[5,6,7]}},"dataset_size":5})"
+    );
+    static_assert(kTreeValues.bench.where.is_well_formed());
+    static_assert(
+            kTreeValues.bench.where.nodes[1].value_count == 2 && kTreeValues.bench.where.nodes[2].value_count == 3
+    );
+    constexpr auto kOrderCollate =
+            parse_test_case(R"({"order_by":[{"field":"name","collate":"NOCASE"}],"dataset_size":5})");
+    static_assert(!kOrderCollate.backends_well_formed(), "an ORDER BY collate also needs backends: [sqlite]");
+
     TEST(SpecLimitsTestParser, ExpectedSqlPicksTheDialectsText) {
         constexpr bool kSqlite = false;
         constexpr bool kPg     = true;
