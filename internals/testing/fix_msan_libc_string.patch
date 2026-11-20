@@ -1,0 +1,136 @@
+diff --git a/libcxx/include/string b/libcxx/include/string
+index c450ddcb4191..af930f7c7b93 100644
+--- a/libcxx/include/string
++++ b/libcxx/include/string
+@@ -689,6 +689,13 @@ _LIBCPP_PUSH_MACROS
+ #    define _LIBCPP_STRING_INTERNAL_MEMORY_ACCESS
+ #  endif
+ 
++// Forward-declare the MSAN runtime function at global scope so inline string
++// methods can call it without name-mangling issues (clang-p2996 + import std;
++// MSAN workaround, issue #326).
++#  if __has_feature(memory_sanitizer)
++extern "C" void __msan_unpoison(const volatile void*, __SIZE_TYPE__);
++#  endif
++
+ _LIBCPP_BEGIN_NAMESPACE_STD
+ 
+ // basic_string
+@@ -990,6 +997,15 @@ public:
+ 
+   _LIBCPP_CONSTEXPR_SINCE_CXX20 _LIBCPP_STRING_INTERNAL_MEMORY_ACCESS basic_string(const basic_string& __str)
+       : __alloc_(__alloc_traits::select_on_container_copy_construction(__str.__alloc_)) {
++#  if __has_feature(memory_sanitizer)
++    // Unpoison the source string's repr before reading __is_long(). Under import std;
++    // + MSAN (clang-p2996, #326) the std module boundary prevents MSAN's shadow from
++    // tracking SSO-struct writes, so the source's __rep_ shadow may be uninitialized
++    // even though the string is valid. __msan_unpoison works from suppressed functions.
++    if (!__libcpp_is_constant_evaluated()) {
++      __msan_unpoison(&__str.__rep_, sizeof(__str.__rep_));
++    }
++#  endif
+     if (!__str.__is_long()) {
+       __rep_ = __str.__rep_;
+       __annotate_new(__get_short_size());
+@@ -1000,6 +1016,11 @@ public:
+   _LIBCPP_CONSTEXPR_SINCE_CXX20 _LIBCPP_STRING_INTERNAL_MEMORY_ACCESS
+   basic_string(const basic_string& __str, const allocator_type& __a)
+       : __alloc_(__a) {
++#  if __has_feature(memory_sanitizer)
++    if (!__libcpp_is_constant_evaluated()) {
++      __msan_unpoison(&__str.__rep_, sizeof(__str.__rep_));
++    }
++#  endif
+     if (!__str.__is_long()) {
+       __rep_ = __str.__rep_;
+       __annotate_new(__get_short_size());
+@@ -1017,7 +1038,17 @@ public:
+       // Turning off ASan instrumentation for variable initialization with _LIBCPP_STRING_INTERNAL_MEMORY_ACCESS
+       // does not work consistently during initialization of __r_, so we instead unpoison __str's memory manually first.
+       // __str's memory needs to be unpoisoned only in the case where it's a short string.
++      // MSan (clang-p2996 + import std;, #326): unpoison __str.__rep_ unconditionally before reading __is_long().
++      // When std::string is constructed through the std named module, MSAN's shadow for stack-allocated SSO structs
++      // may not be updated (module boundary prevents shadow propagation), causing false "uninitialized" reports
++      // on the __is_long bit. Unconditionally unpoisoning __rep_ here is safe: if __str is a valid string,
++      // its representation is initialized; we are just telling MSAN what it missed.
+       : __rep_([](basic_string& __s) -> decltype(__s.__rep_)&& {
++#  if __has_feature(memory_sanitizer)
++          if (!__libcpp_is_constant_evaluated()) {
++            __msan_unpoison(&__s.__rep_, sizeof(__s.__rep_));
++          }
++#  endif
+           if (!__s.__is_long())
+             __s.__annotate_delete();
+           return std::move(__s.__rep_);
+@@ -1266,10 +1297,10 @@ public:
+   }
+   _LIBCPP_HIDE_FROM_ABI _LIBCPP_CONSTEXPR_SINCE_CXX20 const_reverse_iterator crend() const _NOEXCEPT { return rend(); }
+ 
+-  _LIBCPP_HIDE_FROM_ABI _LIBCPP_CONSTEXPR_SINCE_CXX20 size_type size() const _NOEXCEPT {
++  _LIBCPP_HIDE_FROM_ABI _LIBCPP_CONSTEXPR_SINCE_CXX20 _LIBCPP_STRING_INTERNAL_MEMORY_ACCESS size_type size() const _NOEXCEPT {
+     return __is_long() ? __get_long_size() : __get_short_size();
+   }
+-  _LIBCPP_HIDE_FROM_ABI _LIBCPP_CONSTEXPR_SINCE_CXX20 size_type length() const _NOEXCEPT { return size(); }
++  _LIBCPP_HIDE_FROM_ABI _LIBCPP_CONSTEXPR_SINCE_CXX20 _LIBCPP_STRING_INTERNAL_MEMORY_ACCESS size_type length() const _NOEXCEPT { return size(); }
+ 
+   _LIBCPP_HIDE_FROM_ABI _LIBCPP_CONSTEXPR_SINCE_CXX20 size_type max_size() const _NOEXCEPT {
+     if (size_type __m = __alloc_traits::max_size(__alloc_); __m <= std::numeric_limits<size_type>::max() / 2) {
+@@ -2172,7 +2203,8 @@ private:
+     __rep_.__l.__size_ = __s;
+   }
+ 
+-  _LIBCPP_HIDE_FROM_ABI _LIBCPP_CONSTEXPR_SINCE_CXX20 size_type __get_long_size() const _NOEXCEPT {
++  _LIBCPP_HIDE_FROM_ABI _LIBCPP_CONSTEXPR_SINCE_CXX20 _LIBCPP_STRING_INTERNAL_MEMORY_ACCESS size_type
++  __get_long_size() const _NOEXCEPT {
+     _LIBCPP_ASSERT_INTERNAL(__rep_.__l.__is_long_, "String has to be long when trying to get the long size");
+     return __rep_.__l.__size_;
+   }
+@@ -2199,12 +2231,14 @@ private:
+     __rep_.__l.__data_ = __p;
+   }
+ 
+-  _LIBCPP_HIDE_FROM_ABI _LIBCPP_CONSTEXPR_SINCE_CXX20 pointer __get_long_pointer() _NOEXCEPT {
++  _LIBCPP_HIDE_FROM_ABI _LIBCPP_CONSTEXPR_SINCE_CXX20 _LIBCPP_STRING_INTERNAL_MEMORY_ACCESS pointer
++  __get_long_pointer() _NOEXCEPT {
+     _LIBCPP_ASSERT_INTERNAL(__rep_.__l.__is_long_, "String has to be long when trying to get the long pointer");
+     return _LIBCPP_ASAN_VOLATILE_WRAPPER(__rep_.__l.__data_);
+   }
+ 
+-  _LIBCPP_HIDE_FROM_ABI _LIBCPP_CONSTEXPR_SINCE_CXX20 const_pointer __get_long_pointer() const _NOEXCEPT {
++  _LIBCPP_HIDE_FROM_ABI _LIBCPP_CONSTEXPR_SINCE_CXX20 _LIBCPP_STRING_INTERNAL_MEMORY_ACCESS const_pointer
++  __get_long_pointer() const _NOEXCEPT {
+     _LIBCPP_ASSERT_INTERNAL(__rep_.__l.__is_long_, "String has to be long when trying to get the long pointer");
+     return _LIBCPP_ASAN_VOLATILE_WRAPPER(__rep_.__l.__data_);
+   }
+@@ -2219,10 +2253,12 @@ private:
+     return _LIBCPP_ASAN_VOLATILE_WRAPPER(pointer_traits<const_pointer>::pointer_to(__rep_.__s.__data_[0]));
+   }
+ 
+-  _LIBCPP_HIDE_FROM_ABI _LIBCPP_CONSTEXPR_SINCE_CXX20 pointer __get_pointer() _NOEXCEPT {
++  _LIBCPP_HIDE_FROM_ABI _LIBCPP_CONSTEXPR_SINCE_CXX20 _LIBCPP_STRING_INTERNAL_MEMORY_ACCESS pointer
++  __get_pointer() _NOEXCEPT {
+     return __is_long() ? __get_long_pointer() : __get_short_pointer();
+   }
+-  _LIBCPP_HIDE_FROM_ABI _LIBCPP_CONSTEXPR_SINCE_CXX20 const_pointer __get_pointer() const _NOEXCEPT {
++  _LIBCPP_HIDE_FROM_ABI _LIBCPP_CONSTEXPR_SINCE_CXX20 _LIBCPP_STRING_INTERNAL_MEMORY_ACCESS const_pointer
++  __get_pointer() const _NOEXCEPT {
+     return __is_long() ? __get_long_pointer() : __get_short_pointer();
+   }
+ 
+@@ -2243,6 +2279,16 @@ private:
+ 
+   _LIBCPP_HIDE_FROM_ABI _LIBCPP_CONSTEXPR_SINCE_CXX20 void __annotate_new(size_type __current_size) const _NOEXCEPT {
+     __annotate_contiguous_container(data() + capacity() + 1, data() + __current_size + 1);
++#  if __has_feature(memory_sanitizer)
++    // Mark the entire string representation as initialized in MSAN's shadow.
++    // Called at the end of every constructor; __msan_unpoison works correctly
++    // even from __no_sanitize__("memory") functions (clang-p2996 #326 fix).
++    if (!__libcpp_is_constant_evaluated()) {
++      __msan_unpoison(const_cast<__rep*>(&__rep_), sizeof(__rep_));
++      if (__is_long())
++        __msan_unpoison(std::__to_address(__get_long_pointer()), capacity() + 1);
++    }
++#  endif
+   }
+ 
+   _LIBCPP_HIDE_FROM_ABI _LIBCPP_CONSTEXPR_SINCE_CXX20 void __annotate_delete() const _NOEXCEPT {
