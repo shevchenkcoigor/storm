@@ -30,6 +30,15 @@ inline constexpr std::string_view FKS_3 = R"({"join":{"type":"inner","fks":["a",
 inline constexpr std::string_view GROUP_2 = R"({"group_by":{"fields":["a","b"]},"dataset_size":5})";
 inline constexpr std::string_view GROUP_3 = R"({"group_by":{"fields":["a","b","c"]},"dataset_size":5})";
 inline constexpr std::string_view DISTINCT_3 = R"({"distinct":{"fields":["a","b","c"]},"dataset_size":5})";
+inline constexpr std::string_view VALUES_4 = R"({"values":{"fields":["a","b","c","d"]},"dataset_size":5})";
+inline constexpr std::string_view VALUES_5 = R"({"values":{"fields":["a","b","c","d","e"]},"dataset_size":5})";
+// Two result shapes in one case: build_terminal would run one and ignore the other (#867).
+inline constexpr std::string_view DISTINCT_AND_VALUES =
+    R"({"distinct":{"fields":["a"]},"values":{"fields":["b"]},"dataset_size":5})";
+inline constexpr std::string_view VALUES_AND_FIRST_OP =
+    R"({"operation":"first","values":{"fields":["a"]},"dataset_size":5})";
+inline constexpr std::string_view VALUES_AND_GROUP_BY =
+    R"({"values":{"fields":["a"]},"group_by":{"fields":["b"]},"dataset_size":5})";
 inline constexpr std::string_view DISTINCT_4 = R"({"distinct":{"fields":["a","b","c","d"]},"dataset_size":5})";
 
 // A non-string element is not a field name; it is skipped, and parsing goes on (a parser that
@@ -179,6 +188,11 @@ template <auto Parse> struct Cases {
     static constexpr auto group_3 = Parse(GROUP_3);
     static constexpr auto distinct_3 = Parse(DISTINCT_3);
     static constexpr auto distinct_4 = Parse(DISTINCT_4);
+    static constexpr auto values_4 = Parse(VALUES_4);
+    static constexpr auto values_5 = Parse(VALUES_5);
+    static constexpr auto distinct_and_values = Parse(DISTINCT_AND_VALUES);
+    static constexpr auto values_and_group_by = Parse(VALUES_AND_GROUP_BY);
+    static constexpr auto values_and_first_op = Parse(VALUES_AND_FIRST_OP);
     static constexpr auto group_non_string = Parse(GROUP_NON_STRING);
     static constexpr auto order_by_non_object = Parse(ORDER_BY_NON_OBJECT);
     static constexpr auto fks_repeated = Parse(FKS_REPEATED);
@@ -266,6 +280,20 @@ template <auto Parse> auto expect_counts_past_every_cap() -> void {
     EXPECT_EQ(C::fks_3.join.fks[1].view(), "b");
     EXPECT_EQ(C::group_3.group_by.fields[1].view(), "b");
     EXPECT_EQ(C::distinct_4.distinct.fields[2].view(), "c");
+}
+
+// values caps at 4 fields, and a case naming two result shapes is out of limits (#867): both make
+// BenchmarkTest::within_limits() false, which every consumer turns into a compile error.
+template <auto Parse> auto expect_values_limits_and_single_result_shape() -> void {
+    using C = Cases<Parse>;
+    EXPECT_TRUE(C::values_4.within_limits());
+    EXPECT_EQ(C::values_5.values.declared_count, 5U);
+    EXPECT_FALSE(C::values_5.within_limits());
+    EXPECT_TRUE(C::distinct_3.within_limits());
+    EXPECT_EQ(C::distinct_and_values.result_shape_count(), 2U);
+    EXPECT_FALSE(C::distinct_and_values.within_limits());
+    EXPECT_FALSE(C::values_and_group_by.within_limits());
+    EXPECT_FALSE(C::values_and_first_op.within_limits()); // `first` is a result shape too
 }
 
 // One root, children by index. `combine` joins the leaves left to right; AND when it is absent.

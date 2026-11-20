@@ -161,6 +161,8 @@ inline constexpr std::array YAML_RUNNERS{
     YamlRunner{.query_type = "select", .is_prefix = false, .runner = ^^SelectRunner},
     YamlRunner{.query_type = "first", .is_prefix = false, .runner = ^^SelectRunner},
     YamlRunner{.query_type = "one", .is_prefix = false, .runner = ^^SelectRunner},
+    YamlRunner{.query_type = "rows", .is_prefix = false, .runner = ^^SelectRunner},
+    YamlRunner{.query_type = "values", .is_prefix = false, .runner = ^^ValuesRunner},
     YamlRunner{.query_type = "count", .is_prefix = false, .runner = ^^AggregateRunner},
     YamlRunner{.query_type = "count_field", .is_prefix = false, .runner = ^^AggregateRunner},
     YamlRunner{.query_type = "count_distinct", .is_prefix = false, .runner = ^^AggregateRunner},
@@ -205,6 +207,19 @@ class UnifiedYamlBody : public UnifiedYamlFixture<Tag, ConnType> {
     // Every case is held to the spec caps and its string buffers (#845), not only one that builds a
     // QueryBuilder (SpecWithinLimits): a write case would otherwise run on a truncated string.
     static_assert(Tc.within_limits(), "YAML case exceeds a spec cap or a string buffer (TESTING.md, #843/#845)");
+    // #867: a key a runner does not read would pass without checking anything, so each is tied to its
+    // query_type. `expected.rows` belongs to values; values checks rows, not `first`; and the plain
+    // select family (select / first / one / rows) runs no projection, aggregate, group or set-op.
+    static_assert(Tc.expected.rows.row_count == 0 || Tc.query_type == "values",
+                  "expected.rows is read by query_type values only");
+    static_assert(Tc.query_type != "values" || Tc.expected.first.count == 0,
+                  "a values case checks expected.rows, not expected.first");
+    static_assert(Tc.query_type != "values" || Tc.bench.values.enabled,
+                  "query_type values needs a values: {fields: [...]} spec");
+    static_assert(!(Tc.query_type == "select" || Tc.query_type == "first" || Tc.query_type == "one" ||
+                    Tc.query_type == "rows") ||
+                      Tc.bench.result_shape_count() == 0,
+                  "query_type select / first / one / rows runs no values, distinct, group_by, aggregate or setop spec");
 
     auto reset_tables() -> void {
         std::shared_ptr<ConnType> conn = // NOSONAR(S1659)

@@ -64,10 +64,23 @@ namespace storm::test {
         constexpr FirstRowSpec()                    = default;
     };
 
+    // `expected.rows` (#867): the projected rows of a `values` case, one list of typed cells per row.
+    // `row_count` and each `columns` entry count past their caps, so the runner rejects an
+    // overflowing case at compile time instead of checking a truncated one.
+    struct RowsSpec {
+        static constexpr std::size_t                              MAX_ROWS    = 8;
+        static constexpr std::size_t                              MAX_COLUMNS = 4;
+        std::array<std::array<TypedValue, MAX_COLUMNS>, MAX_ROWS> cells{};
+        std::array<std::size_t, MAX_ROWS>                         columns{};
+        std::size_t                                               row_count = 0;
+        constexpr RowsSpec()                                                = default;
+    };
+
     struct ExpectedSpec {
         int                            count = 0, int_val = -1, unchanged = -1, remaining = -1;
         double                         dbl_val = -1.0;
         FirstRowSpec                   first;
+        RowsSpec                       rows;
         static constexpr std::size_t   MAX_GROUPS = 20;
         std::array<int, MAX_GROUPS>    group_keys{};
         std::array<int, MAX_GROUPS>    group_agg_int{};
@@ -167,6 +180,24 @@ namespace storm::test {
         });
     }
 
+    // `rows: [[a, b], [c, d]]` — every cell a typed value.
+    constexpr void parse_rows_into(std::string_view j, std::size_t& p, RowsSpec& rows, std::size_t& truncated) {
+        parse_array(j, p, [&](std::string_view jj, std::size_t& pp) {
+            const std::size_t row = rows.row_count++;
+            parse_array(jj, pp, [&](std::string_view jjj, std::size_t& ppp) {
+                if (row >= RowsSpec::MAX_ROWS) {
+                    skip_value(jjj, ppp);
+                    return;
+                }
+                const std::size_t column = rows.columns.data()[row]++;
+                if (column >= RowsSpec::MAX_COLUMNS)
+                    skip_value(jjj, ppp);
+                else
+                    rows.cells.data()[row].data()[column] = parse_typed_value(jjj, ppp, truncated);
+            });
+        });
+    }
+
     template <std::size_t MaxLen>
     constexpr auto parse_int_array(std::string_view j, std::size_t& p, std::array<int, MaxLen>& out) -> std::size_t {
         std::size_t n = 0;
@@ -240,6 +271,8 @@ namespace storm::test {
                 e.remaining = parse_int(jj, pp);
             else if (jkey_eq(ptr, kr, "first"))
                 parse_first_row_into(jj, pp, e.first, truncated);
+            else if (jkey_eq(ptr, kr, "rows"))
+                parse_rows_into(jj, pp, e.rows, truncated);
             else if (!parse_expected_group_key(ptr, kr, jj, pp, e))
                 skip_value(jj, pp);
         });

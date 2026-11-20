@@ -318,7 +318,7 @@ export namespace storm::benchmark {
 
     // ========================================================================
     // CappedFields<N> — up to N field names, counting past N (#843) so an overflow is detectable.
-    // The one list behind GROUP BY and DISTINCT; both parsers add through add_field.
+    // The one list behind GROUP BY, DISTINCT and values; each parser adds through add_field.
     // ========================================================================
     template <std::size_t N> struct CappedFields {
         bool                               enabled    = false;
@@ -356,6 +356,9 @@ export namespace storm::benchmark {
 
     // DistinctSpec — SELECT DISTINCT over 1..3 fields.
     using DistinctSpec = CappedFields<3>;
+
+    // ValuesSpec — column projection `values<f1, ...>()` over 1..4 fields (#867).
+    using ValuesSpec = CappedFields<4>;
 
     // ========================================================================
     // LimitSpec — LIMIT and/or OFFSET. `enabled` is true if either is set.
@@ -425,6 +428,7 @@ export namespace storm::benchmark {
         std::size_t                           order_by_count = 0; // counts past MAX_ORDER_BY (#843)
         GroupBySpec                           group_by;
         DistinctSpec                          distinct;
+        ValuesSpec                            values;
         LimitSpec                             limit;
         AggregateSpec                         aggregate;
         JoinSpec                              join;
@@ -449,12 +453,23 @@ export namespace storm::benchmark {
             add_capped(order_by, order_by_count, entry);
         }
 
-        // #843: false when a case listed more entries than a capped array holds, or (#845) wrote a
-        // string longer than its buffer. The parser keeps counting past a cap instead of dropping
-        // the extra entries silently; the consumer (QueryBuilder) rejects the case at compile time.
+        // #867: build_terminal picks ONE result shape (the first match in a fixed order), so a case
+        // naming two would silently run the earlier one and ignore the other. An aggregate with a
+        // GROUP BY is one shape: the group is how the aggregate chain is applied. The `first` / `get`
+        // operations are shapes too: they are tested after the projections.
+        [[nodiscard]] constexpr auto result_shape_count() const -> std::size_t {
+            const bool single_row_op = operation == "first" || operation == "first_where" || operation == "get_where";
+            return std::size_t{setop.enabled} + std::size_t{aggregate.enabled || group_by.enabled} +
+                   std::size_t{distinct.enabled} + std::size_t{values.enabled} + std::size_t{single_row_op};
+        }
+
+        // #843: false when a case listed more entries than a capped array holds, or names two result shapes (#867), or
+        // (#845) wrote a string longer than its buffer. The parser keeps counting past a cap instead of dropping the
+        // extra entries silently; the consumer (QueryBuilder) rejects the case at compile time.
         [[nodiscard]] constexpr auto within_limits() const -> bool {
             return where.within_limits() && order_by_count <= MAX_ORDER_BY && group_by.within_limits() &&
-                   distinct.within_limits() && join.within_limits() && truncated_strings == 0;
+                   distinct.within_limits() && values.within_limits() && join.within_limits() &&
+                   result_shape_count() <= 1 && truncated_strings == 0;
         }
     };
 

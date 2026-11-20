@@ -879,6 +879,9 @@ namespace storm::orm::query_builder {
         static consteval auto is_distinct_op() -> bool {
             return spec.distinct.enabled;
         }
+        static consteval auto is_values_op() -> bool {
+            return spec.values.enabled;
+        }
         static consteval auto is_first_op() -> bool {
             constexpr auto op = spec.operation.view();
             return op == "first" || op == "first_where";
@@ -893,6 +896,14 @@ namespace storm::orm::query_builder {
                 return qs
                         .template distinct<selector_for<dispatch_field<Model>(spec.distinct.fields[Is].view())>()...>();
             }(std::make_index_sequence<spec.distinct.field_count()>{});
+        }
+
+        // `values<f1, ...>()` (#867): the column projection, duplicates kept. Same field-pack
+        // expansion as build_distinct_stmt.
+        static auto build_values_stmt(auto& qs) {
+            return [&]<std::size_t... Is>(std::index_sequence<Is...>) {
+                return qs.template values<selector_for<dispatch_field<Model>(spec.values.fields[Is].view())>()...>();
+            }(std::make_index_sequence<spec.values.field_count()>{});
         }
 
         // WhereModel defaults to Model. Pass a related model type for JOIN tests
@@ -913,6 +924,8 @@ namespace storm::orm::query_builder {
                 return build_group_by_query(qs);
             } else if constexpr (is_distinct_op()) {
                 return build_distinct_stmt(qs);
+            } else if constexpr (is_values_op()) {
+                return build_values_stmt(qs);
             } else if constexpr (is_first_op()) {
                 return qs.first();
             } else if constexpr (is_get_op()) {
