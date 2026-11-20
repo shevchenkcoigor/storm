@@ -47,19 +47,6 @@ SCALAR_PASSTHROUGH = {
 }
 
 
-def typed_value(v):
-    """Wrap a scalar in the {kind, value} form that parser.hpp's parse_typed_value expects."""
-    if isinstance(v, bool):
-        return {"kind": "bool", "value": v}
-    if isinstance(v, int):
-        return {"kind": "int", "value": v}
-    if isinstance(v, float):
-        return {"kind": "double", "value": v}
-    if isinstance(v, str):
-        return {"kind": "string", "value": v}
-    raise TypeError(f"Unsupported scalar type for typed_value: {type(v).__name__}")
-
-
 def transform_condition(c: dict) -> dict:
     """Transform a single WHERE condition: {field, op, value} → {field, op, values: [...]}."""
     out = {}
@@ -89,13 +76,8 @@ def transform_where(w: dict) -> dict:
 
 
 def transform_having(h: dict) -> dict:
-    out = {}
-    for k, v in h.items():
-        if k == "value":
-            out[k] = typed_value(v)
-        else:
-            out[k] = v
-    return out
+    """HAVING is copied as is: `value` stays a bare scalar, as parse_having expects."""
+    return dict(h)
 
 
 def transform_group_by(g: dict) -> dict:

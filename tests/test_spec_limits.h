@@ -102,6 +102,13 @@ inline constexpr std::string_view WHERE_INT64_MAX =
 inline constexpr std::string_view WHERE_NULL_THEN_STRING =
     R"({"where":{"conditions":[{"field":"a","op":"IN","values":[null,"x",7]}]},"dataset_size":5})";
 
+// HAVING takes a bare scalar `value`, like a WHERE value (#857). The old {kind, value} object was
+// read as 0 and its body skipped; it is now rejected, so it cannot bind the wrong number.
+inline constexpr std::string_view HAVING_SCALAR_VALUE =
+    R"({"group_by":{"fields":["age"],"having":{"field":"age","op":">","value":30}},"dataset_size":5})";
+inline constexpr std::string_view HAVING_OBJECT_VALUE =
+    R"({"group_by":{"fields":["age"],"having":{"field":"age","op":">","value":{"kind":"int","value":30}}},"dataset_size":5})";
+
 // `combine` is exactly "and" or "or" (#847). Any other spelling, a different case included, is
 // rejected rather than read as AND -- also when there is only one condition to join.
 inline constexpr std::string_view WHERE_COMBINE_UNKNOWN =
@@ -199,6 +206,9 @@ template <auto Parse> struct Cases {
     static constexpr auto where_negative_int64 = Parse(WHERE_NEGATIVE_INT64);
     static constexpr auto where_int64_max = Parse(WHERE_INT64_MAX);
     static constexpr auto where_null_then_string = Parse(WHERE_NULL_THEN_STRING);
+
+    static constexpr auto having_scalar = Parse(HAVING_SCALAR_VALUE);
+    static constexpr auto having_object = Parse(HAVING_OBJECT_VALUE);
 
     static constexpr auto where_combine_unknown = Parse(WHERE_COMBINE_UNKNOWN);
     static constexpr auto where_combine_upper_case = Parse(WHERE_COMBINE_UPPER_CASE);
@@ -390,6 +400,21 @@ template <auto Parse> auto expect_unknown_combine_is_rejected() -> void {
     EXPECT_FALSE(C::where_combine_null.where.is_well_formed());
     // The rest of the case is still read.
     EXPECT_EQ(C::where_combine_unknown.dataset_size, 5);
+}
+
+// A HAVING value is read as the number written, and a non-scalar one is rejected (#857).
+template <auto Parse> auto expect_having_value_is_scalar() -> void {
+    using C = Cases<Parse>;
+    using Kind = storm::benchmark::TypedValue::Kind;
+
+    constexpr auto &scalar = C::having_scalar;
+    EXPECT_TRUE(scalar.within_limits());
+    EXPECT_TRUE(scalar.group_by.having.value.kind == Kind::Int);
+    EXPECT_EQ(scalar.group_by.having.value.as_int, 30);
+
+    EXPECT_FALSE(C::having_object.within_limits());
+    // The rest of the case is still read.
+    EXPECT_EQ(C::having_object.dataset_size, 5);
 }
 
 // One parser for every shared key (#845): each entry point reads all of them.
