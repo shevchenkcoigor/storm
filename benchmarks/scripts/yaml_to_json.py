@@ -32,8 +32,9 @@ TOP_LEVEL_RENAME = {
     "category": "test_category",
 }
 
-# Nested spec keys that are passed through as-is
-NESTED_KEYS = {"where", "order_by", "group_by", "distinct", "limit", "aggregate", "join", "setop"}
+# Nested spec keys that are passed through as-is. `aggregate` is the one-step shorthand of
+# `aggregations` (a list of {func, field | fields}, #868).
+NESTED_KEYS = {"distinct", "values", "limit", "aggregate", "aggregations", "join", "setop"}
 
 # Scalar top-level keys that are passed through as-is
 SCALAR_PASSTHROUGH = {
@@ -85,8 +86,28 @@ def transform_group_by(g: dict) -> dict:
     return out
 
 
+# Keys transform_test rewrites rather than passing through.
+TRANSFORMED_KEYS = {"where", "order_by", "group_by"}
+
+KNOWN_KEYS = set(TOP_LEVEL_RENAME) | SCALAR_PASSTHROUGH | NESTED_KEYS | TRANSFORMED_KEYS
+
+
+def reject_unknown_keys(test: dict) -> None:
+    """A key this script does not know would be dropped from the JSON, and the benchmark would
+    silently run without it (an `aggregations` list lost this way runs a plain SELECT)."""
+    unknown = sorted(set(test) - KNOWN_KEYS)
+    if unknown:
+        print(
+            f"Error: benchmark {test.get('name', '<unnamed>')!r}: unknown key(s) {', '.join(unknown)}; "
+            f"add them to {Path(__file__).name} or fix the spelling",
+            file=sys.stderr,
+        )
+        sys.exit(1)
+
+
 def transform_test(test: dict) -> dict:
     """Transform one YAML test entry into the JSON shape parser.hpp expects."""
+    reject_unknown_keys(test)
     out: dict = {}
 
     for yaml_key, json_key in TOP_LEVEL_RENAME.items():
@@ -106,20 +127,9 @@ def transform_test(test: dict) -> dict:
     if "group_by" in test and test["group_by"]:
         out["group_by"] = transform_group_by(test["group_by"])
 
-    if "distinct" in test and test["distinct"]:
-        out["distinct"] = test["distinct"]
-
-    if "limit" in test and test["limit"]:
-        out["limit"] = test["limit"]
-
-    if "aggregate" in test and test["aggregate"]:
-        out["aggregate"] = test["aggregate"]
-
-    if "join" in test and test["join"]:
-        out["join"] = test["join"]
-
-    if "setop" in test and test["setop"]:
-        out["setop"] = test["setop"]
+    for key in sorted(NESTED_KEYS):
+        if key in test and test[key]:
+            out[key] = test[key]
 
     return out
 

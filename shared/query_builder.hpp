@@ -58,15 +58,10 @@ namespace storm::orm::query_builder {
         return matches == 1 ? found : std::meta::info{};
     }
 
-    // The member named by `field`, or a null info for an empty name (COUNT(*)).
-    template <typename Model> consteval auto field_or_null(std::string_view field) -> std::meta::info {
-        return field.empty() ? std::meta::info{} : dispatch_field<Model>(field);
-    }
-
-    // Call q.Fn<FieldRef<Field>{}>(), or q.Fn<>() for a null Field (#834). The
-    // query methods the YAML names (count/sum/avg/min/max/count_distinct) are all
-    // selector-pack templates, so one splice serves every one of them.
-    template <std::meta::info Fn, std::meta::info Field> auto call_query_method(auto&& q) {
+    // Call q.Fn<FieldRef<Fields>{}...>() (#834). The query methods the YAML names
+    // (count/sum/avg/min/max/count_distinct) are all selector-pack templates, so one
+    // splice serves every one of them; several fields are one operand, Fn(a + b) (#868).
+    template <std::meta::info Fn, std::meta::info... Fields> auto call_query_method(auto&& q) {
         static_assert(
                 Fn != std::meta::info{}, "YAML names no single public member function template of the query type"
         );
@@ -74,13 +69,10 @@ namespace storm::orm::query_builder {
         // constraints accept an empty pack, which would emit e.g. SUM(*) and fail
         // only at runtime, so a missing field is rejected here at compile time.
         static_assert(
-                Field != std::meta::info{} || std::meta::identifier_of(Fn) == "count",
+                sizeof...(Fields) > 0 || std::meta::identifier_of(Fn) == "count",
                 "YAML aggregate needs a field: only count may omit it"
         );
-        if constexpr (Field == std::meta::info{})
-            return std::forward<decltype(q)>(q).template[:Fn:]<>();
-        else
-            return std::forward<decltype(q)>(q).template[:Fn:]<storm::meta::FieldRef<Field>{}>();
+        return std::forward<decltype(q)>(q).template[:Fn:]<storm::meta::FieldRef<Fields>{}...>();
     }
 
     // ========================================================================
@@ -566,13 +558,25 @@ namespace storm::orm::query_builder {
     concept SpecWellFormed = Spec.where.is_well_formed() && Spec.group_by.having.is_well_formed() &&
                              Spec.group_by.having_fields_are_grouped();
 
+    // Every aggregate step can be applied (#868): a GROUP BY has at least one, and only count may name no
+    // field (COUNT(*)), and each func is a ValidAggregate name. Whether a field suits sum/avg/min/max is the
+    // statement's own NumericAggregateSelectors.
+    template <auto Spec>
+    concept SpecAggregatesWellFormed = []<std::size_t... Is>(std::index_sequence<Is...>) consteval {
+        constexpr auto& steps = Spec.aggregations;
+        return !(Spec.group_by.enabled && sizeof...(Is) == 0) &&
+               ((ValidAggregate<steps[Is].func> &&
+                 (steps[Is].fields.declared_count > 0 || steps[Is].func.view() == "count")) &&
+                ...);
+    }(std::make_index_sequence<std::min(Spec.aggregation_count, Spec.aggregations.size())>{});
+
     template <
             typename Model,
             auto spec,
             auto fk_resolver  = member_name_resolver<Model>,
             typename ConnType = storm::db::sqlite::Connection>
-        requires SpecWithinLimits<spec> && SpecWellFormed<spec> && (spec.join.enabled || SpecValuesFit<Model, spec>) &&
-                 SpecHavingValuesFit<Model, spec>
+        requires SpecWithinLimits<spec> && SpecWellFormed<spec> && SpecAggregatesWellFormed<spec> &&
+                 (spec.join.enabled || SpecValuesFit<Model, spec>) && SpecHavingValuesFit<Model, spec>
     class QueryBuilder {
         // ----------------------------------------------------------------
         // typed_value_as
@@ -779,23 +783,31 @@ namespace storm::orm::query_builder {
         // ----------------------------------------------------------------
         // Aggregate / GROUP BY / DISTINCT / SET OP
         // ----------------------------------------------------------------
-        // The YAML `func` IS the member name (count/count_distinct/sum/avg/min/max),
-        // resolved by reflection; ValidAggregate stays as the allow-list so a YAML
-        // string can only reach those members, not any same-named one. A case with
-        // no aggregate field is COUNT(*).
-        template <typename Stmt, bool HasField = !spec.aggregate.field.empty()>
-            requires(!HasField) || ValidAggregate<spec.aggregate.func>
-        static consteval auto resolve_aggregate() -> std::meta::info {
-            return member_function_named<std::remove_cvref_t<Stmt>>(HasField ? spec.aggregate.func.view() : "count");
+        // The aggregate chain (#868): step I is `func` over its field pack, applied to step I-1's
+        // statement (every step changes the type, so it is a recursion, not a loop). The YAML `func`
+        // IS the member name, resolved by reflection; ValidAggregate stays as the allow-list so a
+        // YAML string can only reach those members, not any same-named one.
+        template <std::size_t I>
+            requires ValidAggregate<spec.aggregations[I].func>
+        static auto apply_aggregation(auto&& stmt) {
+            constexpr auto& step = spec.aggregations[I];
+            return [&]<std::size_t... Fs>(std::index_sequence<Fs...>) {
+                static_assert(
+                        (has_field<Model>(step.fields.fields[Fs].view()) && ...), "aggregate field not found on model"
+                );
+                constexpr auto method = member_function_named<std::remove_cvref_t<decltype(stmt)>>(step.func.view());
+                return call_query_method<method, dispatch_field<Model>(step.fields.fields[Fs].view())...>(
+                        std::forward<decltype(stmt)>(stmt)
+                );
+            }(std::make_index_sequence<step.fields.declared_count>{});
         }
 
-        template <typename Stmt> static auto apply_aggregate(Stmt& stmt) {
-            static_assert(
-                    spec.aggregate.field.empty() || has_field<Model>(spec.aggregate.field.view()),
-                    "aggregate field not found on model"
-            );
-            constexpr auto method = resolve_aggregate<Stmt>();
-            return call_query_method<method, field_or_null<Model>(spec.aggregate.field.view())>(stmt);
+        template <std::size_t I = 0> static auto apply_aggregations(auto&& stmt) {
+            auto next = apply_aggregation<I>(std::forward<decltype(stmt)>(stmt));
+            if constexpr (I + 1 >= spec.aggregation_count)
+                return next;
+            else
+                return apply_aggregations<I + 1>(std::move(next));
         }
 
         static auto build_group_by_query(auto& qs) {
@@ -804,8 +816,7 @@ namespace storm::orm::query_builder {
                         .template group_by<selector_for<dispatch_field<Model>(spec.group_by.fields[Is].view())>()...>();
             }(std::make_index_sequence<spec.group_by.field_count()>{});
 
-            auto having = with_having(std::move(gb));
-            return apply_aggregate(having);
+            return apply_aggregations(with_having(std::move(gb)));
         }
 
         static consteval auto resolve_setop() -> std::meta::info {
@@ -861,7 +872,7 @@ namespace storm::orm::query_builder {
             return spec.group_by.enabled;
         }
         static consteval auto is_aggregate_op() -> bool {
-            return spec.aggregate.enabled && !spec.group_by.enabled;
+            return spec.aggregation_count > 0 && !spec.group_by.enabled;
         }
         static consteval auto is_distinct_op() -> bool {
             return spec.distinct.enabled;
@@ -877,9 +888,7 @@ namespace storm::orm::query_builder {
             return spec.operation.view() == "get_where";
         }
 
-      public:
         // GROUP BY ... HAVING: the HAVING tree is built exactly like the WHERE tree, over the base model.
-        // Public: the test runner's aggregate pipeline chains aggregates onto the same grouped statement.
         static auto with_having(auto&& grouped) {
             if constexpr (spec.group_by.having.enabled) {
                 return std::forward<decltype(grouped)>(grouped).having(
@@ -893,6 +902,7 @@ namespace storm::orm::query_builder {
             }
         }
 
+      public:
         static auto build_distinct_stmt(auto& qs) {
             return [&]<std::size_t... Is>(std::index_sequence<Is...>) {
                 return qs
@@ -921,7 +931,7 @@ namespace storm::orm::query_builder {
             if constexpr (is_setop()) {
                 return build_setop(qs);
             } else if constexpr (is_aggregate_op()) {
-                return apply_aggregate(qs);
+                return apply_aggregations(qs);
             } else if constexpr (is_group_by_op()) {
                 return build_group_by_query(qs);
             } else if constexpr (is_distinct_op()) {

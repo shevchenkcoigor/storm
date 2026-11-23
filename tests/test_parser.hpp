@@ -24,6 +24,7 @@ import storm_benchmark_parser;
 
 namespace storm::test {
 
+    using storm::benchmark::AggregateSpec;
     using storm::benchmark::BenchmarkTest;
     using storm::benchmark::ConstexprString;
     using storm::benchmark::JsonKeyRef;
@@ -32,6 +33,7 @@ namespace storm::test {
     using storm::benchmark::WhereSpec;
 
     using storm::benchmark::jkey_eq;
+    using storm::benchmark::parse_aggregations;
     using storm::benchmark::parse_array;
     using storm::benchmark::parse_bench_field;
     using storm::benchmark::parse_bool;
@@ -92,12 +94,16 @@ namespace storm::test {
         constexpr ExpectedSpec()                  = default;
     };
 
-    struct ChainAggSpec {
-        ConstexprString<16> func;
-        ConstexprString<32> field;
-        ConstexprString<8>  res_type;
-        double              res_value = 0.0;
-        constexpr ChainAggSpec()      = default;
+    // One aggregate step's expected result (#868), beside bench.aggregations[i]: `value` for a scalar or
+    // chain step, `groups` (one value per group, ascending key) for a GROUP BY step. groups_count counts
+    // past MAX_GROUPS, so an over-long list is rejected; has_value records that `value` was written, so
+    // one on a grouped step is rejected rather than ignored. Any other key (the old `type`) is skipped.
+    struct AggregationResult {
+        bool                                         has_value = false;
+        double                                       value     = 0.0;
+        std::array<double, ExpectedSpec::MAX_GROUPS> groups{};
+        std::size_t                                  groups_count = 0;
+        constexpr AggregationResult()                             = default;
     };
 
     // Longest pinned statement today is 105 chars (a JOIN + WHERE aggregate).
@@ -117,18 +123,20 @@ namespace storm::test {
         ExpectedSpec                           expected;
         // `backends: [sqlite]`: the case runs on SQLite only. Required by a feature PostgreSQL lacks (a WHERE
         // collate); the case is not registered for PG (absent from that suite, not a pass). Any other list is rejected.
-        bool                                sqlite_only     = false;
-        bool                                unknown_backend = false;
-        int                                 insert_count = 0, update_count = 0, erase_count = 0;
-        std::size_t                         chain_len = 0;
-        static constexpr std::size_t        MAX_CHAIN = 5;
-        std::array<ChainAggSpec, MAX_CHAIN> aggregations{};
+        bool sqlite_only     = false;
+        bool unknown_backend = false;
+        // normalise_aggregate_case: a scalar / group_<func> case wrote what its one aggregation cannot hold.
+        bool aggregate_shape_conflict = false;
+        int  insert_count = 0, update_count = 0, erase_count = 0;
+        std::array<AggregationResult, BenchmarkTest::MAX_AGGREGATIONS> results{};
         constexpr TestCase() = default;
 
-        // #843: the spec's caps plus the chain's. A case past one does not compile (QueryBuilder
-        // for the spec's, the aggregate runner for MAX_CHAIN).
+        // #843: the spec's caps (the aggregate chain's among them, #868) plus each step's `groups`.
         [[nodiscard]] constexpr auto within_limits() const -> bool {
-            return bench.within_limits() && chain_len <= MAX_CHAIN;
+            for (const AggregationResult& r : results)
+                if (r.groups_count > ExpectedSpec::MAX_GROUPS)
+                    return false;
+            return bench.within_limits();
         }
 
         // The SQL text to pin for a backend: the shared text, or that dialect's own. Empty means
@@ -137,6 +145,26 @@ namespace storm::test {
             if (!expected_sql.empty())
                 return expected_sql.view();
             return pg_dialect ? expected_sql_pg.view() : expected_sql_sqlite.view();
+        }
+
+        // A scalar or group_<func> case is ONE aggregation of the query_type's func (#868): a second step,
+        // a contradicting `func` or a step's own `result.value` would be dropped or overwritten silently.
+        [[nodiscard]] constexpr auto aggregate_shape_well_formed() const -> bool {
+            return !aggregate_shape_conflict;
+        }
+
+        // Each `result` key is one the runner reads (#868): `value` on an ungrouped step, `groups` on a
+        // grouped one, and `groups` only beside the group keys (expected.groups_count) they line up with.
+        // (declared_count, not the consteval field_count(): a constexpr function cannot call that.)
+        [[nodiscard]] constexpr auto aggregate_results_well_formed() const -> bool {
+            const bool grouped = bench.group_by.declared_count > 0;
+            for (const AggregationResult& r : results) {
+                if (grouped ? r.has_value : r.groups_count > 0)
+                    return false;
+                if (r.groups_count > 0 && expected.groups_count == 0)
+                    return false;
+            }
+            return true;
         }
 
         // A collation (WHERE / HAVING leaf or ORDER BY) exists on SQLite only.
@@ -278,43 +306,24 @@ namespace storm::test {
         });
     }
 
-    constexpr auto parse_chain_agg_spec(std::string_view j, std::size_t& p, std::size_t& truncated) -> ChainAggSpec {
-        ChainAggSpec spec;
+    // A step's `result: {value, groups}`.
+    constexpr void parse_aggregation_result(std::string_view j, std::size_t& p, AggregationResult& r) {
         parse_object(j, p, [&](const char* ptr, JsonKeyRef kr, std::string_view jj, std::size_t& pp) {
-            if (jkey_eq(ptr, kr, "func"))
-                spec.func = parse_str<16>(jj, pp, truncated);
-            else if (jkey_eq(ptr, kr, "field"))
-                spec.field = parse_str<32>(jj, pp, truncated);
-            else if (jkey_eq(ptr, kr, "result"))
-                parse_object(jj, pp, [&](const char* rptr, JsonKeyRef rk, std::string_view rj, std::size_t& rp) {
-                    if (jkey_eq(rptr, rk, "type"))
-                        spec.res_type = parse_str<8>(rj, rp, truncated);
-                    else if (jkey_eq(rptr, rk, "value"))
-                        spec.res_value = parse_double(rj, rp);
+            if (jkey_eq(ptr, kr, "value")) {
+                r.value     = parse_double(jj, pp);
+                r.has_value = true;
+            } else if (jkey_eq(ptr, kr, "groups")) {
+                r.groups_count = 0; // a repeated key replaces the first (#843)
+                parse_array(jj, pp, [&](std::string_view gj, std::size_t& gp) {
+                    if (r.groups_count < ExpectedSpec::MAX_GROUPS)
+                        r.groups.data()[r.groups_count] = parse_double(gj, gp);
                     else
-                        skip_value(rj, rp);
+                        skip_or_step(gj, gp);
+                    ++r.groups_count;
                 });
-            else
+            } else
                 skip_value(jj, pp);
         });
-        return spec;
-    }
-
-    constexpr auto parse_chain_agg_array(
-            std::string_view                               j,
-            std::size_t&                                   p,
-            std::array<ChainAggSpec, TestCase::MAX_CHAIN>& out,
-            std::size_t&                                   truncated
-    ) -> std::size_t {
-        std::size_t n = 0;
-        parse_array(j, p, [&](std::string_view jj, std::size_t& pp) {
-            if (n < TestCase::MAX_CHAIN)
-                out.data()[n] = parse_chain_agg_spec(jj, pp, truncated);
-            else
-                skip_or_step(jj, pp); // any value, an object or not
-            ++n;                      // counts past MAX_CHAIN too, so AggregateRunner can reject the overflow
-        });
-        return n;
     }
 
     constexpr void capture_child(std::string_view jj, std::size_t& pp, bool& has, std::size_t& pos) {
@@ -444,7 +453,18 @@ namespace storm::test {
         else if (jkey_eq(ptr, kr, "update_count"))
             tc.update_count = parse_int(j, p);
         else if (jkey_eq(ptr, kr, "aggregations"))
-            tc.chain_len = parse_chain_agg_array(j, p, tc.aggregations, truncated);
+            // The shared parser reads each step; `result` is test-only.
+            parse_aggregations(
+                    tc.bench,
+                    j,
+                    p,
+                    [&](std::size_t index, const char* sp, JsonKeyRef sk, std::string_view sj, std::size_t& spp) {
+                        if (index < tc.results.size() && jkey_eq(sp, sk, "result"))
+                            parse_aggregation_result(sj, spp, tc.results.data()[index]);
+                        else
+                            skip_value(sj, spp);
+                    }
+            );
         else if (jkey_eq(ptr, kr, "where_expr")) {
             tc.bench.where.begin_form();
             tc.bench.where.root = parse_where_expr_dfs(j, p, tc.bench.where, truncated);
@@ -455,9 +475,9 @@ namespace storm::test {
     inline constexpr std::string_view GROUP_QUERY_PREFIX = "group_";
 
     // #841: a scalar aggregate is a chain of one and a group_<func> case is a chain of one after
-    // group_by, so both are rewritten into `aggregations` here and ONE runner executes them.
-    // A scalar case declares its value as int_val or dbl_val (never both); a chain case already
-    // carries `aggregations` and is left alone.
+    // group_by, so both are rewritten into one aggregation here and ONE runner executes them. The
+    // func is the query_type's; the fields are the `aggregate:` shorthand's, or none (#868). A scalar
+    // case declares its value as int_val or dbl_val (never both); a chain case is left alone.
     constexpr void normalise_aggregate_case(TestCase& tc) {
         const std::string_view query_type = tc.query_type.view();
         const bool             is_group   = query_type.starts_with(GROUP_QUERY_PREFIX);
@@ -465,20 +485,25 @@ namespace storm::test {
                                query_type == "sum" || query_type == "avg" || query_type == "min" || query_type == "max";
         if (!is_group && !is_scalar)
             return;
-        ChainAggSpec spec;
         // count_field is COUNT(field): the QuerySet method is still count.
         std::string_view func = query_type;
         if (is_group)
             func = query_type.substr(GROUP_QUERY_PREFIX.size());
         else if (query_type == "count_field")
             func = "count";
-        spec.func.append(func);
-        spec.field = tc.bench.aggregate.field;
-        // A group case is checked against group_keys / group_agg_*, not res_value.
+        if (tc.bench.aggregation_count == 0)
+            tc.bench.add_aggregation(AggregateSpec{});
+        AggregateSpec&         step    = tc.bench.aggregations.data()[0];
+        const std::string_view written = step.func.view();
+        tc.aggregate_shape_conflict    = tc.bench.aggregation_count > 1 ||
+                                      (!written.empty() && written != func && written != query_type) ||
+                                      (!is_group && tc.results[0].has_value);
+        step.func = {};
+        step.func.append(func);
+        // A group case is checked against group_keys / group_agg_*, not the value.
         if (!is_group)
-            spec.res_value = tc.expected.int_val != -1 ? static_cast<double>(tc.expected.int_val) : tc.expected.dbl_val;
-        tc.aggregations.data()[0] = spec;
-        tc.chain_len              = 1;
+            tc.results.data()[0].value =
+                    tc.expected.int_val != -1 ? static_cast<double>(tc.expected.int_val) : tc.expected.dbl_val;
     }
 
     constexpr void parse_test_case_into(std::string_view j, std::size_t& p, TestCase& tc) {

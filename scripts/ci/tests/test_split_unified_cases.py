@@ -126,6 +126,26 @@ def case(name, query, **keys):
     return out
 
 
+class AggregateShapeTest(unittest.TestCase):
+    """#868: a GROUP BY + aggregate chain is a `chain` case, and multi-field aggregates keep their list."""
+
+    def test_a_grouped_chain_is_bucketed_grouped_with_its_steps_intact(self):
+        steps = [{"func": "count", "result": {"groups": [1, 2]}}, {"func": "sum", "fields": ["a", "b"]}]
+        run = run_splitter(case("grouped_chain", {"query_type": "chain"}, group_by={"fields": ["k"]},
+                                aggregations=steps))
+        self.assertEqual(run.returncode, 0, run.stderr)
+        written = [c for c in run.outputs["grouped"] if c["name"] == "grouped_chain"]
+        self.assertEqual(written[0]["aggregations"], steps)
+
+    def test_a_multi_field_scalar_aggregate_is_bucketed_aggregate(self):
+        aggregate = {"func": "avg", "fields": ["a", "b"]}
+        run = run_splitter(case("avg_two", {"query_type": "avg"}, aggregate=aggregate,
+                                expected_sql='SELECT AVG("a" + "b") FROM "t"'))
+        self.assertEqual(run.returncode, 0, run.stderr)
+        written = [c for c in run.outputs["aggregate"] if c["name"] == "avg_two"]
+        self.assertEqual(written[0]["aggregate"], aggregate)
+
+
 class SharedKeyTest(unittest.TestCase):
     def test_shared_expected_sql_is_accepted_on_aggregate(self):
         run = run_splitter(case("c", AGGREGATE_QUERY, expected_sql='SELECT COUNT(*) FROM "t"'))

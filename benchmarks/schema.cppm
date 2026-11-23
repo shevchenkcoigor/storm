@@ -2,7 +2,8 @@
 //
 // Compile-time C++ schema mirroring the YAML/JSON benchmark test descriptors.
 // Provides BenchmarkTest plus its nested sub-specs (WhereSpec, OrderBySpec,
-// HavingSpec, GroupBySpec, DistinctSpec, LimitSpec, AggregateSpec, JoinSpec,
+// HavingSpec, GroupBySpec, DistinctSpec, LimitSpec, AggregateSpec (one step of the
+// aggregate chain, #868), JoinSpec,
 // SetOpSpec) and the TypedValue tagged-union for sniffed JSON leaf values.
 //
 // Was: benchmarks/schema.hpp (textual header that re-defined a local
@@ -380,13 +381,13 @@ export namespace storm::benchmark {
     };
 
     // ========================================================================
-    // AggregateSpec — aggregate function (count/sum/avg/min/max/count_distinct)
-    // over an optional field. `count` with empty field means COUNT(*).
+    // AggregateSpec — one aggregate step (#868): `func` over 0..3 fields. Several fields are ONE
+    // operand, `func(a + b)`; no field is COUNT(*), and only count may omit them (QueryBuilder).
+    // A case runs up to BenchmarkTest::MAX_AGGREGATIONS steps as a chain.
     // ========================================================================
     struct AggregateSpec {
-        bool                enabled = false;
-        ConstexprString<16> func;  // "count" / "sum" / "avg" / "min" / "max" / "count_distinct"
-        ConstexprString<32> field; // optional — empty means COUNT(*)
+        ConstexprString<16> func; // "count" / "sum" / "avg" / "min" / "max" / "count_distinct"
+        CappedFields<3>     fields;
     };
 
     // ========================================================================
@@ -440,9 +441,14 @@ export namespace storm::benchmark {
         DistinctSpec                          distinct;
         ValuesSpec                            values;
         LimitSpec                             limit;
-        AggregateSpec                         aggregate;
-        JoinSpec                              join;
-        SetOpSpec                             setop;
+        // The aggregate chain (#868): `aggregations:`, or the one-step shorthand `aggregate:`. The count
+        // counts past the cap; `aggregate_forms` counts the keys written, and both forms are rejected.
+        static constexpr std::size_t                MAX_AGGREGATIONS = 5;
+        std::array<AggregateSpec, MAX_AGGREGATIONS> aggregations{};
+        std::size_t                                 aggregation_count = 0;
+        std::size_t                                 aggregate_forms   = 0;
+        JoinSpec                                    join;
+        SetOpSpec                                   setop;
 
         // Scalar test parameters
         int iterations   = 1000;
@@ -463,13 +469,34 @@ export namespace storm::benchmark {
             add_capped(order_by, order_by_count, entry);
         }
 
+        // An aggregate key (`aggregate:` / `aggregations:`) starts the chain over. Unlike other repeated keys,
+        // a second aggregate key (repeated or the other form) does not replace the first: aggregate_forms > 1
+        // makes within_limits() reject the case.
+        constexpr void begin_aggregate_form() {
+            aggregation_count = 0;
+            ++aggregate_forms;
+        }
+
+        constexpr void add_aggregation(const AggregateSpec& step) {
+            add_capped(aggregations, aggregation_count, step);
+        }
+
+        [[nodiscard]] constexpr auto aggregations_within_limits() const -> bool {
+            if (aggregation_count > MAX_AGGREGATIONS || aggregate_forms > 1)
+                return false;
+            for (std::size_t i = 0; i < aggregation_count; ++i)
+                if (!aggregations[i].fields.within_limits())
+                    return false;
+            return true;
+        }
+
         // #867: build_terminal picks ONE result shape (the first match in a fixed order), so a case
         // naming two would silently run the earlier one and ignore the other. An aggregate with a
         // GROUP BY is one shape: the group is how the aggregate chain is applied. The `first` / `get`
         // operations are shapes too: they are tested after the projections.
         [[nodiscard]] constexpr auto result_shape_count() const -> std::size_t {
             const bool single_row_op = operation == "first" || operation == "first_where" || operation == "get_where";
-            return std::size_t{setop.enabled} + std::size_t{aggregate.enabled || group_by.enabled} +
+            return std::size_t{setop.enabled} + std::size_t{aggregation_count > 0 || group_by.enabled} +
                    std::size_t{distinct.enabled} + std::size_t{values.enabled} + std::size_t{single_row_op};
         }
 
@@ -479,7 +506,7 @@ export namespace storm::benchmark {
         [[nodiscard]] constexpr auto within_limits() const -> bool {
             return where.within_limits() && order_by_count <= MAX_ORDER_BY && group_by.within_limits() &&
                    distinct.within_limits() && values.within_limits() && join.within_limits() &&
-                   result_shape_count() <= 1 && truncated_strings == 0;
+                   aggregations_within_limits() && result_shape_count() <= 1 && truncated_strings == 0;
         }
     };
 

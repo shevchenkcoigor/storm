@@ -76,7 +76,7 @@ namespace {
     constexpr auto kExprOverflow  = parse_case(kExprOverflowJson);
     constexpr auto kBoth          = parse_case(kBothJson);
 
-    // The chain limit is part of the same contract (#843): a count past MAX_CHAIN is rejected.
+    // The chain limit is part of the same contract (#843): a count past MAX_AGGREGATIONS is rejected.
     constexpr std::string_view kChain5Json =
             R"({"aggregations":[{"func":"sum","field":"age","result":{"type":"int","value":1}},{"func":"sum","field":"age","result":{"type":"int","value":1}},{"func":"sum","field":"age","result":{"type":"int","value":1}},{"func":"sum","field":"age","result":{"type":"int","value":1}},{"func":"sum","field":"age","result":{"type":"int","value":1}}],"dataset_size":5})";
     constexpr std::string_view kChain6Json =
@@ -181,8 +181,8 @@ namespace {
     }
 
     TEST(SpecLimitsTestParser, ChainCountsPastTheCap) {
-        EXPECT_EQ(kChain5.chain_len, 5U);
-        EXPECT_EQ(kChain6.chain_len, 6U);
+        EXPECT_EQ(kChain5.bench.aggregation_count, 5U);
+        EXPECT_EQ(kChain6.bench.aggregation_count, 6U);
         EXPECT_EQ(kChain6.bench.dataset_size, 5);
     }
 
@@ -569,14 +569,14 @@ namespace {
         storm::test::spec_limits::expect_non_string_value_is_consumed<parse_case>();
     }
 
-    // An element past MAX_CHAIN that is not an object is still one element: it is counted, and the
+    // An element past MAX_AGGREGATIONS that is not an object is still one element: it is counted, and the
     // keys after the array are read.
     constexpr std::string_view kChainOverflowScalarJson =
             R"({"aggregations":[{"func":"sum"},{"func":"sum"},{"func":"sum"},{"func":"sum"},{"func":"sum"},7],"query_type":"agg","dataset_size":5})";
     constexpr auto kChainOverflowScalar = parse_test_case(kChainOverflowScalarJson);
 
     TEST(SpecLimitsTestParser, ChainOverflowScalarIsSkipped) {
-        EXPECT_EQ(kChainOverflowScalar.chain_len, 6U);
+        EXPECT_EQ(kChainOverflowScalar.bench.aggregation_count, 6U);
         EXPECT_FALSE(kChainOverflowScalar.within_limits());
         EXPECT_EQ(kChainOverflowScalar.query_type.view(), "agg");
         EXPECT_EQ(kChainOverflowScalar.bench.dataset_size, 5);

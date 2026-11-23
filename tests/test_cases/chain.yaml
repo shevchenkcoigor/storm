@@ -57,12 +57,10 @@
   - func: sum
     field: age
     result:
-      type: int
       value: 829
   - func: count
     field: ''
     result:
-      type: int
       value: 25
   expected: {}
   query_type: chain
@@ -73,17 +71,14 @@
   - func: sum
     field: age
     result:
-      type: int
       value: 829
   - func: count
     field: ''
     result:
-      type: int
       value: 25
   - func: avg
     field: salary
     result:
-      type: double
       value: 68080.0
   expected: {}
   query_type: chain
@@ -94,27 +89,22 @@
   - func: sum
     field: age
     result:
-      type: int
       value: 829
   - func: count
     field: ''
     result:
-      type: int
       value: 25
   - func: avg
     field: salary
     result:
-      type: double
       value: 68080.0
   - func: min
     field: years_experience
     result:
-      type: double
       value: 5.0
   - func: max
     field: age
     result:
-      type: double
       value: 48.0
   expected: {}
   query_type: chain
@@ -131,12 +121,10 @@
   - func: sum
     field: age
     result:
-      type: int
       value: 508
   - func: count
     field: ''
     result:
-      type: int
       value: 13
   expected: {}
   query_type: chain
@@ -147,17 +135,14 @@
   - func: sum
     field: value
     result:
-      type: int
       value: 360
   - func: count
     field: ''
     result:
-      type: int
       value: 8
   - func: avg
     field: value
     result:
-      type: double
       value: 45.0
   join:
     type: inner
@@ -172,17 +157,14 @@
   - func: sum
     field: age
     result:
-      type: int
       value: 0
   - func: count
     field: ''
     result:
-      type: int
       value: 0
   - func: avg
     field: salary
     result:
-      type: double
       value: 0.0
   query_type: chain
 - name: chain_count_sum_standard5
@@ -192,12 +174,10 @@
   - func: count
     field: ''
     result:
-      type: int
       value: 25
   - func: sum
     field: age
     result:
-      type: int
       value: 829
   expected: {}
   query_type: chain
@@ -208,17 +188,14 @@
   - func: count
     field: ''
     result:
-      type: int
       value: 25
   - func: sum
     field: age
     result:
-      type: int
       value: 829
   - func: avg
     field: salary
     result:
-      type: double
       value: 68080.0
   expected: {}
   query_type: chain
@@ -229,12 +206,10 @@
   - func: avg
     field: salary
     result:
-      type: double
       value: 68080.0
   - func: count
     field: ''
     result:
-      type: int
       value: 25
   expected: {}
   query_type: chain
@@ -245,12 +220,10 @@
   - func: avg
     field: salary
     result:
-      type: double
       value: 68080.0
   - func: min
     field: age
     result:
-      type: double
       value: 22.0
   expected: {}
   query_type: chain
@@ -261,12 +234,10 @@
   - func: avg
     field: salary
     result:
-      type: double
       value: 68080.0
   - func: max
     field: age
     result:
-      type: double
       value: 48.0
   expected: {}
   query_type: chain
@@ -277,12 +248,10 @@
   - func: min
     field: age
     result:
-      type: double
       value: 22.0
   - func: max
     field: age
     result:
-      type: double
       value: 48.0
   expected: {}
   query_type: chain
@@ -293,12 +262,10 @@
   - func: min
     field: score
     result:
-      type: double
       value: 40.0
   - func: sum
     field: age
     result:
-      type: int
       value: 829
   expected: {}
   query_type: chain
@@ -309,12 +276,10 @@
   - func: sum
     field: score
     result:
-      type: int
       value: 1108
   - func: avg
     field: salary
     result:
-      type: double
       value: 68080.0
   expected: {}
   query_type: chain
@@ -325,12 +290,10 @@
   - func: max
     field: score
     result:
-      type: double
       value: 95.0
   - func: avg
     field: salary
     result:
-      type: double
       value: 68080.0
   expected: {}
   query_type: chain
@@ -341,12 +304,10 @@
   - func: max
     field: score
     result:
-      type: double
       value: 95.0
   - func: min
     field: score
     result:
-      type: double
       value: 40.0
   expected: {}
   query_type: chain
@@ -357,22 +318,18 @@
   - func: count
     field: ''
     result:
-      type: int
       value: 25
   - func: sum
     field: age
     result:
-      type: int
       value: 829
   - func: min
     field: score
     result:
-      type: double
       value: 40.0
   - func: max
     field: score
     result:
-      type: double
       value: 95.0
   expected: {}
   query_type: chain
@@ -383,27 +340,120 @@
   - func: count
     field: ''
     result:
-      type: int
       value: 25
   - func: sum
     field: age
     result:
-      type: int
       value: 829
   - func: avg
     field: salary
     result:
-      type: double
       value: 68080.0
   - func: min
     field: score
     result:
-      type: double
       value: 40.0
   - func: max
     field: score
     result:
-      type: double
       value: 95.0
   expected: {}
   query_type: chain
+# A chain step over several fields (#868): SUM(age + years_experience) is 1064 on `main`.
+- name: chain_sum_two_fields_count
+  model: person
+  dataset: main
+  aggregations:
+  - func: sum
+    fields: [age, years_experience]
+    result:
+      value: 1064
+  - func: count
+    result:
+      value: 25
+  expected: {}
+  query_type: chain
+# GROUP BY + aggregate chain (#868): one row per group, tuple<key, a1, ..., aN>. Each step's
+# `result.groups` lists its per-group value in ascending key order, beside expected.group_keys.
+# Dataset `main` by years_experience: 5 -> 10 rows (age sum 268, salary avg 50300),
+# 10 -> 8 rows (285, 76375), 15 -> 7 rows (276, 84000).
+- name: group_chain_count_sum_avg_by_years_experience
+  model: person
+  query_type: chain
+  dataset: main
+  group_by:
+    fields: [years_experience]
+  aggregations:
+  - func: count
+    result:
+      groups: [10, 8, 7]
+  - func: sum
+    field: age
+    result:
+      groups: [268, 285, 276]
+  - func: avg
+    field: salary
+    result:
+      groups: [50300.0, 76375.0, 84000.0]
+  expected:
+    count: 3
+    groups_count: 3
+    group_keys: [5, 10, 15]
+# WHERE age > 25 drops 5 of the years_experience=5 rows; ORDER BY DESC + LIMIT 2 keeps the groups
+# 15 and 10 (checked in ascending key order). A step over two fields: SUM(age + years_experience).
+- name: group_chain_where_order_limit_by_years_experience
+  model: person
+  query_type: chain
+  dataset: main
+  where:
+    conditions:
+    - field: age
+      op: '>'
+      values: [25]
+  group_by:
+    fields: [years_experience]
+  order_by:
+  - field: years_experience
+    direction: DESC
+  limit:
+    value: 2
+  aggregations:
+  - func: count
+    result:
+      groups: [8, 7]
+  - func: sum
+    fields: [age, years_experience]
+    result:
+      groups: [365, 381]
+  - func: min
+    field: age
+    result:
+      groups: [29.0, 35.0]
+  expected:
+    count: 2
+    groups_count: 2
+    group_keys: [10, 15]
+# HAVING + chain: HAVING years_experience >= 10 keeps the groups 10 and 15.
+- name: group_chain_having_count_max_by_years_experience
+  model: person
+  query_type: chain
+  dataset: main
+  group_by:
+    fields: [years_experience]
+    having:
+      conditions:
+      - field: years_experience
+        op: '>='
+        values: [10]
+  aggregations:
+  - func: count
+    result:
+      groups: [8, 7]
+  - func: max
+    field: salary
+    result:
+      groups: [98000.0, 93000.0]
+  expected:
+    count: 2
+    groups_count: 2
+    group_keys: [10, 15]

@@ -397,12 +397,23 @@ YAML_DUPLICATES = Guard(
     "no duplicate YAML test inputs",
 )
 
+# --- benchmark YAML -> JSON converter (#868) ---
+# yaml_to_json.py feeds the JSON the benchmark parser #embeds; a key it does not pass through used
+# to vanish, so the benchmark ran without it. It now rejects unknown keys. The test also converts
+# the real benchmark corpus, so a corpus edit reruns it. Needs PyYAML, like the converter.
+BENCHMARK_YAML_TO_JSON = Guard(
+    "benchmark YAML converter",
+    r"^(benchmarks/scripts/yaml_to_json\.py|scripts/ci/tests/test_yaml_to_json\.py|benchmarks/tests/benchmark_tests\.yaml)$",
+    (Step(None, script("scripts/ci/tests/test_yaml_to_json.py"), "benchmark YAML converter self-test failed"),),
+    "benchmark YAML converter self-test passed",
+)
+
 GUARDS = (
     AGENT_FRONTMATTER, TIDY_SKIPLIST, SWEEP_WORKFLOW, SESSION_START_HOOK, SELF_HEAL, CMAKE_FORMAT_TARGET, PYYAML_CHECK,
     CPM_CACHE_CHECK, CPM_VENDORED, CPM_COLD_CACHE, COVERAGE_GATE, SMART_SKIP, TIDY_PREREQS, ORM_BACKEND_IMPORTS, NO_STD_FORMAT,
     PRE_COMMIT_GUARDS,
     CI_DIGESTS, COVERAGE_PARALLEL, NINJALOG_STATS, RATIO_GATE, TIME_TRACE, SONAR_GATE, SHARED_TEST_HELPERS,
-    ATLAS_MIGRATION_CHECK, SPLIT_UNIFIED_CASES, YAML_DUPLICATES,
+    ATLAS_MIGRATION_CHECK, SPLIT_UNIFIED_CASES, YAML_DUPLICATES, BENCHMARK_YAML_TO_JSON,
 )
 
 # scripts/*/tests/ self-tests deliberately run by no guard, with where they DO run.

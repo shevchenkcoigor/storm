@@ -21,7 +21,8 @@
 //                   "having": { "conditions": [{ "field": "age", "op": ">", "values": [30] }] } },
 //     "distinct": { "fields": ["name", "age"] },
 //     "limit":    { "value": 10, "offset": 20 },
-//     "aggregate": { "func": "sum", "field": "salary" },
+//     "aggregate": { "func": "sum", "field": "salary" },   // or "fields": [..]; or
+//     "aggregations": [ { "func": "count" }, { "func": "avg", "fields": ["a", "b"] } ],
 //     "join":     { "type": "inner", "related": "User", "fk": "sender" },
 //     "setop":    { "type": "union" }
 //   }
@@ -593,18 +594,66 @@ export namespace storm::benchmark {
         return lim;
     }
 
-    constexpr auto parse_aggregate(std::string_view j, std::size_t& p, std::size_t& truncated) -> AggregateSpec {
-        AggregateSpec agg;
-        agg.enabled = true;
+    // One aggregate step's shared key (#868): `func`, `field` (a one-element `fields`; empty is no field,
+    // COUNT(*)) or `fields` (an empty name in it is skipped the same way). Either field key replaces the list
+    // before it. Returns false for any other key, which the caller reads (the test parser's `result`) or skips.
+    constexpr auto parse_aggregate_key(
+            AggregateSpec&   agg,
+            const char*      ptr,
+            JsonKeyRef       kr,
+            std::string_view j,
+            std::size_t&     p,
+            std::size_t&     truncated
+    ) -> bool {
+        if (jkey_eq(ptr, kr, "func")) {
+            agg.func = parse_str<16>(j, p, truncated);
+            return true;
+        }
+        const bool one = jkey_eq(ptr, kr, "field");
+        if (!one && !jkey_eq(ptr, kr, "fields"))
+            return false;
+        agg.fields = {};
+        if (one) {
+            if (const auto name = parse_str<32>(j, p, truncated); !name.empty())
+                agg.fields.add_field(name);
+        } else
+            parse_fields_array(j, p, truncated, [&](const ConstexprString<32>& s) {
+                if (!s.empty())
+                    agg.fields.add_field(s);
+            });
+        return true;
+    }
+
+    // Skips a step key the shared parser does not read.
+    inline constexpr auto skip_step_key = [](std::size_t, const char*, JsonKeyRef, std::string_view j, std::size_t& p) {
+        skip_value(j, p);
+    };
+
+    // One step object, appended to the chain. `other(index, ...)` reads every key that is not shared.
+    template <typename StepKeyFn>
+    constexpr void parse_aggregate_step(BenchmarkTest& b, std::string_view j, std::size_t& p, StepKeyFn other) {
+        AggregateSpec     step;
+        const std::size_t index = b.aggregation_count;
         parse_object(j, p, [&](const char* ptr, JsonKeyRef kr, std::string_view jj, std::size_t& pp) {
-            if (jkey_eq(ptr, kr, "func"))
-                agg.func = parse_str<16>(jj, pp, truncated);
-            else if (jkey_eq(ptr, kr, "field"))
-                agg.field = parse_str<32>(jj, pp, truncated);
-            else
-                skip_value(jj, pp);
+            if (!parse_aggregate_key(step, ptr, kr, jj, pp, b.truncated_strings))
+                other(index, ptr, kr, jj, pp);
         });
-        return agg;
+        b.add_aggregation(step);
+    }
+
+    // `aggregations: [{...}, ...]`. An element that is not an object is still one step (counted, so
+    // within_limits() sees it), and the keys after the list are read.
+    template <typename StepKeyFn>
+    constexpr void parse_aggregations(BenchmarkTest& b, std::string_view j, std::size_t& p, StepKeyFn other) {
+        b.begin_aggregate_form();
+        parse_array(j, p, [&](std::string_view jj, std::size_t& pp) {
+            if (at_char(jj, pp, '{'))
+                parse_aggregate_step(b, jj, pp, other);
+            else {
+                b.add_aggregation(AggregateSpec{});
+                skip_or_step(jj, pp);
+            }
+        });
     }
 
     constexpr auto parse_join(std::string_view j, std::size_t& p, std::size_t& truncated) -> JoinSpec {
@@ -692,8 +741,11 @@ export namespace storm::benchmark {
             b.values = parse_capped_fields<ValuesSpec>(j, p, truncated);
         else if (jkey_eq(ptr, kr, "limit"))
             b.limit = parse_limit(j, p);
-        else if (jkey_eq(ptr, kr, "aggregate"))
-            b.aggregate = parse_aggregate(j, p, truncated);
+        else if (jkey_eq(ptr, kr, "aggregate")) {
+            b.begin_aggregate_form(); // the one-step shorthand of `aggregations` (#868)
+            parse_aggregate_step(b, j, p, skip_step_key);
+        } else if (jkey_eq(ptr, kr, "aggregations"))
+            parse_aggregations(b, j, p, skip_step_key);
         else if (jkey_eq(ptr, kr, "join"))
             b.join = parse_join(j, p, truncated);
         else if (jkey_eq(ptr, kr, "setop"))
