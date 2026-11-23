@@ -259,6 +259,16 @@ tests:
         func: max
         field: salary
 
+  - name: aggregate_avg_two_fields
+    category: AGGREGATE
+    description: "AVG(age + salary) aggregate (one operand over two fields, #868)"
+    model: Person
+    operation: aggregate_avg_two_fields
+    size_profile: dataset_small
+    aggregate:
+        func: avg
+        fields: [age, salary]
+
   # ============================================================================
   # DISTINCT Operations (with size profiles)
   # ============================================================================
@@ -647,6 +657,22 @@ tests:
         fields: [age]
     aggregate:
         func: max
+        field: salary
+
+  - name: group_by_chain_count_sum_avg
+    category: GROUP_BY_CHAIN
+    description: "SELECT age, COUNT(*), SUM(salary), AVG(salary) GROUP BY age (#868)"
+    model: Person
+    operation: group_by_chain
+    iterations: 1000
+    init_dataset_size: 10000
+    group_by:
+        fields: [age]
+    aggregations:
+      - func: count
+      - func: sum
+        field: salary
+      - func: avg
         field: salary
 
   # ============================================================================

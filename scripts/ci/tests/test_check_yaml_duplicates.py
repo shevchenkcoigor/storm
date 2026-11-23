@@ -207,6 +207,61 @@ class CheckerTest(FakeRepoBase):
                        case("flat", where=where(leaf("age", "BETWEEN", 1, 5)))])
         self.assert_fails("flat")
 
+    # --- aggregate normalisation (#868) ---
+
+    def test_field_and_a_one_element_fields_list_are_the_same_aggregate(self):
+        self.corpus(a=[case("field", query_type="avg", aggregate={"func": "avg", "field": "age"}),
+                       case("fields", query_type="avg", aggregate={"func": "avg", "fields": ["age"]})])
+        self.assert_duplicates("a.yaml:field", "a.yaml:fields")
+
+    def test_an_empty_field_is_no_field(self):
+        # COUNT(*) is written `field: ''` or with no field at all.
+        self.corpus(a=[case("empty", query_type="count", aggregate={"func": "count", "field": ""}),
+                       case("absent", query_type="count", aggregate={"func": "count"})])
+        self.assert_duplicates("a.yaml:empty", "a.yaml:absent")
+
+    def test_the_shorthand_equals_a_one_element_aggregations_list(self):
+        self.corpus(a=[case("short", query_type="chain", aggregate={"func": "sum", "field": "age"}),
+                       case("listed", query_type="chain", aggregations=[{"func": "sum", "fields": ["age"]}])])
+        self.assert_duplicates("a.yaml:short", "a.yaml:listed")
+
+    def test_an_aggregation_result_is_not_input(self):
+        step = {"func": "sum", "field": "age"}
+        self.corpus(a=[case("one", query_type="chain", aggregations=[{**step, "result": {"type": "int", "value": 1}}]),
+                       case("two", query_type="chain", aggregations=[{**step, "result": {"type": "int", "value": 2}}])])
+        self.assert_duplicates("a.yaml:one", "a.yaml:two")
+
+    def test_the_last_field_key_wins_like_the_parser(self):
+        # parser.cppm reads the keys in order and each field key replaces the list before it, so
+        # `fields: [a, b]` then `field: ''` is COUNT(*), and `field: age` then `fields: [...]` is the list.
+        self.corpus(a=[case("star", query_type="count", aggregate={"func": "count", "fields": ["age", "score"], "field": ""}),
+                       case("plain", query_type="count", aggregate={"func": "count"}),
+                       case("list", query_type="sum", aggregate={"func": "sum", "field": "salary", "fields": ["age", "score"]}),
+                       case("same", query_type="sum", aggregate={"func": "sum", "fields": ["age", "score"]})])
+        self.assert_duplicates("a.yaml:star", "a.yaml:plain")
+        self.assert_duplicates("a.yaml:list", "a.yaml:same")
+
+    def test_a_non_mapping_step_is_an_empty_step(self):
+        # parser.cppm counts a non-object element of `aggregations:` as one empty step, and `fields: null`
+        # is no field; neither may crash the checker with a traceback instead of a verdict.
+        self.corpus(a=[case("scalar", query_type="chain", aggregations=[{"func": "count"}, 7]),
+                       case("empty", query_type="chain", aggregations=[{"func": "count"}, {}]),
+                       case("null", query_type="count", aggregate={"func": "count", "fields": None}),
+                       case("plain", query_type="count", aggregate={"func": "count"})])
+        self.assert_duplicates("a.yaml:scalar", "a.yaml:empty")
+        self.assert_duplicates("a.yaml:null", "a.yaml:plain")
+
+    def test_an_empty_name_in_fields_is_no_field(self):
+        # Like `field: ''`, an empty name in `fields:` is skipped by the parser (#868).
+        self.corpus(a=[case("gap", query_type="sum", aggregate={"func": "sum", "fields": ["", "age"]}),
+                       case("one", query_type="sum", aggregate={"func": "sum", "field": "age"})])
+        self.assert_duplicates("a.yaml:gap", "a.yaml:one")
+
+    def test_different_aggregate_fields_are_distinct(self):
+        self.corpus(a=[case("one", query_type="avg", aggregate={"func": "avg", "fields": ["age"]}),
+                       case("two", query_type="avg", aggregate={"func": "avg", "fields": ["age", "salary"]})])
+        self.assert_passes()
+
     # --- the escape hatch ---
 
     def test_allow_duplicate_with_a_reason_exempts_the_case(self):

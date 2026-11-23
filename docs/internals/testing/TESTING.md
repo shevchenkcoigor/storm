@@ -181,7 +181,7 @@ same-operator nodes merged; `IN` lists sorted, `BETWEEN` bounds not) all hash al
 `allow_duplicate: <reason>` and is left out of the comparison; an empty reason is an error.
 
 A case may also carry an optional `expected_sql:` — the exact `sql()` text, compared **before** the
-statement executes. A case without it stays result-only. It is read by `AggregateRunner` (all 51 scalar-aggregate
+statement executes. A case without it stays result-only. It is read by `AggregateRunner` (all 56 scalar-aggregate
 cases), by `SelectRunner` on `query_type: select` (#844) and by `ValuesRunner` on `values` (#867); `first` /
 `one` / `rows` and the other runners reject it (a compile error and a `split_unified_cases.py` error), since they
 would pass without comparing SQL. Chain and group cases share `AggregateRunner` but the split script still rejects
@@ -237,11 +237,35 @@ aggregate or field. Names in the YAML are resolved by reflection at compile time
 - **Aggregates** — `query_type` (`count`, `sum`, `avg`, `min`, `max`, `count_distinct`; `count_field` →
   `count`), the `group_<func>` suffix, and each chain `func:` are the **method names** themselves.
   `member_function_named<Q>(name)` finds the member function template, and `call_query_method` splices it with
-  zero selectors (`COUNT(*)`) or one. Both live in `shared/query_builder.hpp` (#835), so the tests and
-  `benchmarks/query_benchmark.cppm` use one copy; `QueryBuilder::resolve_aggregate` (the benchmark path) is the same lookup, with
-  `ValidAggregate` kept as the allow-list of names a YAML `func` may reach there; the test runners have no allow-list. Chains are built by recursion over
-  `aggregations:`, one step per entry. A name that is not a member function template of the query type is a
-  compile error, but any such member would be called, so a `func:` must be an aggregate.
+  the step's field pack: none (`COUNT(*)`, and only `count` may omit it), one, or several. Both live in
+  `shared/query_builder.hpp` (#835). Since #868 the tests run the builder's own pipeline:
+  `AggregateRunner` calls `QueryBuilder::build_terminal`, which builds the chain by recursion over
+  `spec.aggregations` (`apply_aggregations`, one step per entry), so the tests and
+  `benchmarks/query_benchmark.cppm` build an aggregate the same way. `ValidAggregate` is the allow-list of
+  names a YAML `func` may reach on every step.
+- **Aggregate steps (#868).** `aggregations:` is a list of `{func, field | fields, result}`, at most 5 steps of
+  at most 3 fields each (`BenchmarkTest::MAX_AGGREGATIONS`, `AggregateSpec::fields` = `CappedFields<3>`); both
+  counts go past their caps, so an over-long list does not compile. `aggregate: {func, field}` is the one-step
+  shorthand; writing both forms does not compile either. `field:` is a one-element `fields:`, an empty `field`
+  is no field (`COUNT(*)`) and so is an empty name inside `fields:` (skipped, so `["", a]` is `[a]`), and when
+  both keys are written the later one wins (`scripts/ci/check_yaml_duplicates.py` reads a step the same way).
+  Several fields are ONE operand, `func(a + b)` — so `SUM` of a string field
+  is a compile error (the existing `NumericAggregateSelectors`, #475), not a coerced sum. A `chain` case may
+  also `group_by` (with `having`, `where`, `order_by`, `limit`): the rows are `tuple<key, a1, ..., aN>`, and
+  each step's `result.groups: [v0, ...]` lists its value per group in ascending key order, beside
+  `expected.group_keys`. The `group_agg_*` arrays still serve the single-aggregate `group_<func>` cases.
+  `result` reads `value` and `groups` only (the old `type` key was never read and is gone from the corpus;
+  any other key is skipped). A key the runner would not read does not compile
+  (`TestCase::aggregate_results_well_formed`): `value` on a grouped step, `groups` on an ungrouped one, or
+  `groups` without `expected.groups_count` / `group_keys` to line up with. `QueryBuilder` itself rejects a
+  `group_by` with no aggregation and a step other than `count` with no field (`SpecAggregatesWellFormed`, a
+  class constraint, so the shared `Buildable<...>` asserts in `test_spec_limits_aggregates.cpp` see it).
+  **Known limits:** a grouped chain has ONE `expected.group_agg_null` row for all its steps, not one per step;
+  a grouped `chain` case cannot pin `expected_sql` (`split_unified_cases.py` rejects it on chain cases); and the
+  two new benchmarks have no raw-SQLite anchor (unanchored, tracked in #780); and a `result:` inside the
+  `aggregate:` shorthand is skipped, not read (that form takes its value from `expected`).
+  `benchmark_tests.yaml` (via `benchmarks/scripts/yaml_to_json.py`, which now rejects a key it does not know
+  instead of dropping it; `scripts/ci/tests/test_yaml_to_json.py` pins that and converts the real corpus) has one case of each shape: `aggregate_avg_two_fields` and `group_by_chain_count_sum_avg`.
 - **Projections and terminals (#867)** — `query_type: values` plus `values: {fields: [...]}` (1..4 fields, like
   `distinct:`) runs `values<f...>()`: one field yields `plf::hive<T>`, several `plf::hive<std::tuple<...>>`.
   `expected.rows: [[a, b], ...]` lists every result row, one typed cell per field (each cell is checked like an
@@ -258,7 +282,7 @@ aggregate or field. Names in the YAML are resolved by reflection at compile time
   matching member, or a value that does not fit the member (`ExpectedValueFits`), is a compile error. Before
   #834 such a key was skipped.
 - Results are checked according to the C++ result type: `std::optional<double>` (MIN/MAX/AVG, #416) against
-  `dbl_val` / `res_value`, integers exactly. Per-group values (`group_keys`, `group_agg_*`) are now checked
+  `dbl_val` / `result.value`, integers exactly. Per-group values (`group_keys`, `group_agg_*`) are now checked
   for `having` cases too. They used to be ignored there.
 - **WHERE/HAVING operators** (#835) are resolved by name in `shared/query_builder.hpp`, with no branch per
   operator and one resolver for the benchmark, the `QueryBuilder` and `QueryBuilder::build_where_node`
@@ -307,11 +331,17 @@ aggregate or field. Names in the YAML are resolved by reflection at compile time
   `join.fk:` is a member name on the model. The benchmark still passes its own (`registry::resolve_fk_field`).
 - **One value check.** `expect_agg_value(actual, expected, expect_null, what)` is chosen by result type
   (`std::optional<double>` → near / `nullopt`, floating → near, integer → exact) and used by
-  `AggregateRunner`; `verify_groups` checks `group_keys` / `group_agg_*` (sorted by key).
+  `AggregateRunner`; `verify_groups` checks `group_keys` and every step's `result.groups` (or `group_agg_*` for a
+  single step), sorted by key.
 - **One aggregate pipeline (#841).** `AggregateRunner` runs scalar, `chain` and `group_<func>` cases as
   `base_query → [group_by + having] → aggregates 1..N → check`. The parser (`normalise_aggregate_case` in
-  `test_parser.hpp`) rewrites a scalar case (`int_val` / `dbl_val`) and a `group_<func>` case into a
-  one-element `aggregations` list (`res_value` = the int or double value), so the YAML corpus is unchanged.
+  `test_parser.hpp`) rewrites a scalar case (`int_val` / `dbl_val`) and a `group_<func>` case into one
+  aggregation: the func is the query_type's, the fields the `aggregate:` shorthand's (or none), and
+  `results[0].value` the int or double value, so the YAML corpus is unchanged. Such a case is exactly ONE
+  aggregation (`TestCase::aggregate_shape_well_formed`, asserted by `AggregateRunner::run`): a second step in
+  `aggregations:` is a `chain` case, an explicit `func` must agree with the query_type (`count_field` accepts
+  `count` and `count_field`), and the value comes from `expected`, not a step's `result.value` — each of these
+  was silently overwritten or dropped before.
   The check follows the result shape: a scalar value, a tuple (chain), or the grouped rows.
 - **`query_type` → runner** is the `YAML_RUNNERS` table in `test_unified_yaml_body.h` (`{name, is_prefix,
   ^^Runner}`), spliced with `template [:runner:]<Model, Conn>::template run<tc>()`. A `query_type` missing from the
@@ -362,6 +392,12 @@ so it can never read a member the value did not set (a Double or Bool on an inte
   compile error); a case with more than one field pins `expected.count` only, because `group_keys` /
   `group_agg_*` are per single key. A HAVING condition compares fields, not aggregates (a Storm limit).
 - Not covered here: write values (Phase 7 of #838).
+- **Build cost of #868** (Debug, one TU touched and rebuilt alone, 3 runs each, load average 3-8, so read
+  ±1 s): aggregate 11.1–11.2 s → 13.0–13.5 s, grouped 17.8–18.0 s → 20.1–22.0 s. The machinery alone (the
+  same TUs with the corpus at `HEAD`) is aggregate 11.7–11.9 s and grouped ~18.5 s, so the five
+  multi-field aggregate cases (~0.3 s each) and the four grouped chain cases (~0.4 s each) are most of it. A
+  `verify_groups` that sorted the rows themselves cost ~2 s on the grouped TU (one `std::sort` per row
+  type, i.e. per case); it sorts `(key, row index)` pairs instead, one instantiation for every case.
 - **Build cost** (Debug, one TU touched and rebuilt alone, 3 runs each, quiet machine, `a4a11fc` vs #844):
   select 9.5–9.7 s → 14.2–14.9 s (+51%), aggregate 9.4–9.5 → 10.5–10.6 s (+12%), grouped 13.9–14.4 → 15.2–15.3 s
   (+8%), crud 6.1–6.4 → 6.9–7.0 s (+11%), measured with the first 22 cases. Where it goes (CPU seconds, select
@@ -377,8 +413,10 @@ so it can never read a member the value did not set (a Double or Bool on an inte
 There is one JSON spec parser, `storm_benchmark_parser` (`benchmarks/parser.cppm`). It reads every key a
 `BenchmarkTest` holds, with each accepted alias listed once: `test_name` / `name`, `test_category` / `category`,
 `init_dataset_size` / `dataset_size`. `tests/test_parser.hpp` adds only the test-only keys (`query_type`,
-`dataset`, `expected`, `expected_sql`, `expected_sql_sqlite`, `expected_sql_pg`, `aggregations`, `where_expr`,
-`insert_count` / `update_count` / `erase_count`) and passes every other key to `parse_bench_field`, so no key is
+`dataset`, `expected`, `expected_sql`, `expected_sql_sqlite`, `expected_sql_pg`, `where_expr`,
+`insert_count` / `update_count` / `erase_count`, and each aggregation's `result`) and passes every other key to
+`parse_bench_field` — `aggregations` itself is read by the shared `parse_aggregations`, which hands the test
+parser every step key it does not know (#868), so no key is
 parsed in two places. Add a shared key in `parse_bench_field` / `parse_bench_scalar`; a test-only key in
 `parse_test_only_field`.
 
@@ -427,7 +465,7 @@ parsed in two places. Add a shared key in `parse_bench_field` / `parse_bench_sca
 ### Spec limits are compile errors (#843)
 
 A few spec arrays are capped (`BenchmarkTest::MAX_ORDER_BY`, `JoinSpec::MAX_FKS`, `GroupBySpec::MAX_FIELDS`,
-`DistinctSpec::MAX_FIELDS`, `WhereSpec::MAX_NODES` = 7 and `WhereSpec::MAX_VALUES` = 10, `TestCase::MAX_CHAIN`). A case that lists more entries than the cap **does not compile**; before #843 the parsers
+`DistinctSpec::MAX_FIELDS`, `WhereSpec::MAX_NODES` = 7 and `WhereSpec::MAX_VALUES` = 10, `BenchmarkTest::MAX_AGGREGATIONS` = 5 steps of `AggregateSpec::fields` = 3, #868). A case that lists more entries than the cap **does not compile**; before #843 the parsers
 dropped the extra entries and the case passed while checking less than it said.
 
 - **Counting is in the schema.** `benchmarks/schema.cppm` owns the rule, once, in `add_capped`: `add_order_by`,
@@ -447,7 +485,9 @@ dropped the extra entries and the case passed while checking less than it said.
 - **WHERE.** 7 nodes is 4 conditions (4 leaves + 3 joins); the value pool of 10 is shared by the whole tree. The
   corpus needs at most 5 nodes and 3 values. A repeated `conditions` or `values` key replaces the first; a
   non-condition element is skipped, and a stray `}` inside an array is stepped over so the parse ends.
-  `TestCase::within_limits()` adds the chain cap to the spec's. Separately from the caps, `SpecWellFormed` rejects a
+  `TestCase::within_limits()` adds each step's `result.groups` cap (20) to the spec's, which holds the chain
+  caps since #868 (`test_spec_limits_aggregates.h`, run by both entry points, plus
+  `tests/yaml/test_spec_limits_aggregates.cpp` for the test-only `result` and the `QueryBuilder` rejection). Separately from the caps, `SpecWellFormed` rejects a
   tree that cannot be built: a leaf with the wrong number of values for its operator, a join missing a child or
   carrying a field of its own, an empty tree, or a node the root cannot reach (a subtree that would be dropped).
 

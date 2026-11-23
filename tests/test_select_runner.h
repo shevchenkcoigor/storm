@@ -28,16 +28,12 @@
 
 #include "test_record_helpers.h"
 using storm::QuerySet;
-using storm::meta::FieldRef;
 
 namespace storm::test {
 
 // Re-use the shared field dispatcher — no duplication with bench side.
 using storm::orm::query_builder::build_compare_expr;
-using storm::orm::query_builder::call_query_method;
 using storm::orm::query_builder::dispatch_field;
-using storm::orm::query_builder::field_or_null;
-using storm::orm::query_builder::member_function_named;
 
 // #818/#844: a case sets expected_sql, or BOTH expected_sql_sqlite and expected_sql_pg, never both
 // forms; one dialect alone would leave the other backend with no SQL check.
@@ -107,25 +103,52 @@ template <const auto &Tc, typename Model, typename ConnType> auto seed_records()
     ASSERT_TRUE(ins.has_value()) << ins.error().message();
 }
 
-// Per-group check: sorted by key, each group's key and aggregate against the case.
-// MIN/MAX/AVG groups read back as std::optional<double> (#416).
+// Aggregation I's expected value in group g: its own `result.groups` (#868), or a single-aggregate
+// case's group_agg_dbl (MIN/MAX/AVG, read back as std::optional<double>, #416) / group_agg_int.
+template <const auto &Tc, std::size_t I, typename Agg> auto expected_group_value(std::size_t g) -> double {
+    if constexpr (Tc.results[I].groups_count > 0)
+        return Tc.results[I].groups[g];
+    else if constexpr (std::is_same_v<Agg, std::optional<double>>)
+        return Tc.expected.group_agg_dbl[g];
+    else
+        return static_cast<double>(Tc.expected.group_agg_int[g]);
+}
+
+// Every aggregation lists one value per group; only a single-aggregate case may use group_agg_*.
+template <const auto &Tc> consteval auto groups_listed_per_aggregation() -> bool {
+    for (std::size_t i = 0; i < Tc.bench.aggregation_count; ++i) {
+        const std::size_t listed = Tc.results[i].groups_count;
+        if (listed != Tc.expected.groups_count && (listed != 0 || Tc.bench.aggregation_count > 1))
+            return false;
+    }
+    return true;
+}
+
+// Per-group check: rows are tuple<key, a1, ..., aN>, sorted by key; each group's key and every
+// aggregate against the case.
 template <const auto &Tc> auto verify_groups(const auto &rows) -> void {
     static_assert(Tc.bench.group_by.field_count() == 1,
                   "per-group expectations need a single GROUP BY field; a multi-field case pins expected.count only");
+    static_assert(groups_listed_per_aggregation<Tc>(),
+                  "each aggregation's result.groups lists one value per group (group_agg_* only with one aggregation)");
     using Row = std::ranges::range_value_t<std::remove_cvref_t<decltype(rows)>>;
-    using Agg = std::tuple_element_t<1, Row>;
-    std::vector<std::pair<int, Agg>> groups;
-    for (const auto &[key, agg] : rows)
-        groups.emplace_back(static_cast<int>(key), agg);
-    std::ranges::sort(groups, std::less<>{}, &std::pair<int, Agg>::first);
-    ASSERT_EQ(groups.size(), Tc.expected.groups_count);
-    // Only MIN/MAX/AVG carry group_agg_dbl; COUNT/SUM (even over a double column) use group_agg_int.
-    constexpr bool is_double = std::is_same_v<Agg, std::optional<double>>;
+    // Sorted as (key, row index) pairs: one std::sort instantiation for every case, not one per row type.
+    std::vector<const Row *> row_at;
+    std::vector<std::pair<int, std::size_t>> order;
+    for (const Row &row : rows) {
+        order.emplace_back(static_cast<int>(std::get<0>(row)), row_at.size());
+        row_at.push_back(&row);
+    }
+    std::ranges::sort(order);
+    ASSERT_EQ(order.size(), Tc.expected.groups_count);
     for (std::size_t g = 0; g < Tc.expected.groups_count; ++g) {
-        EXPECT_EQ(groups[g].first, Tc.expected.group_keys[g]) << "Group key mismatch at index " << g;
-        const double expected =
-            is_double ? Tc.expected.group_agg_dbl[g] : static_cast<double>(Tc.expected.group_agg_int[g]);
-        expect_agg_value(groups[g].second, expected, Tc.expected.group_agg_null[g], "group aggregate");
+        EXPECT_EQ(order[g].first, Tc.expected.group_keys[g]) << "Group key mismatch at index " << g;
+        const Row &row = *row_at[order[g].second];
+        template for (constexpr std::size_t I : std::views::iota(0uz, Tc.bench.aggregation_count)) {
+            using Agg = std::tuple_element_t<I + 1, Row>;
+            expect_agg_value(std::get<I + 1>(row), expected_group_value<Tc, I, Agg>(g), Tc.expected.group_agg_null[g],
+                             Tc.bench.aggregations[I].func.view());
+        }
     }
 }
 
@@ -319,56 +342,20 @@ template <typename Model, typename ConnType> class ValuesRunner {
 // ---------------------------------------------------------------------------
 // AggregateRunner -- scalar aggregates, aggregate chains and GROUP BY (#841)
 //
-// One pipeline: base_query -> [group_by + having] -> aggregates 1..N -> check.
-// The parser rewrites every scalar and group_<func> case into `aggregations`
-// (normalise_aggregate_case), so a scalar aggregate is a chain of one and a
-// group case a chain of one after group_by.
-//
-// The chain is built by recursion over Tc.aggregations rather than one branch
-// per func ordering (#834): every step changes the statement's type, so step I
-// is applied to the result of step I-1. Only the orderings the YAML uses are
-// instantiated. The YAML func name IS the QuerySet / aggregate-chain member name.
+// One pipeline, the shared builder's (#868): base_query -> [group_by + having] ->
+// aggregates 1..N -> check. The parser rewrites every scalar and group_<func> case
+// into one aggregation (normalise_aggregate_case), so a scalar aggregate is a chain
+// of one and a group case a chain of one after group_by; a `chain` case may group too.
 // ---------------------------------------------------------------------------
 template <typename Model, typename ConnType> class AggregateRunner {
     template <const auto &Tc> static constexpr bool is_group = Tc.bench.group_by.field_count() > 0;
+    template <const auto &Tc> static constexpr std::size_t steps = Tc.bench.aggregation_count;
 
-    template <const auto &Tc, std::size_t... Is> static auto grouped(auto &qs, std::index_sequence<Is...>) {
-        return qs.template group_by<FieldRef<dispatch_field<Model>(Tc.bench.group_by.fields[Is].view())>{}...>();
-    }
-
-    // HAVING is a tree built by the shared builder, like WHERE (#868).
-    template <const auto &Tc> static auto with_having(auto &&g) {
-        return BuilderFor<Tc, Model, ConnType>::with_having(std::forward<decltype(g)>(g));
-    }
-
-    // The statement the aggregates are applied to: the base query, or it grouped (+ HAVING).
-    template <const auto &Tc> static auto aggregate_source() {
-        auto qs = base_query<Tc, Model, ConnType>();
-        if constexpr (is_group<Tc>)
-            return with_having<Tc>(grouped<Tc>(qs, std::make_index_sequence<Tc.bench.group_by.field_count()>{}));
-        else
-            return qs;
-    }
-
-    template <const auto &Tc, std::size_t I> static auto apply_agg(auto &&q) {
-        constexpr auto &agg = Tc.aggregations[I];
-        constexpr auto fn = member_function_named<std::remove_cvref_t<decltype(q)>>(agg.func.view());
-        return call_query_method<fn, field_or_null<Model>(agg.field.view())>(std::forward<decltype(q)>(q));
-    }
-
-    template <const auto &Tc, std::size_t I = 0> static auto build_chain(auto &&q) {
-        auto next = apply_agg<Tc, I>(std::forward<decltype(q)>(q));
-        if constexpr (I + 1 == Tc.chain_len)
-            return next;
-        else
-            return build_chain<Tc, I + 1>(std::move(next));
-    }
-
-    // I must stay a constant: it indexes Tc.aggregations[I] and the tuple.
+    // I must stay a constant: it indexes the case's arrays and the tuple.
     template <const auto &Tc> static auto check_chain(const auto &values) -> void {
-        template for (constexpr std::size_t I : std::views::iota(0uz, Tc.chain_len))
-            expect_agg_value(std::get<I>(values), Tc.aggregations[I].res_value, Tc.dataset.view() == "empty",
-                             Tc.aggregations[I].func.view());
+        template for (constexpr std::size_t I : std::views::iota(0uz, steps<Tc>))
+            expect_agg_value(std::get<I>(values), Tc.results[I].value, Tc.dataset.view() == "empty",
+                             Tc.bench.aggregations[I].func.view());
     }
 
     template <const auto &Tc> static auto check(const auto &value) -> void {
@@ -376,9 +363,9 @@ template <typename Model, typename ConnType> class AggregateRunner {
             EXPECT_EQ(static_cast<int>(value.size()), Tc.expected.count);
             if constexpr (Tc.expected.groups_count > 0)
                 verify_groups<Tc>(value);
-        } else if constexpr (Tc.chain_len == 1) {
-            expect_agg_value(value, Tc.aggregations[0].res_value, Tc.dataset.view() == "empty",
-                             Tc.aggregations[0].func.view());
+        } else if constexpr (steps<Tc> == 1) {
+            expect_agg_value(value, Tc.results[0].value, Tc.dataset.view() == "empty",
+                             Tc.bench.aggregations[0].func.view());
         } else {
             check_chain<Tc>(value);
         }
@@ -386,14 +373,25 @@ template <typename Model, typename ConnType> class AggregateRunner {
 
   public:
     template <const auto &Tc> static auto run() -> void {
-        static_assert(Tc.chain_len >= 1, "an aggregate case needs at least one aggregation");
-        static_assert(Tc.query_type != "chain" || Tc.chain_len >= 2, "a chain case needs at least two aggregations");
-        static_assert(is_group<Tc> == Tc.query_type.view().starts_with("group_"),
-                      "group_by is valid on, and only on, group_<func> cases");
-        static_assert(Tc.chain_len <= Tc.MAX_CHAIN, "aggregate case has more aggregations than MAX_CHAIN");
-        static_assert(Tc.query_type != "count" || Tc.bench.aggregate.field.empty(),
+        constexpr std::string_view query_type = Tc.query_type.view();
+        static_assert(steps<Tc> >= 1, "an aggregate case needs at least one aggregation");
+        static_assert(query_type != "chain" || steps<Tc> >= 2, "a chain case needs at least two aggregations");
+        static_assert((is_group<Tc> == query_type.starts_with("group_")) || query_type == "chain",
+                      "group_by is valid on group_<func> and chain cases, and required on group_<func>");
+        static_assert(steps<Tc> <= Tc.bench.MAX_AGGREGATIONS,
+                      "aggregate case has more aggregations than MAX_AGGREGATIONS");
+        static_assert(query_type != "count" || Tc.bench.aggregations[0].fields.declared_count == 0,
                       "query_type count is COUNT(*); use count_field for COUNT(field)");
-        auto q = build_chain<Tc>(aggregate_source<Tc>());
+        static_assert(query_type != "count_field" || Tc.bench.aggregations[0].fields.declared_count >= 1,
+                      "query_type count_field is COUNT(field) and needs a field; use count for COUNT(*)");
+        static_assert(Tc.aggregate_shape_well_formed(),
+                      "a scalar / group_<func> case is one aggregation of the query_type's func, its value in "
+                      "expected; several aggregations are query_type chain");
+        static_assert(Tc.aggregate_results_well_formed(),
+                      "result.value belongs to an ungrouped step, result.groups to a grouped one with expected "
+                      "group keys");
+        auto qs = base_query<Tc, Model, ConnType>();
+        auto q = BuilderFor<Tc, Model, ConnType>::build_terminal(qs);
         expect_sql<Tc, ConnType>(q);
         auto r = q.execute();
         ASSERT_TRUE(r.has_value()) << r.error().message();

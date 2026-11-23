@@ -5,6 +5,7 @@ import storm_benchmark_parser;
 import storm_benchmark_schema;
 
 #include "test_spec_limits.h"
+#include "test_spec_limits_aggregates.h"
 
 // Issue #843/#845: the benchmark entry point of the one spec parser (parse_test_object)
 // against the shared spec-limit cases.
@@ -50,6 +51,10 @@ namespace {
 
     TEST(SpecLimitsBenchmarkParser, HavingIsATree) {
         storm::test::spec_limits::expect_having_is_a_tree<parse_case>();
+    }
+
+    TEST(SpecLimitsBenchmarkParser, AggregatesParseAndCountPastTheirCaps) {
+        storm::test::spec_limits::expect_aggregates_parse_and_count_past_their_caps<parse_case>();
     }
 
     TEST(SpecLimitsBenchmarkParser, EverySharedKeyIsRead) {

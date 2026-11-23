@@ -27,8 +27,11 @@ inline constexpr std::string_view ORDER_BY_3 =
     R"({"order_by":[{"field":"a"},{"field":"b"},{"field":"c"}],"dataset_size":5})";
 inline constexpr std::string_view FKS_2 = R"({"join":{"type":"inner","fks":["a","b"]},"dataset_size":5})";
 inline constexpr std::string_view FKS_3 = R"({"join":{"type":"inner","fks":["a","b","c"]},"dataset_size":5})";
-inline constexpr std::string_view GROUP_4 = R"({"group_by":{"fields":["a","b","c","d"]},"dataset_size":5})";
-inline constexpr std::string_view GROUP_5 = R"({"group_by":{"fields":["a","b","c","d","e"]},"dataset_size":5})";
+// A GROUP BY case carries a count: QueryBuilder rejects one with no aggregate (#868, SpecAggregatesWellFormed).
+inline constexpr std::string_view GROUP_4 =
+    R"({"group_by":{"fields":["a","b","c","d"]},"aggregate":{"func":"count"},"dataset_size":5})";
+inline constexpr std::string_view GROUP_5 =
+    R"({"group_by":{"fields":["a","b","c","d","e"]},"aggregate":{"func":"count"},"dataset_size":5})";
 inline constexpr std::string_view DISTINCT_3 = R"({"distinct":{"fields":["a","b","c"]},"dataset_size":5})";
 inline constexpr std::string_view VALUES_4 = R"({"values":{"fields":["a","b","c","d"]},"dataset_size":5})";
 inline constexpr std::string_view VALUES_5 = R"({"values":{"fields":["a","b","c","d","e"]},"dataset_size":5})";
@@ -113,29 +116,29 @@ inline constexpr std::string_view WHERE_NULL_THEN_STRING =
 
 // HAVING is the same tree of conditions as WHERE (#868): one leaf, an OR of two, an unknown `combine`.
 inline constexpr std::string_view HAVING_LEAF =
-    R"({"group_by":{"fields":["age"],"having":{"conditions":[{"field":"age","op":">","values":[30]}]}},"dataset_size":5})";
+    R"({"group_by":{"fields":["age"],"having":{"conditions":[{"field":"age","op":">","values":[30]}]}},"aggregate":{"func":"count"},"dataset_size":5})";
 inline constexpr std::string_view HAVING_OR =
-    R"({"group_by":{"fields":["age"],"having":{"conditions":[{"field":"age","op":">","values":[30]},{"field":"age","op":"<","values":[20]}],"combine":"or"}},"dataset_size":5})";
+    R"({"group_by":{"fields":["age"],"having":{"conditions":[{"field":"age","op":">","values":[30]},{"field":"age","op":"<","values":[20]}],"combine":"or"}},"aggregate":{"func":"count"},"dataset_size":5})";
 inline constexpr std::string_view HAVING_UNKNOWN_COMBINE =
-    R"({"group_by":{"fields":["age"],"having":{"conditions":[{"field":"age","op":">","values":[30]}],"combine":"xor"}},"dataset_size":5})";
+    R"({"group_by":{"fields":["age"],"having":{"conditions":[{"field":"age","op":">","values":[30]}],"combine":"xor"}},"aggregate":{"func":"count"},"dataset_size":5})";
 
 // A HAVING tree is checked like WHERE (#868): a pattern is text, IN takes no null, a leaf needs `values`,
 // and a collation makes the case SQLite-only.
 inline constexpr std::string_view HAVING_LIKE_INT =
-    R"({"group_by":{"fields":["age"],"having":{"conditions":[{"field":"age","op":"LIKE","values":[5]}]}},"dataset_size":5})";
+    R"({"group_by":{"fields":["age"],"having":{"conditions":[{"field":"age","op":"LIKE","values":[5]}]}},"aggregate":{"func":"count"},"dataset_size":5})";
 inline constexpr std::string_view HAVING_IN_NULL =
-    R"({"group_by":{"fields":["age"],"having":{"conditions":[{"field":"age","op":"IN","values":[null,1]}]}},"dataset_size":5})";
+    R"({"group_by":{"fields":["age"],"having":{"conditions":[{"field":"age","op":"IN","values":[null,1]}]}},"aggregate":{"func":"count"},"dataset_size":5})";
 inline constexpr std::string_view HAVING_FLAT_LEGACY =
-    R"({"group_by":{"fields":["age"],"having":{"field":"age","op":">","value":30}},"dataset_size":5})";
+    R"({"group_by":{"fields":["age"],"having":{"field":"age","op":">","value":30}},"aggregate":{"func":"count"},"dataset_size":5})";
 inline constexpr std::string_view HAVING_COLLATE =
-    R"({"group_by":{"fields":["name"],"having":{"conditions":[{"field":"name","op":"==","collate":"NOCASE","values":["a"]}]}},"dataset_size":5})";
+    R"({"group_by":{"fields":["name"],"having":{"conditions":[{"field":"name","op":"==","collate":"NOCASE","values":["a"]}]}},"aggregate":{"func":"count"},"dataset_size":5})";
 
 // PostgreSQL rejects a HAVING column that is neither grouped nor aggregated, SQLite accepts it: so a HAVING
 // leaf on a field outside GROUP BY is rejected on both (#868).
 inline constexpr std::string_view HAVING_UNGROUPED =
-    R"({"group_by":{"fields":["age"],"having":{"conditions":[{"field":"name","op":"==","values":["a"]}]}},"dataset_size":5})";
+    R"({"group_by":{"fields":["age"],"having":{"conditions":[{"field":"name","op":"==","values":["a"]}]}},"aggregate":{"func":"count"},"dataset_size":5})";
 inline constexpr std::string_view HAVING_GROUPED_SECOND =
-    R"({"group_by":{"fields":["age","name"],"having":{"conditions":[{"field":"name","op":"==","values":["a"]}]}},"dataset_size":5})";
+    R"({"group_by":{"fields":["age","name"],"having":{"conditions":[{"field":"name","op":"==","values":["a"]}]}},"aggregate":{"func":"count"},"dataset_size":5})";
 
 // `combine` is exactly "and" or "or" (#847). Any other spelling, a different case included, is
 // rejected rather than read as AND -- also when there is only one condition to join.

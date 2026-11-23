@@ -16,7 +16,11 @@ are two tests. The input is normalised before hashing, so the way it was written
     the operands sorted;
   * IN lists are sorted; BETWEEN bounds are not (the order is the range);
   * a leaf's `collate` is part of its identity (case-insensitive, like the C++ lookup), and a
-    where_expr leaf's `values: [...]` counts like the flat form's (#866).
+    where_expr leaf's `values: [...]` counts like the flat form's (#866);
+  * an aggregate is its func and its field list (#868): `field: x` is `fields: [x]`, `field: ''` is
+    no field (COUNT(*)), the `aggregate:` shorthand is a one-element `aggregations:` list, and an
+    aggregation's `result` is an expected value, not input. The field order is kept: it is the
+    order of the SQL operands.
 Typed values stay distinct (`value_int: 30` is not `value_dbl: 30.0`, #844), and a case that
 differs in any other key (model, dataset, limit, ...) is a different case.
 
@@ -38,7 +42,7 @@ import yaml
 DEFAULT_ROOT = pathlib.Path(__file__).resolve().parents[2]
 CORPUS_DIR = pathlib.Path("tests") / "test_cases"
 ALLOW_KEY = "allow_duplicate"
-NON_INPUT_KEYS = frozenset({"name", "description", ALLOW_KEY, "where", "where_expr"})
+NON_INPUT_KEYS = frozenset({"name", "description", ALLOW_KEY, "where", "where_expr", "aggregate", "aggregations"})
 DEFAULT_COMBINE = "and"
 SORTED_VALUE_OPS = frozenset({"IN"})
 TYPED_VALUE_KEYS = ("value_int", "value_dbl", "value")
@@ -91,6 +95,24 @@ def tree_of_conditions(block):
     return group(combine, [leaf(c["field"], c["op"], c.get("values", []), c.get("collate")) for c in block["conditions"]])
 
 
+def aggregate_of(step):
+    """One aggregate step as the C++ parser reads it: the keys in order, each field key replacing
+    the list before it, and an empty name being no field (COUNT(*)). A step that is not a mapping is
+    one empty step (the parser counts it), and `fields: null` is no field."""
+    if not isinstance(step, dict):
+        return {"fields": []}
+    fields = []
+    for key, value in step.items():
+        if key == "field":
+            fields = [value] if value else []
+        elif key == "fields":
+            fields = [name for name in (value or []) if name]
+    node = {"fields": fields}
+    if "func" in step:
+        node["func"] = step["func"]
+    return node
+
+
 def is_input_key(key):
     if key in NON_INPUT_KEYS:
         return False
@@ -103,6 +125,10 @@ def canonical_input(case):
     filters += [tree_of_expr(case["where_expr"])] if "where_expr" in case else []
     if filters:
         kept["where"] = group(DEFAULT_COMBINE, filters)
+    steps = [case["aggregate"]] if "aggregate" in case else []
+    steps += list(case.get("aggregations", []))
+    if steps:
+        kept["aggregations"] = [aggregate_of(step) for step in steps]
     return dump(kept)
 
 

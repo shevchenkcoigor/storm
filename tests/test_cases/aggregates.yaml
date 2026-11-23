@@ -655,3 +655,61 @@
   expected:
     dbl_val: 95.0
   query_type: max
+# Multi-field aggregates (#868): `fields: [a, b]` is one operand, func(a + b). Dataset `main`
+# (PEOPLE_25): age + years_experience sums to 1064 over 25 rows (min 27, max 60); score is NULL
+# on 10 rows, so age + score is NULL there and COUNT(age + score) is 15.
+- name: sum_age_plus_years_experience
+  model: person
+  query_type: sum
+  dataset: main
+  aggregate:
+    func: sum
+    fields: [age, years_experience]
+  expected_sql: 'SELECT SUM("age" + "years_experience") FROM "person"'
+  expected:
+    int_val: 1064
+- name: avg_age_plus_years_experience
+  model: person
+  query_type: avg
+  dataset: main
+  aggregate:
+    func: avg
+    fields: [age, years_experience]
+  expected_sql: 'SELECT AVG("age" + "years_experience") FROM "person"'
+  expected:
+    dbl_val: 42.56
+- name: min_age_plus_years_experience
+  model: person
+  query_type: min
+  dataset: main
+  aggregate:
+    func: min
+    fields: [age, years_experience]
+  expected_sql: 'SELECT MIN("age" + "years_experience") FROM "person"'
+  expected:
+    dbl_val: 27.0
+- name: max_age_plus_years_experience_where_dept
+  model: person
+  query_type: max
+  dataset: main
+  where:
+    conditions:
+    - field: department
+      op: ==
+      values: [HR]
+  aggregate:
+    func: max
+    fields: [age, years_experience]
+  expected_sql: 'SELECT MAX("age" + "years_experience") FROM "person" WHERE "department" = ?'
+  expected:
+    dbl_val: 53.0
+- name: count_age_plus_score_skips_null
+  model: person
+  query_type: count_field
+  dataset: main
+  aggregate:
+    func: count
+    fields: [age, score]
+  expected_sql: 'SELECT COUNT("age" + "score") FROM "person"'
+  expected:
+    int_val: 15
