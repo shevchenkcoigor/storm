@@ -24,7 +24,6 @@ export namespace storm::orm::statements {
 
     // Import utilities for code convenience
     using storm::orm::utilities::BulkSQLCache;
-    using storm::orm::utilities::ConstexprString;
     using storm::orm::utilities::TransactionGuard;
 
     // Controls whether INSERT returns the auto-generated ID(s)

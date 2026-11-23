@@ -35,9 +35,6 @@ import storm_db_default_connection;
 
 export namespace storm::orm::statements {
 
-    // Import utilities for code convenience
-    using storm::orm::utilities::ConstexprString;
-
     // Selector gates shared by the projection / aggregate terminals in select_query.hpp.
     template <auto... S>
     concept ProjectionSelectors =
