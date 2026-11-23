@@ -92,7 +92,7 @@ These scripts have project-specific conventions — understand them before modif
 **`scripts/tidy/run_clang_tidy.py`** — stdlib Python (#692; was bash). Three modes (default `--diff`):
 - `--diff` (default) — warns only on lines staged in `git diff --cached`. Uses clang-tidy-diff.py.
 - `--full` — whole-file scan, staged files only (pre-#262 default; opt-in via `STORM_TIDY_FULL=1`).
-- `--all` — full-tree sweep, used by the weekly `clang-tidy-sweep` CI workflow (report-only).
+- `--all` — full-tree sweep, used by the weekly `clang-tidy-sweep` CI workflow (any warning turns the run red).
 - Options: `--fix` (auto-apply fixes), `-j N` (parallel jobs, default: min(cores, MemAvailable GB / 2), #555)
 - Requires release build (`cmake --preset ninja-release`) for `compile_commands.json`
 - Files clang-tidy cannot parse are listed by exact path in `scripts/tidy/clang_tidy_skiplist.py` (`--diff` drops them up front; `--full`/`--all` forgive a parse failure or crash on them) (`KNOWN_UNPARSEABLE`, plus the vendored `src/orm/generator.cppm`); `commit.sh` asks the same module via `--keep`. `src/*.cppm` parse cleanly since 2026-05-11 — a parse failure there now fails loudly.

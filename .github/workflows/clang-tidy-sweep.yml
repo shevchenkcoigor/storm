@@ -1,11 +1,11 @@
 name: clang-tidy weekly sweep
 
-# Scheduled full-tree clang-tidy sweep — report-only.
+# Scheduled full-tree clang-tidy sweep.
 # See Issue #262 for rationale.
 #
 # Runs ./scripts/tidy/run_clang_tidy.py --all and writes the result to the workflow
-# run's Summary tab. Does NOT gate develop merges (yet) — opt-in gating is
-# deferred. The point is to surface accumulated drift within a week instead
+# run's Summary tab. Any warning or error turns the run red (the final "Fail on
+# findings" step), but it is scheduled-only, so it does NOT gate develop merges. The point is to surface accumulated drift within a week instead
 # of within months, which is what triggered Issue #262 in the first place.
 
 on:
@@ -39,7 +39,7 @@ jobs:
         # the library + tests targets so all TUs end up in compile_commands.json.
         run: cmake --build --preset ninja-release
 
-      - name: Run clang-tidy --all (report-only)
+      - name: Run clang-tidy --all
         id: sweep
         continue-on-error: true
         run: |
@@ -54,7 +54,7 @@ jobs:
           {
             echo "## clang-tidy weekly sweep"
             echo ""
-            echo "**Mode:** \`--all\` (full-tree, report-only)"
+            echo "**Mode:** \`--all\` (full-tree)"
             echo "**Exit code:** ${{ steps.sweep.outputs.exit_code }}"
             echo ""
             # Pull the summary block ("📊 Summary:" through the rule line) and
@@ -75,3 +75,12 @@ jobs:
             echo ''
             echo "_Full log available in the workflow run logs._"
           } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Fail on findings
+        # The sweep step is continue-on-error so Post summary always runs; this is
+        # where a non-zero sweep (warnings, errors, parse crashes) turns the job red
+        # instead of leaving a green check next to "found N warning(s)".
+        if: steps.sweep.outputs.exit_code != '0'
+        run: |
+          echo "::error::clang-tidy sweep exited with ${{ steps.sweep.outputs.exit_code }} - see the Summary tab"
+          exit 1

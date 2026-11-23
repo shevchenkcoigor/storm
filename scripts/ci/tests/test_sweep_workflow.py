@@ -21,7 +21,8 @@ import unittest
 REPO_ROOT = pathlib.Path(__file__).resolve().parents[3]
 WORKFLOW = REPO_ROOT / ".github" / "workflows" / "clang-tidy-sweep.yml"
 
-STEP = re.compile(r"- name: Run clang-tidy --all \(report-only\)\n(?P<body>(?:        .*\n|\n)+?)(?=\n      - name:|\Z)")
+STEP = re.compile(r"- name: Run clang-tidy --all\n(?P<body>(?:        .*\n|\n)+?)(?=\n      - name:|\Z)")
+GATE = re.compile(r"- name: Fail on findings\n(?P<body>(?:        .*\n|\n)+?)(?=\n      - name:|\Z)")
 
 
 def sweep_script():
@@ -60,7 +61,7 @@ class SweepExitCodeTest(unittest.TestCase):
         self.assertEqual(output.strip(), "exit_code=0")
 
     def test_the_step_itself_never_fails(self):
-        # report-only: a red sweep must not fail the job, only the reported number
+        # the sweep step stays green so Post summary runs; the later gate step fails the job
         proc, _output, _log = self.run_sweep(1)
         self.assertEqual(proc.returncode, 0, proc.stderr)
 
@@ -75,6 +76,22 @@ class SweepExitCodeTest(unittest.TestCase):
         text = WORKFLOW.read_text()
         self.assertNotRegex(text, r"(?m)^\s*shell:")
         self.assertNotRegex(text, r"(?m)^\s*defaults:")
+
+    def test_a_gate_step_fails_the_job_on_a_nonzero_sweep_exit_code(self):
+        # The sweep step is continue-on-error (it must always reach Post summary), so
+        # without a later step the job stays green with warnings in the log.
+        gate = GATE.search(WORKFLOW.read_text())
+        self.assertIsNotNone(gate, "no 'Fail on findings' step in the workflow")
+        body = gate.group("body")
+        self.assertRegex(body, r"(?m)^\s+if: steps\.sweep\.outputs\.exit_code != '0'\s*$")
+        self.assertRegex(body, r"(?m)^\s+exit 1\s*$")
+        # copying the sweep step's continue-on-error here would turn the job green again
+        self.assertNotRegex(body, r"(?m)^\s+continue-on-error:")
+
+    def test_the_gate_runs_after_the_summary_is_written(self):
+        text = WORKFLOW.read_text()
+        self.assertIn("- name: Fail on findings", text)
+        self.assertLess(text.index("- name: Post summary"), text.index("- name: Fail on findings"))
 
     def test_the_script_is_extracted_from_the_real_workflow(self):
         script = sweep_script()

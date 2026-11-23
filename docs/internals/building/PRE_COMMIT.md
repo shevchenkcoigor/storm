@@ -160,11 +160,12 @@ workflow run's **Summary** tab.
 ./scripts/tidy/run_clang_tidy.py --all                 # run locally (slow)
 ```
 
-**Report-only.** The sweep does **not** gate merges on `develop`. Its job is
-to surface accumulated drift within a week instead of within months — the gap
-that let 48 warnings accumulate over ~3 months before Issue #262.
+**Never gates merges.** The sweep is scheduled-only, so it cannot block a PR or
+the merge queue on `develop`, but any warning, error or unexpected crash turns the
+run red. Its job is to surface accumulated drift within a week instead of within
+months — the gap that let 48 warnings accumulate over ~3 months before Issue #262.
 
-Gating `--all` is an opt-in goal once the existing baseline is clean.
+Per-PR gating of `--all` is a separate opt-in goal once the existing baseline is clean.
 
 ## Parse failures on `src/*.cppm`
 
@@ -220,8 +221,9 @@ PR with a clear inline comment explaining why.
 
 ### When the weekly sweep reports new drift
 
-The sweep is report-only. There is no automatic ticket. If you see new entries
-when checking the Summary tab, open a focused cleanup PR or file an issue —
+The sweep never gates a merge (it is scheduled-only), but any warning or error
+turns the run red. There is no automatic ticket. If you see a red run, check the
+Summary tab, then open a focused cleanup PR or file an issue —
 similar to how PR #263 cleaned the post-#262 baseline.
 
 ### Bypassing pre-commit
