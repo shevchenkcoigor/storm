@@ -90,7 +90,7 @@ The debug preset must be configured first (`cmake --preset ninja-debug`). The pr
 | CMake only | skipped | runs |
 | C++ (any) | runs | runs if CMake also staged |
 
-After formatting (and after `clang-tidy --fix`), the hook re-stages modified files with `git add -u` so the auto-fixed versions are included in the commit.
+After formatting, the hook re-stages modified files with `git add -u` so the auto-fixed versions are included in the commit.
 
 ## `.clang-format` Settings
 

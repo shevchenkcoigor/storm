@@ -22,7 +22,6 @@ Stdlib unittest only, no syntax newer than Python 3.9.
 """
 import pathlib
 import re
-import subprocess
 import sys
 import unittest
 
@@ -184,35 +183,6 @@ class FragmentParentsTest(unittest.TestCase):
 
     def test_no_fragment_hunks_means_no_parent_runs(self):
         self.assertEqual(skiplist.fragment_line_filters(diff_section(REAL_STORM_FILE, "x").splitlines(True)), {})
-
-
-class KeepCommandTest(unittest.TestCase):
-    """`--keep` is how commit.sh drops skipped files from its BMI probe."""
-
-    def keep(self, stdin):
-        return subprocess.run([sys.executable, str(SKIPLIST), "--keep"], input=stdin,
-                              capture_output=True, text=True)
-
-    def test_prints_only_files_clang_tidy_will_open(self):
-        proc = self.keep("%s\nshared/models.h\nsrc/orm/generator.cppm\nsrc/orm/utilities.cppm\n" % REAL_STORM_FILE)
-        self.assertEqual(proc.returncode, 0, proc.stderr)
-        self.assertEqual(proc.stdout.splitlines(), [REAL_STORM_FILE, "src/orm/utilities.cppm"])
-
-    def test_empty_input_prints_nothing(self):
-        proc = self.keep("")
-        self.assertEqual((proc.returncode, proc.stdout), (0, ""))
-
-    def test_blank_lines_are_ignored(self):
-        self.assertEqual(self.keep("\n%s\n\n" % REAL_STORM_FILE).stdout.splitlines(), [REAL_STORM_FILE])
-
-    def test_a_fragment_is_replaced_by_its_parent(self):
-        # commit.sh's BMI probe must check the TU clang-tidy actually opens for a fragment.
-        proc = self.keep("src/orm/statements/aggregate_grammar.hpp\n")
-        self.assertEqual(proc.stdout.splitlines(), ["src/orm/statements/aggregate.cppm"])
-
-    def test_unknown_option_fails(self):
-        proc = subprocess.run([sys.executable, str(SKIPLIST), "--nope"], capture_output=True, text=True)
-        self.assertNotEqual(proc.returncode, 0)
 
 
 if __name__ == "__main__":

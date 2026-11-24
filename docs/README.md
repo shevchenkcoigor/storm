@@ -56,7 +56,7 @@ Documentation for Storm ORM contributors — architecture, build/test workflow, 
 - **[Getting Started](internals/building/GETTING_STARTED.md)** - First-time setup, build via Docker (recommended) or from source
 - **[Common Tasks](internals/building/COMMON_TASKS.md)** - Adding operations, common development workflows
 - **[Adding Features](internals/building/ADDING_FEATURES.md)** - How to add new database operations
-- **[Pre-Commit](internals/building/PRE_COMMIT.md)** - clang-tidy modes (`--diff` / `--full` / `--all`), weekly sweep, parse-failure handling
+- **[Pre-Commit](internals/building/PRE_COMMIT.md)** - where clang-tidy runs (PR `--diff --base`, weekly sweep; not the hook, #910), its modes (`--diff` / `--full` / `--all`), parse-failure handling
 - **[Formatting](internals/building/FORMATTING.md)** - clang-format and cmake-format targets, pre-commit integration, and `.clang-format` settings
 
 ### Testing

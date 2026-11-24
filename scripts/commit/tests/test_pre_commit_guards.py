@@ -81,8 +81,7 @@ class TriggerTest(unittest.TestCase):
         self.assertEqual(
             set(names(pcg.triggered_guards(["commit.sh"]))),
             {"self-heal configure", "coverage gate",
-             "pre-commit guards", "smart-skip table",
-             "clang-tidy prerequisites"})
+             "pre-commit guards", "smart-skip table"})
 
     def test_cmake_format_files_trigger_their_self_test(self):
         self.assertEqual(names(pcg.triggered_guards(["scripts/commit/tests/test_cmake_format_target.py"])),
@@ -160,9 +159,10 @@ class TriggerTest(unittest.TestCase):
             self.assertTrue(any((pcg.ROOT / "scripts").glob(f"*/tests/{name}")), name)
             self.assertNotIn(name, run)
 
-    def test_workflow_edit_triggers_the_digest_check(self):
-        self.assertEqual(names(pcg.triggered_guards([".github/workflows/ci.yml"])),
-                         ["storm-ci digest pins"])
+    def test_workflow_edit_triggers_the_digest_check_and_the_tidy_pr_step_check(self):
+        # ci.yml pins the storm-ci image AND carries the per-PR clang-tidy step (#910).
+        self.assertEqual(sorted(names(pcg.triggered_guards([".github/workflows/ci.yml"]))),
+                         ["clang-tidy PR step", "storm-ci digest pins"])
 
     def test_bench_ratio_workflow_edit_triggers_the_digest_check_and_the_ratio_gate(self):
         # It pins the storm-ci image AND calls ratio_gate.py, so both self-tests apply (#752).

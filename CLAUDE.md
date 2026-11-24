@@ -86,7 +86,7 @@ Strong success criteria let you loop independently. Weak criteria ("make it work
 
 1. **NEVER delete `.git`** - Do not run `rm -rf .git`
 2. **NEVER push without approval** - Ask before `git push` (exception: user says "commit and push")
-3. **NEVER skip the pre-commit hook** - Do not use `--no-verify`; `commit.sh` enforces format, tidy and tests automatically (the 100% coverage gate, sanitizers, benchmarks and SonarCloud are CI-only, #793). **First, check the hook is even wired**: `git config --get core.hooksPath` must print `.githooks`. It is local config a clone never carries, no CI job can observe it, and an unwired clone commits with every check silently skipped — indistinguishable from a clone where they all passed (#651). Set it with `git config core.hooksPath .githooks`; a Claude Code session gets it from the `SessionStart` hook, and a `cmake --preset` also sets it (which is no help in a session that has no toolchain to configure with)
+3. **NEVER skip the pre-commit hook** - Do not use `--no-verify`; `commit.sh` enforces format and tests automatically (clang-tidy, the 100% coverage gate, sanitizers, benchmarks and SonarCloud are CI-only: #793, #910 — tidy runs on the PR's changed lines as the `clang-tidy` job of `ci.yml` via `run_clang_tidy.py --diff --base`, plus the weekly full-tree sweep; run `./scripts/tidy/run_clang_tidy.py --diff` locally before pushing if you want the feedback early). **First, check the hook is even wired**: `git config --get core.hooksPath` must print `.githooks`. It is local config a clone never carries, no CI job can observe it, and an unwired clone commits with every check silently skipped — indistinguishable from a clone where they all passed (#651). Set it with `git config core.hooksPath .githooks`; a Claude Code session gets it from the `SessionStart` hook, and a `cmake --preset` also sets it (which is no help in a session that has no toolchain to configure with)
 4. **NEVER work directly on `develop` for issue-linked tasks** - Always create `feature/<N>-<description>` branch first (see [Branching Rules](#branching-rules))
 5. **ALWAYS show files before commit** - Run `git status --short`, get user approval, then commit
 6. **ALWAYS benchmark after code changes** - Use Release builds; revert if ANY slowdown
@@ -97,7 +97,7 @@ Strong success criteria let you loop independently. Weak criteria ("make it work
 10. **SonarCloud gate MUST pass before merging** - Zero issues on new code; no exceptions, even for minor issues (see [SonarCloud Gate](#sonarcloud-gate-mandatory-before-merge))
 11. **NEVER use `throw` for compile-time errors in `consteval` functions** - Use `requires` constraints instead. Define a concept that checks the condition and constrain the template. The `throw "string literal"` trick works but fires late with a poor error message. `requires` fires at the call site with a clear constraint violation. Use `std::unreachable()` after the loop body if needed to satisfy the return type.
 12. **NEVER close an issue without verifying all subtasks** - Before closing, read the issue body and confirm every "Definition of done" checkbox was genuinely completed. Only check off items that were delivered. If some are intentionally skipped, ask the user first.
-13. **ALWAYS run the relevant reviewer agent(s) before every commit that touches code** - After staging (`git add`) and BEFORE `git commit`, dispatch the reviewer(s) matching the staged diff and address their findings. The pre-commit hook checks mechanics (format, tidy, tests); the reviewer agents check design and correctness. Applies to ALL code commits, including inline fixes and SonarCloud-fix commits; docs-only commits are exempt.
+13. **ALWAYS run the relevant reviewer agent(s) before every commit that touches code** - After staging (`git add`) and BEFORE `git commit`, dispatch the reviewer(s) matching the staged diff and address their findings. The pre-commit hook checks mechanics (format, tests); the reviewer agents check design and correctness. Applies to ALL code commits, including inline fixes and SonarCloud-fix commits; docs-only commits are exempt.
     - `storm-code-reviewer` - any `src/`, `tests/`, or other C++ change. Dispatch on every code commit. Reviews the **C++** — RAII, concepts, module structure, hot-path patterns.
     - `storm-sql-reviewer` - any `src/orm/statements/**`, `src/orm/schema.cppm`, or `src/db/*_statement.cppm` change. Dispatch alongside `storm-code-reviewer`. Reviews the **generated SQL text and bind sequence** (text↔bind agreement, column-name derivation, set semantics, sizer↔writer agreement, dialect matrix) — a blind spot `storm-code-reviewer` structurally cannot see since that code compiles cleanly and looks idiomatic even when the SQL it emits is wrong (#501, #506, #500).
     - `storm-buildsystem-reviewer` - any `cmake/**`, `CMakePresets.json`, `.github/workflows/**`, `commit.sh`, `.githooks/**`, or `scripts/**` change. Reviews CMake + presets + CI + hooks as one coupled system (cross-file consistency, cold-path correctness) — runs **alongside**, not instead of, `storm-code-reviewer` when a commit touches both.
@@ -228,13 +228,12 @@ These rules are enforced by SonarCloud analysis. Follow them when writing new co
 git status --short           # Show files
 # Get user approval
 git add -A && git commit -m "message"
-# Pre-commit hook (commit.sh): clang-format (C++) + cmake-format → clang-tidy → tests (coverage is CI-only, #793)
+# Pre-commit hook (commit.sh): clang-format (C++) + cmake-format → tests (clang-tidy and coverage are CI-only, #910/#793)
 # Smart skips: no C++/cmake → skip all; cmake-only → tests+cmake-format; C++ outside src/tests/cmake → skip tests
 # Nothing staged (`--allow-empty`): the git hook skips everything (.githooks/pre-commit sets STORM_PRE_COMMIT_HOOK=1, #706); a manual ./commit.sh keeps the full suite; empty is relative to HEAD, so a reword-only `--amend` skips too
-# Self-heal (#489/#557): commit.sh configures build/release, then builds just what
-#   clang-tidy needs (storm BMIs + synthesized-module BMIs, so no missing
-#   compile_commands.json / std.pcm) and build/debug before running storm_tests
-#   directly (the only test binary since #787, so it is never missing). No-op on
+# Self-heal (#489): commit.sh configures + builds build/debug before running
+#   storm_tests directly (the only test binary since #787, so it is never missing).
+#   build/release is no longer touched (it only served clang-tidy, #910). No-op on
 #   the warm path; covers both the git-hook path and a manual ./commit.sh on a
 #   fresh worktree. Each configure runs INSIDE the step that needs it, so a
 #   failed configure fails that step with the CMake error in its log (#674).
@@ -247,7 +246,7 @@ git push
 # See: https://github.com/spiritEcosse/storm/issues/113
 ```
 
-**If the hook fails on a later step (tidy/tests):** the tree is
+**If the hook fails on a later step (tests):** the tree is
 already reformatted and staged by that point (format runs first, step 1-2).
 Just fix the reported failure and re-run `git commit -m "message"` — no need
 to `git add -A` again unless you touched more files.
@@ -331,8 +330,8 @@ and #550 guards, in `commit.sh` ABOVE its `TOTAL_STEPS==0` early exit, since a c
 only the hook, `settings.json` or the test itself skips every other step. Those guards are rows
 of one table in `scripts/commit/pre_commit_guards.py` (#688), not bash blocks — add a guard there; CI's
 `script-guards` job runs every row with `--all` (#708), so a new row needs no workflow edit. `commit.sh`
-itself stays a thin orchestrator: its skip rules, clang-tidy prerequisite verdict and coverage-gap
-report are tested stdlib-Python helpers (`scripts/commit/smart_skip.py`, `scripts/tidy/tidy_prereqs.py`,
+itself stays a thin orchestrator: its skip rules and coverage-gap
+report are tested stdlib-Python helpers (`scripts/commit/smart_skip.py`,
 `scripts/coverage/coverage_gate.py`; see `scripts/README.md`), written for Python 3.9+ so macOS system `python3` runs them.
 
 ## Architecture

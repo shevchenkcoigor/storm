@@ -4,13 +4,17 @@
 Port of the shell runner of the same name (retired in #692); same CLI, exit codes and messages.
 
   --diff   (default)  Diff-mode - only warnings on lines touched by the staged
-                      commit (git diff --cached) block. Pre-existing warnings on
-                      other lines are out of scope. This is the pre-commit default.
+                      changes (git diff --cached) block. Pre-existing warnings on
+                      other lines are out of scope. CI runs it with --base (#910).
   --full              Full-file scan, staged files only. Block on any warning in
                       any staged file (including pre-existing drift). Used to be
                       the default before Issue #262.
   --all               Full-file scan, ALL C++ files. Used by the scheduled weekly CI
                       sweep to detect accumulated drift.
+
+  --base <ref>        With --diff or --full: lint what HEAD changed since <ref>
+                      (git diff <ref>...HEAD) instead of the staged changes. For CI,
+                      where nothing is staged (#910). Not combinable with --fix.
 
 Prerequisites:
   - Release build with compile_commands.json: cmake --preset ninja-release
@@ -71,6 +75,9 @@ SCAN_ROOTS = ("src", "tests", "benchmarks")
 # clang-tidy's own meta-messages; real warnings and errors are kept.
 NOISE = re.compile(r"^[0-9]+ warnings? (generated|and)|^Suppressed [0-9]+|^Use -header-filter|^Use -system-headers")
 CRASH_MARKER = "PLEASE submit a bug report"
+# clang-tidy-diff.py SIGKILLs a TU that outlives -timeout (or that the OOM killer took) and prints only
+# "Terminated by signal 9 : ..." / "Terminated by timeout: ...": no warning, no error, no crash marker.
+TERMINATED_MARKER = "Terminated by"
 ISSUE_LINE = re.compile(r": (warning|error):")
 MAX_ISSUES_SHOWN = 50
 
@@ -89,6 +96,7 @@ class Options(NamedTuple):
     fix: bool
     mode: str      # diff | full | all
     jobs: int
+    base: Optional[str] = None  # None: lint the staged changes; a ref: lint <ref>...HEAD (#910)
 
 
 class FileResult(NamedTuple):
@@ -126,19 +134,29 @@ def default_jobs(nproc: int, meminfo: Optional[str]) -> int:
 
 
 def parse_args(argv: list, jobs: int) -> Options:
-    fix, mode = False, "diff"
+    fix, mode, base = False, "diff", None
     args = iter(argv)
     for arg in args:
         if arg == "--fix":
             fix = True
         elif arg in ("--diff", "--full", "--all"):
             mode = arg[2:]
+        elif arg.startswith("--base") and arg != "--base":
+            raise UsageError("--base expects a git ref as the next argument (not --base=<ref>), got: %r" % arg)
+        elif arg == "--base":
+            base = next(args, "")
+            if not base or base.startswith("-"):
+                raise UsageError("--base expects a git ref, got: %r" % base)
         elif arg == "-j":
             value = next(args, "")
             if not value.isdigit() or int(value) < 1:
                 raise UsageError("-j expects a positive integer, got: %r" % value)
             jobs = int(value)
-    return Options(fix, mode, jobs)
+    if base and mode == "all":
+        raise UsageError("--base has no effect with --all (the sweep scans the whole tree)")
+    if base and fix:
+        raise UsageError("--base cannot be combined with --fix (it would edit a checkout nothing re-stages)")
+    return Options(fix, mode, jobs, base)
 
 
 def check_prerequisites(mode: str) -> int:
@@ -223,16 +241,42 @@ def print_banner(opts: Options) -> None:
     say("   Config file: %s" % CLANG_TIDY_CONFIG)
     say("   Build directory: %s" % BUILD_DIR)
     say("   Parallel jobs: %d" % opts.jobs)
-    say({"diff": "   Scope: staged lines only (git diff --cached, lines added/changed)",
-         "full": "   Scope: staged files (whole-file scan)",
-         "all": "   Scope: ALL C++ source files (sweep)"}[opts.mode])
+    if opts.base and opts.mode != "all":
+        say({"diff": "   Scope: lines changed since %s (git diff %s...HEAD)" % (opts.base, opts.base),
+             "full": "   Scope: files changed since %s (whole-file scan)" % opts.base}[opts.mode])
+    else:
+        say({"diff": "   Scope: staged lines only (git diff --cached, lines added/changed)",
+             "full": "   Scope: staged files (whole-file scan)",
+             "all": "   Scope: ALL C++ source files (sweep)"}[opts.mode])
     say("   Mode: AUTO-FIX enabled" if opts.fix else "   Mode: Check only (use --fix to apply fixes)")
     say()
 
 
+class GitError(Exception):
+    """A git call the run depends on failed. An empty answer must never read as a clean tree (#910)."""
+
+
 def git_output(*args: str) -> str:
-    proc = subprocess.run(["git"] + list(args), stdout=subprocess.PIPE, stderr=subprocess.DEVNULL)
+    proc = subprocess.run(["git"] + list(args), stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+    if proc.returncode != 0:
+        detail = proc.stderr.decode("utf-8", errors="replace").strip()
+        raise GitError("git %s failed (exit %d): %s" % (" ".join(args), proc.returncode, detail))
     return proc.stdout.decode("utf-8", errors="replace")
+
+
+def ref_exists(ref: str) -> bool:
+    proc = subprocess.run(["git", "rev-parse", "--verify", "--quiet", ref + "^{commit}"],
+                          stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    return proc.returncode == 0
+
+
+def change_range(opts: Options) -> list:
+    """The git arguments naming what to lint: the staged changes, or <base>...HEAD (#910)."""
+    return [opts.base + "...HEAD"] if opts.base else ["--cached"]
+
+
+def scope_word(opts: Options) -> str:
+    return "changed" if opts.base else "staged"
 
 
 def restage_fixes() -> None:
@@ -244,8 +288,8 @@ def count_lines(lines: list, needle: str) -> int:
 
 
 # ─── --diff mode ────────────────────────────────────────────────────────────
-# Pipe `git diff -U0 --cached` through clang-tidy-diff.py - it only emits
-# diagnostics on lines the staged commit touches. Pre-existing warnings on other
+# Pipe `git diff -U0 --cached` (or `<base>...HEAD` with --base) through clang-tidy-diff.py - it
+# only emits diagnostics on lines the change touches. Pre-existing warnings on other
 # lines are out of scope. See Issue #262 for rationale.
 def tee_clang_tidy_diff(opts: Options, db_path: str, staged_diff: pathlib.Path) -> list:
     # -p1 strips the a/ b/ prefix that `git diff` prepends to paths. -iregex limits
@@ -305,7 +349,7 @@ def tee_fragment_parents(opts: Options, db_path: str, fragment_filters: dict) ->
 def run_diff(opts: Options, db_path: str, workdir: str) -> int:
     # Diff sections for known-unparseable / always-skip files are dropped BEFORE
     # clang-tidy-diff.py sees them (source-level skip, keyed by file identity).
-    staged = git_output("diff", "-U0", "--cached", "--src-prefix=a/", "--dst-prefix=b/", "--no-ext-diff")
+    staged = git_output("diff", "-U0", *change_range(opts), "--src-prefix=a/", "--dst-prefix=b/", "--no-ext-diff")
     staged_diff = pathlib.Path(workdir) / "staged.diff"
     staged_diff.write_text("".join(skiplist.filter_skiplist_from_diff(staged.splitlines(keepends=True))))
     output = tee_clang_tidy_diff(opts, db_path, staged_diff)
@@ -319,7 +363,7 @@ def run_diff(opts: Options, db_path: str, workdir: str) -> int:
     # diff matches the regex. That's a clean pass.
     if not fragment_filters and any("No relevant changes found" in line for line in output):
         say()
-        say("✅ clang-tidy --diff: no staged C++ lines to check")
+        say("✅ clang-tidy --diff: no %s C++ lines to check" % scope_word(opts))
         return 0
 
     # Count actual diagnostics - clang-tidy-diff.py's exit code is unreliable
@@ -339,6 +383,18 @@ def run_diff(opts: Options, db_path: str, workdir: str) -> int:
     warnings = count_lines(output, ": warning:")
     errors = count_lines(output, ": error:")
 
+    # A killed clang-tidy (timeout, OOM) is the same blind spot: it prints neither a warning nor an
+    # error, so the run would report success having checked nothing (#910 - this is the only
+    # per-PR tidy gate now).
+    terminated = count_lines(output, TERMINATED_MARKER)
+    if terminated:
+        say()
+        say(RULE)
+        say("❌ clang-tidy --diff: clang-tidy was terminated (timeout or signal) on %d line(s) of output" % terminated)
+        say("   Diagnostics are incomplete — treating as failure rather than clean.")
+        say(RULE)
+        return 1
+
     # A crashed clang-tidy prints neither ": error:" nor ": warning:", so the two
     # counters above cannot see it and the run would report success having checked
     # nothing. Files KNOWN to crash never get this far, so any crash here is
@@ -355,8 +411,8 @@ def run_diff(opts: Options, db_path: str, workdir: str) -> int:
     say()
     say(RULE)
     say("📊 --diff summary:")
-    say("   Warnings on staged lines: %d" % warnings)
-    say("   Errors in staged files:   %d" % errors)
+    say("   Warnings on %s lines: %d" % (scope_word(opts), warnings))
+    say("   Errors in %s files:   %d" % (scope_word(opts), errors))
     say(RULE)
 
     if warnings or errors:
@@ -364,23 +420,26 @@ def run_diff(opts: Options, db_path: str, workdir: str) -> int:
             # Auto-fix pass complete - re-run check-only to confirm clean.
             say()
             say("🔄 Re-checking after auto-fix...")
+            # No base is carried over: parse_args rejects --base together with --fix, so a
+            # re-check here is always the staged one.
             return main(["--diff"])
-        say("❌ clang-tidy --diff: new warnings/errors on staged lines")
+        say("❌ clang-tidy --diff: new warnings/errors on %s lines" % scope_word(opts))
         return 1
 
-    say("✅ clang-tidy --diff: staged lines are clean")
+    say("✅ clang-tidy --diff: %s lines are clean" % scope_word(opts))
     return 0
 
 
 # ─── --full and --all modes: file-based scan ───────────────────────────────
-def list_files(mode: str) -> list:
-    if mode == "all":
+def list_files(opts: Options) -> list:
+    if opts.mode == "all":
         found = [os.path.join(root, name)
                  for top in SCAN_ROOTS if os.path.isdir(top)
                  for root, _dirs, names in os.walk(top)
                  for name in names if CPP_FILE.search(name)]
     else:
-        found = [name for name in git_output("diff", "--cached", "--name-only").splitlines()
+        found = [name for name in git_output("diff", *change_range(opts), "--name-only",
+                                             "--diff-filter=d").splitlines()
                  if CPP_FILE.search(name)]
     return sorted(name for name in found if "third_party" not in name)
 
@@ -470,10 +529,10 @@ def unique_matching(results: list, needle: str) -> list:
 
 
 def run_files(opts: Options, db_path: str) -> int:
-    files = list_files(opts.mode)
+    files = list_files(opts)
     if not files:
         say("✅ No C++ files found — clang-tidy skipped" if opts.mode == "all"
-            else "✅ No staged C++ files — clang-tidy skipped")
+            else "✅ No %s C++ files — clang-tidy skipped" % scope_word(opts))
         return 0
 
     say("📁 Found %d source files to check" % len(files))
@@ -554,15 +613,25 @@ def main(argv: list) -> int:
     except UsageError as error:
         say("run_clang_tidy: %s" % error, err=True)
         return 2
+    if opts.base and not ref_exists(opts.base):
+        say("run_clang_tidy: --base %s is not a commit in this checkout (shallow clone? fetch it first)" % opts.base,
+            err=True)
+        return 2
     failed = check_prerequisites(opts.mode)
     if failed:
         return failed
     with tempfile.TemporaryDirectory() as workdir:
         db_path = database_dir(workdir)
         print_banner(opts)
-        if opts.mode == "diff":
-            return run_diff(opts, db_path, workdir)
-        return run_files(opts, db_path)
+        try:
+            if opts.mode == "diff":
+                return run_diff(opts, db_path, workdir)
+            return run_files(opts, db_path)
+        except GitError as error:
+            say("run_clang_tidy: %s" % error, err=True)
+            if opts.base:
+                say("   (a --base needs full history: git fetch --unshallow)", err=True)
+            return 2
 
 
 if __name__ == "__main__":

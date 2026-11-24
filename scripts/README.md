@@ -5,7 +5,7 @@ self-tests in its own `tests/` folder, so a script and its test sit one `cd` apa
 
 | Folder | What lives there |
 |---|---|
-| `tidy/` | clang-tidy runner (`run_clang_tidy.py`), its skip-list and the prerequisite verdict `commit.sh` asks for |
+| `tidy/` | clang-tidy runner (`run_clang_tidy.py`) and its skip-list |
 | `coverage/` | `coverage-run-batched.sh`, the per-OS PostgreSQL socket default, the lcov line-coverage parser and the uncovered-lines report |
 | `commit/` | the pre-commit guard table (`pre_commit_guards.py`) and the staged-file skip planner (`smart_skip.py`) |
 | `ci/` | CI helpers and checkers: change classification, digest pins, vendored CPM.cmake consistency (`check_cpm_vendored.py`, #851), agent frontmatter, ORM backend imports, no `std::format` in modules or shared test headers (`check_no_std_format.py`), no two YAML test cases with the same normalised input (`check_yaml_duplicates.py`; needs PyYAML), SonarCloud gate, Atlas migration check (`atlas_migration_check.py`; needs the `atlas` CLI and a built `storm_schema`, so CI runs it, and its stub-driven test runs in `script-guards`) |
@@ -27,8 +27,11 @@ Storm codebase with the root `.clang-tidy` configuration. Run it from the repo r
 ### Usage
 
 ```bash
-# Staged lines only (default, = --diff): what the pre-commit hook runs
+# Staged lines only (default, = --diff)
 ./scripts/tidy/run_clang_tidy.py
+
+# The lines this branch changed since <ref> (what CI runs on a PR, #910); nothing needs to be staged
+./scripts/tidy/run_clang_tidy.py --diff --base origin/develop
 
 # Whole-file scan of the staged files / of the whole tree
 ./scripts/tidy/run_clang_tidy.py --full
@@ -46,6 +49,7 @@ Storm codebase with the root `.clang-tidy` configuration. Run it from the repo r
 | Option | Description |
 |--------|-------------|
 | `--diff` / `--full` / `--all` | Scope: staged lines (default), staged files, or every C++ file under `src/`, `tests/`, `benchmarks/`. The last one given wins. |
+| `--base <ref>` | With `--diff`/`--full`: lint what `HEAD` changed since `<ref>` (`git diff <ref>...HEAD`) instead of the staged changes — for CI, where nothing is staged. Needs the merge base in the checkout (unshallow first); an unknown ref or `--base` with `--fix`: exit 2. |
 | `--fix` | Apply suggested fixes automatically (use with caution) |
 | `-j N` | Number of parallel jobs (default: min(cores, MemAvailable GB / 2), at least 1). Not a positive integer: exit 2. |
 
@@ -57,8 +61,10 @@ Unrecognised arguments are ignored, as they were in the shell version.
   and the vendored `src/orm/generator.cppm` are listed by exact path — the lists, and why each
   entry is there, live in `clang_tidy_skiplist.py`. `--diff` drops their sections before clang-tidy
   runs; `--full`/`--all` run it and forgive a parse failure or crash on a listed file (the vendored
-  file is never run). `commit.sh` asks the same module (`--keep`)
-  which staged files clang-tidy will open.
+  file is never run).
+- Where it runs (#910): not in the pre-commit hook any more. CI's `clang-tidy` job runs
+  `--diff --base <PR base>` after its own release build (which supplies `compile_commands.json` and the
+  BMIs), and `clang-tidy-sweep.yml` runs `--all` weekly for drift on lines no PR touched.
 - `PCH` flags are stripped from a temp copy of `compile_commands.json` before clang-tidy replays it.
 - A crash or an unexpected parse failure fails the run rather than reading as clean.
 - A TU that exceeds the 240 s timeout still reads as passed (#556), and the default job count
@@ -240,7 +246,7 @@ eval "$(git diff --cached --name-only | ./scripts/ci/detect_changes.py)"
 
 ### Where it runs
 
-- **`commit.sh`** — over staged files, to skip format/tidy/tests when nothing
+- **`commit.sh`** — over staged files, to skip format/tests when nothing
   they could affect changed.
 - **CI** — the `changes` job in `.github/workflows/ci.yml`, which also self-tests the
   script before using its output. `run_heavy` (the job's output) additionally forces a
@@ -261,8 +267,7 @@ and `test_session_start_hook.py` (Python, needs `git`), which covers
 so decides whether `commit.sh` runs at all, #651). `test_commit_self_heal_configure.py` (Python, needs `git`) covers `commit.sh` itself: it runs the real
 script in a throwaway repo against a stub `cmake`, and checks that each self-heal configure fails
 its step with the CMake error in that step's log, and that a configured tree never reconfigures
-(#674), and that a configured tree takes the targeted clang-tidy prereq build rather than the
-full-build fallback (#689).
+(#674), and that the hook never configures or builds `build/release` nor runs clang-tidy (#910).
 Every self-test is Python and runs individually or as a suite:
 
 ```bash
@@ -275,7 +280,7 @@ self-tests are too: `test_check_agent_frontmatter.py`, `test_check_ci_digests.py
 `test_run_clang_tidy_full.py` (the last two need `git` and `/bin/sh` as well), `test_session_start_hook.py` (needs `git`: it `git init`s a throwaway repo and makes a real commit through the wired hook), `test_commit_self_heal_configure.py` (needs `git`; stubs `cmake`/`ninja`/`pg_isready`, so no toolchain), `test_cmake_format_target.py` (needs **cmake ≥ 3.16 and ninja**: its harness configures with `-G Ninja`, the docker/ci image has no `make`; covers `cmake/format.cmake`'s stub `cmake-format` target, which fails naming the missing tool in the cmake-format step's own log, #690), `test_ninjalog_stats.py` and `test_time_trace.py` (pin the two compile-time numbers that are plausible when wrong: the module-edge dedup and scan-edge exclusion, and the `--precompile` replay with the modmap's `-fmodule-output` dropped; no compiler), `test_coverage_parallel.py` (drives the real `coverage-run-batched.sh` with a fake gtest binary, #268; needs GNU `nproc` and at least 3 cores), `test_sweep_workflow.py` (runs the sweep workflow step's script under `bash`), `test_coverage_gate.py`,
 `test_split_unified_cases.py` (needs **PyYAML**, the one self-test that does: it runs the real `split_unified_cases.py`, which imports `yaml`, over throwaway corpora and over the real `tests/test_cases/*.yaml`, and pins the multi-file rules (#846: duplicate names, unknown `query_type`, rewrite-only-when-changed) the `expected_sql` / `expected_sql_sqlite` / `expected_sql_pg` rules, #818/#844, the unquoted date / datetime error that names the case and key, #853, and the `join` slice — a case on `dataset: relations` goes there whatever its `query_type`, while the SQL it may pin still follows its runner group, #869; CI's `script-guards` installs PyYAML if the runner lacks it),
 `test_yaml_to_json.py` (needs **PyYAML**: runs `benchmarks/scripts/yaml_to_json.py` over throwaway YAML — a misspelled key exits 1 and writes nothing, `aggregations`/`values` pass through — and over the real benchmark corpus, #868),
-`test_pre_commit_guards.py`, `test_smart_skip.py`, `test_sonar_gate.py` and `test_tidy_prereqs.py` (stdlib `unittest`, need
+`test_pre_commit_guards.py`, `test_smart_skip.py`, `test_sonar_gate.py` (stdlib `unittest`, need
 only `python3` unless noted, no syntax newer than 3.9) run the same way. They share `scripts/lib/testing.py` (`run()`, `scratch_dir_in_repo()`, `environment_without_git_hook_variables()` - the scrub every test that runs `git` in a throwaway repo needs, since `commit.sh` runs them from a hook whose `GIT_INDEX_FILE` would otherwise point `git` at the real repository); staging it reruns the tests that import it, and `scripts/lib/tests/test_testing.py` covers the helpers themselves. Each also runs in `commit.sh` when it is staged.
 
 Every self-test here is a row (step) of `pre_commit_guards.py`'s `GUARDS` table, except those in its
@@ -290,9 +295,8 @@ failure so one run reports them all (#708). So a new self-test reaches CI by bec
 | `pre_commit_guards.py` | The staged-file guards as one table (trigger regex → checker/self-test → BLOCK message). Run **before** `commit.sh`'s `TOTAL_STEPS==0` early exit. Add a guard by adding a `Guard(...)` row to `GUARDS`. `--all` runs every row regardless of staged files and continues past a failure — CI's `script-guards` job (#708). |
 | `sonar_gate.py` | Not a `commit.sh` helper: ci.yml's `sonar-gate` job (#711). Waits for the SonarCloud app's check run on the PR head and fails unless it is `success`; passes at once on `merge_group`/`push`/`schedule`, so the merge queue never waits on a check the app does not post. |
 | `smart_skip.py` | The smart-skip decision table: reads `detect_changes.py`'s `HAS_*` output, prints the `RUN_*` switches and `SKIP_NOTE` for `commit.sh` to `eval`. |
-| `tidy_prereqs.py` | Whether clang-tidy's module BMIs exist for the staged files (#557). Prints `complete`; anything else — including a crash — is `incomplete`, so the caller rebuilds. |
-| `run_clang_tidy.py` | The clang-tidy runner `commit.sh` calls in `--diff --fix` (or `--full --fix`) mode and the weekly sweep calls with `--all` (#692). |
-| `clang_tidy_skiplist.py` | The files clang-tidy must not open: `KNOWN_UNPARSEABLE`, the vendored file, and the diff filter. Imported by `run_clang_tidy.py`; `commit.sh` pipes staged paths through `--keep` to drop them from its BMI probe (#550). |
+| `run_clang_tidy.py` | The clang-tidy runner: CI's `clang-tidy` job calls it `--diff --base <PR base>` (#910), the weekly sweep `--all` (#692). Not a pre-commit step. |
+| `clang_tidy_skiplist.py` | The files clang-tidy must not open: `KNOWN_UNPARSEABLE`, the vendored file, and the diff filter. Imported by `run_clang_tidy.py` (a library; its `--keep` CLI went with `commit.sh`'s BMI probe, #910). |
 | `coverage_gate.py` | The coverage gate used by CI's `coverage` job (#765; `commit.sh` dropped its copy in #793): `check` reads the `lcov --summary` text on stdin, compares the line row to 100.0 and lists the uncovered lines on a miss; `line-coverage` prints the bare percentage; `pg-connstr [OS]` prints the default `STORM_PG_CONNSTR` for the host OS; `uncovered` prints just the uncovered files and line ranges from `build/debug/coverage/coverage-filtered.lcov` under the cwd (no arguments; it was `uncovered_lines.py` until #776). |
 
 ### Prerequisites

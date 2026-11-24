@@ -22,7 +22,7 @@ DETECT = REPO_ROOT / "scripts" / "ci" / "detect_changes.py"
 sys.path.insert(0, str(HELPER.parent))
 from smart_skip import decide, decide_empty  # noqa: E402
 
-ALL = ("RUN_FORMAT", "RUN_CMAKE_FORMAT", "RUN_TIDY", "RUN_TESTS")
+ALL = ("RUN_FORMAT", "RUN_CMAKE_FORMAT", "RUN_TESTS")
 
 
 def flags(**on):
@@ -37,31 +37,38 @@ def ran(plan):
 class DecideTest(unittest.TestCase):
     def test_cpp_in_src_runs_everything_but_cmake_format(self):
         plan, note = decide(flags(SRC=True, CPP=True))
-        self.assertEqual(ran(plan), {"RUN_FORMAT", "RUN_TIDY", "RUN_TESTS"})
+        self.assertEqual(ran(plan), {"RUN_FORMAT", "RUN_TESTS"})
         self.assertEqual(note, "")
 
     def test_cpp_and_cmake_runs_everything(self):
         plan, _ = decide(flags(SRC=True, CPP=True, CMAKE=True))
-        self.assertEqual(ran(plan), {"RUN_FORMAT", "RUN_CMAKE_FORMAT", "RUN_TIDY", "RUN_TESTS"})
+        self.assertEqual(ran(plan), {"RUN_FORMAT", "RUN_CMAKE_FORMAT", "RUN_TESTS"})
 
     def test_neither_cpp_nor_cmake_skips_all(self):
         plan, note = decide(flags())
         self.assertEqual(ran(plan), set())
         self.assertIn("No C++ or cmake files in commit", note)
 
-    def test_cmake_only_skips_clang_format_and_tidy(self):
+    def test_cmake_only_skips_clang_format(self):
         plan, note = decide(flags(CMAKE=True))
         self.assertEqual(ran(plan), {"RUN_CMAKE_FORMAT", "RUN_TESTS"})
         self.assertIn("cmake-only changes", note)
 
     def test_cpp_outside_src_tests_cmake_skips_tests(self):
         plan, note = decide(flags(CPP=True))
-        self.assertEqual(ran(plan), {"RUN_FORMAT", "RUN_TIDY"})
+        self.assertEqual(ran(plan), {"RUN_FORMAT"})
         self.assertIn("No src/, tests/, or cmake changes", note)
 
     def test_tests_dir_cpp_runs_tests(self):
         plan, _ = decide(flags(TEST=True, CPP=True))
         self.assertTrue(plan["RUN_TESTS"])
+
+    def test_tidy_is_not_a_pre_commit_step(self):
+        # clang-tidy runs on the PR in ci.yml and in the weekly sweep (#910).
+        for plan in (decide(flags(SRC=True, CPP=True, CMAKE=True))[0], decide(None)[0], decide_empty(True)[0]):
+            self.assertNotIn("RUN_TIDY", plan)
+        self.assertNotIn("tidy", decide(flags())[1])
+        self.assertNotIn("tidy", decide(flags(CMAKE=True))[1])
 
     def test_coverage_and_bench_release_are_not_pre_commit_steps(self):
         # CI owns both (#793): the 100% coverage gate and the bench release build.
@@ -72,7 +79,7 @@ class DecideTest(unittest.TestCase):
     def test_no_flags_at_all_runs_every_gate(self):
         # Empty staged set (e.g. `./commit.sh` with nothing staged): every RUN_* stays on.
         plan, note = decide(None)
-        self.assertEqual(ran(plan), {"RUN_FORMAT", "RUN_CMAKE_FORMAT", "RUN_TIDY", "RUN_TESTS"})
+        self.assertEqual(ran(plan), {"RUN_FORMAT", "RUN_CMAKE_FORMAT", "RUN_TESTS"})
         self.assertEqual(note, "")
 
 
@@ -87,7 +94,7 @@ class MatrixTest(unittest.TestCase):
         return {line.split("=")[0] for line in out.splitlines() if line.endswith("=true")}
 
     def test_cpp_only(self):
-        self.assertEqual(self.steps(["src/orm/x.cppm"]), {"RUN_FORMAT", "RUN_TIDY", "RUN_TESTS"})
+        self.assertEqual(self.steps(["src/orm/x.cppm"]), {"RUN_FORMAT", "RUN_TESTS"})
 
     def test_cmake_only(self):
         self.assertEqual(self.steps(["cmake/db.cmake"]), {"RUN_CMAKE_FORMAT", "RUN_TESTS"})
@@ -97,7 +104,7 @@ class MatrixTest(unittest.TestCase):
         self.assertEqual(self.steps(["docs/README.md"]), set())
 
     def test_bench_only_cpp(self):
-        self.assertEqual(self.steps(["benchmarks/b.cpp"]), {"RUN_FORMAT", "RUN_TIDY"})
+        self.assertEqual(self.steps(["benchmarks/b.cpp"]), {"RUN_FORMAT"})
 
 
 NO_CHANGES = ("HAS_SRC_CHANGES=false\nHAS_TEST_CHANGES=false\nHAS_CPP_CHANGES=false\n"
@@ -159,7 +166,7 @@ class DecideEmptyTest(unittest.TestCase):
 
     def test_manual_run_keeps_every_gate(self):
         plan, note = decide_empty(False)
-        self.assertEqual(ran(plan), {"RUN_FORMAT", "RUN_CMAKE_FORMAT", "RUN_TIDY", "RUN_TESTS"})
+        self.assertEqual(ran(plan), {"RUN_FORMAT", "RUN_CMAKE_FORMAT", "RUN_TESTS"})
         self.assertEqual(note, "")
 
 
