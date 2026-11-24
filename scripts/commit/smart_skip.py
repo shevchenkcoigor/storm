@@ -58,6 +58,8 @@ def decide(flags):
     return plan, note
 
 
+# HAS_TIDY_CHANGES (detect_changes.py) is CI-only (#913): commit.sh has no tidy step, so it is deliberately not here
+# and parse_flags drops it.
 FLAG_KEYS = ("HAS_SRC_CHANGES", "HAS_TEST_CHANGES", "HAS_CPP_CHANGES", "HAS_CMAKE_CHANGES", "HAS_BENCH_CHANGES")
 
 

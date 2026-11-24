@@ -17,13 +17,21 @@ Needs only Python 3.7+; macOS system python3 runs it.
 import re
 import sys
 
+CPP_FILE = re.compile(r"\.(cpp|cppm|h|hpp)$")
+
 # (flag, test on one path). Order is the output order.
 RULES = (
     ("HAS_SRC_CHANGES", lambda path: path.startswith("src/")),
     ("HAS_TEST_CHANGES", lambda path: path.startswith("tests/")),
-    ("HAS_CPP_CHANGES", re.compile(r"\.(cpp|cppm|h|hpp)$").search),
+    ("HAS_CPP_CHANGES", CPP_FILE.search),
     ("HAS_CMAKE_CHANGES", re.compile(r"(CMakeLists\.txt|\.cmake)$").search),
     ("HAS_BENCH_CHANGES", lambda path: path.startswith("benchmarks/")),
+    # Whether the PR clang-tidy job has anything to do (#913): it lints changed C++ lines only, so a
+    # change without C++ gives it nothing. The tidy plumbing itself (the runner and its tests, and
+    # ci.yml, which holds the job) counts too, so an edit to it is verified by the job it configures.
+    # A .clang-tidy config change does not: the weekly sweep validates it.
+    ("HAS_TIDY_CHANGES", lambda path: bool(CPP_FILE.search(path)) or path.startswith("scripts/tidy/")
+     or path == ".github/workflows/ci.yml"),
 )
 
 

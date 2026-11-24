@@ -62,7 +62,7 @@ Unrecognised arguments are ignored, as they were in the shell version.
   entry is there, live in `clang_tidy_skiplist.py`. `--diff` drops their sections before clang-tidy
   runs; `--full`/`--all` run it and forgive a parse failure or crash on a listed file (the vendored
   file is never run).
-- Where it runs (#910): not in the pre-commit hook any more. CI's `clang-tidy` job runs
+- Where it runs (#910): not in the pre-commit hook any more. CI's `clang-tidy` job (only when C++ or the tidy plumbing changed, `HAS_TIDY_CHANGES`, #913) runs
   `--diff --base <PR base>` after its own release build (which supplies `compile_commands.json` and the
   BMIs), and `clang-tidy-sweep.yml` runs `--all` weekly for drift on lines no PR touched.
 - `PCH` flags are stripped from a temp copy of `compile_commands.json` before clang-tidy replays it.
@@ -220,7 +220,7 @@ Exit code `0` = all agent files valid, `1` = at least one invalid.
 ## Change Classification (detect_changes.py)
 
 Classifies a list of changed file paths into `HAS_SRC_CHANGES` / `HAS_TEST_CHANGES` /
-`HAS_CPP_CHANGES` / `HAS_CMAKE_CHANGES` / `HAS_BENCH_CHANGES` flags — one place shared by
+`HAS_CPP_CHANGES` / `HAS_CMAKE_CHANGES` / `HAS_BENCH_CHANGES` / `HAS_TIDY_CHANGES` flags — one place shared by
 `commit.sh` (pre-commit smart skips over staged files) and the `changes` job in
 `.github/workflows/ci.yml` (skips the `test` / `coverage` / `clang-p2996-host-layout` jobs
 on a PR that doesn't touch src/tests/cmake), so the two never classify the same file
@@ -235,6 +235,7 @@ git diff --cached --name-only | ./scripts/ci/detect_changes.py
 # HAS_CPP_CHANGES=true
 # HAS_CMAKE_CHANGES=false
 # HAS_BENCH_CHANGES=false
+# HAS_TIDY_CHANGES=true   (C++, scripts/tidy/**, or ci.yml: whether the PR clang-tidy job has work, #913)
 
 ./scripts/ci/tests/test_detect_changes.py   # self-test
 ```
@@ -251,7 +252,10 @@ eval "$(git diff --cached --name-only | ./scripts/ci/detect_changes.py)"
 - **CI** — the `changes` job in `.github/workflows/ci.yml`, which also self-tests the
   script before using its output. `run_heavy` (the job's output) additionally forces a
   full run whenever the diff touches CI plumbing itself (`.github/workflows/`, `scripts/`,
-  `.githooks/`, `CMakePresets.json`, `commit.sh`), regardless of the flags above.
+  `.githooks/`, `CMakePresets.json`, `commit.sh`), regardless of the flags above. The
+  clang-tidy job is the exception: it reads `run_tidy` (from `HAS_TIDY_CHANGES`: C++,
+  `scripts/tidy/**`, `ci.yml`) and ignores the rest of that plumbing, since `--diff` lints
+  changed C++ lines only (#913).
 
 ## Script Self-Tests (scripts/*/tests/)
 
