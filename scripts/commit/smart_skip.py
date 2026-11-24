@@ -16,19 +16,20 @@ a value other than exactly true/false, keeps every gate on:
 an unclassifiable commit gets every check, never fewer.
 
 Rules (first match wins for the note):
-  no C++ and no cmake          -> skip format, tidy, tests
-  cmake but no C++             -> skip clang-format, clang-tidy
+  no C++ and no cmake          -> skip format, tests
+  cmake but no C++             -> skip clang-format
   C++ but no src/tests/cmake   -> skip tests
   no cmake                     -> skip cmake-format
 
-The 100% coverage gate and the bench release build are CI-only (#793).
+The 100% coverage gate and the bench release build are CI-only (#793); so is clang-tidy
+(PR diff in ci.yml's clang-tidy job + the weekly sweep, #910).
 
 Stdlib only, no syntax newer than Python 3.7.
 """
 import shlex
 import sys
 
-RUN_KEYS = ("RUN_FORMAT", "RUN_CMAKE_FORMAT", "RUN_TIDY", "RUN_TESTS")
+RUN_KEYS = ("RUN_FORMAT", "RUN_CMAKE_FORMAT", "RUN_TESTS")
 
 
 def decide(flags):
@@ -43,11 +44,11 @@ def decide(flags):
     cpp, cmake = flags["HAS_CPP_CHANGES"], flags["HAS_CMAKE_CHANGES"]
     note = ""
     if not cpp and not cmake:
-        note = "No C++ or cmake files in commit — skipping format, tidy, tests"
-        plan.update(RUN_FORMAT=False, RUN_CMAKE_FORMAT=False, RUN_TIDY=False, RUN_TESTS=False)
+        note = "No C++ or cmake files in commit — skipping format, tests"
+        plan.update(RUN_FORMAT=False, RUN_CMAKE_FORMAT=False, RUN_TESTS=False)
     elif not cpp:
-        note = "cmake-only changes — skipping clang-format, clang-tidy"
-        plan.update(RUN_FORMAT=False, RUN_TIDY=False)
+        note = "cmake-only changes — skipping clang-format"
+        plan.update(RUN_FORMAT=False)
     elif not (flags["HAS_SRC_CHANGES"] or flags["HAS_TEST_CHANGES"] or cmake):
         note = "No src/, tests/, or cmake changes — skipping tests"
         plan.update(RUN_TESTS=False)

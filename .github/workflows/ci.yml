@@ -6,7 +6,7 @@ name: CI
 # such a filter would be trying to save. Cheapness for docs-only PRs is the
 # `changes` job's business, below.
 #
-# The heavy jobs (`test`, `coverage`, `clang-p2996-host-layout`) do NOT run on
+# The heavy jobs (`test`, `coverage`, `clang-p2996-host-layout`, `clang-tidy`) do NOT run on
 # `push` to develop (#700). develop merges through a merge queue (#711): each
 # PR lands only after a `merge_group` run on develop + the queued PRs — the
 # exact tree the merge produces — passed `CI gate`; rebuilding that tree after
@@ -52,7 +52,7 @@ jobs:
   # they run everything) via scripts/ci/detect_changes.py —
   # the same script commit.sh uses for its staged-file smart skips, so both
   # places agree on what counts as "src/tests/cmake changed". `run_heavy`
-  # gates the `test` / `coverage` / `clang-p2996-host-layout` jobs below, and
+  # gates the `test` / `coverage` / `clang-p2996-host-layout` / `clang-tidy` jobs below, and
   # `run_cold_cpm` the cold-cpm-configure job: a PR touching only docs/ or
   # unrelated top-level files SKIPS them outright — no storm-ci image pulled,
   # no postgres service started, nothing configured, built or tested (#639).
@@ -405,17 +405,86 @@ jobs:
           curl -sSf https://atlasgo.sh | sh
           python3 scripts/ci/atlas_migration_check.py
 
-      # Full-tree clang-tidy sweep — tracked by issue #262.
-      # Enable once the pre-existing drift across src/ and tests/ is cleaned up.
-      # The clang-p2996 rebuild on 2026-05-11 first surfaced 48 warnings in
-      # src/orm/statements/*.cppm + src/db/postgresql.cppm, which are addressed
-      # in this PR — but other source files almost certainly carry similar
-      # accumulated violations that were masked by the same `.cppm` parse-failure
-      # auto-skip in scripts/tidy/run_clang_tidy.py. Enabling --all in CI now would
-      # fail every PR. Uncomment after issue #262's cleanup pass lands.
-      # - name: clang-tidy full sweep
-      #   if: matrix.preset == 'ninja-release' && matrix.postgres == 17
-      #   run: ./scripts/tidy/run_clang_tidy.py --all
+      # clang-tidy is NOT a step here: it is the `clang-tidy` job below (changed lines,
+      # every PR, #910), and clang-tidy-sweep.yml runs the full tree weekly (#262, #905).
+
+  # clang-tidy on the lines a PR changed (#910). It used to run in the pre-commit hook
+  # (needs the native toolchain, minutes cold); it is a job of its own, not a step of
+  # `test`, so it runs beside the matrix instead of sharing a runner with ctest and the
+  # postgres service (each tidy process holds ~1.5-2 GB), shows up as its own check, and
+  # can be re-run alone. The price is one more release build: build/release carries the
+  # compile_commands.json and BMIs tidy parses against, and no build output is shared
+  # between jobs. PR and merge-queue runs only; the weekly clang-tidy-sweep.yml still
+  # covers the whole tree (drift on untouched lines). No `--fix`: a CI checkout is not
+  # ours to edit. scripts/ci/tests/test_tidy_pr_step.py guards this job. Unlike its
+  # siblings it carries no step-level `if: env.RUN_HEAVY` guards: the job-level `if:`
+  # below is the live gate (a skipped job never runs a step), and the guards elsewhere
+  # are only extra insurance.
+  clang-tidy:
+    name: clang-tidy (changed lines)
+    needs: changes
+    # Skipped outright (no container pulled) when the diff does not need it, or on any
+    # event with no base to diff against (`run_heavy` is the `changes` job's verdict).
+    # Fail-closed: a broken `changes` job leaves the output empty, and '' != 'false'
+    # still runs. A skipped job is a pass to `CI gate` (#638, #639).
+    if: ${{ !cancelled() && (github.event_name == 'pull_request' || github.event_name == 'merge_group') && needs.changes.outputs.run_heavy != 'false' }}
+    env:
+      BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.merge_group.base_sha }}
+    runs-on: ubuntu-24.04
+    # A hung parse must not hold the gate for the 6-hour default.
+    timeout-minutes: 60
+    container:
+      # Keep in sync with the `test` job's pin — scripts/ci/check_ci_digests.py asserts they agree.
+      image: ghcr.io/spiritecosse/storm-ci@sha256:ae4f62771d7611c663ccb8e0061af9acc8a8a3fe604eabde4285d11a77d37a61
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          # `<base>...HEAD` needs the merge base, which a depth-1 checkout lacks.
+          fetch-depth: 0
+
+      - name: Trust the checkout
+        # The container runs as root over a runner-owned checkout; checkout@v4 only trusts
+        # it in a temporary global config, so later git calls would refuse it.
+        run: git config --global --add safe.directory "$GITHUB_WORKSPACE"
+
+      - name: Link clang-p2996 next to source dir
+        run: ln -sfn /opt/clang-p2996 "$(dirname "$GITHUB_WORKSPACE")/clang-p2996"
+
+      - name: Create libc++ modules symlink for import std;
+        # Same rationale as in the `test` job (issue #326).
+        run: |
+          clang_root="$(dirname "$GITHUB_WORKSPACE")/clang-p2996"
+          share_dir="$clang_root/build/share/libc++"
+          link="$share_dir/v1"
+          target="$clang_root/build/modules/c++/v1"
+          if [ -d "$target" ] && [ ! -e "$link" ]; then
+            mkdir -p "$share_dir"
+            ln -sfn "$target" "$link"
+            echo "Created symlink: $link -> $target"
+          else
+            echo "Symlink already exists or target missing — skipping"
+          fi
+
+      - name: Cache CPM packages
+        uses: actions/cache@v4
+        with:
+          path: .cache/CPM
+          key: cpm-ninja-release-${{ hashFiles('cmake/cpm.cmake', 'cmake/cmake-scripts.cmake', 'cmake/uuid.cmake', 'cmake/tests.cmake', 'cmake/bench.cmake') }}
+          restore-keys: |
+            cpm-ninja-release-
+            cpm-
+
+      - name: Configure (release)
+        run: cmake --preset ninja-release
+
+      - name: Build (release)
+        # Tidy replays build/release/compile_commands.json and parses against the module
+        # BMIs, so it needs the same full build the weekly sweep does.
+        run: cmake --build --preset ninja-release
+
+      - name: clang-tidy (changed lines)
+        run: ./scripts/tidy/run_clang_tidy.py --diff --base "$BASE_SHA"
 
   # The 100%-line-coverage gate. It was also a commit.sh step until #793 moved it
   # to CI only (it needs a live PostgreSQL, which a laptop often lacks). Deliberately NOT a
@@ -724,7 +793,7 @@ jobs:
   #             docs-only PR (it also shows which conclusion Sonar posts on a
   #             PR with no C++ — sonar_gate.py fails anything but `success`).
   #   4. DONE (#639): the flip — the job-level `if:` of `test`, `coverage`,
-  #      `clang-p2996-host-layout` and `cold-cpm-configure` carries
+  #      `clang-p2996-host-layout`, `clang-tidy` (#910) and `cold-cpm-configure` carries
   #      `&& needs.changes.outputs.<run_heavy|run_cold_cpm> != 'false'`, so a
   #      docs-only PR starts no container and no postgres service at all.
   #      Fail-closed survives: a broken `changes` job leaves the output empty
@@ -752,6 +821,7 @@ jobs:
       - sonar-gate
       - clang-p2996-host-layout
       - test
+      - clang-tidy
       - coverage
       - cold-cpm-configure
     # Bare runner on purpose: no container, no services, so this costs seconds

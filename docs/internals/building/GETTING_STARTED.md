@@ -12,8 +12,8 @@ git config core.hooksPath .githooks
 
 `core.hooksPath` is local git config: it lives in `.git/config`, is never
 cloned, and no CI job can see it (CI does not commit). Until you set it,
-`.githooks/pre-commit` — and therefore `commit.sh`, which runs clang-format,
-clang-tidy and the test suite that CLAUDE.md rule #3
+`.githooks/pre-commit` — and therefore `commit.sh`, which runs clang-format
+and the test suite that CLAUDE.md rule #3
 says never to skip — does not run on your commits, with nothing in the output
 to say so (issue #651).
 

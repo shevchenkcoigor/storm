@@ -1,40 +1,50 @@
 # Pre-Commit Hook
 
-Storm's pre-commit hook (`commit.sh`) runs format → clang-tidy → tests. The 100% coverage gate and the benchmark build are CI-only (#793).
-This page documents the **clang-tidy** stage in detail, because it has three
-modes with different scopes.
+Storm's pre-commit hook (`commit.sh`) runs format → tests. clang-tidy, the 100% coverage gate and the benchmark build are CI-only (#910, #793).
+This page also documents **clang-tidy** in detail, because it has several
+modes with different scopes and runs in two CI places instead of the hook.
+
+## Where clang-tidy runs (#910)
+
+It used to be a pre-commit step. It is not any more: it needed the native toolchain, a
+configured `build/release` and the module BMIs (~764 s on a cold tree), and a commit made
+in the prebuilt `storm-ci` image could not run it. It now runs:
+
+| Where | Mode | Scope | Gates |
+|---|---|---|---|
+| `ci.yml`, `clang-tidy` job (PR and merge queue) | `--diff --base <base sha>` | lines the PR changed | `CI gate` — a warning on a changed line fails the job |
+| `clang-tidy-sweep.yml` (Mondays 04:00 UTC, `workflow_dispatch`) | `--all` | the whole tree | nothing; the run turns red |
+| your machine, on demand | `--diff` / `--diff --base <ref>` / `--full` | see below | nothing |
+
+The CI step sits right after that leg's build, so it reuses the tree's
+`compile_commands.json` and BMIs and costs no second build. Run it locally before
+pushing if you want the feedback early: `./scripts/tidy/run_clang_tidy.py --diff --base origin/develop`
+(needs a configured and built `build/release`).
 
 ## Self-healing on a fresh/stale worktree (#489)
 
-Before running clang-tidy, `commit.sh` configures the release build and then
-builds clang-tidy's prerequisites, so a fresh worktree doesn't fail with
-"module BMI not found" (clang-tidy on files that `import std;`/`import storm;`
-need the BMIs) or a missing test binary later at the test stage (the test stage runs `storm_tests`
-directly — see
+`commit.sh` ensures `build/debug` is configured and built before it formats and
+runs `storm_tests` directly (see
 [TESTING.md#local-test-suite-speed](../testing/TESTING.md#local-test-suite-speed)
-for why it doesn't use `ctest`). It similarly ensures `build/debug` is built
-before running those binaries. Both guards are file-check-and-build: a no-op
-(fast) on an already-warm build directory, so this doesn't add cost on the
-common path — it only matters the first time you commit from a new worktree.
+for why it doesn't use `ctest`), so a fresh worktree doesn't fail with a missing
+test binary. The guard is file-check-and-build: a no-op (fast) on an
+already-warm build directory, so this doesn't add cost on the common path — it only
+matters the first time you commit from a new worktree. `build/release` is not
+touched: it only ever served clang-tidy (#910).
 
 ### A failed self-heal configure blocks the commit with the CMake error (#674)
 
-Every self-heal `cmake --preset` — `build/release` for the clang-tidy
-prerequisites, `build/debug` for clang-format,
+Every self-heal `cmake --preset` — `build/debug` for clang-format,
 cmake-format and tests — runs through `configure_if_missing` *inside*
-the step that needs the tree. It configures only when the sentinel file is
-absent (`compile_commands.json` for clang-tidy, `build.ninja` elsewhere), so the
-warm path never runs cmake. When the configure fails, that step fails: the
+the step that needs the tree. It configures only when the sentinel file
+(`build.ninja`) is absent, so the warm path never runs cmake. When the configure fails, that step fails: the
 CMake error is in the step's own log (`/tmp/storm_*.log`, path printed under the
 failed step), and the commit is blocked.
 
 Before #674 these configures discarded their output and ignored their exit
 status, so a failed configure surfaced one step later as
 `ninja: error: loading 'build.ninja': No such file or directory`, with the CMake
-error logged nowhere. `build_tidy_prereqs()` also checks for
-`build/release/build.ninja` before building, so a tree that has
-`compile_commands.json` but no `build.ninja` reports "not configured" instead of
-a ninja error. `scripts/commit/tests/test_commit_self_heal_configure.py` covers each
+error logged nowhere. `scripts/commit/tests/test_commit_self_heal_configure.py` covers each
 site with a stub `cmake` and runs locally with no toolchain; `commit.sh` runs it
 when `commit.sh`, the test, or a script the test copies is staged; CI's `script-guards` job runs it on every PR (`pre_commit_guards.py --all`).
 
@@ -48,60 +58,28 @@ step's own log whichever step configured the tree (#690; see
 `scripts/commit/tests/test_cmake_format_target.py`, runs in `commit.sh` when staged and in CI's `script-guards` job on every
 PR (#708).
 
-### What "prerequisites" means, and why not the full target set (#557)
-
-clang-tidy replays `build/release/compile_commands.json` and only PARSES — it
-never links — so the ~110 release test TUs of `storm_tests` are pure cost to it.
-`build_tidy_prereqs()` therefore builds two things instead of the default
-target set: the `storm` library BMIs and the BMIs of the module targets CMake
-synthesizes for module *consumers* (`CMakeFiles/*@synth_N.dir/*.bmi` — these
-belong to the consumer, so `--target storm` does not produce them). It also built
-the mock test binaries until #784/#787 moved their tests into `storm_tests`.
-Measured on a cold tree, 4 cores (with the mock binaries): **764 s → 154 s**.
-
-The synthesized-module BMIs are the subtle part. Without them clang-tidy reports
-`module 'std' not found` and **degrades to a partial parse rather than failing**
-— on `src/orm/utilities.cppm` that produced 4 warnings where a correct parse
-produces 1, i.e. 3 false positives, which matters because the hook runs
-clang-tidy with `--fix`.
-
-A fourth step keeps that saving from being confined to `src/`-only commits:
-generating every target's dyndep file materializes the per-TU modmaps for the
-cost of the module scan alone — `storm_tests`' 109 modmaps take **6 s** this way
-against ~600 s to compile those TUs — so staging a `tests/**` file no longer
-forces the fallback.
-
-Because a missing BMI fails silently, every uncertain path falls back to the
-full build: no ninja, an empty BMI enumeration, a staged file
-whose modmaps reference a BMI that is not on disk, or any unexpected failure of
-the check itself (the probe must print `complete`; anything else, a crash and a
-missing `python3` included, counts as incomplete).
-
 `commit.sh` runs under `#!/bin/bash`, which on macOS is **bash 3.2**, so it uses
-no bash-4 constructs (`mapfile`, `local -n`, associative arrays, `${v,,}`). Until
-#689 it probed for `mapfile` and, on every Mac, fell back to the full build here.
+no bash-4 constructs (`mapfile`, `local -n`, associative arrays, `${v,,}`).
 `test_coverage_gate.py` scans `commit.sh` and `coverage-run-batched.sh` for
 the common bash-4 constructs, so CI's bash 5 cannot hide a regression.
-
-**Staging a header still triggers the full build.** `compile_commands.json` holds
-no header entries — clang-tidy lints a header through a neighbouring TU's
-command — so the check cannot prove which modmaps apply and deliberately does not
-guess. Conservative by design: #557 requires building when unsure, and the cost
-of guessing wrong is a partial parse whose false warnings `--fix` would apply.
 
 ## The three clang-tidy modes
 
 | Mode | What it scans | Where it runs | Blocks on |
 |---|---|---|---|
-| `--diff` *(default)* | Lines staged in the current commit (`git diff --cached`) | Local pre-commit | New warnings on staged lines |
-| `--full` | Whole files that are staged | Local pre-commit (opt-in) | Any warning in any staged file |
+| `--diff` *(default)* | Lines staged (`git diff --cached`), or with `--base <ref>` the lines changed since `<ref>` (`git diff <ref>...HEAD`) | CI on every PR (`--base`); locally on demand | New warnings on those lines |
+| `--full` | Whole files that are staged (or changed since `--base <ref>`) | Locally, on demand | Any warning in any of those files |
 | `--all` | Every C++ file in the tree | Scheduled CI (Mondays 04:00 UTC) | Nothing — report only |
 
 ### `--diff` mode (default)
 
-The pre-commit default since Issue #262. It pipes `git diff -U0 --cached` into
-`clang-tidy-diff.py` from the clang-p2996 toolchain. The diagnostic engine only
-emits warnings on lines the staged commit actually touches.
+The default since Issue #262. It pipes `git diff -U0 --cached` (or, with
+`--base <ref>`, `git diff -U0 <ref>...HEAD`, which is what CI passes because nothing
+is staged there, #910) into `clang-tidy-diff.py` from the clang-p2996 toolchain. The
+diagnostic engine only emits warnings on lines the change actually touches.
+`--base` needs the merge base in the checkout (CI unshallows first), refuses an
+unknown ref with exit 2, and cannot be combined with `--fix` (a CI checkout is not
+ours to edit).
 
 `clang-tidy-diff.py` is a script checked into the clang-p2996 **source** tree
 (`clang-tools-extra/clang-tidy/tool/`), not a build artifact next to the
@@ -114,41 +92,41 @@ directly and are unaffected by its absence.
 type resolution needs the full file. `--diff` mode does not change that. It
 sets `-line-filter` on the clang-tidy invocation, so clang-tidy still walks
 every AST node but suppresses the diagnostic when the source location is
-outside the staged hunks. `--diff` and `--full` therefore have roughly the
+outside the changed hunks. `--diff` and `--full` therefore have roughly the
 same per-file CPU cost — the difference is output policy, not parse scope.
 
 **Why this is the default:** an author who edits one function in a 600-line
-module shouldn't have to fix unrelated accumulated drift before they can commit
-their change. Drift cleanup happens on its own schedule (see `--all`).
+module shouldn't have to fix unrelated accumulated drift before their change can merge. Drift cleanup happens on its own schedule (see `--all`).
 
 ```bash
-./scripts/tidy/run_clang_tidy.py --diff          # check-only
-./scripts/tidy/run_clang_tidy.py --diff --fix    # apply auto-fixes, then re-check
+./scripts/tidy/run_clang_tidy.py --diff                       # staged lines, check-only
+./scripts/tidy/run_clang_tidy.py --diff --fix                 # apply auto-fixes to staged lines, then re-check
+./scripts/tidy/run_clang_tidy.py --diff --base origin/develop # what CI runs on your PR
 ```
 
-What can still block your commit in `--diff` mode:
+What can still fail your PR in `--diff` mode:
 
 - A warning on a line you added or changed.
 - A new warning that a fix on an adjacent line uncovered.
 
-What will **not** block your commit:
+What will **not** block it:
 
 - Pre-existing warnings on lines you didn't touch — even in the same file.
 
 ### `--full` mode
 
-The pre-#262 default. Scans whole files that are staged. Useful when you are
+The pre-#262 default. Scans whole files that are staged (or changed since `--base <ref>`). Useful when you are
 deliberately cleaning up drift in a specific module and want clang-tidy to
 report everything in that file, not just your delta.
 
 ```bash
 ./scripts/tidy/run_clang_tidy.py --full --fix          # local one-off
-STORM_TIDY_FULL=1 git commit -m "..."             # force --full in pre-commit
 ```
 
-`--full` is **not** the pre-commit default any more. It blocks the commit on
-any pre-existing drift in a file you happen to touch, which punishes the
-wrong author. Use `--diff` for everyday work.
+`--full` is **not** the default. It blocks on any pre-existing drift in a file
+you happen to touch, which punishes the wrong author. Use `--diff` for everyday
+work. (`STORM_TIDY_FULL=1` was the pre-commit switch for it and went with the
+hook step, #910.)
 
 ### `--all` mode
 
@@ -165,7 +143,8 @@ the merge queue on `develop`, but any warning, error or unexpected crash turns t
 run red. Its job is to surface accumulated drift within a week instead of within
 months — the gap that let 48 warnings accumulate over ~3 months before Issue #262.
 
-Per-PR gating of `--all` is a separate opt-in goal once the existing baseline is clean.
+Per-PR gating of `--all` is a separate opt-in goal once the existing baseline is clean;
+the PR gate is `--diff --base` (see the table at the top).
 
 ## Parse failures on `src/*.cppm`
 
@@ -191,7 +170,7 @@ all surfaced at once when the build state changed.
 
 `is_known_unparseable`, `is_always_skip_file`, and `filter_skiplist_from_diff`
 live in `scripts/tidy/clang_tidy_skiplist.py` (extracted from the shell runner in
-#550, ported to Python with it in #692), imported by all three modes — the single place both the pre-commit
+#550, ported to Python with it in #692), imported by all three modes — the single place both the PR
 `--diff` path and the weekly `--all` sweep consult for which files clang-tidy
 cannot parse. `--diff` mode used to also run a post-hoc regex over the error
 text it collected, meant to strip toolchain/reflection parse noise the way the
@@ -216,7 +195,7 @@ Skip list now covers only files that genuinely can't be parsed standalone:
 
 ### When your PR introduces a new warning
 
-`--diff` will catch it on commit. Either fix the warning, or — if the warning
+`--diff --base` will catch it in the PR's `clang-tidy` CI job (or locally, if you run it first). Either fix the warning, or — if the warning
 is wrong and the check needs an exception — update `.clang-tidy` in the same
 PR with a clear inline comment explaining why.
 
@@ -229,8 +208,7 @@ similar to how PR #263 cleaned the post-#262 baseline.
 
 ### Bypassing pre-commit
 
-Don't. Use `STORM_TIDY_FULL=1` to widen the scope, or fix the warning, or
-adjust `.clang-tidy`. `--no-verify` is forbidden by repo convention
+Don't. `--no-verify` is forbidden by repo convention
 (see [CLAUDE.md](https://github.com/spiritEcosse/storm/blob/develop/CLAUDE.md) Critical Safety Rules).
 
 ## Related
@@ -238,3 +216,4 @@ adjust `.clang-tidy`. `--no-verify` is forbidden by repo convention
 - [Issue #262](https://github.com/spiritEcosse/storm/issues/262) — structural fix for silent drift
 - [PR #263](https://github.com/spiritEcosse/storm/pull/263) — cleanup of the 48 accumulated warnings
 - [FORMATTING.md](FORMATTING.md) — clang-format / cmake-format stages of the same hook
+- [Issue #910](https://github.com/spiritEcosse/storm/issues/910) — moving clang-tidy from the hook to the PR

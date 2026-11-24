@@ -85,8 +85,7 @@ AGENT_FRONTMATTER = Guard(
 
 # --- clang-tidy runner and skip-list (#550, #692) ---
 # scripts/tidy/clang_tidy_skiplist.py is the one list both run_clang_tidy.py --diff and the
-# weekly --all sweep consult for files clang-tidy cannot parse standalone, and the one
-# commit.sh's BMI probe asks via --keep. The runner tests drive the real script against
+# weekly --all sweep consult for files clang-tidy cannot parse standalone. The runner tests drive the real script against
 # a fake clang-tidy / clang-tidy-diff.py (tests/tidy_toolchain.py), so that helper is a
 # trigger too.
 TIDY_SKIPLIST = Guard(
@@ -114,6 +113,17 @@ SWEEP_WORKFLOW = Guard(
     "clang-tidy sweep exit-code self-test passed",
 )
 
+# --- clang-tidy PR step (#910) ---
+# ci.yml's `clang-tidy` job is the only per-PR clang-tidy gate now that the
+# pre-commit hook no longer runs it, so its shape (own job, PR + merge queue, --base, in ci-gate,
+# no --fix) is pinned and its real script is run against a stub git and runner.
+TIDY_PR_STEP = Guard(
+    "clang-tidy PR step",
+    r"^(\.github/workflows/ci\.yml|scripts/ci/tests/test_tidy_pr_step\.py)$",
+    (Step(None, script("scripts/ci/tests/test_tidy_pr_step.py"), "clang-tidy PR step self-test failed"),),
+    "clang-tidy PR step self-test passed",
+)
+
 # --- SessionStart hook wiring (#651) ---
 # .claude/hooks/session-start.sh sets core.hooksPath, the only reason commit.sh
 # runs at all in a clone that never configures a build, and .claude/settings.json
@@ -135,7 +145,6 @@ SELF_HEAL = Guard(
     "self-heal configure",
     r"^(commit\.sh|scripts/ci/detect_changes\.py|scripts/coverage/coverage_gate\.py"
     r"|scripts/commit/pre_commit_guards\.py|scripts/commit/smart_skip\.py"
-    r"|scripts/tidy/(tidy_prereqs|clang_tidy_skiplist)\.py"
     r"|scripts/ci/tests/test_cpm_cold_cache\.py"
     r"|scripts/commit/tests/test_commit_self_heal_configure\.py|scripts/lib/testing\.py)$",
     (Step(None, script("scripts/commit/tests/test_commit_self_heal_configure.py"),
@@ -232,16 +241,6 @@ SMART_SKIP = Guard(
              script("scripts/ci/tests/test_detect_changes.py"), "change-detection self-test failed"),
     ),
     "smart-skip table self-test passed",
-)
-
-# --- clang-tidy prerequisites verdict (#557, #688) ---
-# scripts/tidy/tidy_prereqs.py fails CLOSED: a wrong `complete` skips the full release
-# build and clang-tidy --fix runs on a partial parse with false warnings.
-TIDY_PREREQS = Guard(
-    "clang-tidy prerequisites",
-    r"^(commit\.sh|scripts/tidy/(tests/test_)?tidy_prereqs\.py)$",
-    (Step(None, script("scripts/tidy/tests/test_tidy_prereqs.py"), "clang-tidy prerequisites self-test failed"),),
-    "clang-tidy prerequisites self-test passed",
 )
 
 # --- ORM backend-neutrality ---
@@ -409,8 +408,8 @@ BENCHMARK_YAML_TO_JSON = Guard(
 )
 
 GUARDS = (
-    AGENT_FRONTMATTER, TIDY_SKIPLIST, SWEEP_WORKFLOW, SESSION_START_HOOK, SELF_HEAL, CMAKE_FORMAT_TARGET, PYYAML_CHECK,
-    CPM_CACHE_CHECK, CPM_VENDORED, CPM_COLD_CACHE, COVERAGE_GATE, SMART_SKIP, TIDY_PREREQS, ORM_BACKEND_IMPORTS, NO_STD_FORMAT,
+    AGENT_FRONTMATTER, TIDY_SKIPLIST, SWEEP_WORKFLOW, TIDY_PR_STEP, SESSION_START_HOOK, SELF_HEAL, CMAKE_FORMAT_TARGET, PYYAML_CHECK,
+    CPM_CACHE_CHECK, CPM_VENDORED, CPM_COLD_CACHE, COVERAGE_GATE, SMART_SKIP, ORM_BACKEND_IMPORTS, NO_STD_FORMAT,
     PRE_COMMIT_GUARDS,
     CI_DIGESTS, COVERAGE_PARALLEL, NINJALOG_STATS, RATIO_GATE, TIME_TRACE, SONAR_GATE, SHARED_TEST_HELPERS,
     ATLAS_MIGRATION_CHECK, SPLIT_UNIFIED_CASES, YAML_DUPLICATES, BENCHMARK_YAML_TO_JSON,

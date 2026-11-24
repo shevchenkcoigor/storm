@@ -2,18 +2,15 @@
 """Which files clang-tidy must not be pointed at (issues #550, #692).
 
 The single source of truth consulted by scripts/tidy/run_clang_tidy.py's three modes
-(--diff/--full/--all) and by commit.sh's BMI probe. --diff drops matching files'
+(--diff/--full/--all). --diff drops matching files'
 diff sections before clang-tidy-diff.py ever sees them (filter_skiplist_from_diff);
 --full/--all skip them after the fact when clang-tidy fails to parse them. Keeping
 both lists in one module is what makes "stays consistent" (#550 DoD) mechanical
 rather than a convention several call sites have to remember.
 
-    clang_tidy_skiplist.py --keep      paths on stdin -> the ones not on either list
-
 Stdlib only, no syntax newer than Python 3.9.
 """
 import re
-import sys
 from typing import Iterable, Iterator
 
 # Known-skip list: files clang-tidy cannot parse and we accept that.
@@ -134,7 +131,7 @@ from typing import Iterable, Iterator
 # src/ #include fragments (#671) -> the module unit whose purview #includes them.
 # Never linted standalone (they are KNOWN_UNPARSEABLE below), but --diff lints a
 # staged fragment's changed lines through the parent's compile command
-# (fragment_line_filters), and --keep reports the parent for commit.sh's BMI probe.
+# (fragment_line_filters).
 FRAGMENT_PARENTS = {
     "src/orm/statements/aggregate_grammar.hpp": "src/orm/statements/aggregate.cppm",
     "src/orm/statements/select_query.hpp": "src/orm/statements/select.cppm",
@@ -302,19 +299,3 @@ def fragment_line_filters(lines: Iterable[str]) -> dict:
             entries.append(entry)
         entry["lines"].append([start, start + count - 1])
     return filters
-
-
-def main(argv: list) -> int:
-    if argv[1:] != ["--keep"]:
-        print("usage: clang_tidy_skiplist.py --keep   (paths on stdin)", file=sys.stderr)
-        return 2
-    for path in (line.strip() for line in sys.stdin):
-        if path in FRAGMENT_PARENTS:
-            print(FRAGMENT_PARENTS[path])  # the TU clang-tidy opens for a fragment
-        elif path and not is_skipped(path):
-            print(path)
-    return 0
-
-
-if __name__ == "__main__":
-    sys.exit(main(sys.argv))

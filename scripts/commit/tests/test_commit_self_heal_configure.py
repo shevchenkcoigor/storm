@@ -2,8 +2,8 @@
 """Tests for commit.sh's self-heal configure (issue #674, ported from bash in #767).
 
 Before a step that needs a build tree, commit.sh configures the tree when it is absent
-(#489): build/release for the clang-tidy prerequisites,
-build/debug for clang-format, cmake-format and tests. Those configures used to run
+(#489): build/debug for clang-format, cmake-format and tests. (build/release was the
+clang-tidy prerequisites' tree until #910 moved tidy to CI; the hook no longer touches it.) Those configures used to run
 as `cmake --preset ... > /dev/null 2>&1` with the exit status ignored, so a failed configure
 surfaced one step later as `ninja: error: loading 'build.ninja': No such file or directory`
 - with the real CMake error logged nowhere.
@@ -39,8 +39,6 @@ import testing  # noqa: E402
 
 CMAKE_ERROR = "CMake Error at CMakeLists.txt:1 (message): FAKE_CONFIGURE_ERROR"
 NINJA_ERROR = "ninja: error: loading 'build.ninja': No such file or directory"
-# commit.sh's name for the clang-tidy prerequisites step.
-PREREQS_STEP = "release prereqs"
 ANSI = re.compile(r"\x1b\[[0-9;]*m")
 
 # What commit.sh and the guards it runs need in the fixture repo (relative to the repo root).
@@ -50,8 +48,6 @@ FIXTURE_FILES = (
     "scripts/commit/pre_commit_guards.py",
     "scripts/commit/smart_skip.py",
     "scripts/coverage/coverage_gate.py",
-    "scripts/tidy/tidy_prereqs.py",
-    "scripts/tidy/clang_tidy_skiplist.py",
     # A staged cmake file triggers the CPM cold-cache guard (#709); it needs its script and
     # one compliant pin in the tree, or it fails before the step under test is reached.
     "scripts/ci/tests/test_cpm_cold_cache.py",
@@ -101,17 +97,13 @@ sys.stderr.write("stub cmake: unexpected invocation: %s\\n" % " ".join(args))
 sys.exit(2)
 '''
 
-# Empty `ninja -t targets` output sends build_tidy_prereqs down its full-build fallback, which
-# the cmake stub handles. A scenario that wants the targeted path writes a target list to
-# $NINJA_TARGETS.
+# The hook needs no ninja of its own (cmake drives it); the stub only records calls so a scenario
+# can assert none were made.
 NINJA_STUB = '''#!/usr/bin/env python3
 import os, sys
 args = sys.argv[1:]
 with open(os.environ["STUB_CALLS"], "a") as calls:
     calls.write("ninja " + " ".join(args) + "\\n")
-if "-t targets" in " ".join(args) and os.path.isfile(os.environ["NINJA_TARGETS"]):
-    with open(os.environ["NINJA_TARGETS"]) as targets:
-        sys.stdout.write(targets.read())
 sys.exit(0)
 '''
 
@@ -156,7 +148,6 @@ class SelfHealConfigureTest(unittest.TestCase):
             shutil.copy(str(REPO_ROOT / relative), str(target))
         (self.repo / "cmake").mkdir()
         (self.repo / "cmake" / "pinned.cmake").write_text(COMPLIANT_PIN)
-        self.write_executable(self.repo / "scripts" / "tidy" / "run_clang_tidy.py", "#!/bin/sh\nexit 0\n")
         # A failed fixture commit (e.g. a global signing setup) would leave every file staged,
         # and the scenarios would pass or fail for the wrong reason - hence the assertions.
         self.git("init", "-q")
@@ -180,7 +171,7 @@ class SelfHealConfigureTest(unittest.TestCase):
         """Run ./commit.sh in the fixture repo; returns (returncode, output without colours)."""
         env = dict(BASE_ENVIRONMENT)
         env.update(PATH="%s%s%s" % (self.bin, os.pathsep, os.environ["PATH"]),
-                   STUB_CALLS=str(self.calls_file), NINJA_TARGETS=str(self.tmp / "ninja_targets"),
+                   STUB_CALLS=str(self.calls_file),
                    FAIL_PRESETS=fail_presets, STORM_COMMIT_LOG_DIR=str(self.logs))
         env.update(extra_env or {})
         result = testing.run(["./commit.sh"], env=env, cwd=str(self.repo), merge_stderr=True)
@@ -216,13 +207,6 @@ class SelfHealConfigureTest(unittest.TestCase):
 
     # --- Scenarios ---
 
-    def test_tidy_release_configure_fails(self):
-        # Cold build/release, release configure fails: the clang-tidy prerequisites.
-        self.stage("src/a.cpp")
-        code, output = self.run_commit("ninja-release")
-        self.assertNotEqual(code, 0, "commit is blocked")
-        self.assert_configure_error_in(output, PREREQS_STEP, "storm_tidy_bmi.log")
-
     def test_debug_configure_fails(self):
         # Cold build/debug, debug configure fails: clang-format and tests each need
         # it, and each must report the CMake error itself.
@@ -240,64 +224,33 @@ class SelfHealConfigureTest(unittest.TestCase):
         self.assertNotEqual(code, 0, "commit is blocked")
         self.assert_configure_error_in(output, "cmake-format", "storm_cmake_format.log")
 
-    def test_tidy_tree_without_build_ninja(self):
-        # compile_commands.json present but no build.ninja: the tidy self-heal sentinel says
-        # "configured", so build_tidy_prereqs must say "not configured" rather than hand ninja
-        # a missing build.ninja.
-        (self.repo / "build" / "release").mkdir(parents=True)
-        (self.repo / "build" / "release" / "compile_commands.json").touch()
-        self.stage("src/a.cpp")
-        code, output = self.run_commit("")
-        self.assertNotEqual(code, 0, "commit is blocked")
-        self.assert_step(output, "FAILED", PREREQS_STEP)
-        log = self.log_text("storm_tidy_bmi.log")
-        self.assertIsNotNone(log)
-        self.assertIn("not configured", log)
-        self.assertNotIn(NINJA_ERROR, log)
-
-    def test_tidy_targeted_prereqs_under_system_bash(self):
-        # A configured tree whose ninja lists synthesized BMIs takes the TARGETED prereq build,
-        # under the hook's own `#!/bin/bash` - bash 3.2 on macOS. It used to probe for `mapfile`
-        # (bash >= 4.0) and, on a Mac, always fall back to building the full release target
-        # set (#689).
-        release = self.repo / "build" / "release"
-        release.mkdir(parents=True)
-        (release / "build.ninja").touch()
-        # One entry for the staged TU and no modmap, so the prereq verdict is "complete" and no
-        # fallback of any kind should run.
-        (release / "compile_commands.json").write_text(
-            '[{"directory": "%s", "file": "%s/src/a.cpp", "arguments": ["clang++", "-c", "src/a.cpp"]}]\n'
-            % (self.repo, self.repo))
-        (self.tmp / "ninja_targets").write_text(
-            "CMakeFiles/storm_tests@synth_1.dir/0123abcd.bmi: CXX_MODULE_BMI\n"
-            "CMakeFiles/storm.dir/CXX.dd: CXX_DYNDEP\n")
-        self.stage("src/a.cpp")
-        _, output = self.run_commit("")
-        self.assert_step(output, "passed", PREREQS_STEP)
-        calls = self.calls()
-        # Every fallback, whatever its message, is this one call.
-        self.assertNotIn("cmake --build --preset ninja-release", calls,
-                         "release prereqs took a full-build fallback: %s" % self.log_text("storm_tidy_bmi.log"))
-        self.assertIn("ninja -C build/release CMakeFiles/storm_tests@synth_1.dir/0123abcd.bmi", calls,
-                      "the synthesized BMI was not built by name")
-        self.assertIn("ninja -C build/release CMakeFiles/storm.dir/CXX.dd", calls,
-                      "the dyndep files were not generated by name")
-
     def test_warm_tree_never_configures(self):
-        # Warm path: both trees configured. Every configure would fail if it ran, so a
+        # Warm path: build/debug configured. Every configure would fail if it ran, so a
         # configure on the warm path shows up as a failed step as well as a call.
-        for tree in ("debug", "release"):
-            (self.repo / "build" / tree).mkdir(parents=True)
-            (self.repo / "build" / tree / "build.ninja").touch()
-        (self.repo / "build" / "release" / "compile_commands.json").touch()
+        (self.repo / "build" / "debug").mkdir(parents=True)
+        (self.repo / "build" / "debug" / "build.ninja").touch()
         self.stage("src/a.cpp")
         _, output = self.run_commit("ninja-debug ninja-release")
         configures = [call for call in self.calls() if call.startswith("cmake --preset")]
         self.assertEqual(configures, [], "a configured tree ran a configure")
         self.assertFalse([call for call in self.calls() if "coverage" in call],
                          "commit.sh ran a coverage step; the gate is CI-only (#793)")
-        for step in ("clang-format", PREREQS_STEP, "tests (SQLite"):
+        for step in ("clang-format", "tests (SQLite"):
             self.assert_step(output, "passed", step)
+
+    def test_the_hook_never_configures_or_builds_release_and_runs_no_tidy(self):
+        # clang-tidy moved to CI (#910): a cold tree must not pay for build/release any more,
+        # and no tidy step appears. Release is made to fail so a stray touch would block.
+        self.stage("src/a.cpp")
+        code, output = self.run_commit("ninja-release")
+        self.assertEqual(code, 0, output)
+        self.assertFalse([call for call in self.calls() if "release" in call],
+                         "commit.sh touched build/release: %s" % self.calls())
+        self.assertFalse([call for call in self.calls() if call.startswith("ninja")],
+                         "commit.sh ran ninja directly (that was the tidy BMI prebuild)")
+        self.assertNotIn("tidy", output.lower())
+        self.assertIsNone(self.log_text("storm_tidy.log"))
+        self.assertIsNone(self.log_text("storm_tidy_bmi.log"))
 
     def test_failing_smart_skip_blocks_commit(self):
         # A smart-skip helper that fails (lost exec bit, broken python3, import error) must

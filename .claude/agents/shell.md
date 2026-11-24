@@ -77,10 +77,10 @@ Always provide working, tested solutions with clear explanations. When multiple 
 These scripts have project-specific conventions — understand them before modifying:
 
 **`commit.sh`** — Pre-commit checks orchestrator (runs via `.githooks/pre-commit`):
-- Pipeline: clang-format → cmake-format → clang-tidy → tests (coverage and the bench build are CI-only, #793)
-- Smart skips based on staged file types (no C++/cmake → skip all; cmake-only → skip clang-format/tidy; C++ outside src/tests/cmake → skip tests; nothing staged → skip all under the git hook, which exports `STORM_PRE_COMMIT_HOOK=1`, full suite on a manual run, #706)
+- Pipeline: clang-format → cmake-format → tests (clang-tidy, coverage and the bench build are CI-only: #910, #793)
+- Smart skips based on staged file types (no C++/cmake → skip all; cmake-only → skip clang-format; C++ outside src/tests/cmake → skip tests; nothing staged → skip all under the git hook, which exports `STORM_PRE_COMMIT_HOOK=1`, full suite on a manual run, #706)
 - No manual skip flags — skipping is automatic based on what's staged
-- Thin orchestrator (#688): logic lives in tested stdlib-Python helpers — `scripts/commit/pre_commit_guards.py` (staged-file guards table, run before the `TOTAL_STEPS==0` exit), `scripts/commit/smart_skip.py` (skip rules), `scripts/tidy/tidy_prereqs.py` (clang-tidy BMI verdict, fails closed), `scripts/coverage/coverage_gate.py` (per-OS `STORM_PG_CONNSTR` default; the gate itself runs in CI), `scripts/tidy/run_clang_tidy.py` + `scripts/tidy/clang_tidy_skiplist.py` (the clang-tidy runner and its skip lists, #692). Keep them free of syntax newer than Python 3.9 (macOS system python3)
+- Thin orchestrator (#688): logic lives in tested stdlib-Python helpers — `scripts/commit/pre_commit_guards.py` (staged-file guards table, run before the `TOTAL_STEPS==0` exit), `scripts/commit/smart_skip.py` (skip rules), `scripts/coverage/coverage_gate.py` (per-OS `STORM_PG_CONNSTR` default; the gate itself runs in CI), `scripts/tidy/run_clang_tidy.py` + `scripts/tidy/clang_tidy_skiplist.py` (the clang-tidy runner and its skip lists, #692 — NOT called by `commit.sh` any more, #910: CI's `clang-tidy` job runs `--diff --base`, the weekly sweep `--all`). Keep them free of syntax newer than Python 3.9 (macOS system python3)
 
 **`.githooks/pre-commit`** — Thin wrapper: exports `STORM_PRE_COMMIT_HOOK=1` (empty index then skips all checks, #706), then `exec ./commit.sh`
 
@@ -90,12 +90,12 @@ These scripts have project-specific conventions — understand them before modif
 - Currently just prints a notice and exits 0
 
 **`scripts/tidy/run_clang_tidy.py`** — stdlib Python (#692; was bash). Three modes (default `--diff`):
-- `--diff` (default) — warns only on lines staged in `git diff --cached`. Uses clang-tidy-diff.py.
-- `--full` — whole-file scan, staged files only (pre-#262 default; opt-in via `STORM_TIDY_FULL=1`).
+- `--diff` (default) — warns only on lines staged in `git diff --cached`; with `--base <ref>`, on lines changed since `<ref>` (`git diff <ref>...HEAD`, what CI passes on a PR, #910; unknown ref → exit 2, not combinable with `--fix`). Uses clang-tidy-diff.py.
+- `--full` — whole-file scan, staged files only (pre-#262 default; run it by hand — the `STORM_TIDY_FULL=1` pre-commit switch is gone, #910; also takes `--base <ref>`).
 - `--all` — full-tree sweep, used by the weekly `clang-tidy-sweep` CI workflow (any warning turns the run red).
 - Options: `--fix` (auto-apply fixes), `-j N` (parallel jobs, default: min(cores, MemAvailable GB / 2), #555)
 - Requires release build (`cmake --preset ninja-release`) for `compile_commands.json`
-- Files clang-tidy cannot parse are listed by exact path in `scripts/tidy/clang_tidy_skiplist.py` (`--diff` drops them up front; `--full`/`--all` forgive a parse failure or crash on them) (`KNOWN_UNPARSEABLE`, plus the vendored `src/orm/generator.cppm`); `commit.sh` asks the same module via `--keep`. `src/*.cppm` parse cleanly since 2026-05-11 — a parse failure there now fails loudly.
+- Files clang-tidy cannot parse are listed by exact path in `scripts/tidy/clang_tidy_skiplist.py` (`--diff` drops them up front; `--full`/`--all` forgive a parse failure or crash on them) (`KNOWN_UNPARSEABLE`, plus the vendored `src/orm/generator.cppm`); (its `--keep` CLI went with `commit.sh`'s BMI probe, #910.) `src/*.cppm` parse cleanly since 2026-05-11 — a parse failure there now fails loudly.
 - A TU that exceeds the 240 s timeout reads as passed (#556, carried over from the shell version).
 - Exits non-zero on warnings/errors that affect the current mode's scope.
 

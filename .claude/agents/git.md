@@ -28,7 +28,7 @@ Include scope when relevant: `feat(queryset): add batch update support`
 All checks run automatically via the pre-commit hook (`.githooks/pre-commit` → `commit.sh`):
 
 ```bash
-# Standard commit (hook runs format, tidy, tests)
+# Standard commit (hook runs format, tests)
 git add src/orm/queryset.cppm tests/test_queryset.cpp
 git commit -m "feat(queryset): add batch update support"
 
@@ -36,7 +36,7 @@ git commit -m "feat(queryset): add batch update support"
 ./commit.sh
 ```
 
-The hook automatically: runs clang-format, clang-tidy --fix, re-stages modified files, runs the test suite. Coverage, sanitizers, benchmarks and SonarCloud run in CI only (#793); there are no skip flags.
+The hook automatically: runs clang-format, re-stages modified files, runs the test suite. clang-tidy (PR `--diff --base` in `ci.yml`'s `clang-tidy` job, #910), coverage, sanitizers, benchmarks and SonarCloud run in CI only (#793); there are no skip flags.
 
 ## After Push: Always Create the PR
 
@@ -152,7 +152,7 @@ gh issue view <N> --json state -q .state   # `Closes #<N>` normally closed it; e
 ## Error Recovery
 
 If pre-commit checks fail:
-1. Identify the specific failure (format, tidy, test, bench)
+1. Identify the specific failure (format, test, bench)
 2. Fix the issue
 3. Re-stage and create a NEW commit (never amend after hook failure)
 4. Document any workarounds needed for compiler limitations
