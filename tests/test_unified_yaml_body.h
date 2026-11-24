@@ -42,7 +42,9 @@
 #include "../shared/models/person.h"
 #include "../shared/models/simple_record.h"
 #include "test_fixture.h"
+#include "test_relations_dataset.h"
 #include "test_seed_helpers.h"
+#include "test_yaml_models.h"
 using storm::db::DefaultConnection;
 using storm::orm::statements::EraseStatement;
 using storm::orm::statements::SelectStatement;
@@ -69,19 +71,6 @@ static consteval auto load_unified_tests() {
     constexpr std::size_t n = storm::benchmark::count_tests(json);
     return storm::benchmark::parse_array_into<TestCase, n>(json, parse_test_case_into);
 }
-
-// YAML `model:` name -> model type (#834). Names are explicit rather than
-// derived from identifier_of: the corpus spells SimpleRecord as "simple".
-struct YamlModel {
-    std::string_view name;
-    std::meta::info type;
-};
-inline constexpr std::array YAML_MODELS{
-    YamlModel{.name = "person", .type = ^^Person},
-    YamlModel{.name = "message", .type = ^^Message},
-    YamlModel{.name = "simple", .type = ^^SimpleRecord},
-    YamlModel{.name = "extended", .type = ^^ExtendedTypes},
-};
 
 // Dataset `extended` (#844): three ExtendedTypes rows, in this order. The typed-value cases in
 // tests/test_cases/typed_values.yaml are written against these values (the table is repeated there).
@@ -133,17 +122,17 @@ inline auto extended_dataset() -> std::vector<ExtendedTypes> {
     };
 }
 
-consteval auto yaml_model_index(std::string_view name) -> std::size_t {
-    for (std::size_t i = 0; i < YAML_MODELS.size(); ++i)
-        if (YAML_MODELS[i].name == name)
-            return i;
-    return YAML_MODELS.size();
-}
-
-// A case naming a model missing from YAML_MODELS fails here, at compile time,
-// instead of silently running nothing.
+// A case naming a model missing from YAML_MODELS (test_yaml_models.h) fails here, at compile
+// time, instead of silently running nothing.
 template <const auto &Tc>
 concept KnownYamlModel = yaml_model_index(Tc.bench.model.view()) < YAML_MODELS.size();
+
+// A relation model is used with the one dataset that creates its tables (#869,
+// yaml_model_dataset_matches in test_yaml_models.h). Guarded by KnownYamlModel so a typo'd model
+// is reported as unknown, never read out of bounds.
+template <const auto &Tc>
+concept YamlModelDatasetMatches =
+    KnownYamlModel<Tc> && yaml_model_dataset_matches(Tc.bench.model.view(), Tc.dataset.view());
 
 template <const auto &Tc>
     requires KnownYamlModel<Tc>
@@ -216,6 +205,8 @@ class UnifiedYamlBody : public UnifiedYamlFixture<Tag, ConnType> {
                   "a values case checks expected.rows, not expected.first");
     static_assert(Tc.query_type != "values" || Tc.bench.values.enabled,
                   "query_type values needs a values: {fields: [...]} spec");
+    static_assert(KnownYamlModel<Tc>, "model: names no YAML_MODELS entry (test_yaml_models.h)");
+    static_assert(YamlModelDatasetMatches<Tc>, "a relation model (test_yaml_models.h) needs `dataset: relations`");
     static_assert(!(Tc.query_type == "select" || Tc.query_type == "first" || Tc.query_type == "one" ||
                     Tc.query_type == "rows") ||
                       Tc.bench.result_shape_count() == 0,
@@ -231,6 +222,8 @@ class UnifiedYamlBody : public UnifiedYamlFixture<Tag, ConnType> {
         ASSERT_TRUE((EraseStatement<SimpleRecord, ConnType>{}).query_all().execute().has_value());
         ASSERT_TRUE((EraseStatement<Message, ConnType>{}).query_all().execute().has_value());
         ASSERT_TRUE((EraseStatement<ExtendedTypes, ConnType>{}).query_all().execute().has_value());
+        if constexpr (tc.dataset == RELATIONS_DATASET)
+            ASSERT_TRUE(relations::create_tables<ConnType>(conn)) << "Failed to create the relation tables";
     }
 
     auto seed_main_msg() -> void {
@@ -273,6 +266,8 @@ class UnifiedYamlBody : public UnifiedYamlFixture<Tag, ConnType> {
             seed_main_msg();
         } else if constexpr (tc.dataset == "extended") {
             ASSERT_TRUE((storm::test::batch_insert<ExtendedTypes, ConnType>(extended_dataset())));
+        } else if constexpr (tc.dataset == RELATIONS_DATASET) {
+            ASSERT_NO_FATAL_FAILURE(relations::seed<ConnType>());
         } else if constexpr (tc.bench.dataset_size > 0 && tc.dataset.empty()) {
             std::vector<Person> seed;
             seed.reserve(static_cast<std::size_t>(tc.bench.dataset_size));
@@ -295,8 +290,8 @@ class UnifiedYamlBody : public UnifiedYamlFixture<Tag, ConnType> {
 
   public:
     void TestBody() override {
-        reset_tables();
-        seed_dataset();
+        ASSERT_NO_FATAL_FAILURE(reset_tables());
+        ASSERT_NO_FATAL_FAILURE(seed_dataset());
         run_case();
     }
 };

@@ -25,7 +25,9 @@ from typing import Iterable, Iterator
 #
 # Files genuinely unparseable:
 #   shared/query_builder.hpp - pseudo-module header; must be included after
-#       `import storm;` so clang-tidy sees it without the BMI and fails.
+#       `import storm;` so clang-tidy sees it without the BMI and fails. Its two
+#       parts (#869), shared/query_builder_resolve.hpp and
+#       shared/query_builder_values.hpp, likewise.
 #
 #   src/orm/statements/{aggregate_grammar,select_query,select_stitch}.hpp (#671) -
 #       textual fragments of storm_orm_statements_aggregate / _select, #included
@@ -44,6 +46,8 @@ from typing import Iterable, Iterator
 #   tests/schema/test_bmi_fk_models.h (#694 cross-BMI fixture; linted through
 #   test_bmi_fk_module.cppm and test_reflection_cache_bmi.cpp),
 #   tests/test_parser.hpp, tests/test_unified_yaml_body.h,
+#   tests/test_yaml_models.h, tests/test_relations_dataset.h,
+#   tests/test_relation_models.h (#869),
 #   tests/tools/storm_schema/models.h, shared/models.h
 #
 #   tests/test_unified_yaml_body.h joined with the YAML-harness split (#561).
@@ -51,7 +55,7 @@ from typing import Iterable, Iterator
 #   #582 deleted the static_assert on STORM_UNIFIED_CASES_FILE this entry used to
 #   cite (the header no longer names that macro in code at all). Do not prune the
 #   entry on the strength of the macro being gone. The code is still linted
-#   through the four tests/yaml/test_unified_yaml_*.cpp TUs that include it, each
+#   through the five tests/yaml/test_unified_yaml_*.cpp TUs that include it, each
 #   of which has a real compile-commands entry.
 #
 #   tests/test_parser.hpp is listed above for symmetry, but its standalone failure
@@ -145,6 +149,8 @@ KNOWN_UNPARSEABLE = frozenset((
     "fuzz/fuzz_where_string.cpp",
     "fuzz/fuzz_models.h",
     "shared/query_builder.hpp",
+    "shared/query_builder_resolve.hpp",
+    "shared/query_builder_values.hpp",
     "shared/models.h",
     "shared/models/person.h",
     "shared/models/simple_record.h",
@@ -176,6 +182,9 @@ KNOWN_UNPARSEABLE = frozenset((
     "tests/schema/test_bmi_fk_models.h",
     "tests/test_parser.hpp",
     "tests/test_unified_yaml_body.h",
+    "tests/test_yaml_models.h",
+    "tests/test_relations_dataset.h",
+    "tests/test_relation_models.h",
     "tests/crud/test_composite_fk_join_body.h",
     "tests/crud/test_composite_pk_crud_body.h",
     "tests/crud/test_crud_body.h",

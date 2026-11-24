@@ -7,7 +7,8 @@ Usage:
 The corpus is several authoring files, tests/test_cases/<topic>.yaml (#846), grouped by
 meaning for humans: a case spans several topics and a topic spans several runners, so which
 file a case lives in is never an error. This script reads them ALL (in the order given --
-CMake passes them sorted), buckets every case by query_type and writes
+CMake passes them sorted), buckets every case by query_type (a case on dataset `relations`
+goes to the `join` slice whatever its query_type, #869) and writes
 <output_dir>/unified_cases_<category>.json for each category. Case names must be unique
 across the whole corpus. There is no
 combined output: every includer of test_unified_yaml_body.h selects a slice via
@@ -17,7 +18,7 @@ Issue #561: the 247-case corpus compiled as a single TU took 53 s -- 89% of it
 the per-case template instantiation, linear at ~190 ms/case. Splitting the
 corpus across TUs lets those instantiations compile in parallel.
 
-The categories group the runners listed in YAML_RUNNERS (tests/test_unified_yaml_body.h),
+The categories (but `join`) group the runners listed in YAML_RUNNERS (tests/test_unified_yaml_body.h),
 so each TU instantiates only the runners its own cases need, and a failing suite
 name points at a coherent area. A query_type absent from the tables below is a
 corpus/runner mismatch and is a hard error -- silently bucketing it would hide a
@@ -26,7 +27,7 @@ case that no runner handles. (The C++ side rejects it too: KnownYamlQueryType.)
 A JSON whose bytes did not change is left untouched (mtime included). ninja re-runs this
 script whenever any YAML changes and, because CMake marks custom commands `restat`, then
 rebuilds only the TUs whose slice really changed -- editing one case recompiles one slice,
-not four.
+not five.
 
 CATEGORIES below is mirrored by SPLIT_CATEGORIES in tests/CMakeLists.txt and by
 the set of tests/yaml/test_unified_yaml_*.cpp TUs. Changing one means changing
@@ -61,7 +62,14 @@ GROUPED_OPS = {
 }
 AGGREGATE_OPS = {"count", "count_field", "count_distinct", "sum", "avg", "min", "max"}
 
-CATEGORIES = ("select", "grouped", "aggregate", "crud")
+# #869: a case on dataset `relations` (the m2m / reverse_fk / two-FK models of
+# benchmarks/m2m_models.hpp) goes to its own slice whatever its query_type, so only the
+# `join` TU creates those tables and instantiates statements on those models. What SQL it
+# may pin is still decided by its runner group above.
+RELATIONS_DATASET = "relations"
+JOIN_CATEGORY = "join"
+
+CATEGORIES = ("select", "grouped", "aggregate", "crud", JOIN_CATEGORY)
 
 # Mirrors EXPECTED_SQL_CAPACITY in tests/test_parser.hpp (#818). Since #845 the C++
 # parser rejects every over-long case at compile time; the script keeps its check so the
@@ -157,8 +165,13 @@ def reject_unquoted_temporal(name: str, value: object, path: str) -> None:
             reject_unquoted_temporal(name, item, f"{path}[{position}]")
 
 
-def categorize(case: dict, index: int) -> str:
-    """Map one case to its category (the runner group in YAML_RUNNERS)."""
+def slice_of(case: dict, runner_category: str) -> str:
+    """The slice a case compiles in: `join` for dataset `relations` (#869), else its runner group."""
+    return JOIN_CATEGORY if case.get("dataset") == RELATIONS_DATASET else runner_category
+
+
+def runner_category_of(case: dict, index: int) -> str:
+    """Map one case to its runner group in YAML_RUNNERS, which also decides what SQL it may pin."""
     if not isinstance(case, dict):
         raise SystemExit(
             f"Error: corpus entry {index} is {type(case).__name__}, not a mapping -- "
@@ -175,7 +188,7 @@ def categorize(case: dict, index: int) -> str:
         return "aggregate"
     raise SystemExit(
         f"Error: case {case.get('name', '<unnamed>')!r} has unknown query_type "
-        f"{qt!r}. Add it to the tables in {pathlib.Path(__file__).name} and and "
+        f"{qt!r}. Add it to the tables in {pathlib.Path(__file__).name} and "
         f"add a row to YAML_RUNNERS in tests/test_unified_yaml_body.h unless a prefix row "
         f"(group_) already covers it."
     )
@@ -199,8 +212,9 @@ def bucket_corpus(inputs: list[pathlib.Path]) -> dict[str, list]:
     for path in inputs:
         for index, case in enumerate(load_cases(path)):
             try:
-                category = categorize(case, index)
-                validate_expected_sql(case, category)
+                runner_category = runner_category_of(case, index)
+                category = slice_of(case, runner_category)
+                validate_expected_sql(case, runner_category)
             except SystemExit as err:
                 raise SystemExit(f"{err} (in {path})") from None
             name = case.get("name")
@@ -243,8 +257,8 @@ def main() -> None:
 
     buckets = bucket_corpus(inputs)
 
-    # A truncated, empty or all-comments corpus otherwise yields four empty JSONs,
-    # four suites registering zero tests, and a green ctest that verifies nothing.
+    # A truncated, empty or all-comments corpus otherwise yields five empty JSONs,
+    # five suites registering zero tests, and a green ctest that verifies nothing.
     # Every category maps to runners that have cases today, so an empty
     # bucket means the corpus or the tables above are wrong, not that the corpus
     # legitimately shrank.

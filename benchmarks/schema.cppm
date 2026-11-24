@@ -391,16 +391,16 @@ export namespace storm::benchmark {
     };
 
     // ========================================================================
-    // JoinSpec — JOIN configuration. Reserved for PR2 (schema-driven JOINs).
-    // In PR1 this is parsed-but-unused; existing run_*_operation methods
-    // continue to hardcode JOIN types until PR2.
+    // JoinSpec — one join<...>() / left_join<...>() call. The members it joins on are named by `fk`
+    // (one) or `fks` (several in ONE call, #869): FKs of the model, its m2m / reverse_fk relations, or
+    // a cross-model FK selector, as the consumer's fk_resolver reads the name (QueryBuilder).
     // ========================================================================
     struct JoinSpec {
         bool                enabled = false;
         ConstexprString<8>  type;    // "inner" / "left"
-        ConstexprString<32> related; // related model name ("User")
+        ConstexprString<32> related; // related model name ("User"); informational, not read
         ConstexprString<32> fk;      // FK field name ("sender")
-        // Multi-FK support (up to 2 for now)
+        // Several members in one call (up to 2 for now)
         static constexpr std::size_t             MAX_FKS = 2;
         std::array<ConstexprString<32>, MAX_FKS> fks{};
         std::size_t                              fk_count = 0; // counts past MAX_FKS (#843)
@@ -411,6 +411,27 @@ export namespace storm::benchmark {
 
         [[nodiscard]] constexpr auto within_limits() const -> bool {
             return fk_count <= MAX_FKS;
+        }
+
+        // The members to join on: `fks` when written, else the one `fk`.
+        [[nodiscard]] constexpr auto member_count() const -> std::size_t {
+            return fk_count > 0 ? fk_count : std::size_t{1};
+        }
+
+        [[nodiscard]] constexpr auto member(std::size_t i) const -> std::string_view {
+            return fk_count > 0 ? fks[i].view() : fk.view();
+        }
+
+        // #869: the join is built as written. `type` is "inner" or "left" (any other spelling used to
+        // build an inner join), and the members are named by `fk` or by `fks`, exactly one of the two
+        // (with both, one was dropped; a one-entry `fks` was ignored for an empty `fk`).
+        [[nodiscard]] constexpr auto is_well_formed() const -> bool {
+            if (!enabled) {
+                return true;
+            }
+            const bool known_type = type == "inner" || type == "left";
+            const bool one_form   = fk.empty() != (fk_count == 0);
+            return known_type && one_form;
         }
     };
 
