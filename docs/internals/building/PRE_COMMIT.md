@@ -12,7 +12,7 @@ in the prebuilt `storm-ci` image could not run it. It now runs:
 
 | Where | Mode | Scope | Gates |
 |---|---|---|---|
-| `ci.yml`, `clang-tidy` job (PR and merge queue) | `--diff --base <base sha>` | lines the PR changed | `CI gate` — a warning on a changed line fails the job |
+| `ci.yml`, `clang-tidy` job (PR and merge queue; only when C++ or the tidy plumbing changed, #913) | `--diff --base <base sha>` | lines the PR changed | `CI gate` — a warning on a changed line fails the job |
 | `clang-tidy-sweep.yml` (Mondays 04:00 UTC, `workflow_dispatch`) | `--all` | the whole tree | nothing; the run turns red |
 | your machine, on demand | `--diff` / `--diff --base <ref>` / `--full` | see below | nothing |
 

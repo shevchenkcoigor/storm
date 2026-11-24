@@ -18,20 +18,35 @@ import unittest
 REPO_ROOT = pathlib.Path(__file__).resolve().parents[3]
 DETECTOR = REPO_ROOT / "scripts" / "ci" / "detect_changes.py"
 
-FLAGS = ("SRC", "TEST", "CPP", "CMAKE", "BENCH")
+FLAGS = ("SRC", "TEST", "CPP", "CMAKE", "BENCH", "TIDY")
 
 # (description, changed files, flags that must be true)
 SCENARIOS = (
-    ("src/foo.cppm sets SRC + CPP", ["src/foo.cppm"], {"SRC", "CPP"}),
-    ("tests/test_foo.cpp sets TEST + CPP", ["tests/test_foo.cpp"], {"TEST", "CPP"}),
+    ("src/foo.cppm sets SRC + CPP + TIDY", ["src/foo.cppm"], {"SRC", "CPP", "TIDY"}),
+    ("tests/test_foo.cpp sets TEST + CPP + TIDY", ["tests/test_foo.cpp"], {"TEST", "CPP", "TIDY"}),
     # A shared header outside src/ and tests/ is still compiled: CPP must catch it.
-    ("include/storm/storm.h sets CPP only", ["include/storm/storm.h"], {"CPP"}),
+    ("include/storm/storm.h sets CPP + TIDY", ["include/storm/storm.h"], {"CPP", "TIDY"}),
     ("cmake/foo.cmake sets CMAKE only", ["cmake/foo.cmake"], {"CMAKE"}),
     ("src/CMakeLists.txt sets SRC + CMAKE", ["src/CMakeLists.txt"], {"SRC", "CMAKE"}),
-    ("benchmarks/foo.cpp sets BENCH + CPP", ["benchmarks/foo.cpp"], {"BENCH", "CPP"}),
+    ("benchmarks/foo.cpp sets BENCH + CPP + TIDY", ["benchmarks/foo.cpp"], {"BENCH", "CPP", "TIDY"}),
     ("docs/README.md sets nothing", ["docs/README.md"], set()),
     ("empty input sets nothing", [], set()),
-    ("docs + src together still sets SRC + CPP", ["docs/README.md", "src/foo.cppm"], {"SRC", "CPP"}),
+    ("docs + src together still sets SRC + CPP + TIDY", ["docs/README.md", "src/foo.cppm"], {"SRC", "CPP", "TIDY"}),
+    # clang-tidy --diff lints changed C++ lines only (#913): a change with no C++ gives it nothing
+    # to do, so cmake, scripts, workflows and docs alone must not set TIDY ...
+    ("cmake-only change does not set TIDY", ["CMakeLists.txt", "cmake/foo.cmake"], {"CMAKE"}),
+    ("a script outside scripts/tidy does not set TIDY", ["scripts/commit/smart_skip.py"], set()),
+    ("another workflow does not set TIDY", [".github/workflows/bench-ratio.yml"], set()),
+    ("the weekly sweep workflow does not set TIDY", [".github/workflows/clang-tidy-sweep.yml"], set()),
+    ("a .clang-tidy config change does not set TIDY (the weekly sweep validates it)", [".clang-tidy"], set()),
+    # ... except the tidy plumbing itself, so an edit to the job or the runner is verified by it.
+    ("scripts/tidy/run_clang_tidy.py sets TIDY only", ["scripts/tidy/run_clang_tidy.py"], {"TIDY"}),
+    ("scripts/tidy/tests/ sets TIDY only", ["scripts/tidy/tests/test_run_clang_tidy.py"], {"TIDY"}),
+    ("ci.yml sets TIDY only", [".github/workflows/ci.yml"], {"TIDY"}),
+    # The prefix and the exact name are what keep the plumbing rule from over- or under-matching.
+    ("a sibling of scripts/tidy/ does not set TIDY", ["scripts/tidyfoo/x.py"], set()),
+    ("a path ending in scripts/tidy/ elsewhere does not set TIDY", ["xscripts/tidy/x.py"], set()),
+    ("a backup of ci.yml does not set TIDY", [".github/workflows/ci.yml.bak"], set()),
 )
 
 
@@ -59,6 +74,23 @@ class DetectChangesTest(unittest.TestCase):
                 self.assertEqual(code, 0, "detector exited %d. Output: %s" % (code, raw))
                 expected = {"HAS_%s_CHANGES" % flag: flag in expected_true for flag in FLAGS}
                 self.assertEqual(parsed, expected, "raw output: %s" % raw)
+
+
+class SharedPatternTest(unittest.TestCase):
+    def test_the_cpp_extensions_match_the_ones_the_tidy_runner_lints(self):
+        # HAS_TIDY_CHANGES decides whether the tidy job runs at all: if run_clang_tidy.py learns a
+        # new extension and this does not, a PR touching only such files skips the gate silently.
+        import importlib.util
+        import sys
+        sys.path.insert(0, str(REPO_ROOT / "scripts" / "tidy"))
+        self.addCleanup(sys.path.remove, str(REPO_ROOT / "scripts" / "tidy"))
+        specs = {}
+        for name, path in (("detect_changes", DETECTOR), ("run_clang_tidy", REPO_ROOT / "scripts" / "tidy" / "run_clang_tidy.py")):
+            spec = importlib.util.spec_from_file_location(name, str(path))
+            module = importlib.util.module_from_spec(spec)
+            spec.loader.exec_module(module)
+            specs[name] = module
+        self.assertEqual(specs["detect_changes"].CPP_FILE.pattern, specs["run_clang_tidy"].CPP_FILE.pattern)
 
 
 if __name__ == "__main__":

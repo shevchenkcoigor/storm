@@ -6,7 +6,7 @@ name: CI
 # such a filter would be trying to save. Cheapness for docs-only PRs is the
 # `changes` job's business, below.
 #
-# The heavy jobs (`test`, `coverage`, `clang-p2996-host-layout`, `clang-tidy`) do NOT run on
+# The heavy jobs (`test`, `coverage`, `clang-p2996-host-layout`) do NOT run on
 # `push` to develop (#700). develop merges through a merge queue (#711): each
 # PR lands only after a `merge_group` run on develop + the queued PRs — the
 # exact tree the merge produces — passed `CI gate`; rebuilding that tree after
@@ -52,7 +52,8 @@ jobs:
   # they run everything) via scripts/ci/detect_changes.py —
   # the same script commit.sh uses for its staged-file smart skips, so both
   # places agree on what counts as "src/tests/cmake changed". `run_heavy`
-  # gates the `test` / `coverage` / `clang-p2996-host-layout` / `clang-tidy` jobs below, and
+  # gates the `test` / `coverage` / `clang-p2996-host-layout` jobs below, `run_tidy` the
+  # clang-tidy job (C++ or the tidy plumbing changed, #913), and
   # `run_cold_cpm` the cold-cpm-configure job: a PR touching only docs/ or
   # unrelated top-level files SKIPS them outright — no storm-ci image pulled,
   # no postgres service started, nothing configured, built or tested (#639).
@@ -74,7 +75,9 @@ jobs:
   # to "run" unless it explicitly says `run_heavy == 'false'` (see those
   # jobs below) — so a failed/erroring changes job, or a detect_changes.py
   # that produced no output, runs the full suite instead of silently
-  # skipping it. Also always runs heavy jobs when anything CI itself
+  # skipping it. (The clang-tidy job reads `run_tidy` instead, #913, with the same
+  # fail-closed default; it deliberately ignores most plumbing: --diff lints C++ lines.)
+  # Also always runs heavy jobs when anything CI itself
   # consumes changes (workflows, scripts/, .githooks/, CMakePresets.json,
   # commit.sh) — see the grep below — so an edit to that plumbing gets
   # verified by the very jobs it configures instead of skipping itself.
@@ -84,6 +87,7 @@ jobs:
     outputs:
       run_heavy: ${{ steps.detect.outputs.run_heavy }}
       run_cold_cpm: ${{ steps.detect.outputs.run_cold_cpm }}
+      run_tidy: ${{ steps.detect.outputs.run_tidy }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -123,6 +127,7 @@ jobs:
             echo "No prior SHA to diff against — defaulting to run_heavy=true"
             echo "run_heavy=true" | tee -a "$GITHUB_OUTPUT"
             echo "run_cold_cpm=true" | tee -a "$GITHUB_OUTPUT"
+            echo "run_tidy=true" | tee -a "$GITHUB_OUTPUT"
             exit 0
           fi
 
@@ -132,6 +137,7 @@ jobs:
           detected=$(printf '%s\n' "$files" | ./scripts/ci/detect_changes.py)
           eval "$detected"
           : "${HAS_SRC_CHANGES:?detect_changes.py produced no output}"
+          : "${HAS_TIDY_CHANGES:?detect_changes.py produced no HAS_TIDY_CHANGES}"
 
           run_heavy=false
           if [[ "$HAS_SRC_CHANGES" == true || "$HAS_TEST_CHANGES" == true \
@@ -162,8 +168,19 @@ jobs:
             run_cold_cpm=true
           fi
 
+          # The PR clang-tidy job (#913) lints changed C++ lines, so it runs only when C++ or the
+          # tidy plumbing itself changed (HAS_TIDY_CHANGES, see detect_changes.py) - not on every
+          # run_heavy PR, where a cmake/script/workflow-only change gives it nothing to lint.
+          # Known gap: a cmake/preset edit that breaks build/release/compile_commands.json is not
+          # caught by a PR without C++; it surfaces on the next C++ PR or in the weekly sweep.
+          run_tidy=false
+          if [[ "$HAS_TIDY_CHANGES" == true ]]; then
+            run_tidy=true
+          fi
+
           echo "run_heavy=$run_heavy" | tee -a "$GITHUB_OUTPUT"
           echo "run_cold_cpm=$run_cold_cpm" | tee -a "$GITHUB_OUTPUT"
+          echo "run_tidy=$run_tidy" | tee -a "$GITHUB_OUTPUT"
 
   # Every pre-commit guard, run over the whole tree (#708). The cheap shell/Python
   # checks — agent frontmatter (#543), ORM backend neutrality, the clang-tidy
@@ -423,11 +440,12 @@ jobs:
   clang-tidy:
     name: clang-tidy (changed lines)
     needs: changes
-    # Skipped outright (no container pulled) when the diff does not need it, or on any
-    # event with no base to diff against (`run_heavy` is the `changes` job's verdict).
-    # Fail-closed: a broken `changes` job leaves the output empty, and '' != 'false'
-    # still runs. A skipped job is a pass to `CI gate` (#638, #639).
-    if: ${{ !cancelled() && (github.event_name == 'pull_request' || github.event_name == 'merge_group') && needs.changes.outputs.run_heavy != 'false' }}
+    # Skipped outright (no container pulled) when the diff has no C++ and does not touch the
+    # tidy plumbing, or on any event with no base to diff against (`run_tidy` is the `changes`
+    # job's verdict, from detect_changes.py's HAS_TIDY_CHANGES, #913). Fail-closed: a broken
+    # `changes` job leaves the output empty, and '' != 'false' still runs. A skipped job is a
+    # pass to `CI gate` (#638, #639).
+    if: ${{ !cancelled() && (github.event_name == 'pull_request' || github.event_name == 'merge_group') && needs.changes.outputs.run_tidy != 'false' }}
     env:
       BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.merge_group.base_sha }}
     runs-on: ubuntu-24.04
@@ -793,8 +811,8 @@ jobs:
   #             docs-only PR (it also shows which conclusion Sonar posts on a
   #             PR with no C++ — sonar_gate.py fails anything but `success`).
   #   4. DONE (#639): the flip — the job-level `if:` of `test`, `coverage`,
-  #      `clang-p2996-host-layout`, `clang-tidy` (#910) and `cold-cpm-configure` carries
-  #      `&& needs.changes.outputs.<run_heavy|run_cold_cpm> != 'false'`, so a
+  #      `clang-p2996-host-layout`, `clang-tidy` (#910, on `run_tidy`) and `cold-cpm-configure` carries
+  #      `&& needs.changes.outputs.<run_heavy|run_tidy|run_cold_cpm> != 'false'`, so a
   #      docs-only PR starts no container and no postgres service at all.
   #      Fail-closed survives: a broken `changes` job leaves the output empty
   #      and '' != 'false' still runs everything.

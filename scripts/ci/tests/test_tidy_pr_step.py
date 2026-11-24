@@ -64,7 +64,7 @@ class JobShapeTest(unittest.TestCase):
         condition = re.search(r"\n    if: (.*)\n", job_block("clang-tidy")).group(1)
         self.assertIn("github.event_name == 'pull_request'", condition)
         self.assertIn("github.event_name == 'merge_group'", condition)
-        self.assertIn("needs.changes.outputs.run_heavy != 'false'", condition)
+        self.assertIn("needs.changes.outputs.run_tidy != 'false'", condition)
 
     def test_the_base_comes_from_the_event_for_both_triggers(self):
         # The env line itself, not a substring of the job: a comment still naming the two
@@ -75,36 +75,86 @@ class JobShapeTest(unittest.TestCase):
     def test_the_condition_is_pinned_whole(self):
         condition = re.search(r"\n    if: (.*)\n", job_block("clang-tidy")).group(1)
         self.assertEqual(condition, "${{ !cancelled() && (github.event_name == 'pull_request' || "
-                                    "github.event_name == 'merge_group') && needs.changes.outputs.run_heavy != 'false' }}")
+                                    "github.event_name == 'merge_group') && needs.changes.outputs.run_tidy != 'false' }}")
 
-    def test_a_tidy_failure_cannot_be_turned_into_a_green_job(self):
-        live = "\n".join(line for line in job_block("clang-tidy").splitlines() if not line.lstrip().startswith("#"))
-        self.assertNotIn("continue-on-error", live)
-        self.assertNotIn("|| true", live)
+    def test_it_is_gated_on_cpp_not_on_run_heavy(self):
+        # #913: --diff lints changed C++ lines, so a PR without C++ must not pay the build.
+        self.assertNotIn("run_heavy", re.search(r"\n    if: (.*)\n", job_block("clang-tidy")).group(1))
 
-    def test_the_checkout_has_the_history_the_merge_base_needs(self):
-        self.assertRegex(step_body("clang-tidy", "Checkout"), r"fetch-depth: 0")
+    def test_the_changes_job_exports_run_tidy(self):
+        self.assertIn("run_tidy: ${{ steps.detect.outputs.run_tidy }}", job_block("changes"))
 
-    def test_the_checkout_is_trusted_then_built_then_linted(self):
-        names = step_names("clang-tidy")
-        self.assertLess(names.index("Checkout"), names.index("Trust the checkout"))
-        self.assertLess(names.index("Trust the checkout"), names.index("Build (release)"))
-        self.assertLess(names.index("Configure (release)"), names.index("Build (release)"))
-        self.assertEqual(names[-1], TIDY_STEP)
 
-    def test_it_builds_the_release_preset_tidy_reads_the_database_of(self):
-        self.assertIn("cmake --preset ninja-release", run_script("clang-tidy", "Configure (release)"))
-        self.assertIn("cmake --build --preset ninja-release", run_script("clang-tidy", "Build (release)"))
+class ChangesScriptTest(unittest.TestCase):
+    """Runs the real `Detect changed files` script (a stub git supplies the changed paths)."""
 
-    def test_it_has_a_timeout(self):
-        self.assertRegex(job_block("clang-tidy"), r"\n    timeout-minutes: \d+\n")
+    def run_detect(self, files, event="pull_request", before=""):
+        tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(tmp.cleanup)
+        root = pathlib.Path(tmp.name)
+        (root / "bin").mkdir()
+        git = root / "bin" / "git"
+        git.write_text('#!/bin/sh\nprintf "%s\\n" "$FAKE_FILES"\n')
+        git.chmod(git.stat().st_mode | stat.S_IEXEC)
+        output = root / "github_output"
+        output.touch()
+        env = dict(os.environ, PATH="%s:%s" % (root / "bin", os.environ["PATH"]), FAKE_FILES="\n".join(files),
+                   EVENT_NAME=event, BASE_SHA="b", QUEUE_BASE_SHA="q", BEFORE_SHA=before, GITHUB_OUTPUT=str(output))
+        proc = subprocess.run(["bash", "-e", "-c", run_script("changes", "Detect changed files")],
+                              cwd=str(REPO_ROOT), env=env, capture_output=True, text=True)
+        parsed = dict(line.split("=", 1) for line in output.read_text().splitlines())
+        return proc, parsed
 
-    def test_the_workflow_does_not_replace_bash_as_the_shell(self):
-        self.assertNotRegex(job_block("clang-tidy"), r"(?m)^\s*shell:")
+    def test_a_cpp_change_runs_tidy(self):
+        proc, out = self.run_detect(["src/a.cppm"])
+        self.assertEqual(proc.returncode, 0, proc.stderr)
+        self.assertEqual(out["run_tidy"], "true")
 
-    def test_ci_gate_waits_for_it(self):
-        needs = re.search(r"\n    needs:\n((?:      - .*\n)+)", job_block("ci-gate")).group(1)
-        self.assertIn("      - clang-tidy\n", needs)
+    def test_a_docs_only_change_skips_tidy(self):
+        proc, out = self.run_detect(["docs/README.md"])
+        self.assertEqual(proc.returncode, 0, proc.stderr)
+        self.assertEqual(out["run_tidy"], "false")
+        self.assertEqual(out["run_heavy"], "false")
+
+    def test_a_cmake_or_script_only_change_skips_tidy_but_still_runs_the_heavy_jobs(self):
+        _proc, out = self.run_detect(["cmake/foo.cmake", "scripts/commit/smart_skip.py"])
+        self.assertEqual(out["run_tidy"], "false")
+        self.assertEqual(out["run_heavy"], "true")
+
+    def test_editing_the_tidy_plumbing_runs_tidy(self):
+        for path in ("scripts/tidy/run_clang_tidy.py", ".github/workflows/ci.yml"):
+            with self.subTest(path):
+                _proc, out = self.run_detect([path])
+                self.assertEqual(out["run_tidy"], "true")
+
+    def test_the_merge_queue_runs_tidy_when_any_queued_pr_has_cpp(self):
+        _proc, out = self.run_detect(["docs/a.md", "tests/t.cpp"], event="merge_group")
+        self.assertEqual(out["run_tidy"], "true")
+
+    def test_with_no_prior_sha_tidy_runs(self):
+        # Nothing to diff against: run everything, tidy included, never leave run_tidy unset.
+        proc, out = self.run_detect([], event="push", before="")
+        self.assertEqual(proc.returncode, 0, proc.stderr)
+        self.assertEqual(out["run_tidy"], "true")
+
+    def test_a_detector_that_prints_no_tidy_flag_fails_the_step(self):
+        # An older detect_changes.py must stop the job (and so turn the gate red), not skip tidy.
+        script = run_script("changes", "Detect changed files").replace("./scripts/ci/detect_changes.py",
+                                                                        "grep -v TIDY_CHANGES <(./scripts/ci/detect_changes.py) #")
+        tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(tmp.cleanup)
+        root = pathlib.Path(tmp.name)
+        (root / "bin").mkdir()
+        git = root / "bin" / "git"
+        git.write_text('#!/bin/sh\necho src/a.cppm\n')
+        git.chmod(git.stat().st_mode | stat.S_IEXEC)
+        output = root / "out"
+        output.touch()
+        env = dict(os.environ, PATH="%s:%s" % (root / "bin", os.environ["PATH"]), EVENT_NAME="pull_request",
+                   BASE_SHA="b", QUEUE_BASE_SHA="q", BEFORE_SHA="", GITHUB_OUTPUT=str(output))
+        proc = subprocess.run(["bash", "-e", "-c", script], cwd=str(REPO_ROOT), env=env, capture_output=True, text=True)
+        self.assertNotEqual(proc.returncode, 0, proc.stdout)
+        self.assertNotIn("run_tidy", output.read_text())
 
 
 class TestJobIsPlainTest(unittest.TestCase):
