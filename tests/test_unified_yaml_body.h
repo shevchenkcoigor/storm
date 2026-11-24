@@ -163,6 +163,7 @@ inline constexpr std::array YAML_RUNNERS{
     YamlRunner{.query_type = "one", .is_prefix = false, .runner = ^^SelectRunner},
     YamlRunner{.query_type = "rows", .is_prefix = false, .runner = ^^SelectRunner},
     YamlRunner{.query_type = "values", .is_prefix = false, .runner = ^^ValuesRunner},
+    YamlRunner{.query_type = "setop", .is_prefix = false, .runner = ^^SetOpRunner},
     YamlRunner{.query_type = "count", .is_prefix = false, .runner = ^^AggregateRunner},
     YamlRunner{.query_type = "count_field", .is_prefix = false, .runner = ^^AggregateRunner},
     YamlRunner{.query_type = "count_distinct", .is_prefix = false, .runner = ^^AggregateRunner},
@@ -220,6 +221,9 @@ class UnifiedYamlBody : public UnifiedYamlFixture<Tag, ConnType> {
                     Tc.query_type == "rows") ||
                       Tc.bench.result_shape_count() == 0,
                   "query_type select / first / one / rows runs no values, distinct, group_by, aggregate or setop spec");
+    // #870: a setop spec is read by query_type setop only, and setop needs one.
+    static_assert(Tc.bench.setop.enabled == (Tc.query_type == "setop"),
+                  "a setop: {operands: [...]} spec is read by query_type setop only, and setop needs one");
 
     auto reset_tables() -> void {
         std::shared_ptr<ConnType> conn = // NOSONAR(S1659)

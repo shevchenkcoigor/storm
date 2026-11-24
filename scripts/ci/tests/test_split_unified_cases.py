@@ -156,6 +156,12 @@ class SharedKeyTest(unittest.TestCase):
         run = run_splitter(case("c", {"query_type": "values"}, expected_sql='SELECT "id" FROM "t"'))
         self.assertEqual(run.returncode, 0, run.stderr)
 
+    def test_shared_expected_sql_is_accepted_on_setop(self):
+        # SetOpRunner pins SQL too (#870); a set-op case lands in the select slice.
+        run = run_splitter(case("c", {"query_type": "setop"}, expected_sql='SELECT "id" FROM "t" UNION SELECT "id" FROM "t"'))
+        self.assertEqual(run.returncode, 0, run.stderr)
+        self.assertEqual([entry["name"] for entry in run.outputs["select"]].count("c"), 1)
+
     def test_shared_expected_sql_is_accepted_on_select(self):
         # SelectRunner pins SQL too (#844), so select cases can state ORDER BY / LIMIT text.
         run = run_splitter(case("c", SELECT_QUERY, expected_sql='SELECT "id" FROM "t"'))
@@ -169,6 +175,13 @@ class DialectPairTest(unittest.TestCase):
         written = [c for c in run.outputs["select"] if c["name"] == "pair_select"]
         self.assertEqual(len(written), 1)
         self.assertEqual(written[0]["expected_sql_sqlite"], PAIR["expected_sql_sqlite"])
+        self.assertEqual(written[0]["expected_sql_pg"], PAIR["expected_sql_pg"])
+
+    def test_pair_is_accepted_on_setop_and_reaches_the_json(self):
+        run = run_splitter(case("pair_setop", {"query_type": "setop"}, **PAIR))
+        self.assertEqual(run.returncode, 0, run.stderr)
+        written = [entry for entry in run.outputs["select"] if entry["name"] == "pair_setop"]
+        self.assertEqual(len(written), 1)
         self.assertEqual(written[0]["expected_sql_pg"], PAIR["expected_sql_pg"])
 
     def test_pair_is_accepted_on_values_and_reaches_the_json(self):

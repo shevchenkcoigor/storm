@@ -45,11 +45,11 @@ import yaml  # PyYAML required
 
 # query_type -> category, grouping the YAML_RUNNERS rows by runner:
 #   InsertRunner/UpdateRunner/EraseRunner -> crud
-#   SelectRunner / ValuesRunner           -> select
+#   SelectRunner / ValuesRunner / SetOpRunner -> select
 #   AggregateRunner (chain, group_<func>) / DistinctRunner -> grouped
 #   AggregateRunner (scalar aggregates)   -> aggregate
 WRITE_OPS = {"insert_one", "insert_batch", "update_batch", "erase_all", "erase_batch"}
-SELECT_OPS = {"select", "first", "one", "rows", "values"}
+SELECT_OPS = {"select", "first", "one", "rows", "values", "setop"}
 GROUPED_OPS = {
     "chain",
     "distinct",
@@ -66,7 +66,7 @@ CATEGORIES = ("select", "grouped", "aggregate", "crud")
 # Mirrors EXPECTED_SQL_CAPACITY in tests/test_parser.hpp (#818). Since #845 the C++
 # parser rejects every over-long case at compile time; the script keeps its check so the
 # error names the case and the key.
-EXPECTED_SQL_CAPACITY = 160
+EXPECTED_SQL_CAPACITY = 256
 
 
 # Categories whose runner compares the pinned SQL: AggregateRunner (#818) and SelectRunner on
@@ -74,8 +74,8 @@ EXPECTED_SQL_CAPACITY = 160
 # pass without ever comparing SQL.
 EXPECTED_SQL_CATEGORIES = {"aggregate", "select"}
 # Within the select category only these query_types pin SQL: SelectRunner on `select`, ValuesRunner
-# on `values` (#867). `first` / `one` / `rows` would ignore it.
-SQL_PINNING_SELECT_OPS = {"select", "values"}
+# on `values` (#867), SetOpRunner on `setop` (#870). `first` / `one` / `rows` would ignore it.
+SQL_PINNING_SELECT_OPS = {"select", "values", "setop"}
 
 # One text for both backends, or one per dialect (#844): NULLS FIRST/LAST and LIMIT ALL vs
 # LIMIT -1 differ, so a single string cannot describe both.
@@ -116,7 +116,7 @@ def validate_expected_sql(case: dict, category: str) -> None:
     # `first` / `one` / `rows` share the select category, but only select and values pin SQL.
     if category == "select" and case.get("query_type") not in SQL_PINNING_SELECT_OPS:
         raise SystemExit(
-            f"Error: case {name!r}: {', '.join(present)} is supported on query_type select and values only, "
+            f"Error: case {name!r}: {', '.join(present)} is supported on query_type select, values and setop only, "
             f"not {case.get('query_type')!r}: that runner would ignore it and the case would "
             f"pass without comparing SQL."
         )

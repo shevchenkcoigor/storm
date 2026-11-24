@@ -24,7 +24,7 @@
 //     "aggregate": { "func": "sum", "field": "salary" },   // or "fields": [..]; or
 //     "aggregations": [ { "func": "count" }, { "func": "avg", "fields": ["a", "b"] } ],
 //     "join":     { "type": "inner", "related": "User", "fk": "sender" },
-//     "setop":    { "type": "union" }
+//     "setop":    { "operands": [{ "where": {...} }, { "op": "union", "where": {...} }] }
 //   }
 //
 // Each value is sniffed from the JSON token type (int, int64, double, bool,
@@ -675,14 +675,58 @@ export namespace storm::benchmark {
         return jn;
     }
 
-    constexpr auto parse_setop(std::string_view j, std::size_t& p, std::size_t& truncated) -> SetOpSpec {
+    // One set-op operand {op, where} (#870). Its WHERE tree is appended to `pool` (the case's own `where`,
+    // which a set-op case may not use itself) and the operand keeps the root; the pool's `enabled`, `forms`
+    // and `root` describe the case's own WHERE, so they are put back afterwards. Any other key is counted,
+    // so a misspelling is rejected (SetOpSpec::is_well_formed) instead of skipped; so is a repeated `where`.
+    constexpr auto parse_setop_operand(WhereSpec& pool, std::string_view j, std::size_t& p, std::size_t& truncated)
+            -> SetOpOperandSpec {
+        SetOpOperandSpec operand;
+        parse_object(j, p, [&](const char* ptr, JsonKeyRef kr, std::string_view jj, std::size_t& pp) {
+            if (jkey_eq(ptr, kr, "op")) {
+                operand.op = parse_str<16>(jj, pp, truncated);
+            } else if (jkey_eq(ptr, kr, "where")) {
+                const bool        enabled    = pool.enabled;
+                const std::size_t forms      = pool.forms;
+                const int         root       = pool.root;
+                const std::size_t first_node = pool.node_count;
+                parse_where(pool, jj, pp, truncated);
+                operand.root = pool.node_count > first_node ? pool.root : -1; // no condition: no tree
+                ++operand.where_forms;
+                pool.enabled = enabled;
+                pool.forms   = forms;
+                pool.root    = root;
+            } else {
+                ++operand.unknown_keys;
+                skip_value(jj, pp);
+            }
+        });
+        return operand;
+    }
+
+    // {operands: [{where}, {op, where}, ...]} (#870). A key other than `operands` (the pre-#870 `type`
+    // among them) and an array element that is not an object are counted and rejected. A repeated
+    // `operands` key replaces the operand list, but the first list's WHERE nodes stay in the pool, where
+    // no operand reaches them, so the case is rejected rather than half-read.
+    constexpr auto parse_setop(WhereSpec& pool, std::string_view j, std::size_t& p, std::size_t& truncated)
+            -> SetOpSpec {
         SetOpSpec s;
         s.enabled = true;
         parse_object(j, p, [&](const char* ptr, JsonKeyRef kr, std::string_view jj, std::size_t& pp) {
-            if (jkey_eq(ptr, kr, "type"))
-                s.type = parse_str<16>(jj, pp, truncated);
-            else
+            if (jkey_eq(ptr, kr, "operands")) {
+                s.operand_count = 0;
+                parse_array(jj, pp, [&](std::string_view jjj, std::size_t& ppp) {
+                    if (at_char(jjj, ppp, '{')) {
+                        s.add_operand(parse_setop_operand(pool, jjj, ppp, truncated));
+                    } else {
+                        ++s.unknown_keys;
+                        skip_or_step(jjj, ppp); // not an operand: skip it, or parse_array would never leave
+                    }
+                });
+            } else {
+                ++s.unknown_keys;
                 skip_value(jj, pp);
+            }
         });
         return s;
     }
@@ -749,7 +793,7 @@ export namespace storm::benchmark {
         else if (jkey_eq(ptr, kr, "join"))
             b.join = parse_join(j, p, truncated);
         else if (jkey_eq(ptr, kr, "setop"))
-            b.setop = parse_setop(j, p, truncated);
+            b.setop = parse_setop(b.where, j, p, truncated);
         else
             skip_value(j, p);
     }

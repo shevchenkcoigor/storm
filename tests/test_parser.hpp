@@ -106,8 +106,8 @@ namespace storm::test {
         constexpr AggregationResult()                             = default;
     };
 
-    // Longest pinned statement today is 105 chars (a JOIN + WHERE aggregate).
-    inline constexpr std::size_t EXPECTED_SQL_CAPACITY = 160;
+    // Longest pinned statement today is 197 chars (a three-operand set-op chain, #870).
+    inline constexpr std::size_t EXPECTED_SQL_CAPACITY = 256;
 
     struct TestCase { // NOSONAR(cpp:S1820)
         BenchmarkTest       bench;

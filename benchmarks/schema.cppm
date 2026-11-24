@@ -4,7 +4,7 @@
 // Provides BenchmarkTest plus its nested sub-specs (WhereSpec, OrderBySpec,
 // HavingSpec, GroupBySpec, DistinctSpec, LimitSpec, AggregateSpec (one step of the
 // aggregate chain, #868), JoinSpec,
-// SetOpSpec) and the TypedValue tagged-union for sniffed JSON leaf values.
+// SetOpSpec (a chain of SetOpOperandSpecs, #870)) and the TypedValue tagged-union for sniffed JSON leaf values.
 //
 // Was: benchmarks/schema.hpp (textual header that re-defined a local
 // `ConstexprString<N>`). Issue #221 — Phase 3 of the benchmark module
@@ -244,7 +244,36 @@ export namespace storm::benchmark {
                     return false;
                 }
             }
-            return reachable_from_root(stored) == stored;
+            return reachable_from(root, stored) == stored;
+        }
+
+        // The nodes as a FOREST (#870): the WHERE trees of a set-op chain share this one pool, each operand
+        // holding its own root (`roots[0..count)`, a negative root = no tree). Well formed when every node is,
+        // every root exists, and the trees together reach every stored node exactly once, so no subtree is
+        // dropped or shared. Checked whether or not `enabled` is set: the pool is not the case's own WHERE.
+        template <std::size_t N>
+        [[nodiscard]] constexpr auto is_forest_well_formed(const std::array<int, N>& roots, std::size_t count) const
+                -> bool {
+            if (unknown_combine) {
+                return false;
+            }
+            const std::size_t stored = stored_node_count();
+            for (std::size_t i = 0; i < stored; ++i) {
+                if (!node_is_well_formed(nodes[i], stored)) {
+                    return false;
+                }
+            }
+            std::size_t reached = 0;
+            for (std::size_t i = 0; i < count && i < N; ++i) {
+                if (roots[i] < 0) {
+                    continue;
+                }
+                if (static_cast<std::size_t>(roots[i]) >= stored) {
+                    return false;
+                }
+                reached += reachable_from(roots[i], stored);
+            }
+            return reached == stored;
         }
 
         // Does any stored leaf compare through a collation? Such a case runs on SQLite only.
@@ -275,13 +304,13 @@ export namespace storm::benchmark {
             return static_cast<std::size_t>(node.left) < stored && static_cast<std::size_t>(node.right) < stored;
         }
 
-        // Nodes visited walking down from the root; a shared child or a cycle is counted per visit, so
+        // Nodes visited walking down from `start`; a shared child or a cycle is counted per visit, so
         // such a tree never equals the stored count. The walk is bounded by the stored count.
-        [[nodiscard]] constexpr auto reachable_from_root(std::size_t stored) const -> std::size_t {
+        [[nodiscard]] constexpr auto reachable_from(int start, std::size_t stored) const -> std::size_t {
             std::array<int, MAX_NODES> pending{};
             std::size_t                depth   = 0;
             std::size_t                visited = 0;
-            pending[depth++]                   = root;
+            pending[depth++]                   = start;
             while (depth > 0 && visited <= stored) {
                 const WhereNode& node = nodes[static_cast<std::size_t>(pending[--depth])];
                 ++visited;
@@ -415,11 +444,80 @@ export namespace storm::benchmark {
     };
 
     // ========================================================================
-    // SetOpSpec — set operation type (union/union_all/except/intersect)
+    // SetOpOperandSpec — one SELECT of a set-op chain (#870). Its WHERE tree is NOT stored here: it lives
+    // in the case's own `where` pool (BenchmarkTest::where, which a set-op case may not use itself), and
+    // the operand holds its root, or -1 for the whole table. A WhereSpec per operand made every case of
+    // the corpus about 8 KB larger and multiplied the YAML TUs' compile time (measured in #870). Every
+    // operand after the first names the operator `op` ("union" / "union_all" / "except" / "intersect")
+    // that joins it to the result so far. `where_forms` counts its `where` keys and `unknown_keys` the
+    // keys the parser does not know, so neither a repeat nor a misspelling is skipped.
+    // ========================================================================
+    struct SetOpOperandSpec {
+        ConstexprString<16> op;
+        int                 root         = -1;
+        std::size_t         where_forms  = 0;
+        std::size_t         unknown_keys = 0;
+    };
+
+    // ========================================================================
+    // SetOpSpec — a chain of 2..MAX_OPERANDS operands, `setop: {operands: [...]}` (#870). The chain is
+    // one flat compound SELECT, evaluated as each backend reads it; see is_portable_chain().
     // ========================================================================
     struct SetOpSpec {
-        bool                enabled = false;
-        ConstexprString<16> type; // "union" / "union_all" / "except" / "intersect"
+        bool                                       enabled      = false;
+        static constexpr std::size_t               MAX_OPERANDS = 4;
+        std::array<SetOpOperandSpec, MAX_OPERANDS> operands{};
+        std::size_t                                operand_count = 0; // counts past MAX_OPERANDS (#843)
+        // Keys of `setop:` other than `operands`, the pre-#870 `type` among them.
+        std::size_t unknown_keys = 0;
+
+        constexpr void add_operand(const SetOpOperandSpec& operand) {
+            add_capped(operands, operand_count, operand);
+        }
+
+        [[nodiscard]] constexpr auto stored_operand_count() const -> std::size_t {
+            return operand_count < MAX_OPERANDS ? operand_count : MAX_OPERANDS;
+        }
+
+        // The operands' WHERE trees count against the pool's caps (BenchmarkTest::where).
+        [[nodiscard]] constexpr auto within_limits() const -> bool {
+            return operand_count <= MAX_OPERANDS;
+        }
+
+        // At least two operands, an `op` on every operand but the first, no unknown key, at most one
+        // `where` per operand and one that is not empty, and the operands' trees a well-formed forest of
+        // `pool`. Whether `op` names a set operation is QueryBuilder's ValidSetOp, like ValidAggregate for
+        // an aggregate's func.
+        [[nodiscard]] constexpr auto is_well_formed(const WhereSpec& pool) const -> bool {
+            if (!enabled)
+                return true;
+            if (unknown_keys != 0 || operand_count < 2)
+                return false;
+            std::array<int, MAX_OPERANDS> roots{};
+            for (std::size_t i = 0; i < stored_operand_count(); ++i) {
+                const SetOpOperandSpec& operand = operands[i];
+                if (operand.unknown_keys != 0 || operand.op.empty() != (i == 0) || operand.where_forms > 1 ||
+                    (operand.where_forms == 1) != (operand.root >= 0))
+                    return false;
+                roots[i] = operand.root;
+            }
+            return pool.is_forest_well_formed(roots, stored_operand_count());
+        }
+
+        // The chain means the same rows on every backend. Storm emits it without parentheses; SQLite
+        // reads a compound SELECT left to right, while PostgreSQL binds INTERSECT tighter than UNION /
+        // EXCEPT. The two agree exactly when no INTERSECT follows another operator, so A INTERSECT B
+        // UNION C is portable and A UNION B INTERSECT C is not.
+        [[nodiscard]] constexpr auto is_portable_chain() const -> bool {
+            bool other_op_seen = false;
+            for (std::size_t i = 1; i < stored_operand_count(); ++i) {
+                const bool intersect = operands[i].op == "intersect";
+                if (intersect && other_op_seen)
+                    return false;
+                other_op_seen = other_op_seen || !intersect;
+            }
+            return true;
+        }
     };
 
     // ========================================================================
@@ -506,7 +604,8 @@ export namespace storm::benchmark {
         [[nodiscard]] constexpr auto within_limits() const -> bool {
             return where.within_limits() && order_by_count <= MAX_ORDER_BY && group_by.within_limits() &&
                    distinct.within_limits() && values.within_limits() && join.within_limits() &&
-                   aggregations_within_limits() && result_shape_count() <= 1 && truncated_strings == 0;
+                   setop.within_limits() && aggregations_within_limits() && result_shape_count() <= 1 &&
+                   truncated_strings == 0;
         }
     };
 

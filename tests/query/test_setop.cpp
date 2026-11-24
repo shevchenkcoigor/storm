@@ -653,6 +653,31 @@ TYPED_TEST(SetOpTest, UnionAllExceptUnionExceptChained) {
 }
 
 // ============================================================================
+// INTERSECT after UNION: the same SQL text, different rows per backend (#870)
+// ============================================================================
+
+// A chain is emitted as one flat compound SELECT, without parentheses (SQLite rejects a parenthesised
+// compound operand). SQLite reads it left to right, (Eng UNION Sales) INTERSECT active; PostgreSQL
+// binds INTERSECT tighter, Eng UNION (Sales INTERSECT active). This pins today's behaviour, so a
+// library fix shows up here; the YAML corpus rejects such a chain at compile time.
+TYPED_TEST(SetOpTest, IntersectAfterUnionFollowsEachBackendsPrecedence) {
+    QuerySet<Person, TypeParam> qs1;
+    QuerySet<Person, TypeParam> qs2;
+    QuerySet<Person, TypeParam> qs3;
+
+    // Engineering: 6 rows, 5 active. Sales: 5 rows, all active.
+    // Left to right: the active rows of Engineering + Sales = 5 + 5 = 10.
+    // INTERSECT first: all 6 Engineering rows + the 5 active Sales rows = 11.
+    auto builder = qs1.where(fields::Person.department == "Engineering")
+                           .union_(qs2.where(fields::Person.department == "Sales"));
+    auto result =
+            std::move(builder).intersect_(qs3.where(fields::Person.is_active == true).capture_operand()).execute();
+    ASSERT_TRUE(result.has_value()) << result.error().message();
+    constexpr std::size_t expected = storm::test::is_postgresql<TypeParam>() ? 11 : 10;
+    EXPECT_EQ(result->size(), expected);
+}
+
+// ============================================================================
 // Compile-time safety: Finalized QuerySet cannot be used as set-op operand
 // ============================================================================
 

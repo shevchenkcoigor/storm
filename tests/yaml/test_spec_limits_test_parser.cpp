@@ -123,6 +123,20 @@ namespace {
     static_assert(!Buildable<C::having_ungrouped>);
     // needs_sqlite() (TestCase) reads this, so a HAVING collation makes the case SQLite-only.
     static_assert(C::having_collate.group_by.having.any_collate() && !C::having_leaf.group_by.having.any_collate());
+    // Set-op chains (#870): the positive controls, then each spelling the builder must reject.
+    static_assert(Buildable<C::setop_two> && Buildable<C::setop_whole_table> && Buildable<C::setop_four>);
+    static_assert(Buildable<C::setop_intersect_first> && Buildable<C::setop_repeated_operands>);
+    static_assert(!Buildable<C::setop_five> && !Buildable<C::setop_one_operand>);
+    static_assert(!Buildable<C::setop_unknown_op> && !Buildable<C::setop_missing_op>);
+    static_assert(!Buildable<C::setop_op_on_first> && !Buildable<C::setop_unknown_operand_key>);
+    static_assert(!Buildable<C::setop_legacy_type> && !Buildable<C::setop_non_object_operand>);
+    static_assert(!Buildable<C::setop_operand_where_twice> && !Buildable<C::setop_operand_where_malformed>);
+    static_assert(!Buildable<C::setop_operand_where_over_cap> && !Buildable<C::setop_value_misfit>);
+    static_assert(!Buildable<C::setop_intersect_after_union> && !Buildable<C::setop_intersect_after_except>);
+    static_assert(!Buildable<C::setop_with_where> && !Buildable<C::setop_with_join>);
+    static_assert(!Buildable<C::setop_where_after> && !Buildable<C::setop_repeated_operands_with_where>);
+    static_assert(!Buildable<C::setop_operand_where_empty> && !Buildable<C::setop_operand_unknown_combine>);
+    static_assert(!Buildable<C::setop_pool_over_node_cap>);
     static_assert(!Buildable<C::where_5>);
     static_assert(!Buildable<C::where_11_values>);
     static_assert(!Buildable<C::where_twice>);
@@ -220,6 +234,10 @@ namespace {
 
     TEST(SpecLimitsTestParser, HavingIsATree) {
         storm::test::spec_limits::expect_having_is_a_tree<parse_case>();
+    }
+
+    TEST(SpecLimitsTestParser, SetOpChainIsParsed) {
+        storm::test::spec_limits::expect_setop_chain_is_parsed<parse_case>();
     }
 
     TEST(SpecLimitsTestParser, EverySharedKeyIsRead) {
@@ -549,6 +567,11 @@ namespace {
     constexpr auto kOrderCollate =
             parse_test_case(R"({"order_by":[{"field":"name","collate":"NOCASE"}],"dataset_size":5})");
     static_assert(!kOrderCollate.backends_well_formed(), "an ORDER BY collate also needs backends: [sqlite]");
+    // A set-op operand's tree lives in the `where` pool (#870), so its collate makes the case SQLite-only too.
+    constexpr auto kSetOpCollate = parse_test_case(
+            R"({"setop":{"operands":[{},{"op":"union","where":{"conditions":[{"field":"name","op":"==","collate":"NOCASE","values":["a"]}]}}]},"dataset_size":5})"
+    );
+    static_assert(kSetOpCollate.needs_sqlite() && !kSetOpCollate.backends_well_formed());
 
     TEST(SpecLimitsTestParser, ExpectedSqlPicksTheDialectsText) {
         constexpr bool kSqlite = false;

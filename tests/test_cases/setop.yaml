@@ -1,0 +1,595 @@
+# Set operations (#870): a chain of 2..4 operands, `setop.operands`. The first entry is the leading
+# SELECT; each later entry has `op` (union | union_all | except | intersect) and joins the result so
+# far. An entry's `where:` filters that SELECT; an entry without one is the whole table. order_by /
+# limit apply to the combined result. An `intersect` after any other op is a compile error: SQLite
+# reads a chain left to right, PostgreSQL binds INTERSECT tighter, so the same text differs per
+# backend. The operands' WHERE trees share the case's WHERE caps (7 nodes, 10 values in all).
+# Set-op row order is undefined, so a case that checks `expected.first` on more than one row
+# orders the result. Dataset `main` is PEOPLE_25 (shared/models/people_25.h).
+- name: setop_union_disjoint
+  model: person
+  query_type: setop
+  dataset: main
+  setop:
+    operands:
+    - where:
+        conditions:
+        - field: age
+          op: <
+          values:
+          - 24
+    - op: union
+      where:
+        conditions:
+        - field: age
+          op: '>'
+          values:
+          - 40
+  order_by:
+  - field: age
+    direction: ASC
+  - field: name
+    direction: ASC
+  expected:
+    count: 6
+    first:
+      name: Paul
+      age: 22
+- name: setop_union_overlap_deduplicates
+  model: person
+  query_type: setop
+  dataset: main
+  setop:
+    operands:
+    - where:
+        conditions:
+        - field: age
+          op: '>='
+          values:
+          - 40
+    - op: union
+      where:
+        conditions:
+        - field: age
+          op: <=
+          values:
+          - 45
+  expected:
+    count: 25
+- name: setop_union_all_keeps_duplicates
+  model: person
+  query_type: setop
+  dataset: main
+  setop:
+    operands:
+    - where:
+        conditions:
+        - field: age
+          op: '>='
+          values:
+          - 40
+    - op: union_all
+      where:
+        conditions:
+        - field: age
+          op: <=
+          values:
+          - 45
+  expected:
+    count: 30
+- name: setop_except_from_whole_table
+  model: person
+  query_type: setop
+  dataset: main
+  setop:
+    operands:
+    - {}
+    - op: except
+      where:
+        conditions:
+        - field: age
+          op: '>'
+          values:
+          - 30
+  order_by:
+  - field: age
+    direction: ASC
+  - field: name
+    direction: ASC
+  expected:
+    count: 12
+    first:
+      name: Paul
+- name: setop_except_or_tree_minus_bool
+  model: person
+  query_type: setop
+  dataset: main
+  setop:
+    operands:
+    - where:
+        conditions:
+        - field: department
+          op: ==
+          values:
+          - Engineering
+        - field: department
+          op: ==
+          values:
+          - Sales
+        combine: or
+    - op: except
+      where:
+        conditions:
+        - field: is_active
+          op: ==
+          values:
+          - false
+  order_by:
+  - field: name
+    direction: ASC
+  expected:
+    count: 10
+    first:
+      name: Alice
+      department: Engineering
+- name: setop_except_null_score_minus_inactive
+  model: person
+  query_type: setop
+  dataset: main
+  setop:
+    operands:
+    - where:
+        conditions:
+        - field: score
+          op: ==
+          values:
+          - null
+    - op: except
+      where:
+        conditions:
+        - field: is_active
+          op: ==
+          values:
+          - false
+  order_by:
+  - field: name
+    direction: ASC
+  expected:
+    count: 5
+    first:
+      name: Mia
+      score: null
+- name: setop_intersect_double_and_between
+  model: person
+  query_type: setop
+  dataset: main
+  setop:
+    operands:
+    - where:
+        conditions:
+        - field: salary
+          op: '>='
+          values:
+          - 60000.0
+    - op: intersect
+      where:
+        conditions:
+        - field: age
+          op: BETWEEN
+          values:
+          - 30
+          - 35
+  order_by:
+  - field: name
+    direction: ASC
+  expected:
+    count: 7
+    first:
+      name: Bob
+      salary: 62000.0
+- name: setop_intersect_and_tree
+  model: person
+  query_type: setop
+  dataset: main
+  setop:
+    operands:
+    - where:
+        conditions:
+        - field: is_active
+          op: ==
+          values:
+          - true
+        - field: age
+          op: '>='
+          values:
+          - 30
+        combine: and
+    - op: intersect
+      where:
+        conditions:
+        - field: department
+          op: ==
+          values:
+          - Engineering
+  order_by:
+  - field: name
+    direction: DESC
+  expected:
+    count: 4
+    first:
+      name: Victor
+- name: setop_intersect_disjoint_is_empty
+  model: person
+  query_type: setop
+  dataset: main
+  setop:
+    operands:
+    - where:
+        conditions:
+        - field: age
+          op: <
+          values:
+          - 25
+    - op: intersect
+      where:
+        conditions:
+        - field: age
+          op: '>'
+          values:
+          - 45
+  expected:
+    count: 0
+- name: setop_union_like_and_in
+  model: person
+  query_type: setop
+  dataset: main
+  setop:
+    operands:
+    - where:
+        conditions:
+        - field: name
+          op: LIKE
+          values:
+          - A%
+    - op: union
+      where:
+        conditions:
+        - field: name
+          op: IN
+          values:
+          - Bob
+          - Eve
+  order_by:
+  - field: name
+    direction: ASC
+  expected:
+    count: 3
+    first:
+      name: Alice
+- name: setop_union_order_desc_limit_offset
+  model: person
+  query_type: setop
+  dataset: main
+  setop:
+    operands:
+    - where:
+        conditions:
+        - field: age
+          op: <
+          values:
+          - 26
+    - op: union
+      where:
+        conditions:
+        - field: age
+          op: '>'
+          values:
+          - 40
+  order_by:
+  - field: age
+    direction: DESC
+  - field: name
+    direction: ASC
+  limit:
+    value: 3
+    offset: 1
+  expected:
+    count: 3
+    first:
+      name: Frank
+      age: 45
+- name: setop_sql_union_all
+  model: simple
+  query_type: setop
+  dataset: empty
+  setop:
+    operands:
+    - where:
+        conditions:
+        - field: value
+          op: <
+          values:
+          - 10
+    - op: union_all
+      where:
+        conditions:
+        - field: value
+          op: '>'
+          values:
+          - 20
+  expected_sql: SELECT "id", "name", "value" FROM "simplerecord" WHERE "value" < ? UNION ALL SELECT "id", "name", "value" FROM "simplerecord" WHERE "value" > ?
+  expected:
+    count: 0
+- name: setop_sql_except_order_limit
+  model: simple
+  query_type: setop
+  dataset: empty
+  setop:
+    operands:
+    - {}
+    - op: except
+      where:
+        conditions:
+        - field: value
+          op: ==
+          values:
+          - 5
+  order_by:
+  - field: name
+    direction: ASC
+  limit:
+    value: 2
+  expected_sql_sqlite: SELECT "id", "name", "value" FROM "simplerecord" EXCEPT SELECT "id", "name", "value" FROM "simplerecord" WHERE "value" = ? ORDER BY "name" ASC LIMIT 2
+  expected_sql_pg: SELECT "id", "name", "value" FROM "simplerecord" EXCEPT SELECT "id", "name", "value" FROM "simplerecord" WHERE "value" = ? ORDER BY "name" ASC NULLS FIRST LIMIT 2
+  expected:
+    count: 0
+- name: setop_sql_intersect
+  model: simple
+  query_type: setop
+  dataset: empty
+  setop:
+    operands:
+    - where:
+        conditions:
+        - field: name
+          op: '!='
+          values:
+          - x
+    - op: intersect
+      where:
+        conditions:
+        - field: value
+          op: '>='
+          values:
+          - 1
+  expected_sql: SELECT "id", "name", "value" FROM "simplerecord" WHERE "name" != ? INTERSECT SELECT "id", "name", "value" FROM "simplerecord" WHERE "value" >= ?
+  expected:
+    count: 0
+- name: setop_chain3_union_union
+  model: person
+  query_type: setop
+  dataset: main
+  setop:
+    operands:
+    - where:
+        conditions:
+        - field: department
+          op: ==
+          values:
+          - Engineering
+    - op: union
+      where:
+        conditions:
+        - field: department
+          op: ==
+          values:
+          - Sales
+    - op: union
+      where:
+        conditions:
+        - field: department
+          op: ==
+          values:
+          - HR
+  order_by:
+  - field: name
+    direction: ASC
+  expected:
+    count: 15
+    first:
+      name: Alice
+- name: setop_chain3_except_then_union
+  model: person
+  query_type: setop
+  dataset: main
+  setop:
+    operands:
+    - where:
+        conditions:
+        - field: department
+          op: ==
+          values:
+          - Engineering
+    - op: except
+      where:
+        conditions:
+        - field: age
+          op: '>'
+          values:
+          - 40
+    - op: union
+      where:
+        conditions:
+        - field: department
+          op: ==
+          values:
+          - HR
+  order_by:
+  - field: name
+    direction: ASC
+  expected:
+    count: 8
+    first:
+      name: Alice
+- name: setop_chain3_whole_table_except_except
+  model: person
+  query_type: setop
+  dataset: main
+  setop:
+    operands:
+    - {}
+    - op: except
+      where:
+        conditions:
+        - field: department
+          op: ==
+          values:
+          - Engineering
+    - op: except
+      where:
+        conditions:
+        - field: department
+          op: ==
+          values:
+          - Sales
+  order_by:
+  - field: name
+    direction: ASC
+  expected:
+    count: 14
+    first:
+      name: Charlie
+- name: setop_chain3_intersect_then_union_all
+  model: person
+  query_type: setop
+  dataset: main
+  setop:
+    operands:
+    - where:
+        conditions:
+        - field: is_active
+          op: ==
+          values:
+          - true
+    - op: intersect
+      where:
+        conditions:
+        - field: age
+          op: '>'
+          values:
+          - 35
+    - op: union_all
+      where:
+        conditions:
+        - field: department
+          op: ==
+          values:
+          - HR
+  expected:
+    count: 9
+- name: setop_chain4_union_all_except_union
+  model: person
+  query_type: setop
+  dataset: main
+  setop:
+    operands:
+    - where:
+        conditions:
+        - field: department
+          op: ==
+          values:
+          - Engineering
+    - op: union_all
+      where:
+        conditions:
+        - field: department
+          op: ==
+          values:
+          - Sales
+    - op: except
+      where:
+        conditions:
+        - field: age
+          op: '>'
+          values:
+          - 40
+    - op: union
+      where:
+        conditions:
+        - field: department
+          op: ==
+          values:
+          - HR
+  order_by:
+  - field: age
+    direction: DESC
+  - field: name
+    direction: ASC
+  expected:
+    count: 11
+    first:
+      name: Eve
+      age: 40
+- name: setop_chain4_intersect_intersect_union
+  model: person
+  query_type: setop
+  dataset: main
+  setop:
+    operands:
+    - where:
+        conditions:
+        - field: is_active
+          op: ==
+          values:
+          - true
+    - op: intersect
+      where:
+        conditions:
+        - field: age
+          op: '>='
+          values:
+          - 30
+    - op: intersect
+      where:
+        conditions:
+        - field: salary
+          op: '>='
+          values:
+          - 80000.0
+    - op: union
+      where:
+        conditions:
+        - field: department
+          op: ==
+          values:
+          - HR
+  order_by:
+  - field: name
+    direction: ASC
+  expected:
+    count: 9
+    first:
+      name: Diana
+- name: setop_sql_chain3_intersect_then_union
+  model: simple
+  query_type: setop
+  dataset: empty
+  setop:
+    operands:
+    - {}
+    - op: intersect
+      where:
+        conditions:
+        - field: value
+          op: '>'
+          values: [1]
+    - op: union
+      where:
+        conditions:
+        - field: name
+          op: ==
+          values: [x]
+  # No parentheses: the chain is one compound SELECT, read left to right.
+  expected_sql: 'SELECT "id", "name", "value" FROM "simplerecord" INTERSECT SELECT "id", "name", "value" FROM "simplerecord" WHERE "value" > ? UNION SELECT "id", "name", "value" FROM "simplerecord" WHERE "name" = ?'
+  expected:
+    count: 0
