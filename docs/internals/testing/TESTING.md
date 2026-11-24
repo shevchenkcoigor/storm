@@ -157,11 +157,13 @@ total, measured alongside [Local Test Suite Speed](#local-test-suite-speed):
 ## YAML-driven cases and `expected_sql` (#818)
 
 The corpus is the topic files `tests/test_cases/*.yaml` (`select`, `where`, `order_limit`, `aggregates`,
-`group_by`, `chain`, `distinct`, `writes`, `typed_values`; #846). They are authoring groups only: a case spans
+`group_by`, `chain`, `distinct`, `writes`, `typed_values`, `join`; #846, #869). They are authoring groups only: a case spans
 several topics and a topic spans several runners, so a case in the "wrong" file is not an error, and a new
 topic file is picked up by a CMake glob with no edit. `scripts/split_unified_cases.py` reads all of them, buckets
 every case by `query_type` into one JSON per category (`select` / `grouped` / `aggregate` / `crud`, the compile
-slices -- unchanged), and rejects an unknown `query_type` or a case name repeated anywhere in the corpus. It
+slices -- unchanged; plus `join`, #869: every case on `dataset: relations`, whatever its `query_type`, so only
+`test_unified_yaml_join.cpp` creates the relation tables and instantiates statements on those models — which SQL
+such a case may pin is still decided by its runner group), and rejects an unknown `query_type` or a case name repeated anywhere in the corpus. It
 rewrites only a JSON whose bytes changed, so editing one case recompiles one slice. The JSONs are
 `#embed`ded into `tests/yaml/test_unified_yaml_*.cpp` and run on SQLite and PostgreSQL. A case
 checks **results** (`expected:`). SQL text is pinned separately in C++ (`test_sql_verify.cpp`,
@@ -229,7 +231,8 @@ the key outside `aggregate` and `select`.
 The runners (`tests/test_select_runner.h`, `tests/test_unified_yaml_body.h`) have no branch per model,
 aggregate or field. Names in the YAML are resolved by reflection at compile time:
 
-- **`model:`** looks up `YAML_MODELS` in `test_unified_yaml_body.h` (`person`, `message`, `simple`, `extended`), and the
+- **`model:`** looks up `YAML_MODELS` in `tests/test_yaml_models.h` (`person`, `message`, `simple`, `extended`; and,
+  since #869, the relation models `student`, `member`, `pupil`, `author`, `reporter`, `bug`), and the
   type is spliced into whichever runner the `query_type` picks. To support a new model, add one row there. An
   unknown name is a compile error (`KnownYamlModel`). Before #834 a missing branch silently ran nothing:
   three `message` cases (`select_join_where_*`, `distinct_join_where_like_o`) never executed, and two of
@@ -238,7 +241,8 @@ aggregate or field. Names in the YAML are resolved by reflection at compile time
   `count`), the `group_<func>` suffix, and each chain `func:` are the **method names** themselves.
   `member_function_named<Q>(name)` finds the member function template, and `call_query_method` splices it with
   the step's field pack: none (`COUNT(*)`, and only `count` may omit it), one, or several. Both live in
-  `shared/query_builder.hpp` (#835). Since #868 the tests run the builder's own pipeline:
+  `shared/query_builder.hpp` (#835; since #869 the by-name resolvers live in its part
+  `query_builder_resolve.hpp` and the typed values in `query_builder_values.hpp`, both included by it). Since #868 the tests run the builder's own pipeline:
   `AggregateRunner` calls `QueryBuilder::build_terminal`, which builds the chain by recursion over
   `spec.aggregations` (`apply_aggregations`, one step per entry), so the tests and
   `benchmarks/query_benchmark.cppm` build an aggregate the same way. `ValidAggregate` is the allow-list of
@@ -329,6 +333,34 @@ aggregate or field. Names in the YAML are resolved by reflection at compile time
   writes both `where:` and `where_expr:` does not compile (two trees cannot share one set of nodes).
 - **FK by member name.** `QueryBuilder`'s `fk_resolver` defaults to `member_name_resolver<Model>`, so a
   `join.fk:` is a member name on the model. The benchmark still passes its own (`registry::resolve_fk_field`).
+  The test runners pass `yaml_join_resolver<Model>` (`tests/test_yaml_models.h`, #869), which also reads
+  `<yaml model>.<member>` as a cross-model FK selector.
+- **JOIN over relations (#869).** `tests/test_cases/join.yaml`, dataset `relations`: the models of
+  `tests/test_relation_models.h` (BStudent auto m2m — the m2m benchmark's own model from `benchmarks/m2m_models.hpp` —, BMember two auto m2m, BPupil m2m through BEnrollment, BAuthor
+  reverse_fk of BPost, BBug two FKs to BReporter), created by `relations::create_tables` and seeded by
+  `relations::seed` (`tests/test_relations_dataset.h`; rows looked up by name, since a PostgreSQL IDENTITY does not
+  restart; auto-junction rows are raw INSERTs, Storm has no write API for them). Spellings: `join.fk: courses`
+  (an FK, m2m or reverse_fk member of the case's model), `join.fks: [courses, clubs]` (several of ONE kind in one
+  `join<>` call — `JoinableFields` rejects a mix or a duplicate), `join.fk: bug.author` (cross-model FK selector,
+  valid on aggregate / filter chains). In `expected.first` an m2m / reverse_fk member is checked by its **size**
+  (a non-negative int; `RelationSizeExpected`). Every case runs on SQLite and PostgreSQL; select, `first`, `one`,
+  `rows`, aggregates (which count (base, related) pairs, cartesian tuples for several relations), `group_*` and
+  `distinct` all compose with a relation join.
+  **Compile errors, not silent fallbacks:** `join.type` other than `inner` / `left` (it used to build an inner
+  join), `fk` and `fks` together or neither (one used to be dropped; a one-entry `fks` used to be ignored for an
+  empty `fk`) — `JoinSpec::is_well_formed`, in `SpecWellFormed`; a member name the resolver cannot find
+  (`QueryBuilder::join_member`'s `static_assert`); a relation model without `dataset: relations`
+  (`YamlModelDatasetMatches`). `tests/yaml/test_spec_limits_join.cpp` pins these.
+  **Known limits:** relation contents are checked by size only, not element by element; `join.related` is
+  parsed but not read by anything (informational); and no `benchmark_tests.yaml` case runs an m2m / reverse_fk
+  join yet (the m2m benchmark stays hand-written in `benchmarks/register.cpp`).
+  **Build cost** (Debug, warm, single TU, min of 3 runs before / 4 after, machine under outside load so read
+  ±1 s as noise): the existing slices are unchanged — select 15.3 → 13.6 s, grouped 13.9 → 13.5 s, aggregate
+  9.0 → 9.5 s, crud 4.4 → 4.8 s; the new join slice (28 cases) is 10.8 s and runs in parallel with them.
+  Release `register.cpp` (where the benchmark instantiates `QueryBuilder`) 15.9 → 15.7 s.
+  **Inputs of the join slice beyond `tests/`:** `benchmarks/m2m_models.hpp` (BStudent / BCourse) and
+  `shared/query_builder*.hpp`. `commit.sh`'s local smart-skip does not count those as test inputs, so an edit
+  that touches only them skips the local test run; CI still runs the suite.
 - **One value check.** `expect_agg_value(actual, expected, expect_null, what)` is chosen by result type
   (`std::optional<double>` → near / `nullopt`, floating → near, integer → exact) and used by
   `AggregateRunner`; `verify_groups` checks `group_keys` and every step's `result.groups` (or `group_agg_*` for a
@@ -422,7 +454,7 @@ parsed in two places. Add a shared key in `parse_bench_field` / `parse_bench_sca
 
 - **No corpus in the parser header.** `test_parser.hpp` holds no `#embed`; the corpus driver
   (`load_unified_tests()`) and the `STORM_UNIFIED_CASES_FILE` `#error` (#582) live in `test_unified_yaml_body.h`,
-  which only the four slice TUs include. A parser-only TU (`test_spec_limits_test_parser.cpp`) includes
+  which only the five slice TUs include. A parser-only TU (`test_spec_limits_test_parser.cpp`) includes
   `test_parser.hpp` alone.
 - **`combine` is `and` or `or`**, exactly and case-sensitively (`WhereSpec::combine_of`). Any other spelling,
   `OR` included, makes the spec ill-formed, so the case does not compile (`SpecWellFormed`, #847), also when the

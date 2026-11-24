@@ -1,0 +1,442 @@
+# ---------------------------------------------------------------------------------------------
+# JOIN over relations (#869, Phase 5 of #838): several FKs in one join, m2m (auto junction and
+# many_to_many_through), reverse_fk, several relations in one join<> call, and the cross-model FK
+# selector in aggregates. Every case here uses dataset `relations` (the models of
+# tests/test_relation_models.h, YAML names in tests/test_yaml_models.h), which puts it in the `join`
+# slice whatever its query_type. The rows, in insertion order:
+#   student (BStudent, auto m2m `courses`)   Alice 20 -> [Math, Physics]   Bob 22 -> [Math]   Carol 25 -> []
+#   member  (BMember, auto m2m `courses` and `clubs`)
+#           Ann -> courses [Math, Physics], clubs [Chess]   Ben -> [Math], []
+#           Cat -> [], [Chess, Robotics]                    Dan -> [], []
+#   pupil   (BPupil, `courses` through BEnrollment)   Pia -> [Math A, Physics B]   Quinn -> [Chemistry A]   Rex -> []
+#   author  (BAuthor, reverse_fk `posts` of BPost.author)   Austen -> [P1, P2]   Bronte -> [P3]   Carver -> []
+#   bug     (BBug, two FKs to BReporter)   b1 Rita/Sam   b2 Rita/Sam   b3 Sam/Rita   b4 Rita/Tom   (author/reviewer)
+#   reporter (BReporter)   Rita   Sam   Tom
+# `join.fk` names a member of the case's model; `fks: [a, b]` several of one kind (FKs, or m2m / reverse_fk
+# relations) in ONE join<> call; `<model>.<member>` (bug.author) is a cross-model FK selector, valid on
+# aggregate / filter chains. In `expected.first` an m2m / reverse_fk member is checked by its SIZE.
+# ---------------------------------------------------------------------------------------------
+
+# --- m2m, auto junction -------------------------------------------------------------------------
+- name: join_m2m_auto_inner
+  model: student
+  query_type: select
+  dataset: relations
+  join:
+    type: inner
+    fk: courses
+  order_by:
+  - field: name
+    direction: ASC
+  expected:
+    count: 2
+    first:
+      name: Alice
+      courses: 2
+- name: join_m2m_auto_left
+  model: student
+  query_type: select
+  dataset: relations
+  join:
+    type: left
+    fk: courses
+  order_by:
+  - field: name
+    direction: DESC
+  expected:
+    count: 3
+    first:
+      name: Carol
+      courses: 0
+- name: join_m2m_auto_inner_where
+  model: student
+  query_type: select
+  dataset: relations
+  where:
+    conditions:
+    - field: age
+      op: '>'
+      values:
+      - 20
+  join:
+    type: inner
+    fk: courses
+  expected:
+    count: 1
+    first:
+      name: Bob
+      courses: 1
+- name: join_m2m_auto_left_limit_offset
+  model: student
+  query_type: select
+  dataset: relations
+  join:
+    type: left
+    fk: courses
+  order_by:
+  - field: name
+    direction: ASC
+  limit:
+    value: 1
+    offset: 1
+  expected:
+    count: 1
+    first:
+      name: Bob
+      courses: 1
+- name: join_m2m_auto_rows
+  model: student
+  query_type: rows
+  dataset: relations
+  join:
+    type: left
+    fk: courses
+  order_by:
+  - field: name
+    direction: ASC
+  expected:
+    count: 3
+    first:
+      name: Alice
+      courses: 2
+
+# --- m2m through an explicit junction model -----------------------------------------------------
+- name: join_m2m_through_inner
+  model: pupil
+  query_type: select
+  dataset: relations
+  join:
+    type: inner
+    fk: courses
+  order_by:
+  - field: name
+    direction: ASC
+  expected:
+    count: 2
+    first:
+      name: Pia
+      courses: 2
+- name: join_m2m_through_left
+  model: pupil
+  query_type: select
+  dataset: relations
+  join:
+    type: left
+    fk: courses
+  order_by:
+  - field: name
+    direction: DESC
+  expected:
+    count: 3
+    first:
+      name: Rex
+      courses: 0
+- name: join_m2m_through_first_where
+  model: pupil
+  query_type: first
+  dataset: relations
+  where:
+    conditions:
+    - field: name
+      op: ==
+      values:
+      - Quinn
+  join:
+    type: inner
+    fk: courses
+  expected:
+    count: 1
+    first:
+      name: Quinn
+      courses: 1
+
+# --- reverse_fk -------------------------------------------------------------------------------
+- name: join_reverse_fk_inner
+  model: author
+  query_type: select
+  dataset: relations
+  join:
+    type: inner
+    fk: posts
+  order_by:
+  - field: name
+    direction: ASC
+  expected:
+    count: 2
+    first:
+      name: Austen
+      posts: 2
+- name: join_reverse_fk_left
+  model: author
+  query_type: select
+  dataset: relations
+  join:
+    type: left
+    fk: posts
+  order_by:
+  - field: name
+    direction: DESC
+  expected:
+    count: 3
+    first:
+      name: Carver
+      posts: 0
+- name: join_reverse_fk_one_where
+  model: author
+  query_type: one
+  dataset: relations
+  where:
+    conditions:
+    - field: name
+      op: ==
+      values:
+      - Bronte
+  join:
+    type: left
+    fk: posts
+  expected:
+    count: 1
+    first:
+      name: Bronte
+      posts: 1
+
+# --- several relations in one join<> call ------------------------------------------------------
+- name: join_multi_m2m_inner
+  model: member
+  query_type: select
+  dataset: relations
+  join:
+    type: inner
+    fks:
+    - courses
+    - clubs
+  expected:
+    count: 1
+    first:
+      name: Ann
+      courses: 2
+      clubs: 1
+- name: join_multi_m2m_left_where
+  model: member
+  query_type: select
+  dataset: relations
+  where:
+    conditions:
+    - field: name
+      op: ==
+      values:
+      - Cat
+  join:
+    type: left
+    fks:
+    - courses
+    - clubs
+  expected:
+    count: 1
+    first:
+      name: Cat
+      courses: 0
+      clubs: 2
+- name: join_multi_m2m_left_rows
+  model: member
+  query_type: rows
+  dataset: relations
+  join:
+    type: left
+    fks:
+    - courses
+    - clubs
+  order_by:
+  - field: name
+    direction: DESC
+  expected:
+    count: 4
+    first:
+      name: Dan
+      courses: 0
+      clubs: 0
+
+# --- several FKs in one join<> call -------------------------------------------------------------
+- name: join_multi_fk_inner
+  model: bug
+  query_type: select
+  dataset: relations
+  join:
+    type: inner
+    fks:
+    - author
+    - reviewer
+  order_by:
+  - field: summary
+    direction: DESC
+  expected:
+    count: 4
+    first:
+      summary: b4
+- name: join_multi_fk_left_where
+  model: bug
+  query_type: select
+  dataset: relations
+  where:
+    conditions:
+    - field: summary
+      op: IN
+      values:
+      - b1
+      - b3
+  join:
+    type: left
+    fks:
+    - author
+    - reviewer
+  expected:
+    count: 2
+
+# --- aggregates over relations ------------------------------------------------------------------
+# An aggregate over an m2m / reverse_fk join counts (base, related) pairs, and several relations their
+# cartesian tuples; a LEFT join adds one row for a base entity with no related row.
+- name: count_join_m2m_auto_inner
+  model: student
+  query_type: count
+  dataset: relations
+  join:
+    type: inner
+    fk: courses
+  expected:
+    int_val: 3
+- name: count_join_m2m_auto_left
+  model: student
+  query_type: count
+  dataset: relations
+  join:
+    type: left
+    fk: courses
+  expected:
+    int_val: 4
+- name: sum_join_m2m_auto_age
+  model: student
+  query_type: sum
+  dataset: relations
+  aggregate:
+    func: sum
+    field: age
+  join:
+    type: inner
+    fk: courses
+  expected:
+    int_val: 62
+- name: count_join_m2m_through_inner
+  model: pupil
+  query_type: count
+  dataset: relations
+  join:
+    type: inner
+    fk: courses
+  expected:
+    int_val: 3
+- name: count_join_reverse_fk_left
+  model: author
+  query_type: count
+  dataset: relations
+  join:
+    type: left
+    fk: posts
+  expected:
+    int_val: 4
+- name: count_join_multi_m2m_left
+  model: member
+  query_type: count
+  dataset: relations
+  join:
+    type: left
+    fks:
+    - courses
+    - clubs
+  expected:
+    int_val: 6
+
+# --- cross-model FK selector: which of BBug's two FKs back at BReporter to join on -----------------
+# LEFT: Rita authored 3 bugs, Sam 1, Tom none (one NULL row) -> 5; Rita reviewed 1, Sam 2, Tom 1 -> 4.
+- name: count_join_cross_model_fk_author_left
+  model: reporter
+  query_type: count
+  dataset: relations
+  join:
+    type: left
+    fk: bug.author
+  expected_sql: 'SELECT COUNT(*) FROM "breporter" t1 LEFT JOIN "bbug" t2 ON t2."author_id" = t1."id"'
+  expected:
+    int_val: 5
+- name: count_join_cross_model_fk_reviewer_left
+  model: reporter
+  query_type: count
+  dataset: relations
+  join:
+    type: left
+    fk: bug.reviewer
+  expected_sql: 'SELECT COUNT(*) FROM "breporter" t1 LEFT JOIN "bbug" t2 ON t2."reviewer_id" = t1."id"'
+  expected:
+    int_val: 4
+- name: count_join_cross_model_fk_author_where
+  model: reporter
+  query_type: count
+  dataset: relations
+  where:
+    conditions:
+    - field: name
+      op: ==
+      values:
+      - Rita
+  join:
+    type: inner
+    fk: bug.author
+  expected:
+    int_val: 3
+- name: count_join_cross_model_fk_reviewer_where
+  model: reporter
+  query_type: count
+  dataset: relations
+  where:
+    conditions:
+    - field: name
+      op: ==
+      values:
+      - Rita
+  join:
+    type: inner
+    fk: bug.reviewer
+  expected:
+    int_val: 1
+
+# --- GROUP BY and DISTINCT over an m2m join ---------------------------------------------------------
+- name: group_count_join_m2m_auto_by_age
+  model: student
+  query_type: group_count
+  dataset: relations
+  group_by:
+    fields:
+    - age
+  join:
+    type: inner
+    fk: courses
+  expected:
+    count: 2
+    groups_count: 2
+    group_keys:
+    - 20
+    - 22
+    group_agg_int:
+    - 2
+    - 1
+- name: distinct_join_m2m_auto_name
+  model: student
+  query_type: distinct
+  dataset: relations
+  distinct:
+    fields:
+    - name
+  join:
+    type: inner
+    fk: courses
+  expected:
+    count: 2

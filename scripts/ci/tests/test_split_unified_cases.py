@@ -38,12 +38,14 @@ BASE_CASES = [
     {"name": "base_grouped", "query_type": "group_count"},
     {"name": "base_aggregate", "query_type": "count"},
     {"name": "base_crud", "query_type": "insert_one"},
+    {"name": "base_join", "query_type": "select", "dataset": "relations"},
 ]
 
 SELECT_QUERY = {"query_type": "select"}
 AGGREGATE_QUERY = {"query_type": "count"}
 GROUPED_QUERY = {"query_type": "group_count"}
 CRUD_QUERY = {"query_type": "insert_one"}
+RELATIONS = {"dataset": "relations"}
 
 PAIR = {
     "expected_sql_sqlite": 'SELECT "id" FROM "t" LIMIT -1 OFFSET 2',
@@ -322,7 +324,7 @@ class MultiFileTest(unittest.TestCase):
             {
                 "a.yaml": [case("a_select", SELECT_QUERY), case("a_count", AGGREGATE_QUERY)],
                 "b.yaml": [case("b_select", SELECT_QUERY), case("b_insert", CRUD_QUERY),
-                           case("b_group", GROUPED_QUERY)],
+                           case("b_group", GROUPED_QUERY), case("b_join", SELECT_QUERY, **RELATIONS)],
             }
         )
         with tmp:
@@ -333,6 +335,7 @@ class MultiFileTest(unittest.TestCase):
             self.assertEqual(names["aggregate"], ["a_count"])
             self.assertEqual(names["crud"], ["b_insert"])
             self.assertEqual(names["grouped"], ["b_group"])
+            self.assertEqual(names["join"], ["b_join"])
 
     def test_a_topic_file_may_feed_one_slice_only(self):
         tmp, _, _, completed = run_on_files(
@@ -442,6 +445,7 @@ class UnquotedTemporalScalarTest(unittest.TestCase):
         "- {name: base_grouped, query_type: group_count}\n"
         "- {name: base_aggregate, query_type: count}\n"
         "- {name: base_crud, query_type: insert_one}\n"
+        "- {name: base_join, query_type: select, dataset: relations}\n"
     )
 
     def test_an_unquoted_date_is_rejected_naming_the_case_and_the_key(self):
@@ -505,8 +509,48 @@ class RewriteOnlyWhenChangedTest(unittest.TestCase):
             mtimes = {p.stem[len("unified_cases_"):]: int(p.stat().st_mtime)
                       for p in out_dir.glob("unified_cases_*.json")}
             self.assertGreater(mtimes["select"], stale)
-            for untouched in ("grouped", "aggregate", "crud"):
+            for untouched in ("grouped", "aggregate", "crud", "join"):
                 self.assertEqual(mtimes[untouched], stale, untouched + " was rewritten unchanged")
+
+
+class JoinSliceTest(unittest.TestCase):
+    """#869: a case on dataset `relations` goes to the `join` slice whatever its query_type; the SQL it
+    may pin is still its runner's rule."""
+
+    def test_every_query_type_on_the_relations_dataset_is_bucketed_join(self):
+        for query in (SELECT_QUERY, AGGREGATE_QUERY, GROUPED_QUERY, CRUD_QUERY):
+            run = run_splitter(case("rel_case", query, **RELATIONS))
+            self.assertEqual(run.returncode, 0, run.stderr)
+            self.assertEqual([c["name"] for c in run.outputs["join"]], ["base_join", "rel_case"], query)
+            for other in ("select", "grouped", "aggregate", "crud"):
+                self.assertNotIn("rel_case", [c["name"] for c in run.outputs[other]], other)
+
+    def test_another_dataset_keeps_the_query_type_slice(self):
+        run = run_splitter(case("main_select", SELECT_QUERY, dataset="main"))
+        self.assertEqual(run.returncode, 0, run.stderr)
+        self.assertIn("main_select", [c["name"] for c in run.outputs["select"]])
+
+    def test_pinned_sql_follows_the_runner_of_a_join_case(self):
+        sql = {"expected_sql": 'SELECT COUNT(*) FROM "t"'}
+        run = run_splitter(case("rel_count", AGGREGATE_QUERY, **RELATIONS, **sql))
+        self.assertEqual(run.returncode, 0, run.stderr)
+        pinned = [c for c in run.outputs["join"] if c["name"] == "rel_count"]
+        self.assertEqual(len(pinned), 1)
+        self.assertEqual(pinned[0]["expected_sql"], sql["expected_sql"])
+        run = run_splitter(case("rel_first", {"query_type": "first"}, **RELATIONS, **sql))
+        self.assertNotEqual(run.returncode, 0)
+        self.assertIn("rel_first", run.stderr)
+        run = run_splitter(case("rel_group", GROUPED_QUERY, **RELATIONS, **sql))
+        self.assertNotEqual(run.returncode, 0)
+        self.assertIn("not supported", run.stderr)
+        self.assertIn("(grouped)", run.stderr)
+
+    def test_an_empty_join_slice_is_an_error(self):
+        no_relations = [c for c in BASE_CASES if c.get("dataset") != "relations"]
+        tmp, _, _, completed = run_on_files({"a.yaml": no_relations})
+        with tmp:
+            self.assertNotEqual(completed.returncode, 0)
+            self.assertIn("no cases for join", completed.stderr)
 
 
 class RealCorpusTest(unittest.TestCase):

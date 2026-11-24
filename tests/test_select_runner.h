@@ -26,7 +26,10 @@
 
 #include "shared/query_builder.hpp" // NOLINT(misc-header-include-cycle)
 
+import storm_orm_relation_meta; // is_relation_field (#869)
+
 #include "test_record_helpers.h"
+#include "test_yaml_models.h"
 using storm::QuerySet;
 
 namespace storm::test {
@@ -56,6 +59,10 @@ template <const auto &Tc, typename ConnType> auto expect_sql(auto &query) -> voi
 template <typename Member, auto Expected>
 concept ExpectedValueFits = storm::orm::query_builder::ValueFits<Member, Expected>;
 
+// The expected size of a relation container (#869): a non-negative 32-bit integer.
+template <auto Expected>
+concept RelationSizeExpected = Expected.kind == decltype(Expected.kind)::Int && Expected.as_int >= 0;
+
 // One check for an aggregate value (#837), chosen by the result type: MIN/MAX/AVG
 // read back as std::optional<double> (#416) — a near match, or nullopt when
 // expect_null (empty set / all-NULL group); a floating value is a near match;
@@ -78,13 +85,10 @@ auto expect_agg_value(const Value &actual, double expected, bool expect_null, st
     }
 }
 
-// The shared QueryBuilder for a case; a JOIN names its FK by member name on Model (#837).
-// member_name_resolver<Model> is spelled out only because ConnType follows it in
-// QueryBuilder's parameter list.
+// The shared QueryBuilder for a case. A JOIN names its members by member name on Model (#837), or
+// `<yaml model>.<member>` for a cross-model FK selector (#869): yaml_join_resolver (test_yaml_models.h).
 template <const auto &Tc, typename Model, typename ConnType>
-using BuilderFor =
-    storm::orm::query_builder::QueryBuilder<Model, Tc.bench, storm::orm::query_builder::member_name_resolver<Model>,
-                                            ConnType>;
+using BuilderFor = storm::orm::query_builder::QueryBuilder<Model, Tc.bench, yaml_join_resolver<Model>, ConnType>;
 
 // The case's filtered/joined QuerySet: the WHERE tree, join, order and limit, all from the
 // shared QueryBuilder (#843).
@@ -230,7 +234,15 @@ template <typename Model, typename ConnType> class SelectRunner {
         static_assert(storm::orm::query_builder::has_field<Row>(field.name.view()),
                       "expected.first names a member the row type does not have");
         constexpr auto member = dispatch_field<Row>(field.name.view());
-        ExpectedValue::expect_member_eq<field.value>(row.[:member:]);
+        if constexpr (storm::meta::is_relation_field(member)) {
+            // An m2m / reverse_fk container (#869) is checked by how many related rows were stitched in.
+            static_assert(RelationSizeExpected<field.value>,
+                          "expected.first on an m2m / reverse_fk member is its size, a non-negative integer");
+            EXPECT_EQ(std::ranges::distance(row.[:member:]), field.value.as_int)
+                << "related rows in " << field.name.view() << " of case " << Tc.bench.test_name.view();
+        } else {
+            ExpectedValue::expect_member_eq<field.value>(row.[:member:]);
+        }
     }
 
   public:

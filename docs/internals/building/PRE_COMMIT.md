@@ -208,7 +208,8 @@ below was aspirational for `fuzz/*` until this fix made it true.
 Skip list now covers only files that genuinely can't be parsed standalone:
 
 - `tests/*`, `benchmarks/*`, `fuzz/*`, `shared/*` — import Storm modules
-  (`shared/query_builder.hpp` is a pseudo-module header that needs `import storm;`)
+  (`shared/query_builder.hpp` is a pseudo-module header that needs `import storm;`, and so are its two
+  parts `query_builder_resolve.hpp` / `query_builder_values.hpp`, #869)
 
 ## Author workflow
 
