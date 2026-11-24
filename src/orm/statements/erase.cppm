@@ -23,7 +23,6 @@ export namespace storm::orm::statements {
 
     // Import utilities for code convenience
     using storm::orm::utilities::BulkSQLCache;
-    using storm::orm::utilities::ConstexprString;
     using storm::orm::utilities::TransactionGuard;
 
     // Statement class for ORM erase operations

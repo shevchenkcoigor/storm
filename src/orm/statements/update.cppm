@@ -24,7 +24,6 @@ import storm_db_default_connection;
 export namespace storm::orm::statements {
 
     // Import utilities for code convenience
-    using storm::orm::utilities::ConstexprString;
     using storm::orm::utilities::TransactionGuard;
 
     template <typename T, storm::db::DatabaseConnection ConnType> class BasicUpdateStatement;
