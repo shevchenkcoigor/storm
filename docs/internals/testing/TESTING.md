@@ -184,7 +184,8 @@ same-operator nodes merged; `IN` lists sorted, `BETWEEN` bounds not) all hash al
 
 A case may also carry an optional `expected_sql:` — the exact `sql()` text, compared **before** the
 statement executes. A case without it stays result-only. It is read by `AggregateRunner` (all 56 scalar-aggregate
-cases), by `SelectRunner` on `query_type: select` (#844) and by `ValuesRunner` on `values` (#867); `first` /
+cases), by `SelectRunner` on `query_type: select` (#844), by `ValuesRunner` on `values` (#867) and by
+`SetOpRunner` on `setop` (#870); `first` /
 `one` / `rows` and the other runners reject it (a compile error and a `split_unified_cases.py` error), since they
 would pass without comparing SQL. Chain and group cases share `AggregateRunner` but the split script still rejects
 the key outside `aggregate` and `select`.
@@ -217,11 +218,11 @@ the key outside `aggregate` and `select`.
   concept reject it at compile time and `split_unified_cases.py` rejects it earlier; `expected_sql_for(pg)`
   picks the text. `scripts/ci/tests/test_split_unified_cases.py` covers the script's rules.
 - Write the string from the case, not by pasting the code's output — a pinned wrong string passes forever.
-- The capacity is `EXPECTED_SQL_CAPACITY` (160) in `tests/test_parser.hpp`, mirrored in
-  `scripts/split_unified_cases.py`, which fails the build on a string of 160 or more characters (the C++ parser
+- The capacity is `EXPECTED_SQL_CAPACITY` (256, raised from 160 for set-op chains in #870) in `tests/test_parser.hpp`, mirrored in
+  `scripts/split_unified_cases.py`, which fails the build on a string of 256 or more characters (the C++ parser
   rejects every over-long case at compile time too, #845; the script keeps its check so the error names the case and the key), on non-printable or non-ASCII text, and on `expected_sql` in a category whose
   runner does not read it yet (it would pass without ever comparing SQL). The parser unescapes `\"` and `\\`, which is how the quoted identifiers survive the JSON hop.
-- Write paths (`to_sql()` inlines bound values), set-ops and upsert still need C++ tests.
+- Write paths (`to_sql()` inlines bound values) and upsert still need C++ tests.
 - **Build cost** (Release, warm, aggregate TU, 3 runs each): 25.5–27.3 s before, 26.9–27.0 s after
   (about +1 s, +4%, at the edge of run-to-run noise); the select TU, which carries no `expected_sql` but whose
   `TestCase` grew by 160 bytes, is unchanged (28.7–29.2 s vs 28.7–29.2 s).
@@ -281,6 +282,32 @@ aggregate or field. Names in the YAML are resolved by reflection at compile time
   statements have no `first()` / `get()` in the API, so there is nothing to spell. A case names ONE result shape
   (set-op, aggregate or group, distinct, values): two would silently run the first one in `build_terminal`, so
   `BenchmarkTest::within_limits()` is false and the case does not compile.
+- **Set operations (#870)** — `query_type: setop` plus `setop: {operands: [...]}` runs a chain of 2..4
+  SELECTs over the case's model (`SetOpRunner`, in the select slice). The first operand is `{where}`, each
+  later one `{op, where}` with `op` one of `union` / `union_all` / `except` / `intersect` (the member names
+  `union_` / `union_all` / `except_` / `intersect_`, resolved by `set_op_member` + `member_function_named`;
+  `ValidSetOp` is the allow-list). An operand without `where` is the whole table; `where` is the same tree as
+  the case's own (shorthand, `conditions` + `combine`), built by `build_where_node` and value-checked like it.
+  The operand trees are stored in the case's own `where` pool (`BenchmarkTest::where`, left disabled), each
+  operand keeping only its root (`SetOpOperandSpec::root`), so together they share the WHERE caps of 7 nodes
+  and 10 values and are checked as one forest (`WhereSpec::is_forest_well_formed`: no node dropped or shared).
+  A first cut stored a `WhereSpec` per operand; that made every `TestCase` of the corpus about 8 KB larger and
+  the YAML TUs roughly 1.5–3x slower to compile (up to 12x for the spec-limit TUs), cases with no set
+  operation included. **Build cost of the pool layout** (Debug, warm, min of 3, HEAD and this change
+  interleaved twice on a quiet machine): crud 4.41/4.99 s → 4.36/4.57 s, aggregate 7.97/8.45 s →
+  8.35/9.04 s, grouped 12.93/15.07 s → 13.19/14.20 s, i.e. within run-to-run noise (aggregate perhaps +5%);
+  the select TU, which also gains the 21 set-op cases, 13.0 s → 16.3 s. `order_by` (up to 2 terms, applied in ONE `SetOpBuilder::order_by` call: unlike a
+  QuerySet, a SetOpBuilder keeps only its last `order_by`) and `limit` / `offset` apply to the combined
+  result. Each of these is a compile error rather than a silent fallback (the old builder ran INTERSECT for
+  any unknown type): fewer than 2 or more than 4 operands, an `op` on the first operand, a later operand
+  without one, an unknown `op`, an unknown key in `setop:` or an operand (the old `type:` among them), a
+  top-level `where:` / `join:` beside `setop:` (it would not say which operand it filters), and a chain with
+  an `intersect` after any other operator. That last rule is about **portability**: Storm emits the
+  compound SELECT without parentheses; SQLite evaluates it left to right, PostgreSQL binds `INTERSECT`
+  tighter, so `A UNION B INTERSECT C` returns different rows per backend (pinned by
+  `SetOpTest.IntersectAfterUnionFollowsEachBackendsPrecedence` in `tests/query/test_setop.cpp`). An
+  `INTERSECT`-only prefix (`A INTERSECT B INTERSECT C UNION D`) reads the same on both. `expected_sql` is
+  accepted; `expected.first` over several rows needs an `order_by` (asserted by the runner).
 - **`expected.first:`** keys are row **member names**. Each is compared according to the member's C++ type
   (string, bool, floating with a 0.01 tolerance, integer, and the typed values of #844 below). A key with no
   matching member, or a value that does not fit the member (`ExpectedValueFits`), is a compile error. Before
@@ -312,12 +339,12 @@ aggregate or field. Names in the YAML are resolved by reflection at compile time
   an unknown name is a compile error (`ValidCollate`) instead of falling back to `NoCase`.
 - **`distinct.fields`** takes any number of fields through one path (`QueryBuilder::build_distinct_stmt`); a
   third entry used to be ignored (`distinct_dept_age_name_three_fields`).
-- Still explicit: the set-operation keyword (`union` → `union_`), the JOIN type, `typed_value_as`, `apply_limit`
+- Still explicit: the set-operation keyword (`union` → `union_`, `set_op_member`), the JOIN type, `typed_value_as`, `apply_limit`
   and the terminal choice. Their branches differ in behaviour, not only in a name.
 
 ### Runner structure (#837)
 
-- **No base class.** Every runner (`SelectRunner`, `ValuesRunner`, `AggregateRunner`, `DistinctRunner`,
+- **No base class.** Every runner (`SelectRunner`, `ValuesRunner`, `SetOpRunner`, `AggregateRunner`, `DistinctRunner`,
   `InsertRunner`, `UpdateRunner`, `EraseRunner`) is a stateless class with a
   `static run<Tc>()`. The two helpers the old `QueryRunnerBase` mixed are free functions:
   `base_query<Tc, Model, Conn>()` (the case's filtered/joined `QuerySet`) and

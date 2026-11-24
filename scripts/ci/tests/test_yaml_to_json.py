@@ -86,6 +86,48 @@ class PassThroughTest(unittest.TestCase):
         self.assertEqual(run.written[0]["aggregate"], {"func": "max", "field": "salary"})
 
 
+class SetOpTest(unittest.TestCase):
+    """#870: each operand's `where` is the WHERE tree, so the one-condition shorthand is expanded there too."""
+
+    def test_operand_where_shorthand_becomes_conditions(self):
+        operands = [
+            {"where": {"field": "age", "op": "<", "value": 45}},
+            {"op": "union", "where": {"field": "age", "op": ">=", "value": 45}},
+            {"op": "except"},
+        ]
+        run = convert_tests([bench(setop={"operands": operands})])
+        self.assertEqual(run.returncode, 0, run.stderr)
+        self.assertEqual(
+            run.written[0]["setop"],
+            {
+                "operands": [
+                    {"where": {"conditions": [{"field": "age", "op": "<", "values": [45]}]}},
+                    {"op": "union", "where": {"conditions": [{"field": "age", "op": ">=", "values": [45]}]}},
+                    {"op": "except"},
+                ]
+            },
+        )
+
+    def test_other_setop_keys_reach_the_json_for_the_parser_to_reject(self):
+        # The C++ parser counts an unknown `setop` key (the pre-#870 `type`) and rejects the case.
+        run = convert_tests([bench(setop={"type": "union"})])
+        self.assertEqual(run.returncode, 0, run.stderr)
+        self.assertEqual(run.written[0]["setop"], {"type": "union"})
+
+    def test_a_non_mapping_operand_reaches_the_json_unchanged(self):
+        run = convert_tests([bench(setop={"operands": ["x", {"op": "union"}]})])
+        self.assertEqual(run.returncode, 0, run.stderr)
+        self.assertEqual(run.written[0]["setop"], {"operands": ["x", {"op": "union"}]})
+
+    def test_a_scalar_setop_exits_1_and_writes_nothing(self):
+        # The pre-#870 `setop: union`: the C++ parser reads `setop` as an object and would misread a scalar.
+        run = convert_tests([bench(setop="union")])
+        self.assertEqual(run.returncode, 1)
+        self.assertIn("setop must be a mapping", run.stderr)
+        self.assertIn("'case'", run.stderr)
+        self.assertIsNone(run.written)
+
+
 class RealCorpusTest(unittest.TestCase):
     def test_the_benchmark_corpus_converts(self):
         run = convert(CORPUS)

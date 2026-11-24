@@ -11,7 +11,7 @@
  * - seed_records<Tc, Model, ConnType>() — insert the case's dataset
  * - expect_agg_value / verify_groups — the one aggregate-value check
  * - ExpectedValue — one actual value against one expected cell (expected.first / expected.rows)
- * - SelectRunner (select / first / one / rows), ValuesRunner (#867), AggregateRunner (scalar, chain
+ * - SelectRunner (select / first / one / rows), ValuesRunner (#867), SetOpRunner (#870), AggregateRunner (scalar, chain
  *   and group, #841), DistinctRunner:
  *   stateless, each a `static run<Tc>()` (#837)
  *
@@ -408,6 +408,30 @@ template <typename Model, typename ConnType> class AggregateRunner {
         auto r = q.execute();
         ASSERT_TRUE(r.has_value()) << r.error().message();
         check<Tc>(r.value());
+    }
+};
+
+// ---------------------------------------------------------------------------
+// SetOpRunner -- a set-op chain (#870): union / union_all / except / intersect of 2..4 operands,
+// each its own WHERE tree, with the case's order_by / limit applied to the combined result.
+// ---------------------------------------------------------------------------
+template <typename Model, typename ConnType> class SetOpRunner {
+  public:
+    template <const auto &Tc> static auto run() -> void {
+        static_assert(Tc.expected.count <= 1 || Tc.expected.first.count == 0 || Tc.bench.order_by_count > 0,
+                      "set-op row order is undefined: expected.first over several rows needs an order_by");
+        // build_terminal takes the case's QuerySet (its signature is shared with the benchmark); a set
+        // operation builds each operand from the spec and does not read it.
+        auto qs = base_query<Tc, Model, ConnType>();
+        auto query = BuilderFor<Tc, Model, ConnType>::build_terminal(qs);
+        expect_sql<Tc, ConnType>(query);
+        auto result = query.execute();
+        ASSERT_TRUE(result.has_value()) << result.error().message();
+        EXPECT_EQ(static_cast<int>(result.value().size()), Tc.expected.count);
+        if constexpr (Tc.expected.first.count > 0) {
+            ASSERT_FALSE(result.value().empty());
+            SelectRunner<Model, ConnType>::template verify_first_row<Tc>(*result.value().begin());
+        }
     }
 };
 

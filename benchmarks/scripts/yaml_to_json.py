@@ -34,7 +34,7 @@ TOP_LEVEL_RENAME = {
 
 # Nested spec keys that are passed through as-is. `aggregate` is the one-step shorthand of
 # `aggregations` (a list of {func, field | fields}, #868).
-NESTED_KEYS = {"distinct", "values", "limit", "aggregate", "aggregations", "join", "setop"}
+NESTED_KEYS = {"distinct", "values", "limit", "aggregate", "aggregations", "join"}
 
 # Scalar top-level keys that are passed through as-is
 SCALAR_PASSTHROUGH = {
@@ -86,8 +86,29 @@ def transform_group_by(g: dict) -> dict:
     return out
 
 
+def transform_operand(operand):
+    """One set-op operand: its `where` is the WHERE tree (#870). A non-mapping passes through for the parser to reject."""
+    if not isinstance(operand, dict):
+        return operand
+    return {k: (transform_where(v) if k == "where" and isinstance(v, dict) else v) for k, v in operand.items()}
+
+
+def transform_setop(name: str, s) -> dict:
+    """Each set-op operand's `where` is the WHERE tree too (#870); every other key passes through.
+
+    `setop` itself must be a mapping: the C++ parser reads it as a JSON object, and a scalar there
+    (the pre-#870 `setop: union` habit) would be misread rather than rejected."""
+    if not isinstance(s, dict):
+        print(f"Error: benchmark {name!r}: setop must be a mapping with `operands`, got {s!r}", file=sys.stderr)
+        sys.exit(1)
+    out = dict(s)
+    if isinstance(s.get("operands"), list):
+        out["operands"] = [transform_operand(operand) for operand in s["operands"]]
+    return out
+
+
 # Keys transform_test rewrites rather than passing through.
-TRANSFORMED_KEYS = {"where", "order_by", "group_by"}
+TRANSFORMED_KEYS = {"where", "order_by", "group_by", "setop"}
 
 KNOWN_KEYS = set(TOP_LEVEL_RENAME) | SCALAR_PASSTHROUGH | NESTED_KEYS | TRANSFORMED_KEYS
 
@@ -126,6 +147,9 @@ def transform_test(test: dict) -> dict:
 
     if "group_by" in test and test["group_by"]:
         out["group_by"] = transform_group_by(test["group_by"])
+
+    if "setop" in test and test["setop"]:
+        out["setop"] = transform_setop(test.get("name", "<unnamed>"), test["setop"])
 
     for key in sorted(NESTED_KEYS):
         if key in test and test[key]:

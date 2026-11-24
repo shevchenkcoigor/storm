@@ -428,7 +428,9 @@ per name (#835): an aggregate `func` is the query method's own name (`count`, `s
 gated by `ValidAggregate`), a WHERE operator is the C++ operator's symbol or the member name (`LIKE` →
 `like`), and `order_by.collate` is a `Collate` enumerator. An aggregate may name several fields (`fields:
 [age, salary]` is one operand, `AVG(age + salary)`), and `aggregations: [...]` chains up to 5 steps, also
-after `group_by` (#868; `aggregate:` is the one-step shorthand). `yaml_to_json.py` rejects a key it does not
+after `group_by` (#868; `aggregate:` is the one-step shorthand). A SETOP case describes its operands in YAML
+(#870): `setop: {operands: [{where: ...}, {op: union, where: ...}]}`, 2..4 operands, each `where` the usual
+tree (an operand without one is the whole table); there is no hard-coded split any more. `yaml_to_json.py` rejects a key it does not
 know rather than dropping it. A wrong value count for an operator or an
 unknown collation is a compile error. See
 [TESTING.md](../docs/internals/testing/TESTING.md#how-a-yaml-case-reaches-the-query-api-834).

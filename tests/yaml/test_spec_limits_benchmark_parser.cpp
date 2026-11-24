@@ -57,6 +57,10 @@ namespace {
         storm::test::spec_limits::expect_aggregates_parse_and_count_past_their_caps<parse_case>();
     }
 
+    TEST(SpecLimitsBenchmarkParser, SetOpChainIsParsed) {
+        storm::test::spec_limits::expect_setop_chain_is_parsed<parse_case>();
+    }
+
     TEST(SpecLimitsBenchmarkParser, EverySharedKeyIsRead) {
         storm::test::spec_limits::expect_every_shared_key_is_read<parse_case>();
     }

@@ -158,7 +158,62 @@ inline constexpr std::string_view ORDER_BY_COLLATE =
 inline constexpr std::string_view NAME_KEY = R"({"name":"by_name","dataset_size":5})";
 inline constexpr std::string_view TEST_NAME_KEY = R"({"test_name":"by_test_name","dataset_size":5})";
 inline constexpr std::string_view BENCHMARK_KEYS =
-    R"({"test_category":"cat","description":"desc","operation":"op","iterations":7,"batch_size":3,"size_profile":"prof","setop":{"type":"union"},"dataset_size":5})";
+    R"({"test_category":"cat","description":"desc","operation":"op","iterations":7,"batch_size":3,"size_profile":"prof","setop":{"operands":[{},{"op":"union"}]},"dataset_size":5})";
+// Set-op chains (#870): `setop.operands`, 2..4 entries; the first has no `op`, each later one names it.
+inline constexpr std::string_view SETOP_TWO =
+    R"({"setop":{"operands":[{"where":{"conditions":[{"field":"age","op":">","values":[30]}]}},{"op":"union","where":{"conditions":[{"field":"age","op":"<","values":[20]}]}}]},"dataset_size":5})";
+inline constexpr std::string_view SETOP_WHOLE_TABLE =
+    R"({"setop":{"operands":[{},{"op":"except","where":{"conditions":[{"field":"name","op":"LIKE","values":["A%"]}]}}]},"dataset_size":5})";
+inline constexpr std::string_view SETOP_FOUR =
+    R"({"setop":{"operands":[{},{"op":"intersect"},{"op":"union_all"},{"op":"except"}]},"dataset_size":5})";
+inline constexpr std::string_view SETOP_FIVE =
+    R"({"setop":{"operands":[{},{"op":"union"},{"op":"union"},{"op":"union"},{"op":"union"}]},"dataset_size":5})";
+inline constexpr std::string_view SETOP_ONE_OPERAND = R"({"setop":{"operands":[{}]},"dataset_size":5})";
+inline constexpr std::string_view SETOP_UNKNOWN_OP = R"({"setop":{"operands":[{},{"op":"minus"}]},"dataset_size":5})";
+inline constexpr std::string_view SETOP_MISSING_OP =
+    R"({"setop":{"operands":[{},{"op":"union"},{"where":{"conditions":[{"field":"age","op":">","values":[1]}]}}]},"dataset_size":5})";
+inline constexpr std::string_view SETOP_OP_ON_FIRST =
+    R"({"setop":{"operands":[{"op":"union"},{"op":"union"}]},"dataset_size":5})";
+inline constexpr std::string_view SETOP_UNKNOWN_OPERAND_KEY =
+    R"({"setop":{"operands":[{},{"op":"union","order_by":[{"field":"age"}]}]},"dataset_size":5})";
+// The pre-#870 spelling: `type` beside (or instead of) `operands` is an unknown key, never a silent INTERSECT.
+inline constexpr std::string_view SETOP_LEGACY_TYPE =
+    R"({"setop":{"type":"union","operands":[{},{"op":"union"}]},"dataset_size":5})";
+inline constexpr std::string_view SETOP_NON_OBJECT_OPERAND =
+    R"({"setop":{"operands":[{},7,{"op":"union"}]},"dataset_size":5})";
+inline constexpr std::string_view SETOP_REPEATED_OPERANDS =
+    R"({"setop":{"operands":[{},{"op":"union"},{"op":"union"},{"op":"union"}],"operands":[{},{"op":"except"}]},"dataset_size":5})";
+inline constexpr std::string_view SETOP_OPERAND_WHERE_TWICE =
+    R"({"setop":{"operands":[{},{"op":"union","where":{"conditions":[{"field":"age","op":">","values":[1]}]},"where":{"conditions":[{"field":"age","op":"<","values":[9]}]}}]},"dataset_size":5})";
+// SQLite reads a chain left to right, PostgreSQL binds INTERSECT tighter: only INTERSECT-first is portable.
+inline constexpr std::string_view SETOP_INTERSECT_FIRST =
+    R"({"setop":{"operands":[{},{"op":"intersect"},{"op":"intersect"},{"op":"union"}]},"dataset_size":5})";
+inline constexpr std::string_view SETOP_INTERSECT_AFTER_UNION =
+    R"({"setop":{"operands":[{},{"op":"union"},{"op":"intersect"}]},"dataset_size":5})";
+inline constexpr std::string_view SETOP_INTERSECT_AFTER_EXCEPT =
+    R"({"setop":{"operands":[{},{"op":"intersect"},{"op":"except"},{"op":"intersect"}]},"dataset_size":5})";
+inline constexpr std::string_view SETOP_REPEATED_OPERANDS_WITH_WHERE =
+    R"({"setop":{"operands":[{"where":{"conditions":[{"field":"age","op":">","values":[1]}]}},{"op":"union"}],"operands":[{},{"op":"except"}]},"dataset_size":5})";
+inline constexpr std::string_view SETOP_OPERAND_WHERE_EMPTY =
+    R"({"setop":{"operands":[{},{"op":"union","where":{"conditions":[]}}]},"dataset_size":5})";
+inline constexpr std::string_view SETOP_OPERAND_UNKNOWN_COMBINE =
+    R"({"setop":{"operands":[{},{"op":"union","where":{"conditions":[{"field":"age","op":">","values":[1]},{"field":"age","op":"<","values":[9]}],"combine":"xor"}}]},"dataset_size":5})";
+inline constexpr std::string_view SETOP_POOL_OVER_NODE_CAP =
+    R"({"setop":{"operands":[{"where":{"conditions":[{"field":"age","op":">","values":[1]},{"field":"age","op":"<","values":[9]}]}},{"op":"union","where":{"conditions":[{"field":"age","op":">","values":[1]},{"field":"age","op":"<","values":[9]}]}},{"op":"union","where":{"conditions":[{"field":"age","op":">","values":[1]},{"field":"age","op":"<","values":[9]}]}}]},"dataset_size":5})";
+inline constexpr std::string_view SETOP_WHERE_AFTER =
+    R"({"setop":{"operands":[{"where":{"conditions":[{"field":"age","op":">","values":[1]}]}},{"op":"union"}]},"where":{"conditions":[{"field":"age","op":"<","values":[9]}]},"dataset_size":5})";
+// A top-level `where:` / `join:` would not say which operand it filters.
+inline constexpr std::string_view SETOP_WITH_WHERE =
+    R"({"where":{"conditions":[{"field":"age","op":">","values":[1]}]},"setop":{"operands":[{},{"op":"union"}]},"dataset_size":5})";
+inline constexpr std::string_view SETOP_WITH_JOIN =
+    R"({"join":{"type":"inner","fk":"sender"},"setop":{"operands":[{},{"op":"union"}]},"dataset_size":5})";
+inline constexpr std::string_view SETOP_VALUE_MISFIT =
+    R"({"setop":{"operands":[{},{"op":"union","where":{"conditions":[{"field":"age","op":"==","values":["x"]}]}}]},"dataset_size":5})";
+inline constexpr std::string_view SETOP_OPERAND_WHERE_MALFORMED =
+    R"({"setop":{"operands":[{},{"op":"union","where":{"conditions":[{"field":"age","op":"BETWEEN","values":[1]}]}}]},"dataset_size":5})";
+inline constexpr std::string_view SETOP_OPERAND_WHERE_OVER_CAP =
+    R"({"setop":{"operands":[{},{"op":"union","where":{"conditions":[{"field":"age","op":"IN","values":[1,2,3,4,5,6,7,8,9,10,11]}]}}]},"dataset_size":5})";
+
 // A brace or bracket inside a string is text, not structure: skipping the value it sits in must
 // not miscount the nesting, or the parse loses every key after it.
 inline constexpr std::string_view BRACE_IN_SKIPPED_STRING =
@@ -265,6 +320,33 @@ template <auto Parse> struct Cases {
     static constexpr auto where_field_over_capacity = Parse(WHERE_FIELD_OVER_CAPACITY);
     static constexpr auto unterminated_array =
         Parse(std::string_view(UNTERMINATED_ARRAY.data(), UNTERMINATED_ARRAY.size()));
+
+    static constexpr auto setop_two = Parse(SETOP_TWO);
+    static constexpr auto setop_whole_table = Parse(SETOP_WHOLE_TABLE);
+    static constexpr auto setop_four = Parse(SETOP_FOUR);
+    static constexpr auto setop_five = Parse(SETOP_FIVE);
+    static constexpr auto setop_one_operand = Parse(SETOP_ONE_OPERAND);
+    static constexpr auto setop_unknown_op = Parse(SETOP_UNKNOWN_OP);
+    static constexpr auto setop_missing_op = Parse(SETOP_MISSING_OP);
+    static constexpr auto setop_op_on_first = Parse(SETOP_OP_ON_FIRST);
+    static constexpr auto setop_unknown_operand_key = Parse(SETOP_UNKNOWN_OPERAND_KEY);
+    static constexpr auto setop_legacy_type = Parse(SETOP_LEGACY_TYPE);
+    static constexpr auto setop_non_object_operand = Parse(SETOP_NON_OBJECT_OPERAND);
+    static constexpr auto setop_repeated_operands = Parse(SETOP_REPEATED_OPERANDS);
+    static constexpr auto setop_operand_where_twice = Parse(SETOP_OPERAND_WHERE_TWICE);
+    static constexpr auto setop_repeated_operands_with_where = Parse(SETOP_REPEATED_OPERANDS_WITH_WHERE);
+    static constexpr auto setop_operand_where_empty = Parse(SETOP_OPERAND_WHERE_EMPTY);
+    static constexpr auto setop_operand_unknown_combine = Parse(SETOP_OPERAND_UNKNOWN_COMBINE);
+    static constexpr auto setop_pool_over_node_cap = Parse(SETOP_POOL_OVER_NODE_CAP);
+    static constexpr auto setop_where_after = Parse(SETOP_WHERE_AFTER);
+    static constexpr auto setop_intersect_first = Parse(SETOP_INTERSECT_FIRST);
+    static constexpr auto setop_intersect_after_union = Parse(SETOP_INTERSECT_AFTER_UNION);
+    static constexpr auto setop_intersect_after_except = Parse(SETOP_INTERSECT_AFTER_EXCEPT);
+    static constexpr auto setop_with_where = Parse(SETOP_WITH_WHERE);
+    static constexpr auto setop_with_join = Parse(SETOP_WITH_JOIN);
+    static constexpr auto setop_value_misfit = Parse(SETOP_VALUE_MISFIT);
+    static constexpr auto setop_operand_where_malformed = Parse(SETOP_OPERAND_WHERE_MALFORMED);
+    static constexpr auto setop_operand_where_over_cap = Parse(SETOP_OPERAND_WHERE_OVER_CAP);
 
     static constexpr auto order_by_collate = Parse(ORDER_BY_COLLATE);
     static constexpr auto name_key = Parse(NAME_KEY);
@@ -500,7 +582,8 @@ template <auto Parse> auto expect_every_shared_key_is_read() -> void {
     EXPECT_EQ(b.batch_size, 3);
     EXPECT_EQ(b.size_profile.view(), "prof");
     EXPECT_TRUE(b.setop.enabled);
-    EXPECT_EQ(b.setop.type.view(), "union");
+    ASSERT_EQ(b.setop.operand_count, 2U);
+    EXPECT_EQ(b.setop.operands[1].op.view(), "union");
     EXPECT_EQ(b.dataset_size, 5);
 
     EXPECT_EQ(C::escaped_string.model.view(), "a\"b\\c");
@@ -548,6 +631,71 @@ template <auto Parse> auto expect_non_string_value_is_consumed() -> void {
     EXPECT_EQ(C::non_string_in_string_slot.test_name.view(), "x");
     EXPECT_EQ(C::non_string_in_string_slot.dataset_size, 5);
     EXPECT_TRUE(C::non_string_in_string_slot.within_limits());
+}
+
+// Set-op chains (#870): every operand is read, each count goes past its cap, and each malformed
+// spelling is recorded for the builder to reject; the key after the setop is still read.
+template <auto Parse> auto expect_setop_chain_is_parsed() -> void {
+    using C = Cases<Parse>;
+    // A chain is well formed against the case's `where`, the pool its operands' trees live in.
+    constexpr auto well_formed = [](const auto &c) { return c.setop.is_well_formed(c.where); };
+    constexpr auto &two = C::setop_two;
+    ASSERT_TRUE(two.setop.enabled);
+    ASSERT_EQ(two.setop.operand_count, 2U);
+    EXPECT_FALSE(two.where.enabled); // the pool is not the case's own WHERE
+    EXPECT_EQ(two.where.forms, 0U);
+    EXPECT_TRUE(two.setop.operands[0].op.empty());
+    ASSERT_EQ(two.setop.operands[0].root, 0);
+    EXPECT_EQ(two.where.nodes[0].field.view(), "age");
+    EXPECT_EQ(two.where.values[two.where.nodes[0].first_value].as_int, 30);
+    EXPECT_EQ(two.setop.operands[1].op.view(), "union");
+    ASSERT_EQ(two.setop.operands[1].root, 1);
+    EXPECT_EQ(two.where.nodes[1].op.view(), "<");
+    EXPECT_EQ(two.where.values[two.where.nodes[1].first_value].as_int, 20);
+    EXPECT_TRUE(well_formed(two) && two.setop.is_portable_chain() && two.within_limits());
+    EXPECT_EQ(two.dataset_size, 5);
+
+    EXPECT_EQ(C::setop_whole_table.setop.operands[0].root, -1);
+    EXPECT_TRUE(well_formed(C::setop_whole_table));
+
+    EXPECT_TRUE(C::setop_four.within_limits());
+    EXPECT_EQ(C::setop_five.setop.operand_count, 5U);
+    EXPECT_FALSE(C::setop_five.within_limits());
+    EXPECT_EQ(C::setop_five.dataset_size, 5);
+
+    EXPECT_FALSE(well_formed(C::setop_one_operand));
+    EXPECT_TRUE(well_formed(C::setop_unknown_op)); // the op NAME is QueryBuilder's ValidSetOp
+    EXPECT_FALSE(well_formed(C::setop_missing_op));
+    EXPECT_FALSE(well_formed(C::setop_op_on_first));
+    EXPECT_EQ(C::setop_unknown_operand_key.setop.operands[1].unknown_keys, 1U);
+    EXPECT_FALSE(well_formed(C::setop_unknown_operand_key));
+    EXPECT_EQ(C::setop_legacy_type.setop.unknown_keys, 1U);
+    EXPECT_FALSE(well_formed(C::setop_legacy_type));
+    EXPECT_EQ(C::setop_non_object_operand.setop.operand_count, 2U);
+    EXPECT_FALSE(well_formed(C::setop_non_object_operand));
+    EXPECT_EQ(C::setop_non_object_operand.dataset_size, 5);
+    // A repeated `operands` replaces the list; the first list's trees stay in the pool, unreached.
+    EXPECT_EQ(C::setop_repeated_operands.setop.operand_count, 2U);
+    EXPECT_EQ(C::setop_repeated_operands.setop.operands[1].op.view(), "except");
+    EXPECT_TRUE(well_formed(C::setop_repeated_operands)); // the first list had no WHERE: nothing left behind
+    EXPECT_FALSE(well_formed(C::setop_repeated_operands_with_where));
+    EXPECT_EQ(C::setop_operand_where_twice.setop.operands[1].where_forms, 2U);
+    EXPECT_FALSE(well_formed(C::setop_operand_where_twice));
+    EXPECT_FALSE(well_formed(C::setop_operand_where_empty));
+
+    EXPECT_TRUE(C::setop_intersect_first.setop.is_portable_chain());
+    EXPECT_FALSE(C::setop_intersect_after_union.setop.is_portable_chain());
+    EXPECT_FALSE(C::setop_intersect_after_except.setop.is_portable_chain());
+
+    EXPECT_FALSE(well_formed(C::setop_operand_where_malformed));
+    EXPECT_FALSE(well_formed(C::setop_operand_unknown_combine));
+    EXPECT_FALSE(C::setop_operand_where_over_cap.within_limits());
+    // The operands share the WHERE caps: four 2-leaf ANDs are 12 nodes, past the pool's 7.
+    EXPECT_FALSE(C::setop_pool_over_node_cap.within_limits());
+    // A top-level `where:` beside `setop:` keeps the pool enabled, before or after the setop key.
+    EXPECT_TRUE(C::setop_with_where.where.enabled);
+    EXPECT_TRUE(C::setop_where_after.where.enabled);
+    EXPECT_TRUE(C::setop_where_after.within_limits()); // one WHERE form: the operands' do not count
 }
 
 } // namespace storm::test::spec_limits

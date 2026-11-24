@@ -37,7 +37,7 @@ namespace storm::orm::query_builder {
     //
     // Schema-agnostic: `spec` is any NTTP whose nested fields satisfy the
     // spec protocol (spec.where, spec.join, spec.order_by[], spec.group_by,
-    // spec.distinct, spec.limit, spec.aggregate, spec.setop, spec.operation).
+    // spec.distinct, spec.limit, spec.aggregate, spec.setop (a chain of operands, #870), spec.operation).
     //
     // fk_resolver: consteval callable (string_view) -> std::meta::info for
     // JOIN field dispatch. Defaults to a by-name member lookup on Model.
@@ -68,13 +68,57 @@ namespace storm::orm::query_builder {
                 ...);
     }(std::make_index_sequence<std::min(Spec.aggregation_count, Spec.aggregations.size())>{});
 
+    // The YAML set operation -> the member that applies it (#870), on QuerySet and SetOpBuilder alike;
+    // empty for any other spelling. ValidSetOp is the allow-list, as ValidAggregate is for a func.
+    consteval auto set_op_member(std::string_view op) -> std::string_view {
+        if (op == "union")
+            return "union_";
+        if (op == "union_all")
+            return "union_all";
+        if (op == "except")
+            return "except_";
+        if (op == "intersect")
+            return "intersect_";
+        return {};
+    }
+
+    template <auto op_str>
+    concept ValidSetOp = !set_op_member(op_str.view()).empty();
+
+    // The chain's shape (#870): 2..4 operands, an `op` on each but the first, no unknown key, the operands'
+    // WHERE trees a well-formed forest of the case's `where` pool. Its values are checked by SpecValuesFit,
+    // which walks the whole pool.
+    template <auto Spec>
+    concept SpecSetOpShape = !Spec.setop.enabled || Spec.setop.is_well_formed(Spec.where);
+
+    // A top-level `where:` / `join:` beside `setop:` would not say which operand, or the combined result, it
+    // filters (#870). The operands' trees share the `where` pool but leave it disabled.
+    template <auto Spec>
+    concept SpecSetOpNoTopLevelFilter = !Spec.setop.enabled || (!Spec.where.enabled && !Spec.join.enabled);
+
+    // Operand I's `op` names a set operation; spelled once per operand so the diagnostic names I and the op.
+    template <auto Spec, std::size_t I>
+    concept SetOpOperandOpKnown =
+            I == 0 || I >= Spec.setop.stored_operand_count() || ValidSetOp<Spec.setop.operands[I].op>;
+
+    template <auto Spec>
+    concept SpecSetOpOpsKnown =
+            SetOpOperandOpKnown<Spec, 1> && SetOpOperandOpKnown<Spec, 2> && SetOpOperandOpKnown<Spec, 3>;
+
+    // The chain returns the same rows on every backend (#870): no INTERSECT after another operator.
+    // Storm emits no parentheses; SQLite reads the chain left to right, PostgreSQL binds INTERSECT tighter.
+    template <auto Spec>
+    concept SpecSetOpPortable = Spec.setop.is_portable_chain();
+
     template <
             typename Model,
             auto spec,
             auto fk_resolver  = member_name_resolver<Model>,
             typename ConnType = storm::db::sqlite::Connection>
         requires SpecWithinLimits<spec> && SpecWellFormed<spec> && SpecAggregatesWellFormed<spec> &&
-                 (spec.join.enabled || SpecValuesFit<Model, spec>) && SpecHavingValuesFit<Model, spec>
+                 (spec.join.enabled || SpecValuesFit<Model, spec>) && SpecHavingValuesFit<Model, spec> &&
+                 SpecSetOpShape<spec> && SpecSetOpNoTopLevelFilter<spec> && SpecSetOpOpsKnown<spec> &&
+                 SpecSetOpPortable<spec>
     class QueryBuilder {
         // ----------------------------------------------------------------
         // typed_value_as
@@ -322,50 +366,71 @@ namespace storm::orm::query_builder {
             return apply_aggregations(with_having(std::move(gb)));
         }
 
-        static consteval auto resolve_setop() -> std::meta::info {
-            constexpr std::string_view type = spec.setop.type.view();
-            if (type == "union")
-                return ^^QuerySet<Model, ConnType>::template union_<>;
-            if (type == "union_all")
-                return ^^QuerySet<Model, ConnType>::template union_all<>;
-            if (type == "except")
-                return ^^QuerySet<Model, ConnType>::template except_<>;
-            return ^^QuerySet<Model, ConnType>::template intersect_<>;
+        // Operand I of the set-op chain (#870): its WHERE tree over the base model, or the whole table.
+        template <std::size_t I> static auto setop_operand() {
+            constexpr int             root = spec.setop.operands[I].root;
+            QuerySet<Model, ConnType> qs;
+            if constexpr (root >= 0)
+                return qs.where(build_where_node<spec.where, Model, static_cast<std::size_t>(root)>());
+            else
+                return qs;
         }
 
-        struct SetOpThresholds {
-            static constexpr int OVERLAP_LEFT  = 55;
-            static constexpr int OVERLAP_RIGHT = 35;
-            static constexpr int SPLIT_BOUND   = 45;
-            int                  left          = 0;
-            int                  right         = 0;
-            bool                 overlap       = false;
-        };
-        static consteval auto setop_thresholds() -> SetOpThresholds {
-            constexpr std::string_view type    = spec.setop.type.view();
-            constexpr bool             overlap = (type == "except" || type == "intersect");
-            return {overlap ? SetOpThresholds::OVERLAP_LEFT : SetOpThresholds::SPLIT_BOUND,
-                    overlap ? SetOpThresholds::OVERLAP_RIGHT : SetOpThresholds::SPLIT_BOUND,
-                    overlap};
+        // The member of Owner (QuerySet for the first pair, SetOpBuilder after) that applies operand I's op.
+        template <std::size_t I, typename Owner> static consteval auto setop_method() -> std::meta::info {
+            return member_function_named<Owner>(set_op_member(spec.setop.operands[I].op.view()));
         }
 
-        static auto build_setop(auto& /*qs*/) {
-            constexpr auto            thr = setop_thresholds();
-            QuerySet<Model, ConnType> qs_left_base;
-            // The split field is resolved by NAME through the same dispatch_field the
-            // rest of this builder uses, rather than splicing ^^Model::age directly:
-            // Model is a template parameter, so `fields::Model.age` cannot be spelled
-            // here (a fields:: proxy is generated per concrete model, #518).
-            constexpr auto            age_fi  = dispatch_field<Model>("age");
-            auto                      qs_left = qs_left_base.where(storm::meta::FieldRef<age_fi>{} < thr.left);
-            QuerySet<Model, ConnType> qs_right_base;
-            auto           qs_right = thr.overlap ? qs_right_base.where(storm::meta::FieldRef<age_fi>{} > thr.right)
-                                                  : qs_right_base.where(storm::meta::FieldRef<age_fi>{} >= thr.right);
-            constexpr auto method   = resolve_setop();
-            auto           builder  = qs_left.[:method:](qs_right);
-            builder                 = apply_order_by(std::move(builder));
-            builder                 = apply_limit(std::move(builder));
-            return builder;
+        // Operands I.. joined onto the chain, each by its own op. Each step returns the builder by rvalue
+        // reference, so it is moved into the next step's parameter rather than assigned to itself.
+        template <std::size_t I, typename Chain> static auto append_setop_operands(Chain chain) {
+            if constexpr (I >= spec.setop.operand_count) {
+                return chain;
+            } else {
+                constexpr auto method = setop_method<I, Chain>();
+                return append_setop_operands<I + 1>(
+                        Chain{chain.template[:method:]<Model>(setop_operand<I>().capture_operand())}
+                );
+            }
+        }
+
+        // ORDER BY term I as SetOpBuilder::order_by reads it: the field, its direction, its collation.
+        template <std::size_t I>
+        static constexpr auto setop_order_field =
+                storm::meta::FieldRef<dispatch_field<Model>(spec.order_by[I].field.view())>{};
+        template <std::size_t I> static constexpr bool setop_order_asc = spec.order_by[I].direction.view() != "DESC";
+        template <std::size_t I>
+            requires ValidCollate<spec.order_by[I].collate>
+        static constexpr Collate setop_order_collate =
+                spec.order_by[I].collate.empty() ? Collate::None : collate_of(spec.order_by[I].collate.view());
+
+        // A SetOpBuilder keeps only its LAST order_by() call (the compound SELECT has one ORDER BY), unlike
+        // a QuerySet, which appends; so the terms are collected into one call. The parser stores the
+        // enabled terms at [0, enabled_order_by_count()).
+        template <std::size_t I, auto... Terms> static auto apply_setop_order_by(auto chain) {
+            if constexpr (I < enabled_order_by_count()) {
+                static_assert(has_field<Model>(spec.order_by[I].field.view()), "ORDER BY field not found on model");
+                return apply_setop_order_by<
+                        I + 1,
+                        Terms...,
+                        setop_order_field<I>,
+                        setop_order_asc<I>,
+                        setop_order_collate<I>>(std::move(chain));
+            } else if constexpr (sizeof...(Terms) == 0) {
+                return chain;
+            } else {
+                return decltype(chain){chain.template order_by<Terms...>()};
+            }
+        }
+
+        static auto build_setop() {
+            static_assert(
+                    std::remove_cvref_t<decltype(spec.setop)>::MAX_OPERANDS == 4,
+                    "SpecSetOpOpsKnown spells out operands 1..3"
+            );
+            constexpr auto first = setop_method<1, QuerySet<Model, ConnType>>();
+            auto           chain = append_setop_operands<2>(setop_operand<0>().template[:first:]<>(setop_operand<1>()));
+            return apply_limit(apply_setop_order_by<0>(std::move(chain)));
         }
 
         static consteval auto is_setop() -> bool {
@@ -432,7 +497,7 @@ namespace storm::orm::query_builder {
 
         static auto build_terminal(auto& qs) {
             if constexpr (is_setop()) {
-                return build_setop(qs);
+                return build_setop();
             } else if constexpr (is_aggregate_op()) {
                 return apply_aggregations(qs);
             } else if constexpr (is_group_by_op()) {

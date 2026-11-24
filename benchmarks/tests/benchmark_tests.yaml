@@ -963,7 +963,10 @@ tests:
     operation: setop
     size_profile: dataset_standard
     setop:
-      type: union
+      operands:
+        - where: {field: age, op: "<", value: 45}
+        - op: union
+          where: {field: age, op: ">=", value: 45}
 
   - name: setop_union_all
     category: SETOP
@@ -972,7 +975,10 @@ tests:
     operation: setop
     size_profile: dataset_standard
     setop:
-      type: union_all
+      operands:
+        - where: {field: age, op: "<", value: 45}
+        - op: union_all
+          where: {field: age, op: ">=", value: 45}
 
   - name: setop_except
     category: SETOP
@@ -981,7 +987,10 @@ tests:
     operation: setop
     size_profile: dataset_standard
     setop:
-      type: except
+      operands:
+        - where: {field: age, op: "<", value: 55}
+        - op: except
+          where: {field: age, op: ">", value: 35}
 
   - name: setop_intersect
     category: SETOP
@@ -990,7 +999,10 @@ tests:
     operation: setop
     size_profile: dataset_standard
     setop:
-      type: intersect
+      operands:
+        - where: {field: age, op: "<", value: 55}
+        - op: intersect
+          where: {field: age, op: ">", value: 35}
 
   - name: setop_union_order_by
     category: SETOP_ORDER
@@ -999,7 +1011,10 @@ tests:
     operation: setop
     size_profile: dataset_standard
     setop:
-      type: union
+      operands:
+        - where: {field: age, op: "<", value: 45}
+        - op: union
+          where: {field: age, op: ">=", value: 45}
     order_by:
       - field: age
         direction: ASC
@@ -1011,7 +1026,10 @@ tests:
     operation: setop
     size_profile: dataset_standard
     setop:
-      type: union
+      operands:
+        - where: {field: age, op: "<", value: 45}
+        - op: union
+          where: {field: age, op: ">=", value: 45}
     limit:
         value: 100
 
