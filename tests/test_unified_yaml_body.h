@@ -42,6 +42,7 @@
 #include "../shared/models/person.h"
 #include "../shared/models/simple_record.h"
 #include "test_fixture.h"
+#include "test_keys_dataset.h"
 #include "test_relations_dataset.h"
 #include "test_seed_helpers.h"
 #include "test_yaml_models.h"
@@ -207,7 +208,8 @@ class UnifiedYamlBody : public UnifiedYamlFixture<Tag, ConnType> {
     static_assert(Tc.query_type != "values" || Tc.bench.values.enabled,
                   "query_type values needs a values: {fields: [...]} spec");
     static_assert(KnownYamlModel<Tc>, "model: names no YAML_MODELS entry (test_yaml_models.h)");
-    static_assert(YamlModelDatasetMatches<Tc>, "a relation model (test_yaml_models.h) needs `dataset: relations`");
+    static_assert(YamlModelDatasetMatches<Tc>,
+                  "a relation / key-shape model (test_yaml_models.h) needs `dataset: relations` / `dataset: keys`");
     static_assert(!(Tc.query_type == "select" || Tc.query_type == "first" || Tc.query_type == "one" ||
                     Tc.query_type == "rows") ||
                       Tc.bench.result_shape_count() == 0,
@@ -228,6 +230,8 @@ class UnifiedYamlBody : public UnifiedYamlFixture<Tag, ConnType> {
         ASSERT_TRUE((EraseStatement<ExtendedTypes, ConnType>{}).query_all().execute().has_value());
         if constexpr (tc.dataset == RELATIONS_DATASET)
             ASSERT_TRUE(relations::create_tables<ConnType>(conn)) << "Failed to create the relation tables";
+        else if constexpr (tc.dataset == KEYS_DATASET)
+            ASSERT_TRUE(keys::create_tables<ConnType>(conn)) << "Failed to create the key-shape tables";
     }
 
     auto seed_main_msg() -> void {
@@ -272,6 +276,8 @@ class UnifiedYamlBody : public UnifiedYamlFixture<Tag, ConnType> {
             ASSERT_TRUE((storm::test::batch_insert<ExtendedTypes, ConnType>(extended_dataset())));
         } else if constexpr (tc.dataset == RELATIONS_DATASET) {
             ASSERT_NO_FATAL_FAILURE(relations::seed<ConnType>());
+        } else if constexpr (tc.dataset == KEYS_DATASET) {
+            ASSERT_NO_FATAL_FAILURE(keys::seed<ConnType>());
         } else if constexpr (tc.bench.dataset_size > 0 && tc.dataset.empty()) {
             std::vector<Person> seed;
             seed.reserve(static_cast<std::size_t>(tc.bench.dataset_size));

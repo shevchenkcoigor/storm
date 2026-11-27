@@ -37,7 +37,7 @@ list(SORT UNIFIED_CASES_YAMLS)
 # Single source of truth for the category split; mirrored by CATEGORIES in
 # scripts/split_unified_cases.py and by the tests/yaml/test_unified_yaml_*.cpp
 # TUs.
-set(SPLIT_CATEGORIES select grouped aggregate crud join)
+set(SPLIT_CATEGORIES select grouped aggregate crud join models)
 
 set(SPLIT_JSON_FILES "")
 foreach(CATEGORY IN LISTS SPLIT_CATEGORIES)

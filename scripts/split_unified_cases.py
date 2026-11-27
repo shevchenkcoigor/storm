@@ -8,7 +8,8 @@ The corpus is several authoring files, tests/test_cases/<topic>.yaml (#846), gro
 meaning for humans: a case spans several topics and a topic spans several runners, so which
 file a case lives in is never an error. This script reads them ALL (in the order given --
 CMake passes them sorted), buckets every case by query_type (a case on dataset `relations`
-goes to the `join` slice whatever its query_type, #869) and writes
+goes to the `join` slice whatever its query_type, #869, one on dataset `keys` to the `models`
+slice, #872) and writes
 <output_dir>/unified_cases_<category>.json for each category. Case names must be unique
 across the whole corpus. There is no
 combined output: every includer of test_unified_yaml_body.h selects a slice via
@@ -18,7 +19,7 @@ Issue #561: the 247-case corpus compiled as a single TU took 53 s -- 89% of it
 the per-case template instantiation, linear at ~190 ms/case. Splitting the
 corpus across TUs lets those instantiations compile in parallel.
 
-The categories (but `join`) group the runners listed in YAML_RUNNERS (tests/test_unified_yaml_body.h),
+The categories (but `join` and `models`) group the runners listed in YAML_RUNNERS (tests/test_unified_yaml_body.h),
 so each TU instantiates only the runners its own cases need, and a failing suite
 name points at a coherent area. A query_type absent from the tables below is a
 corpus/runner mismatch and is a hard error -- silently bucketing it would hide a
@@ -69,7 +70,15 @@ AGGREGATE_OPS = {"count", "count_field", "count_distinct", "sum", "avg", "min", 
 RELATIONS_DATASET = "relations"
 JOIN_CATEGORY = "join"
 
-CATEGORIES = ("select", "grouped", "aggregate", "crud", JOIN_CATEGORY)
+# #872: the same for dataset `keys` (the key-shape models of tests/test_key_models.h: UUID, composite and
+# caller-assigned keys, auto-timestamps): only the `models` TU creates those tables.
+KEYS_DATASET = "keys"
+MODELS_CATEGORY = "models"
+
+# dataset -> the slice that owns its tables, whatever the case's query_type.
+DATASET_SLICES = {RELATIONS_DATASET: JOIN_CATEGORY, KEYS_DATASET: MODELS_CATEGORY}
+
+CATEGORIES = ("select", "grouped", "aggregate", "crud", JOIN_CATEGORY, MODELS_CATEGORY)
 
 # Mirrors EXPECTED_SQL_CAPACITY in tests/test_parser.hpp (#818). Since #845 the C++
 # parser rejects every over-long case at compile time; the script keeps its check so the
@@ -166,8 +175,9 @@ def reject_unquoted_temporal(name: str, value: object, path: str) -> None:
 
 
 def slice_of(case: dict, runner_category: str) -> str:
-    """The slice a case compiles in: `join` for dataset `relations` (#869), else its runner group."""
-    return JOIN_CATEGORY if case.get("dataset") == RELATIONS_DATASET else runner_category
+    """The slice a case compiles in: the one owning its dataset's tables (`join` for `relations`, #869;
+    `models` for `keys`, #872), else its runner group."""
+    return DATASET_SLICES.get(case.get("dataset"), runner_category)
 
 
 def runner_category_of(case: dict, index: int) -> str:
@@ -257,8 +267,8 @@ def main() -> None:
 
     buckets = bucket_corpus(inputs)
 
-    # A truncated, empty or all-comments corpus otherwise yields five empty JSONs,
-    # five suites registering zero tests, and a green ctest that verifies nothing.
+    # A truncated, empty or all-comments corpus otherwise yields an empty JSON per category,
+    # suites registering zero tests, and a green ctest that verifies nothing.
     # Every category maps to runners that have cases today, so an empty
     # bucket means the corpus or the tables above are wrong, not that the corpus
     # legitimately shrank.

@@ -44,7 +44,8 @@ from typing import Iterable, Iterator
 #   test_bmi_fk_module.cppm and test_reflection_cache_bmi.cpp),
 #   tests/test_parser.hpp, tests/test_unified_yaml_body.h,
 #   tests/test_yaml_models.h, tests/test_relations_dataset.h,
-#   tests/test_relation_models.h (#869),
+#   tests/test_relation_models.h (#869), tests/test_key_models.h,
+#   tests/test_keys_dataset.h (#872),
 #   tests/tools/storm_schema/models.h, shared/models.h
 #
 #   tests/test_unified_yaml_body.h joined with the YAML-harness split (#561).
@@ -182,6 +183,8 @@ KNOWN_UNPARSEABLE = frozenset((
     "tests/test_yaml_models.h",
     "tests/test_relations_dataset.h",
     "tests/test_relation_models.h",
+    "tests/test_key_models.h",
+    "tests/test_keys_dataset.h",
     "tests/crud/test_composite_fk_join_body.h",
     "tests/crud/test_composite_pk_crud_body.h",
     "tests/crud/test_crud_body.h",

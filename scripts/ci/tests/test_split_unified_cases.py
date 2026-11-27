@@ -39,6 +39,7 @@ BASE_CASES = [
     {"name": "base_aggregate", "query_type": "count"},
     {"name": "base_crud", "query_type": "insert_one"},
     {"name": "base_join", "query_type": "select", "dataset": "relations"},
+    {"name": "base_models", "query_type": "select", "dataset": "keys"},
 ]
 
 SELECT_QUERY = {"query_type": "select"}
@@ -46,6 +47,7 @@ AGGREGATE_QUERY = {"query_type": "count"}
 GROUPED_QUERY = {"query_type": "group_count"}
 CRUD_QUERY = {"query_type": "insert_one"}
 RELATIONS = {"dataset": "relations"}
+KEYS_DATASET = {"dataset": "keys"}
 
 PAIR = {
     "expected_sql_sqlite": 'SELECT "id" FROM "t" LIMIT -1 OFFSET 2',
@@ -337,7 +339,8 @@ class MultiFileTest(unittest.TestCase):
             {
                 "a.yaml": [case("a_select", SELECT_QUERY), case("a_count", AGGREGATE_QUERY)],
                 "b.yaml": [case("b_select", SELECT_QUERY), case("b_insert", CRUD_QUERY),
-                           case("b_group", GROUPED_QUERY), case("b_join", SELECT_QUERY, **RELATIONS)],
+                           case("b_group", GROUPED_QUERY), case("b_join", SELECT_QUERY, **RELATIONS),
+                           case("b_keys", AGGREGATE_QUERY, **KEYS_DATASET)],
             }
         )
         with tmp:
@@ -349,6 +352,7 @@ class MultiFileTest(unittest.TestCase):
             self.assertEqual(names["crud"], ["b_insert"])
             self.assertEqual(names["grouped"], ["b_group"])
             self.assertEqual(names["join"], ["b_join"])
+            self.assertEqual(names["models"], ["b_keys"])
 
     def test_a_topic_file_may_feed_one_slice_only(self):
         tmp, _, _, completed = run_on_files(
@@ -459,6 +463,7 @@ class UnquotedTemporalScalarTest(unittest.TestCase):
         "- {name: base_aggregate, query_type: count}\n"
         "- {name: base_crud, query_type: insert_one}\n"
         "- {name: base_join, query_type: select, dataset: relations}\n"
+        "- {name: base_models, query_type: select, dataset: keys}\n"
     )
 
     def test_an_unquoted_date_is_rejected_naming_the_case_and_the_key(self):
@@ -522,7 +527,7 @@ class RewriteOnlyWhenChangedTest(unittest.TestCase):
             mtimes = {p.stem[len("unified_cases_"):]: int(p.stat().st_mtime)
                       for p in out_dir.glob("unified_cases_*.json")}
             self.assertGreater(mtimes["select"], stale)
-            for untouched in ("grouped", "aggregate", "crud", "join"):
+            for untouched in ("grouped", "aggregate", "crud", "join", "models"):
                 self.assertEqual(mtimes[untouched], stale, untouched + " was rewritten unchanged")
 
 
@@ -535,7 +540,7 @@ class JoinSliceTest(unittest.TestCase):
             run = run_splitter(case("rel_case", query, **RELATIONS))
             self.assertEqual(run.returncode, 0, run.stderr)
             self.assertEqual([c["name"] for c in run.outputs["join"]], ["base_join", "rel_case"], query)
-            for other in ("select", "grouped", "aggregate", "crud"):
+            for other in ("select", "grouped", "aggregate", "crud", "models"):
                 self.assertNotIn("rel_case", [c["name"] for c in run.outputs[other]], other)
 
     def test_another_dataset_keeps_the_query_type_slice(self):
@@ -564,6 +569,37 @@ class JoinSliceTest(unittest.TestCase):
         with tmp:
             self.assertNotEqual(completed.returncode, 0)
             self.assertIn("no cases for join", completed.stderr)
+
+
+class ModelsSliceTest(unittest.TestCase):
+    """#872: a case on dataset `keys` (the key-shape models: UUID, composite, caller-assigned PK,
+    auto-timestamps) goes to the `models` slice whatever its query_type; the SQL it may pin is still
+    its runner's rule."""
+
+    def test_every_query_type_on_the_keys_dataset_is_bucketed_models(self):
+        for query in (SELECT_QUERY, AGGREGATE_QUERY, GROUPED_QUERY, CRUD_QUERY):
+            run = run_splitter(case("key_case", query, **KEYS_DATASET))
+            self.assertEqual(run.returncode, 0, run.stderr)
+            self.assertEqual([c["name"] for c in run.outputs["models"]], ["base_models", "key_case"], query)
+            for other in ("select", "grouped", "aggregate", "crud", "join"):
+                self.assertNotIn("key_case", [c["name"] for c in run.outputs[other]], other)
+
+    def test_pinned_sql_follows_the_runner_of_a_models_case(self):
+        sql = {"expected_sql": 'SELECT COUNT(*) FROM "t"'}
+        run = run_splitter(case("key_count", AGGREGATE_QUERY, **KEYS_DATASET, **sql))
+        self.assertEqual(run.returncode, 0, run.stderr)
+        self.assertIn("key_count", [c["name"] for c in run.outputs["models"]])
+        run = run_splitter(case("key_insert", CRUD_QUERY, **KEYS_DATASET, **sql))
+        self.assertNotEqual(run.returncode, 0)
+        self.assertIn("key_insert", run.stderr)
+        self.assertIn("(crud)", run.stderr)
+
+    def test_an_empty_models_slice_is_an_error(self):
+        no_keys = [c for c in BASE_CASES if c.get("dataset") != "keys"]
+        tmp, _, _, completed = run_on_files({"a.yaml": no_keys})
+        with tmp:
+            self.assertNotEqual(completed.returncode, 0)
+            self.assertIn("no cases for models", completed.stderr)
 
 
 class RealCorpusTest(unittest.TestCase):

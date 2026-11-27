@@ -284,13 +284,15 @@ namespace storm::orm::query_builder {
 
         static constexpr std::size_t MAX_OB = std::remove_cvref_t<decltype(spec)>::MAX_ORDER_BY;
 
-        template <std::size_t I>
+        // QuerySet::order_by() REPLACES the clause (it does not append), so every enabled term is collected
+        // into Terms and applied in ONE call; applying them one call each kept only the last term (#872).
+        template <std::size_t I, auto... Terms>
             requires(I >= MAX_OB || !spec.order_by[I].enabled || ValidCollate<spec.order_by[I].collate>)
         static auto apply_order_by_impl(auto qs) {
             if constexpr (I >= MAX_OB) {
-                return qs;
+                return qs.template order_by<Terms...>();
             } else if constexpr (!spec.order_by[I].enabled) {
-                return apply_order_by_impl<I + 1>(std::move(qs));
+                return apply_order_by_impl<I + 1, Terms...>(std::move(qs));
             } else {
                 constexpr auto& ob = spec.order_by[I];
                 static_assert(has_field<Model>(ob.field.view()), "ORDER BY field not found on model");
@@ -298,9 +300,9 @@ namespace storm::orm::query_builder {
                 constexpr bool asc = (ob.direction.view() != "DESC");
                 if constexpr (ob.collate.view() != "") {
                     constexpr auto col = parse_collate(ob.collate.view());
-                    return apply_order_by_impl<I + 1>(qs.template order_by<storm::meta::FieldRef<fi>{}, asc, col>());
+                    return apply_order_by_impl<I + 1, Terms..., storm::meta::FieldRef<fi>{}, asc, col>(std::move(qs));
                 } else {
-                    return apply_order_by_impl<I + 1>(qs.template order_by<storm::meta::FieldRef<fi>{}, asc>());
+                    return apply_order_by_impl<I + 1, Terms..., storm::meta::FieldRef<fi>{}, asc>(std::move(qs));
                 }
             }
         }
@@ -404,8 +406,8 @@ namespace storm::orm::query_builder {
         static constexpr Collate setop_order_collate =
                 spec.order_by[I].collate.empty() ? Collate::None : collate_of(spec.order_by[I].collate.view());
 
-        // A SetOpBuilder keeps only its LAST order_by() call (the compound SELECT has one ORDER BY), unlike
-        // a QuerySet, which appends; so the terms are collected into one call. The parser stores the
+        // A SetOpBuilder keeps only its LAST order_by() call (the compound SELECT has one ORDER BY), as a
+        // QuerySet does (apply_order_by_impl); so the terms are collected into one call. The parser stores the
         // enabled terms at [0, enabled_order_by_count()).
         template <std::size_t I, auto... Terms> static auto apply_setop_order_by(auto chain) {
             if constexpr (I < enabled_order_by_count()) {
