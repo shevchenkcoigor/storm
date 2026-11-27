@@ -26,12 +26,14 @@ namespace storm::test {
 
     using storm::benchmark::AggregateSpec;
     using storm::benchmark::BenchmarkTest;
+    using storm::benchmark::CappedFields;
     using storm::benchmark::ConstexprString;
     using storm::benchmark::JsonKeyRef;
     using storm::benchmark::TypedValue;
     using storm::benchmark::WhereNode;
     using storm::benchmark::WhereSpec;
 
+    using storm::benchmark::at_char;
     using storm::benchmark::jkey_eq;
     using storm::benchmark::parse_aggregations;
     using storm::benchmark::parse_array;
@@ -55,15 +57,51 @@ namespace storm::test {
         TypedValue          value;
     };
 
+    // A `{member: value, ...}` list. `count` counts every key seen, even past MAX_FIELDS, so a reader
+    // can reject an overflowing case instead of dropping its extra keys.
+    template <std::size_t N> struct FieldValueList {
+        static constexpr std::size_t MAX_FIELDS = N;
+        std::array<FirstRowField, N> fields{};
+        std::size_t                  count = 0;
+        constexpr FieldValueList()         = default;
+    };
+
     // `expected.first` as a name -> value list, checked member by member against
     // the row via reflection (test_select_runner.h), so a new model field needs no
-    // parser change. `count` counts every key seen, even past MAX_FIELDS, so the
-    // runner can reject an overflowing case instead of dropping its extra keys.
-    struct FirstRowSpec {
-        static constexpr std::size_t          MAX_FIELDS = 8;
-        std::array<FirstRowField, MAX_FIELDS> fields{};
-        std::size_t                           count = 0;
-        constexpr FirstRowSpec()                    = default;
+    // parser change.
+    using FirstRowSpec = FieldValueList<8>;
+
+    // `set:` (#871): the SET columns and their values of update_where / update_all, or the row an
+    // upsert inserts. The corpus uses all 4; past it the case does not compile.
+    using SetSpec = FieldValueList<4>;
+    // The rows equal to `set:` are counted through a WHERE of one leaf per entry, AND-joined
+    // (test_write_runner.h, set_match_spec): N leaves and N - 1 joins must fit the WHERE caps.
+    static_assert(
+            2 * SetSpec::MAX_FIELDS - 1 <= storm::benchmark::WhereSpec::MAX_NODES &&
+            SetSpec::MAX_FIELDS <= storm::benchmark::WhereSpec::MAX_VALUES
+    );
+
+    // `on_conflict: {target: [...], update: [...]}` (#871): the conflict columns and, for
+    // upsert_update, the columns DO UPDATE sets. Any other key, or a value that is not a mapping,
+    // is counted in `unknown_keys` and rejected, never skipped.
+    struct OnConflictSpec {
+        bool            enabled = false;
+        CappedFields<4> target;
+        CappedFields<4> update;
+        std::size_t     unknown_keys = 0;
+        constexpr OnConflictSpec()   = default;
+
+        [[nodiscard]] constexpr auto within_limits() const -> bool {
+            return target.within_limits() && update.within_limits();
+        }
+
+        // Whether `name` is one of the conflict columns.
+        [[nodiscard]] constexpr auto targets(std::string_view name) const -> bool {
+            for (std::size_t i = 0; i < target.declared_count && i < target.fields.size(); ++i)
+                if (target.fields[i].view() == name)
+                    return true;
+            return false;
+        }
     };
 
     // `expected.rows` (#867): the projected rows of a `values` case, one list of typed cells per row.
@@ -79,8 +117,16 @@ namespace storm::test {
     };
 
     struct ExpectedSpec {
-        int                            count = 0, int_val = -1, unchanged = -1, remaining = -1;
-        double                         dbl_val = -1.0;
+        int count = 0, int_val = -1, unchanged = -1, remaining = -1;
+        // #871: rows equal to `set:` after an update_where / update_all / upsert_* write.
+        int matching = -1;
+        // #871: whether `count` was written (its default 0 is a real value), so a write case that
+        // would not read it can reject it.
+        bool count_written = false;
+        // #871: keys written that no write runner reads (int_val, dbl_val, unchanged, group_*, or an
+        // unknown key). Read-side runners ignore it; a write case is rejected when it is non-zero.
+        std::size_t                    unread_by_writes = 0;
+        double                         dbl_val          = -1.0;
         FirstRowSpec                   first;
         RowsSpec                       rows;
         static constexpr std::size_t   MAX_GROUPS = 20;
@@ -129,14 +175,111 @@ namespace storm::test {
         bool aggregate_shape_conflict = false;
         int  insert_count = 0, update_count = 0, erase_count = 0;
         std::array<AggregationResult, BenchmarkTest::MAX_AGGREGATIONS> results{};
+        // The conditional writes and upsert (#871).
+        SetSpec        set;
+        bool           set_not_mapping = false; // `set:` was a list or a scalar
+        OnConflictSpec on_conflict;
         constexpr TestCase() = default;
 
-        // #843: the spec's caps (the aggregate chain's among them, #868) plus each step's `groups`.
+        // #843: the spec's caps (the aggregate chain's among them, #868) plus each step's `groups`,
+        // and the write keys' (#871).
         [[nodiscard]] constexpr auto within_limits() const -> bool {
             for (const AggregationResult& r : results)
                 if (r.groups_count > ExpectedSpec::MAX_GROUPS)
                     return false;
-            return bench.within_limits();
+            return set.count <= SetSpec::MAX_FIELDS && on_conflict.within_limits() && bench.within_limits();
+        }
+
+        // #871: every conflict column has a `set:` value; otherwise the conflict would be decided by the
+        // member's default, which the case never wrote.
+        [[nodiscard]] constexpr auto targets_in_set() const -> bool {
+            return listed_in_set(on_conflict.target);
+        }
+
+        // #871: every DO UPDATE column has a `set:` value; otherwise DO UPDATE would write the member's
+        // default over the stored value.
+        [[nodiscard]] constexpr auto updates_in_set() const -> bool {
+            return listed_in_set(on_conflict.update);
+        }
+
+        [[nodiscard]] constexpr auto listed_in_set(const CappedFields<4>& names) const -> bool {
+            for (std::size_t t = 0; t < names.declared_count && t < names.fields.size(); ++t) {
+                bool found = false;
+                for (std::size_t i = 0; i < set.count && i < set.fields.size(); ++i)
+                    found = found || set.fields[i].name.view() == names.fields[t].view();
+                if (!found)
+                    return false;
+            }
+            return true;
+        }
+
+        // #871: the first rule a write case breaks, or empty. A key no runner of the case's query_type
+        // reads, or a shape the write would silently ignore, is an error: the corpus static_asserts this
+        // empty with the text as the message. The text is the contract tests/yaml/test_spec_limits_writes.cpp pins.
+        [[nodiscard]] constexpr auto write_shape_error() const -> std::string_view { // NOSONAR(cpp:S3776)
+            const std::string_view     qt        = query_type.view();
+            const bool                 is_upsert = qt == "upsert_update" || qt == "upsert_nothing";
+            const bool                 filtered  = qt == "update_where" || qt == "erase_where";
+            const bool                 sets      = qt == "update_where" || qt == "update_all" || is_upsert;
+            constexpr std::string_view set_only  = "set: is read by update_where / update_all / upsert_* only";
+            constexpr std::string_view matching_only =
+                    "expected.matching is read by update_where / update_all / upsert_* only";
+            constexpr std::string_view on_conflict_only = "on_conflict: is read by upsert_update / upsert_nothing only";
+            if (set_not_mapping)
+                return "set: is a {member: value} mapping";
+            if (!filtered && !sets) {
+                if (set.count > 0)
+                    return set_only;
+                if (on_conflict.enabled)
+                    return on_conflict_only;
+                if (expected.matching >= 0)
+                    return matching_only;
+                return {};
+            }
+            if (filtered != bench.where.enabled)
+                return filtered
+                               ? "update_where / erase_where need a where: (or where_expr:)"
+                               : "update_all / upsert_update / upsert_nothing take no where: the write would ignore it";
+            if (bench.join.enabled || bench.order_by_count > 0 || bench.limit.enabled)
+                return "a write ignores join: / order_by: / limit:, so a case may not write them";
+            if (bench.result_shape_count() > 0)
+                return "a write runs no values / distinct / group_by / aggregate / setop / first / get";
+            if (expected.remaining < 0)
+                return "a write case needs expected.remaining: the rows in the table after the write";
+            if (expected.count_written)
+                return "a write case checks expected.remaining / matching; expected.count would not be read";
+            if (expected.first.count > 0 || expected.rows.row_count > 0)
+                return "a write case checks expected.remaining / matching; expected.first / rows would not be read";
+            if (expected.unread_by_writes > 0)
+                return "a write case checks expected.remaining / matching only; another expected.* key would not be "
+                       "read";
+            if (sets && set.count == 0)
+                return "update_where / update_all / upsert_* need a set: of at least one field";
+            if (!sets && set.count > 0)
+                return set_only;
+            if (sets && expected.matching < 0)
+                return "update_where / update_all / upsert_* need expected.matching: the rows equal to set: after the "
+                       "write";
+            if (!sets && expected.matching >= 0)
+                return matching_only;
+            if (is_upsert != on_conflict.enabled)
+                return is_upsert ? "upsert_update / upsert_nothing need on_conflict: {target: [...]}"
+                                 : on_conflict_only;
+            if (is_upsert) {
+                if (on_conflict.unknown_keys > 0)
+                    return "on_conflict: takes target and update only";
+                if (on_conflict.target.declared_count == 0)
+                    return "on_conflict.target names the conflict columns: at least one";
+                if (!targets_in_set())
+                    return "every on_conflict.target column needs its value in set:";
+                if ((qt == "upsert_update") != (on_conflict.update.declared_count > 0))
+                    return "upsert_update needs on_conflict.update, upsert_nothing takes none";
+                if (!updates_in_set())
+                    return "every on_conflict.update column needs its value in set:";
+            }
+            if (insert_count != 0 || update_count != 0 || erase_count != 0)
+                return "insert_count / update_count / erase_count belong to the batch query types";
+            return {};
         }
 
         // The SQL text to pin for a backend: the shared text, or that dialect's own. Empty means
@@ -192,9 +335,11 @@ namespace storm::test {
 
     // --- Test-only parsers ---
 
-    constexpr void parse_first_row_into(std::string_view j, std::size_t& p, FirstRowSpec& f, std::size_t& truncated) {
+    template <std::size_t N>
+    constexpr void
+    parse_first_row_into(std::string_view j, std::size_t& p, FieldValueList<N>& f, std::size_t& truncated) {
         parse_object(j, p, [&](const char* ptr, JsonKeyRef kr, std::string_view jj, std::size_t& pp) {
-            if (f.count >= FirstRowSpec::MAX_FIELDS) {
+            if (f.count >= FieldValueList<N>::MAX_FIELDS) {
                 skip_value(jj, pp);
                 ++f.count;
                 return;
@@ -287,22 +432,28 @@ namespace storm::test {
 
     constexpr void parse_expected_into(std::string_view j, std::size_t& p, ExpectedSpec& e, std::size_t& truncated) {
         parse_object(j, p, [&](const char* ptr, JsonKeyRef kr, std::string_view jj, std::size_t& pp) {
-            if (jkey_eq(ptr, kr, "count"))
-                e.count = parse_int(jj, pp);
-            else if (jkey_eq(ptr, kr, "int_val"))
-                e.int_val = parse_int(jj, pp);
-            else if (jkey_eq(ptr, kr, "dbl_val"))
-                e.dbl_val = parse_double(jj, pp);
-            else if (jkey_eq(ptr, kr, "unchanged"))
-                e.unchanged = parse_int(jj, pp);
+            if (jkey_eq(ptr, kr, "count")) {
+                e.count         = parse_int(jj, pp);
+                e.count_written = true;
+            } else if (jkey_eq(ptr, kr, "matching"))
+                e.matching = parse_int(jj, pp);
             else if (jkey_eq(ptr, kr, "remaining"))
                 e.remaining = parse_int(jj, pp);
             else if (jkey_eq(ptr, kr, "first"))
                 parse_first_row_into(jj, pp, e.first, truncated);
             else if (jkey_eq(ptr, kr, "rows"))
                 parse_rows_into(jj, pp, e.rows, truncated);
-            else if (!parse_expected_group_key(ptr, kr, jj, pp, e))
-                skip_value(jj, pp);
+            else {
+                ++e.unread_by_writes; // every key below is read-side only, or unknown
+                if (jkey_eq(ptr, kr, "int_val"))
+                    e.int_val = parse_int(jj, pp);
+                else if (jkey_eq(ptr, kr, "dbl_val"))
+                    e.dbl_val = parse_double(jj, pp);
+                else if (jkey_eq(ptr, kr, "unchanged"))
+                    e.unchanged = parse_int(jj, pp);
+                else if (!parse_expected_group_key(ptr, kr, jj, pp, e))
+                    skip_value(jj, pp);
+            }
         });
     }
 
@@ -411,6 +562,39 @@ namespace storm::test {
         return static_cast<int>(idx);
     }
 
+    // `on_conflict: {target: [...], update: [...]}` (#871). A repeated key replaces the first (#843).
+    constexpr void
+    parse_on_conflict_into(std::string_view j, std::size_t& p, OnConflictSpec& oc, std::size_t& truncated) {
+        oc         = OnConflictSpec{};
+        oc.enabled = true;
+        if (!at_char(j, p, '{')) {
+            ++oc.unknown_keys; // a list or a scalar would be misread as an object
+            skip_or_step(j, p);
+            return;
+        }
+        parse_object(j, p, [&](const char* ptr, JsonKeyRef kr, std::string_view jj, std::size_t& pp) {
+            CappedFields<4>* list = nullptr;
+            if (jkey_eq(ptr, kr, "target"))
+                list = &oc.target;
+            else if (jkey_eq(ptr, kr, "update"))
+                list = &oc.update;
+            if (list == nullptr) {
+                ++oc.unknown_keys;
+                skip_value(jj, pp);
+                return;
+            }
+            *list = CappedFields<4>{};
+            parse_array(jj, pp, [&](std::string_view jjj, std::size_t& ppp) {
+                if (at_char(jjj, ppp, '"'))
+                    list->add_field(parse_str<32>(jjj, ppp, truncated));
+                else {
+                    ++oc.unknown_keys;
+                    skip_or_step(jjj, ppp);
+                }
+            });
+        });
+    }
+
     // --- Top-level TestCase parser ---
 
     // `backends: [sqlite]` is the only accepted list; anything else (an unknown name, PG alone, two
@@ -452,6 +636,15 @@ namespace storm::test {
             tc.insert_count = parse_int(j, p);
         else if (jkey_eq(ptr, kr, "update_count"))
             tc.update_count = parse_int(j, p);
+        else if (jkey_eq(ptr, kr, "set")) {
+            tc.set             = SetSpec{}; // a repeated key replaces the first (#843)
+            tc.set_not_mapping = !at_char(j, p, '{');
+            if (tc.set_not_mapping)
+                skip_value(j, p); // a list or a scalar would be misread as an object
+            else
+                parse_first_row_into(j, p, tc.set, truncated);
+        } else if (jkey_eq(ptr, kr, "on_conflict"))
+            parse_on_conflict_into(j, p, tc.on_conflict, truncated);
         else if (jkey_eq(ptr, kr, "aggregations"))
             // The shared parser reads each step; `result` is test-only.
             parse_aggregations(

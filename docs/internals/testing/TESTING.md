@@ -222,7 +222,9 @@ the key outside `aggregate` and `select`.
   `scripts/split_unified_cases.py`, which fails the build on a string of 256 or more characters (the C++ parser
   rejects every over-long case at compile time too, #845; the script keeps its check so the error names the case and the key), on non-printable or non-ASCII text, and on `expected_sql` in a category whose
   runner does not read it yet (it would pass without ever comparing SQL). The parser unescapes `\"` and `\\`, which is how the quoted identifiers survive the JSON hop.
-- Write paths (`to_sql()` inlines bound values) and upsert still need C++ tests.
+- The write runners do not pin SQL: the conditional UPDATE / DELETE proxies have only `to_sql()`, which
+  inlines the bound values, so a write's SQL text is still pinned by C++ tests. A write case checks its effect
+  on the table instead (#871, below).
 - **Build cost** (Release, warm, aggregate TU, 3 runs each): 25.5–27.3 s before, 26.9–27.0 s after
   (about +1 s, +4%, at the edge of run-to-run noise); the select TU, which carries no `expected_sql` but whose
   `TestCase` grew by 160 bytes, is unchanged (28.7–29.2 s vs 28.7–29.2 s).
@@ -308,6 +310,45 @@ aggregate or field. Names in the YAML are resolved by reflection at compile time
   `SetOpTest.IntersectAfterUnionFollowsEachBackendsPrecedence` in `tests/query/test_setop.cpp`). An
   `INTERSECT`-only prefix (`A INTERSECT B INTERSECT C UNION D`) reads the same on both. `expected_sql` is
   accepted; `expected.first` over several rows needs an `order_by` (asserted by the runner).
+- **Conditional writes and upsert (#871)** — five query types in the crud slice, all on SQLite and
+  PostgreSQL (`tests/test_cases/writes.yaml`):
+
+  | `query_type` | Runs | Needs |
+  |---|---|---|
+  | `update_where` | `where(...).update<set: keys...>(prototype)` | `where` / `where_expr`, `set` |
+  | `update_all` | `update_all<set: keys...>(prototype)` | `set`, no where |
+  | `erase_where` | `where(...).erase()` | `where` / `where_expr`, no `set` |
+  | `upsert_update` | `insert(prototype).on_conflict<target...>().update<update...>()` | `set`, `on_conflict: {target, update}` |
+  | `upsert_nothing` | `insert(prototype).on_conflict<target...>().nothing()` | `set`, `on_conflict: {target}` |
+
+  `set: {member: value, ...}` (at most 4) is the SET columns and their values, or the inserted row; it is read
+  like a WHERE operand, in each member's type (typed values, `null` on an optional member), and an unlisted
+  member keeps its default. `ConditionalWriteRunner` / `UpsertRunner` (`tests/test_write_runner.h`) check
+  the **effect**, not that the write ran: `expected.remaining` is the rows in the table afterwards, and
+  `expected.matching` (every type but `erase_where`) the rows equal to `set:` on every field it lists, counted
+  through the shared `QueryBuilder` with a WHERE built from `set:` (`set_match_spec`). Before the write the
+  runner asserts that no row equals `set:` yet, so `matching` counts exactly the rows the write produced: pick
+  values no seeded row holds. `erase_where` also checks that no row matches its where afterwards. An upsert's
+  returned id must be the key of the row whose `on_conflict.target` columns equal their `set:` values (DO UPDATE
+  may leave the other `set:` columns as they were), and DO NOTHING must report an id exactly when the row
+  count grew. A model whose key is not DB-generated returns `void` (#572), so it has no id to check.
+  **Compile errors, not silent skips** (`TestCase::write_shape_error()`, static_asserted by the fixture body with
+  the broken rule as the message; `tests/yaml/test_spec_limits_writes.cpp` pins every text): a where on
+  `update_all` / `upsert_*` or none on `update_where` / `erase_where`; `join` / `order_by` / `limit` (the
+  conditional writes ignore them) or any result shape on a write; a missing `expected.remaining`, or any other
+  `expected.*` key on a write (`count`, `first`, `rows`, `int_val`, `dbl_val`, `unchanged`, `group_*`, an unknown
+  key: none is read); a `set:` that is not a `{member: value}` mapping (on any query type); a missing `set` / `expected.matching`, or either on `erase_where`; an
+  `on_conflict` other than `{target: [...] (1..4), update: [...] (1..4, upsert_update only)}`, or a target
+  or update column with no `set:` value (it would conflict on, or write, the member's default); any of these keys
+  on a query type that would not read them; the batch counts on a write. A `set:` member the model lacks or a
+  value that does not fit it fails `SetSpecFits`; whether a target can be a conflict target and a column can be
+  set is the library's own `ConflictTargetUnique` / `UpsertSettable` / `update<>` constraints.
+  **Known limits:** a blob or duration cannot be in `set:` (no WHERE comparison to count the rows with, #863);
+  a value no seeded row holds must exist for the before-check; no case expects an error (an upsert that
+  violates a unique constraint other than its target, `update_where` without a where), these stay C++ tests;
+  `typed_value_as` moved from a `QueryBuilder` member to a free function in `query_builder_values.hpp` so the
+  runners can build the prototype. The benchmarks do not run these writes through the spec yet. Compile
+  time of the change was not measured.
 - **`expected.first:`** keys are row **member names**. Each is compared according to the member's C++ type
   (string, bool, floating with a 0.01 tolerance, integer, and the typed values of #844 below). A key with no
   matching member, or a value that does not fit the member (`ExpectedValueFits`), is a compile error. Before
@@ -345,7 +386,7 @@ aggregate or field. Names in the YAML are resolved by reflection at compile time
 ### Runner structure (#837)
 
 - **No base class.** Every runner (`SelectRunner`, `ValuesRunner`, `SetOpRunner`, `AggregateRunner`, `DistinctRunner`,
-  `InsertRunner`, `UpdateRunner`, `EraseRunner`) is a stateless class with a
+  `InsertRunner`, `UpdateRunner`, `EraseRunner`, `ConditionalWriteRunner`, `UpsertRunner`) is a stateless class with a
   `static run<Tc>()`. The two helpers the old `QueryRunnerBase` mixed are free functions:
   `base_query<Tc, Model, Conn>()` (the case's filtered/joined `QuerySet`) and
   `seed_records<Tc, Model, Conn>()` (insert the dataset). The query is a local, not runner state.
@@ -450,7 +491,7 @@ so it can never read a member the value did not set (a Double or Bool on an inte
   `QueryBuilder::with_having` through the same `build_where_node`. GROUP BY takes up to 4 fields (more is a
   compile error); a case with more than one field pins `expected.count` only, because `group_keys` /
   `group_agg_*` are per single key. A HAVING condition compares fields, not aggregates (a Storm limit).
-- Not covered here: write values (Phase 7 of #838).
+- Write values (`set:`, #871) are read by the same rule; see "Conditional writes and upsert" above.
 - **Build cost of #868** (Debug, one TU touched and rebuilt alone, 3 runs each, load average 3-8, so read
   ±1 s): aggregate 11.1–11.2 s → 13.0–13.5 s, grouped 17.8–18.0 s → 20.1–22.0 s. The machinery alone (the
   same TUs with the corpus at `HEAD`) is aggregate 11.7–11.9 s and grouped ~18.5 s, so the five
@@ -473,7 +514,7 @@ There is one JSON spec parser, `storm_benchmark_parser` (`benchmarks/parser.cppm
 `BenchmarkTest` holds, with each accepted alias listed once: `test_name` / `name`, `test_category` / `category`,
 `init_dataset_size` / `dataset_size`. `tests/test_parser.hpp` adds only the test-only keys (`query_type`,
 `dataset`, `expected`, `expected_sql`, `expected_sql_sqlite`, `expected_sql_pg`, `where_expr`,
-`insert_count` / `update_count` / `erase_count`, and each aggregation's `result`) and passes every other key to
+`insert_count` / `update_count` / `erase_count`, `set` / `on_conflict` (#871), and each aggregation's `result`) and passes every other key to
 `parse_bench_field` — `aggregations` itself is read by the shared `parse_aggregations`, which hands the test
 parser every step key it does not know (#868), so no key is
 parsed in two places. Add a shared key in `parse_bench_field` / `parse_bench_scalar`; a test-only key in

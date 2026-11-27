@@ -168,6 +168,11 @@ inline constexpr std::array YAML_RUNNERS{
     YamlRunner{.query_type = "update_batch", .is_prefix = false, .runner = ^^UpdateRunner},
     YamlRunner{.query_type = "erase_all", .is_prefix = false, .runner = ^^EraseRunner},
     YamlRunner{.query_type = "erase_batch", .is_prefix = false, .runner = ^^EraseRunner},
+    YamlRunner{.query_type = "update_where", .is_prefix = false, .runner = ^^ConditionalWriteRunner},
+    YamlRunner{.query_type = "update_all", .is_prefix = false, .runner = ^^ConditionalWriteRunner},
+    YamlRunner{.query_type = "erase_where", .is_prefix = false, .runner = ^^ConditionalWriteRunner},
+    YamlRunner{.query_type = "upsert_update", .is_prefix = false, .runner = ^^UpsertRunner},
+    YamlRunner{.query_type = "upsert_nothing", .is_prefix = false, .runner = ^^UpsertRunner},
 };
 
 consteval auto yaml_runner_index(std::string_view query_type) -> std::size_t {
@@ -215,6 +220,10 @@ class UnifiedYamlBody : public UnifiedYamlFixture<Tag, ConnType> {
     // #870: a setop spec is read by query_type setop only, and setop needs one.
     static_assert(Tc.bench.setop.enabled == (Tc.query_type == "setop"),
                   "a setop: {operands: [...]} spec is read by query_type setop only, and setop needs one");
+    // #871: the write keys (`set:`, `on_conflict:`, `expected.matching`) are read by the conditional-write
+    // and upsert query types only, and those reject every shape the write would ignore. The message is
+    // the rule the case breaks.
+    static_assert(Tc.write_shape_error().empty(), Tc.write_shape_error());
 
     auto reset_tables() -> void {
         std::shared_ptr<ConnType> conn = // NOSONAR(S1659)

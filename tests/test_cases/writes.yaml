@@ -312,3 +312,229 @@
   insert_count: 1000
   expected:
     count: 1000
+# ---------------------------------------------------------------------------------------------
+# Conditional writes and upsert (#871). Each case checks the write's EFFECT, not that it ran:
+#   expected.remaining  rows in the table after the write
+#   expected.matching   rows equal to `set:` on every field it lists, after the write
+# `set:` is the SET columns and their values (update_where / update_all) or the inserted row
+# (upsert_*; unlisted members keep their defaults). The runner first checks that NO row equals
+# `set:` before the write, so `matching` counts exactly the rows the write produced: pick values
+# no seeded row holds. erase_where also checks that no row matches its `where` afterwards.
+# Dataset `main` (PEOPLE_25): departments Engineering 6, Sales 5, Marketing 5, HR 4, Support 5;
+# 9 inactive; 10 with a NULL score; salaries below 50000: Diana, Mia, Paul, Tina, Yara.
+# ---------------------------------------------------------------------------------------------
+- name: update_where_salary_below_50k
+  model: person
+  query_type: update_where
+  dataset: main
+  where: {conditions: [{field: salary, op: '<', values: [50000.0]}]}
+  set: {salary: 50500.5}
+  expected: {remaining: 25, matching: 5}
+- name: update_where_two_columns_hr
+  model: person
+  query_type: update_where
+  dataset: main
+  where: {conditions: [{field: department, op: ==, values: [HR]}]}
+  set: {salary: 12345.0, is_active: false}
+  expected: {remaining: 25, matching: 4}
+- name: update_where_or_tree_age_extremes
+  model: person
+  query_type: update_where
+  dataset: main
+  where_expr:
+    op: OR
+    left: {field: age, op: '<', value_int: 23}
+    right: {field: age, op: '>', value_int: 45}
+  set: {years_experience: 99}
+  expected: {remaining: 25, matching: 3}
+- name: update_where_in_ages
+  model: person
+  query_type: update_where
+  dataset: main
+  where: {conditions: [{field: age, op: IN, values: [25, 30]}]}
+  set: {department: Platform}
+  expected: {remaining: 25, matching: 6}
+- name: update_where_like_sets_text
+  model: person
+  query_type: update_where
+  dataset: main
+  where: {conditions: [{field: name, op: LIKE, values: ['A%']}]}
+  set: {nickname: Ace}
+  expected: {remaining: 25, matching: 1}
+- name: update_where_sets_null
+  model: person
+  query_type: update_where
+  dataset: main
+  where: {conditions: [{field: department, op: ==, values: [Engineering]}]}
+  set: {score: null, years_experience: 77}
+  expected: {remaining: 25, matching: 6}
+- name: update_where_bool_filter
+  model: person
+  query_type: update_where
+  dataset: main
+  where: {conditions: [{field: is_active, op: ==, values: [false]}]}
+  set: {score: 1}
+  expected: {remaining: 25, matching: 9}
+- name: update_where_no_match
+  model: person
+  query_type: update_where
+  dataset: main
+  where: {conditions: [{field: age, op: '>', values: [100]}]}
+  set: {age: 77}
+  expected: {remaining: 25, matching: 0}
+- name: update_where_simple_custom
+  model: simple
+  query_type: update_where
+  dataset: custom
+  init_dataset_size: 20
+  where: {conditions: [{field: value, op: '>=', values: [15]}]}
+  set: {name: tail, value: -1}
+  expected: {remaining: 20, matching: 5}
+- name: update_where_extended_typed_values
+  model: extended
+  query_type: update_where
+  dataset: extended
+  where: {conditions: [{field: label, op: ==, values: [beta]}]}
+  set:
+    big_num: 7000000000
+    opt_double: null
+    color: Blue
+    date_field: '2030-03-03'
+  expected: {remaining: 3, matching: 1}
+- name: update_where_extended_sets_uuid
+  model: extended
+  query_type: update_where
+  dataset: extended
+  where: {conditions: [{field: label, op: ==, values: [gamma]}]}
+  set: {uuid_field: 00000000-0000-4000-8000-000000000001}
+  expected: {remaining: 3, matching: 1}
+- name: update_all_person_department
+  model: person
+  query_type: update_all
+  dataset: main
+  set: {department: Global}
+  expected: {remaining: 25, matching: 25}
+- name: update_all_simple_custom
+  model: simple
+  query_type: update_all
+  dataset: custom
+  init_dataset_size: 10
+  set: {name: same, value: -1}
+  expected: {remaining: 10, matching: 10}
+- name: update_all_empty_table
+  model: simple
+  query_type: update_all
+  dataset: empty
+  set: {value: 7}
+  expected: {remaining: 0, matching: 0}
+- name: update_all_extended_typed_values
+  model: extended
+  query_type: update_all
+  dataset: extended
+  set: {opt_color: Red, datetime_field: '2031-01-01T00:00:00'}
+  expected: {remaining: 3, matching: 3}
+- name: erase_where_inactive
+  model: person
+  query_type: erase_where
+  dataset: main
+  where: {conditions: [{field: is_active, op: ==, values: [false]}]}
+  expected: {remaining: 16}
+- name: erase_where_department_in
+  model: person
+  query_type: erase_where
+  dataset: main
+  where: {conditions: [{field: department, op: IN, values: [HR, Support]}]}
+  expected: {remaining: 16}
+- name: erase_where_and_age_salary
+  model: person
+  query_type: erase_where
+  dataset: main
+  where:
+    conditions:
+      - {field: age, op: '>', values: [30]}
+      - {field: salary, op: '<', values: [80000.0]}
+  expected: {remaining: 20}
+- name: erase_where_null_score
+  model: person
+  query_type: erase_where
+  dataset: main
+  where: {conditions: [{field: score, op: ==, values: [null]}]}
+  expected: {remaining: 15}
+- name: erase_where_no_match
+  model: person
+  query_type: erase_where
+  dataset: main
+  where: {conditions: [{field: age, op: '>', values: [100]}]}
+  expected: {remaining: 25}
+- name: erase_where_every_row
+  model: person
+  query_type: erase_where
+  dataset: main
+  where: {conditions: [{field: age, op: '>=', values: [0]}]}
+  expected: {remaining: 0}
+- name: erase_where_simple_custom
+  model: simple
+  query_type: erase_where
+  dataset: custom
+  init_dataset_size: 20
+  where: {conditions: [{field: value, op: '<', values: [5]}]}
+  expected: {remaining: 15}
+# Upsert: Person's `name` is unique, and (name, department) is a UniqueIndex.
+- name: upsert_update_on_conflict_name
+  model: person
+  query_type: upsert_update
+  dataset: main
+  set: {name: Alice, age: 99}
+  on_conflict: {target: [name], update: [age]}
+  expected: {remaining: 25, matching: 1}
+- name: upsert_update_inserts_a_new_row
+  model: person
+  query_type: upsert_update
+  dataset: main
+  set: {name: Zed, age: 99, department: Ops}
+  on_conflict: {target: [name], update: [age]}
+  expected: {remaining: 26, matching: 1}
+- name: upsert_update_two_columns
+  model: person
+  query_type: upsert_update
+  dataset: main
+  set: {name: Bob, age: 31, salary: 1.5}
+  on_conflict: {target: [name], update: [age, salary]}
+  expected: {remaining: 25, matching: 1}
+# Only the `update` columns change on a conflict: Charlie keeps department Marketing, so no row
+# equals all three `set:` fields afterwards.
+- name: upsert_update_leaves_unlisted_columns
+  model: person
+  query_type: upsert_update
+  dataset: main
+  set: {name: Charlie, age: 77, department: Ops}
+  on_conflict: {target: [name], update: [age]}
+  expected: {remaining: 25, matching: 0}
+- name: upsert_update_unique_index_target
+  model: person
+  query_type: upsert_update
+  dataset: main
+  set: {name: Diana, department: HR, age: 60}
+  on_conflict: {target: [name, department], update: [age]}
+  expected: {remaining: 25, matching: 1}
+- name: upsert_nothing_on_conflict_name
+  model: person
+  query_type: upsert_nothing
+  dataset: main
+  set: {name: Alice, age: 99}
+  on_conflict: {target: [name]}
+  expected: {remaining: 25, matching: 0}
+- name: upsert_nothing_inserts_a_new_row
+  model: person
+  query_type: upsert_nothing
+  dataset: main
+  set: {name: Zed, age: 99}
+  on_conflict: {target: [name]}
+  expected: {remaining: 26, matching: 1}
+- name: upsert_nothing_into_empty_table
+  model: person
+  query_type: upsert_nothing
+  dataset: empty
+  set: {name: Solo, age: 1}
+  on_conflict: {target: [name]}
+  expected: {remaining: 1, matching: 1}
