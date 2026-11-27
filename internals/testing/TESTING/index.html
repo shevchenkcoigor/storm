@@ -1,0 +1,3237 @@
+
+<!doctype html>
+<html lang="en" class="no-js">
+  <head>
+    
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width,initial-scale=1">
+      
+        <meta name="description" content="C++26 ORM with compile-time reflection for SQLite">
+      
+      
+      
+        <link rel="canonical" href="https://spiritecosse.github.io/storm/internals/testing/TESTING/">
+      
+      
+        <link rel="prev" href="../../building/FORMATTING/">
+      
+      
+        <link rel="next" href="../CODE_COVERAGE/">
+      
+      
+        
+      
+      
+      <link rel="icon" href="../../../assets/images/favicon.png">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.8.2">
+    
+    
+      
+        <title>Testing - Storm ORM</title>
+      
+    
+    
+      <link rel="stylesheet" href="../../../assets/stylesheets/main.57a0d79d.min.css">
+      
+        
+        <link rel="stylesheet" href="../../../assets/stylesheets/palette.fb2fffe2.min.css">
+      
+      
+
+
+    
+    
+      
+    
+    
+      
+        
+        
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+        <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Roboto:300,300i,400,400i,700,700i%7CRoboto+Mono:400,400i,700,700i&display=fallback">
+        <style>:root{--md-text-font:"Roboto";--md-code-font:"Roboto Mono"}</style>
+      
+    
+    
+    <script>__md_scope=new URL("../../..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
+    
+      
+
+    
+    
+  </head>
+  
+  
+    
+    
+      
+    
+    
+    
+    
+    <body dir="ltr" data-md-color-scheme="default" data-md-color-primary="indigo" data-md-color-accent="indigo">
+  
+    
+    <input class="md-toggle" data-md-toggle="drawer" type="checkbox" id="__drawer" autocomplete="off">
+    <input class="md-toggle" data-md-toggle="search" type="checkbox" id="__search" autocomplete="off">
+    <label class="md-overlay" for="__drawer"></label>
+    <div data-md-component="skip">
+      
+        
+        <a href="#testing-strategy" class="md-skip">
+          Skip to content
+        </a>
+      
+    </div>
+    <div data-md-component="announce">
+      
+    </div>
+    
+    
+      
+
+  
+
+<header class="md-header md-header--shadow" data-md-component="header">
+  <nav class="md-header__inner md-grid" aria-label="Header">
+    <a href="../../.." title="Storm ORM" class="md-header__button md-logo" aria-label="Storm ORM" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    <label class="md-header__button md-icon" for="__drawer">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M3 6h18v2H3zm0 5h18v2H3zm0 5h18v2H3z"/></svg>
+    </label>
+    <div class="md-header__title" data-md-component="header-title">
+      <div class="md-header__ellipsis">
+        <div class="md-header__topic">
+          <span class="md-ellipsis">
+            Storm ORM
+          </span>
+        </div>
+        <div class="md-header__topic" data-md-component="header-topic">
+          <span class="md-ellipsis">
+            
+              Testing
+            
+          </span>
+        </div>
+      </div>
+    </div>
+    
+      
+        <form class="md-header__option" data-md-component="palette">
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="" data-md-color-scheme="default" data-md-color-primary="indigo" data-md-color-accent="indigo"  aria-label="Switch to dark mode"  type="radio" name="__palette" id="__palette_0">
+    
+      <label class="md-header__button md-icon" title="Switch to dark mode" for="__palette_1" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a4 4 0 0 0-4 4 4 4 0 0 0 4 4 4 4 0 0 0 4-4 4 4 0 0 0-4-4m0 10a6 6 0 0 1-6-6 6 6 0 0 1 6-6 6 6 0 0 1 6 6 6 6 0 0 1-6 6m8-9.31V4h-4.69L12 .69 8.69 4H4v4.69L.69 12 4 15.31V20h4.69L12 23.31 15.31 20H20v-4.69L23.31 12z"/></svg>
+      </label>
+    
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="" data-md-color-scheme="slate" data-md-color-primary="indigo" data-md-color-accent="indigo"  aria-label="Switch to light mode"  type="radio" name="__palette" id="__palette_1">
+    
+      <label class="md-header__button md-icon" title="Switch to light mode" for="__palette_0" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 18c-.89 0-1.74-.2-2.5-.55C11.56 16.5 13 14.42 13 12s-1.44-4.5-3.5-5.45C10.26 6.2 11.11 6 12 6a6 6 0 0 1 6 6 6 6 0 0 1-6 6m8-9.31V4h-4.69L12 .69 8.69 4H4v4.69L.69 12 4 15.31V20h4.69L12 23.31 15.31 20H20v-4.69L23.31 12z"/></svg>
+      </label>
+    
+  
+</form>
+      
+    
+    
+      <script>var palette=__md_get("__palette");if(palette&&palette.color){if("(prefers-color-scheme)"===palette.color.media){var media=matchMedia("(prefers-color-scheme: light)"),input=document.querySelector(media.matches?"[data-md-color-media='(prefers-color-scheme: light)']":"[data-md-color-media='(prefers-color-scheme: dark)']");palette.color.media=input.getAttribute("data-md-color-media"),palette.color.scheme=input.getAttribute("data-md-color-scheme"),palette.color.primary=input.getAttribute("data-md-color-primary"),palette.color.accent=input.getAttribute("data-md-color-accent")}for(var[key,value]of Object.entries(palette.color))document.body.setAttribute("data-md-color-"+key,value)}</script>
+    
+    
+    
+      
+      
+        <label class="md-header__button md-icon" for="__search">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        </label>
+        <div class="md-search" data-md-component="search" role="dialog">
+  <label class="md-search__overlay" for="__search"></label>
+  <div class="md-search__inner" role="search">
+    <form class="md-search__form" name="search">
+      <input type="text" class="md-search__input" name="query" aria-label="Search" placeholder="Search" autocapitalize="off" autocorrect="off" autocomplete="off" spellcheck="false" data-md-component="search-query" required>
+      <label class="md-search__icon md-icon" for="__search">
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
+      </label>
+      <nav class="md-search__options" aria-label="Search">
+        
+        <button type="reset" class="md-search__icon md-icon" title="Clear" aria-label="Clear" tabindex="-1">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+        </button>
+      </nav>
+      
+        <div class="md-search__suggest" data-md-component="search-suggest"></div>
+      
+    </form>
+    <div class="md-search__output">
+      <div class="md-search__scrollwrap" tabindex="0" data-md-scrollfix>
+        <div class="md-search-result" data-md-component="search-result">
+          <div class="md-search-result__meta">
+            Initializing search
+          </div>
+          <ol class="md-search-result__list" role="presentation"></ol>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+      
+    
+    
+      <div class="md-header__source">
+        <a href="https://github.com/spiritEcosse/storm" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    spiritEcosse/storm
+  </div>
+</a>
+      </div>
+    
+  </nav>
+  
+</header>
+    
+    <div class="md-container" data-md-component="container">
+      
+      
+        
+          
+        
+      
+      <main class="md-main" data-md-component="main">
+        <div class="md-main__inner md-grid">
+          
+            
+              
+              <div class="md-sidebar md-sidebar--primary" data-md-component="sidebar" data-md-type="navigation" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+
+
+<nav class="md-nav md-nav--primary" aria-label="Navigation" data-md-level="0">
+  <label class="md-nav__title" for="__drawer">
+    <a href="../../.." title="Storm ORM" class="md-nav__button md-logo" aria-label="Storm ORM" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    Storm ORM
+  </label>
+  
+    <div class="md-nav__source">
+      <a href="https://github.com/spiritEcosse/storm" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    spiritEcosse/storm
+  </div>
+</a>
+    </div>
+  
+  <ul class="md-nav__list" data-md-scrollfix>
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../.." class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Home
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_2" >
+        
+          
+          <label class="md-nav__link" for="__nav_2" id="__nav_2_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Guide
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_2_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_2">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Guide
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../guide/COOKBOOK/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Cookbook
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    
+    
+    
+    
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_2_2" >
+        
+          
+          <label class="md-nav__link" for="__nav_2_2" id="__nav_2_2_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Features
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_2_2_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_2_2">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Features
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../guide/features/CRUD_OPERATIONS/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    CRUD Operations
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../guide/features/SELECT_QUERIES/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    SELECT Queries
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../guide/features/WHERE_CLAUSES/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    WHERE Clauses
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../guide/features/JOIN_OPERATIONS/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    JOIN Operations
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../guide/features/BATCH_OPERATIONS/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Batch Operations
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../guide/features/REFERENTIAL_INTEGRITY/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Referential Integrity
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../guide/features/CONNECTION_TUNING/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Connection Tuning
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    
+    
+    
+    
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_2_3" >
+        
+          
+          <label class="md-nav__link" for="__nav_2_3" id="__nav_2_3_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Reference
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_2_3_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_2_3">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Reference
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../guide/reference/FIELD_TYPES/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Field Types
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../guide/reference/MIGRATIONS/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Migrations
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+    
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--active md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_3" checked>
+        
+          
+          <label class="md-nav__link" for="__nav_3" id="__nav_3_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Internals
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_3_label" aria-expanded="true">
+          <label class="md-nav__title" for="__nav_3">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Internals
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    
+    
+    
+    
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_3_1" >
+        
+          
+          <label class="md-nav__link" for="__nav_3_1" id="__nav_3_1_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Architecture
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_3_1_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_3_1">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Architecture
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../architecture/OVERVIEW/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Overview
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../architecture/DESIGN_DECISIONS/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Design Decisions
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../architecture/REFLECTION/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Reflection
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../architecture/SQL_GENERATION/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    SQL Generation
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../architecture/MODULE_SYSTEM/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Module System
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../architecture/STATEMENT_CACHING/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Statement Caching
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../architecture/COMPILE_TIME_VS_RUNTIME/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Compile-Time vs Runtime
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    
+    
+    
+    
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_3_2" >
+        
+          
+          <label class="md-nav__link" for="__nav_3_2" id="__nav_3_2_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Building
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_3_2_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_3_2">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Building
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../building/GETTING_STARTED/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Getting Started
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../building/COMMON_TASKS/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Common Tasks
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../building/ADDING_FEATURES/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Adding Features
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../building/PRE_COMMIT/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Pre-Commit
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../building/FORMATTING/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Formatting
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+    
+  
+  
+  
+    
+    
+    
+    
+      
+    
+    
+    <li class="md-nav__item md-nav__item--active md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_3_3" checked>
+        
+          
+          <label class="md-nav__link" for="__nav_3_3" id="__nav_3_3_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Testing
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_3_3_label" aria-expanded="true">
+          <label class="md-nav__title" for="__nav_3_3">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Testing
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+    
+  
+  
+  
+    <li class="md-nav__item md-nav__item--active">
+      
+      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
+      
+      
+        
+      
+      
+        <label class="md-nav__link md-nav__link--active" for="__toc">
+          
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Testing
+  
+
+    
+  </span>
+  
+  
+
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
+      <a href="./" class="md-nav__link md-nav__link--active">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Testing
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+      
+        
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#test-framework" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Test Framework
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#test-categories" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Test Categories
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Test Categories">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#unit-tests" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Unit Tests
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#performance-benchmarks" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Performance Benchmarks
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#running-tests" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Running Tests
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#local-test-suite-speed" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Local Test Suite Speed
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#postgresql-test-isolation" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        PostgreSQL Test Isolation
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#test-structure" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Test Structure
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#test-coverage-goals" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Test Coverage Goals
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#current-test-statistics" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Current Test Statistics
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#yaml-driven-cases-and-expected_sql-818" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        YAML-driven cases and expected_sql (#818)
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#how-a-yaml-case-reaches-the-query-api-834" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        How a YAML case reaches the query API (#834)
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="How a YAML case reaches the query API (#834)">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#runner-structure-837" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Runner structure (#837)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#typed-values-and-one-null-spelling-844" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Typed values and one null spelling (#844)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#one-spec-parser-845" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        One spec parser (#845)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#spec-limits-are-compile-errors-843" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Spec limits are compile errors (#843)
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#writing-new-tests" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Writing New Tests
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#test-maintenance" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Test Maintenance
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../CODE_COVERAGE/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Code Coverage
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../SANITIZERS/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Sanitizers
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../FUZZING/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Fuzzing
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../MSAN_LIBC_FIX/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    MSAN libc Fix
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    
+    
+    
+    
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_3_4" >
+        
+          
+          <label class="md-nav__link" for="__nav_3_4" id="__nav_3_4_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Performance
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_3_4_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_3_4">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Performance
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../performance/PERFORMANCE/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Performance
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../performance/BENCHMARK_DASHBOARD/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Benchmark Dashboard
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../performance/JOIN_ANALYSIS/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    JOIN Analysis
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../performance/DISTINCT_ANALYSIS/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    DISTINCT Analysis
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    
+    
+    
+    
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_3_5" >
+        
+          
+          <label class="md-nav__link" for="__nav_3_5" id="__nav_3_5_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Compiler
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_3_5_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_3_5">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Compiler
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../compiler/COMPILER_ISSUES/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Compiler Issues
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../compiler/COMPILER_ATTRIBUTES/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Compiler Attributes
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../compiler/CPP26_CODING_STANDARDS/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    C++26 Coding Standards
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../compiler/CODE_QUALITY/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Code Quality
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_4" >
+        
+          
+          <label class="md-nav__link" for="__nav_4" id="__nav_4_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Archive
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_4_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_4">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Archive
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../archive/SELECT_OPTIMIZATION_REPORT/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    SELECT Optimization Report
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../archive/SELECT_PERFORMANCE_ANALYSIS/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    SELECT Performance Analysis
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../archive/UPDATE_OPTIMIZATION_REPORT/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    UPDATE Optimization Report
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+  </ul>
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+            
+              
+              <div class="md-sidebar md-sidebar--secondary" data-md-component="sidebar" data-md-type="toc" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#test-framework" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Test Framework
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#test-categories" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Test Categories
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Test Categories">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#unit-tests" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Unit Tests
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#performance-benchmarks" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Performance Benchmarks
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#running-tests" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Running Tests
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#local-test-suite-speed" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Local Test Suite Speed
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#postgresql-test-isolation" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        PostgreSQL Test Isolation
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#test-structure" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Test Structure
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#test-coverage-goals" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Test Coverage Goals
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#current-test-statistics" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Current Test Statistics
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#yaml-driven-cases-and-expected_sql-818" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        YAML-driven cases and expected_sql (#818)
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#how-a-yaml-case-reaches-the-query-api-834" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        How a YAML case reaches the query API (#834)
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="How a YAML case reaches the query API (#834)">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#runner-structure-837" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Runner structure (#837)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#typed-values-and-one-null-spelling-844" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Typed values and one null spelling (#844)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#one-spec-parser-845" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        One spec parser (#845)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#spec-limits-are-compile-errors-843" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Spec limits are compile errors (#843)
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#writing-new-tests" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Writing New Tests
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#test-maintenance" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Test Maintenance
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+          
+          
+            <div class="md-content" data-md-component="content">
+              
+              <article class="md-content__inner md-typeset">
+                
+                  
+
+
+  
+  
+
+
+<h1 id="testing-strategy">Testing Strategy<a class="headerlink" href="#testing-strategy" title="Permanent link">&para;</a></h1>
+<h2 id="test-framework">Test Framework<a class="headerlink" href="#test-framework" title="Permanent link">&para;</a></h2>
+<ul>
+<li><strong>GoogleTest</strong> with C++26 module support</li>
+<li>Tests located in <code>tests/</code> directory</li>
+<li>In-memory database (<code>:memory:</code>) for fast execution</li>
+<li>Comprehensive sanitizer support (ASAN, TSAN, LSAN)</li>
+</ul>
+<h2 id="test-categories">Test Categories<a class="headerlink" href="#test-categories" title="Permanent link">&para;</a></h2>
+<h3 id="unit-tests">Unit Tests<a class="headerlink" href="#unit-tests" title="Permanent link">&para;</a></h3>
+<p><strong>Location</strong>: <code>tests/&lt;category&gt;/test_*.cpp</code> (category subdirs: crud, query, schema, db, errors, tools, …)</p>
+<p><strong>Coverage</strong>:
+- <strong>ID Validation</strong>: Tests verify returned auto-generated IDs
+- <strong>SELECT Testing</strong>: Empty table, single/multiple rows, field types, large datasets, statement caching, integration tests
+- <strong>JOIN Testing</strong>: Single FK and multi-FK JOINs with full object population verification (<code>tests/schema/test_fk_fields.cpp</code>)
+- <strong>FK Field Testing</strong>: INSERT/UPDATE/DELETE with FK fields, batch operations with FKs
+- <strong>WHERE Clause Testing</strong>: Various conditions, operators, LIKE patterns, IN, BETWEEN
+- <strong>DISTINCT Testing</strong>: Single and multi-field operations with type safety validation</p>
+<h3 id="performance-benchmarks">Performance Benchmarks<a class="headerlink" href="#performance-benchmarks" title="Permanent link">&para;</a></h3>
+<p><strong>Location</strong>: <code>benchmarks/tests/benchmark_tests.yaml</code> (YAML-declared; fixtures in <code>benchmarks/query_benchmark.cppm</code> / <code>benchmarks/crud_benchmark.cppm</code>)</p>
+<p><strong>Coverage</strong>:
+- CRUD operations (INSERT, SELECT, UPDATE, DELETE)
+- JOIN operations (INNER, LEFT, RIGHT)
+- DISTINCT queries
+- Batch operations</p>
+<p>See <a href="https://github.com/spiritEcosse/storm/blob/develop/benchmarks/README.md">benchmarks/README.md</a> for detailed benchmark documentation.</p>
+<h2 id="running-tests">Running Tests<a class="headerlink" href="#running-tests" title="Permanent link">&para;</a></h2>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="c1"># SQLite + PostgreSQL — fast path, run the binary directly (see "Local Test</span>
+<a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a><span class="c1"># Suite Speed" below for why this beats `ctest --preset ninja-debug`).</span>
+<a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a><span class="c1"># The socket is Linux's; macOS (Homebrew PostgreSQL) listens in /tmp: use host=/tmp.</span>
+<a id="__codelineno-0-4" name="__codelineno-0-4" href="#__codelineno-0-4"></a><span class="nv">STORM_PG_CONNSTR</span><span class="o">=</span><span class="s2">"host=/var/run/postgresql dbname=storm_db user=storm_db"</span><span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-0-5" name="__codelineno-0-5" href="#__codelineno-0-5"></a><span class="w">    </span>./build/debug/tests/storm_tests
+<a id="__codelineno-0-6" name="__codelineno-0-6" href="#__codelineno-0-6"></a>
+<a id="__codelineno-0-7" name="__codelineno-0-7" href="#__codelineno-0-7"></a><span class="c1"># Same, via ctest (slower, but gives per-test filtering/listing via -R/-N).</span>
+<a id="__codelineno-0-8" name="__codelineno-0-8" href="#__codelineno-0-8"></a><span class="c1"># The preset pins the Linux socket, so on macOS use the direct-binary command above.</span>
+<a id="__codelineno-0-9" name="__codelineno-0-9" href="#__codelineno-0-9"></a>ctest<span class="w"> </span>--preset<span class="w"> </span>ninja-debug
+<a id="__codelineno-0-10" name="__codelineno-0-10" href="#__codelineno-0-10"></a>
+<a id="__codelineno-0-11" name="__codelineno-0-11" href="#__codelineno-0-11"></a><span class="c1"># SQLite only</span>
+<a id="__codelineno-0-12" name="__codelineno-0-12" href="#__codelineno-0-12"></a>ctest<span class="w"> </span>--preset<span class="w"> </span>ninja-debug-sqlite
+<a id="__codelineno-0-13" name="__codelineno-0-13" href="#__codelineno-0-13"></a>
+<a id="__codelineno-0-14" name="__codelineno-0-14" href="#__codelineno-0-14"></a><span class="c1"># Filter specific test suite</span>
+<a id="__codelineno-0-15" name="__codelineno-0-15" href="#__codelineno-0-15"></a>./build/debug/tests/storm_tests<span class="w"> </span>--gtest_filter<span class="o">=</span><span class="s2">"SelectTest.*"</span>
+<a id="__codelineno-0-16" name="__codelineno-0-16" href="#__codelineno-0-16"></a>
+<a id="__codelineno-0-17" name="__codelineno-0-17" href="#__codelineno-0-17"></a><span class="c1"># Run with verbose output</span>
+<a id="__codelineno-0-18" name="__codelineno-0-18" href="#__codelineno-0-18"></a>./build/debug/tests/storm_tests<span class="w"> </span>--gtest_verbose
+<a id="__codelineno-0-19" name="__codelineno-0-19" href="#__codelineno-0-19"></a>
+<a id="__codelineno-0-20" name="__codelineno-0-20" href="#__codelineno-0-20"></a><span class="c1"># Run with ASAN + UBSAN (memory errors, leaks, undefined behavior)</span>
+<a id="__codelineno-0-21" name="__codelineno-0-21" href="#__codelineno-0-21"></a>cmake<span class="w"> </span>--preset<span class="w"> </span>ninja-asan-ubsan<span class="w"> </span><span class="o">&amp;&amp;</span><span class="w"> </span>cmake<span class="w"> </span>--build<span class="w"> </span>--preset<span class="w"> </span>ninja-asan-ubsan
+<a id="__codelineno-0-22" name="__codelineno-0-22" href="#__codelineno-0-22"></a>ctest<span class="w"> </span>--preset<span class="w"> </span>ninja-asan-ubsan
+<a id="__codelineno-0-23" name="__codelineno-0-23" href="#__codelineno-0-23"></a>
+<a id="__codelineno-0-24" name="__codelineno-0-24" href="#__codelineno-0-24"></a><span class="c1"># Run with TSAN (data races)</span>
+<a id="__codelineno-0-25" name="__codelineno-0-25" href="#__codelineno-0-25"></a>cmake<span class="w"> </span>--preset<span class="w"> </span>ninja-tsan<span class="w"> </span><span class="o">&amp;&amp;</span><span class="w"> </span>cmake<span class="w"> </span>--build<span class="w"> </span>--preset<span class="w"> </span>ninja-tsan
+<a id="__codelineno-0-26" name="__codelineno-0-26" href="#__codelineno-0-26"></a>ctest<span class="w"> </span>--preset<span class="w"> </span>ninja-tsan
+</code></pre></div>
+<p>See <a href="../SANITIZERS/">SANITIZERS.md</a> for full details on sanitizer presets.</p>
+<h2 id="local-test-suite-speed">Local Test Suite Speed<a class="headerlink" href="#local-test-suite-speed" title="Permanent link">&para;</a></h2>
+<p>Measured 2026-08-27 on the full <code>storm_tests</code> binary (2961 tests, SQLite + PostgreSQL):</p>
+<table>
+<thead>
+<tr>
+<th>Approach</th>
+<th style="text-align: right;">Wall time</th>
+<th>Notes</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>./build/debug/tests/storm_tests</code> (direct)</td>
+<td style="text-align: right;">~33s</td>
+<td>gtest's own in-process loop, one process</td>
+</tr>
+<tr>
+<td><code>ctest --preset ninja-debug</code></td>
+<td style="text-align: right;">~260s (7.8x slower)</td>
+<td><code>gtest_discover_tests</code> registers each test case as its own CTest test, so ctest re-launches the whole 129MB binary process per test — that per-process overhead swamps the preset's <code>jobs: 50</code> parallelism (and 50 also oversubscribes an 8-core machine)</td>
+</tr>
+</tbody>
+</table>
+<p><strong>Takeaway</strong>: for local iteration, run the gtest binary directly. <code>commit.sh</code>'s
+test step does this (<code>storm_tests</code>, the only test binary since #787). <code>ctest</code> is still useful locally for <code>-R</code>/<code>-N</code>
+filtering/listing. CI also uses <code>ctest</code> (via <code>ctest --test-dir build/&lt;dir&gt;</code>, with
+its own service-container connstr, not the <code>ninja-debug</code> testPreset), where
+per-test pass/fail visibility in the Actions UI matters more than raw wall time.</p>
+<p><strong>Known divergence</strong>: <code>ctest</code>'s per-test-case registration incidentally gave
+each test its own OS process. Running all ~3000 cases in one process locally
+means <code>thread_local</code>/static state (the per-process PG schema name in
+<code>storm::test::detail::current_test_schema</code>, <code>QuerySet</code>'s default-connection
+thread-local) now persists across tests within a run in a way CI's per-process
+model doesn't reproduce. Nothing is currently known to depend on this, but a
+future test that leaks such state could pass locally and fail in CI (or vice
+versa) with no code change between them — worth knowing if that ever happens.</p>
+<p>Within that ~33s, PostgreSQL-backed tests are ~80% of the time (~30s) vs
+SQLite's ~12% (~4.6s) despite running slightly fewer tests — PG pays a real
+network/socket round-trip per query that SQLite's in-process engine doesn't.
+One lever that helps: on a local dev Postgres used only for this test suite
+(never for real data), setting <code>fsync = off</code> and <code>synchronous_commit = off</code> in
+<code>postgresql.conf</code> cut the PG bucket from ~30.2s to ~25.7s (−15%) and the full
+run from ~38s to ~33s wall (−12%) — see
+<a href="../../performance/PERFORMANCE/#local-test-postgresql-tuning">PERFORMANCE.md</a>
+for the exact config and the durability caveat.</p>
+<h2 id="postgresql-test-isolation">PostgreSQL Test Isolation<a class="headerlink" href="#postgresql-test-isolation" title="Permanent link">&para;</a></h2>
+<p>PG tests use <strong>per-process schema isolation</strong> (<code>test_&lt;pid&gt;</code>). Each CTest process gets its own PG schema via <code>SET search_path</code>, giving complete isolation with zero lock contention. Fully parallel, no TRUNCATE, no transactions, no deadlocks.</p>
+<ul>
+<li><code>ensure_table()</code> creates the schema on first call per process</li>
+<li><code>rollback_test_txn()</code> drops the schema in TearDown (<code>DROP SCHEMA ... CASCADE</code>)</li>
+<li><code>begin_test_txn()</code> is a no-op for PG (schema provides isolation)</li>
+<li><code>backend_available&lt;ConnType&gt;()</code> returns bool; call <code>GTEST_SKIP()</code> directly in <code>SetUp()</code> (not in a helper — <code>GTEST_SKIP()</code> contains <code>return</code> that only exits the calling function)</li>
+</ul>
+<p>Key constraints discovered:
+- <strong>ORM batch operations</strong> (chunked erase/update) issue their own <code>BEGIN</code>/<code>COMMIT</code> — incompatible with outer test transactions
+- <strong>TRUNCATE</strong> takes <code>ACCESS EXCLUSIVE</code> lock — deadlocks with concurrent <code>INSERT</code> + <code>ALTER TABLE</code>
+- <strong>Per-process schemas</strong> solve both problems: each process has its own namespace
+- <strong>Rejected <code>STORM_REUSE_DB</code></strong> (TRUNCATE instead of DROP/CREATE schema) — CTest spawns a fresh process per test binary, so no cross-process schema reuse; TRUNCATE per-table was actually slower than one-time DROP+CREATE</p>
+<h2 id="test-structure">Test Structure<a class="headerlink" href="#test-structure" title="Permanent link">&para;</a></h2>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a><span class="cp">#include</span><span class="w"> </span><span class="cpf">&lt;gtest/gtest.h&gt;</span>
+<a id="__codelineno-1-2" name="__codelineno-1-2" href="#__codelineno-1-2"></a><span class="k">import</span><span class="w"> </span><span class="n">storm</span><span class="p">;</span>
+<a id="__codelineno-1-3" name="__codelineno-1-3" href="#__codelineno-1-3"></a>
+<a id="__codelineno-1-4" name="__codelineno-1-4" href="#__codelineno-1-4"></a><span class="n">TEST</span><span class="p">(</span><span class="n">YourTestSuite</span><span class="p">,</span><span class="w"> </span><span class="n">YourTestCase</span><span class="p">)</span><span class="w"> </span><span class="p">{</span>
+<a id="__codelineno-1-5" name="__codelineno-1-5" href="#__codelineno-1-5"></a><span class="w">    </span><span class="c1">// Setup: Create connection and table</span>
+<a id="__codelineno-1-6" name="__codelineno-1-6" href="#__codelineno-1-6"></a><span class="w">    </span><span class="k">auto</span><span class="w"> </span><span class="n">conn</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">storm</span><span class="o">::</span><span class="n">db</span><span class="o">::</span><span class="n">sqlite</span><span class="o">::</span><span class="n">Connection</span><span class="o">::</span><span class="n">create</span><span class="p">(</span><span class="s">":memory:"</span><span class="p">);</span>
+<a id="__codelineno-1-7" name="__codelineno-1-7" href="#__codelineno-1-7"></a><span class="w">    </span><span class="n">conn</span><span class="o">-&gt;</span><span class="n">execute</span><span class="p">(</span><span class="s">"CREATE TABLE ..."</span><span class="p">);</span>
+<a id="__codelineno-1-8" name="__codelineno-1-8" href="#__codelineno-1-8"></a>
+<a id="__codelineno-1-9" name="__codelineno-1-9" href="#__codelineno-1-9"></a><span class="w">    </span><span class="c1">// Execute: Perform operation</span>
+<a id="__codelineno-1-10" name="__codelineno-1-10" href="#__codelineno-1-10"></a><span class="w">    </span><span class="n">QuerySet</span><span class="o">&lt;</span><span class="n">YourModel</span><span class="o">&gt;</span><span class="w"> </span><span class="n">qs</span><span class="p">(</span><span class="n">conn</span><span class="p">);</span>
+<a id="__codelineno-1-11" name="__codelineno-1-11" href="#__codelineno-1-11"></a><span class="w">    </span><span class="k">auto</span><span class="w"> </span><span class="n">result</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">qs</span><span class="p">.</span><span class="n">insert</span><span class="p">(...).</span><span class="n">execute</span><span class="p">();</span>
+<a id="__codelineno-1-12" name="__codelineno-1-12" href="#__codelineno-1-12"></a>
+<a id="__codelineno-1-13" name="__codelineno-1-13" href="#__codelineno-1-13"></a><span class="w">    </span><span class="c1">// Verify: Check results</span>
+<a id="__codelineno-1-14" name="__codelineno-1-14" href="#__codelineno-1-14"></a><span class="w">    </span><span class="n">ASSERT_TRUE</span><span class="p">(</span><span class="n">result</span><span class="p">.</span><span class="n">has_value</span><span class="p">());</span>
+<a id="__codelineno-1-15" name="__codelineno-1-15" href="#__codelineno-1-15"></a><span class="w">    </span><span class="n">EXPECT_EQ</span><span class="p">(</span><span class="n">result</span><span class="p">.</span><span class="n">value</span><span class="p">(),</span><span class="w"> </span><span class="n">expected_id</span><span class="p">);</span>
+<a id="__codelineno-1-16" name="__codelineno-1-16" href="#__codelineno-1-16"></a><span class="p">}</span>
+</code></pre></div>
+<h2 id="test-coverage-goals">Test Coverage Goals<a class="headerlink" href="#test-coverage-goals" title="Permanent link">&para;</a></h2>
+<ul>
+<li>✅ All public APIs</li>
+<li>✅ Edge cases (empty tables, null values, large datasets)</li>
+<li>✅ Error conditions (invalid operations, constraint violations)</li>
+<li>✅ Performance regression prevention</li>
+<li>✅ Thread safety (where applicable)</li>
+</ul>
+<h2 id="current-test-statistics">Current Test Statistics<a class="headerlink" href="#current-test-statistics" title="Permanent link">&para;</a></h2>
+<p>Per-category counts go stale fast as the suite grows, so this tracks only the
+total, measured alongside <a href="#local-test-suite-speed">Local Test Suite Speed</a>:</p>
+<ul>
+<li><strong>2,961 tests</strong> across 373 test suites in <code>storm_tests</code> (SQLite + PostgreSQL,
+  TYPED_TEST'd, incl. the SQLite and PostgreSQL error paths on the fake API policies,
+  #784/#787) — 100% passing</li>
+<li>~33s wall time running the binaries directly (measured 2026-08-27)</li>
+</ul>
+<h2 id="yaml-driven-cases-and-expected_sql-818">YAML-driven cases and <code>expected_sql</code> (#818)<a class="headerlink" href="#yaml-driven-cases-and-expected_sql-818" title="Permanent link">&para;</a></h2>
+<p>The corpus is the topic files <code>tests/test_cases/*.yaml</code> (<code>select</code>, <code>where</code>, <code>order_limit</code>, <code>aggregates</code>,
+<code>group_by</code>, <code>chain</code>, <code>distinct</code>, <code>writes</code>, <code>typed_values</code>, <code>join</code>, <code>models</code>; #846, #869, #872). They are authoring groups only: a case spans
+several topics and a topic spans several runners, so a case in the "wrong" file is not an error, and a new
+topic file is picked up by a CMake glob with no edit. <code>scripts/split_unified_cases.py</code> reads all of them, buckets
+every case by <code>query_type</code> into one JSON per category (<code>select</code> / <code>grouped</code> / <code>aggregate</code> / <code>crud</code>, the compile
+slices -- unchanged; plus <code>join</code>, #869: every case on <code>dataset: relations</code>, whatever its <code>query_type</code>, so only
+<code>test_unified_yaml_join.cpp</code> creates the relation tables and instantiates statements on those models — which SQL
+such a case may pin is still decided by its runner group; and <code>models</code>, #872: the same for <code>dataset: keys</code>, owned by
+<code>test_unified_yaml_models.cpp</code>), and rejects an unknown <code>query_type</code> or a case name repeated anywhere in the corpus. It
+rewrites only a JSON whose bytes changed, so editing one case recompiles one slice. The JSONs are
+<code>#embed</code>ded into <code>tests/yaml/test_unified_yaml_*.cpp</code> and run on SQLite and PostgreSQL. A case
+checks <strong>results</strong> (<code>expected:</code>). SQL text is pinned separately in C++ (<code>test_sql_verify.cpp</code>,
+<code>test_fields_sql_parity.cpp</code>).</p>
+<p><strong>No two cases may run the same input (<code>scripts/ci/check_yaml_duplicates.py</code>).</strong> Because the corpus is split
+by topic, the same query is easy to add twice under two names in two files; <code>commit.sh</code> and CI's <code>script-guards</code>
+reject it, naming both as <code>&lt;file&gt;:&lt;case&gt;</code>. A case's <em>input</em> is the case minus <code>name</code>, <code>description</code>, the result
+keys <code>expected*</code> and <code>allow_duplicate</code> (a pinned <code>expected_sql*</code> stays in: the text it pins depends on how the
+query was written), normalised before hashing, so there is no spelling rule to follow when writing a case: key
+order, the order of <code>where</code> conditions, and <code>where</code> vs <code>where_expr</code> (flattened to one AND/OR tree; nested
+same-operator nodes merged; <code>IN</code> lists sorted, <code>BETWEEN</code> bounds not) all hash alike. Typed values stay distinct
+(<code>value_int: 30</code> is not <code>value_dbl: 30.0</code>). Not caught: filters that are equal only by logic (<code>a &gt; 5</code> vs
+<code>NOT (a &lt;= 5)</code>) and cases whose input differs only by a defaulted key written out. A case that pins
+<code>expected_sql*</code> is compared by that text too, so reordering its conditions makes it a different test. Before adding a case, run
+<code>python3 scripts/ci/check_yaml_duplicates.py</code>. A deliberate repeat (same query, different intent) carries
+<code>allow_duplicate: &lt;reason&gt;</code> and is left out of the comparison; an empty reason is an error.</p>
+<p>A case may also carry an optional <code>expected_sql:</code> — the exact <code>sql()</code> text, compared <strong>before</strong> the
+statement executes. A case without it stays result-only. It is read by <code>AggregateRunner</code> (all 56 scalar-aggregate
+cases), by <code>SelectRunner</code> on <code>query_type: select</code> (#844), by <code>ValuesRunner</code> on <code>values</code> (#867) and by
+<code>SetOpRunner</code> on <code>setop</code> (#870); <code>first</code> /
+<code>one</code> / <code>rows</code> and the other runners reject it (a compile error and a <code>split_unified_cases.py</code> error), since they
+would pass without comparing SQL. Chain and group cases share <code>AggregateRunner</code> but the split script still rejects
+the key outside <code>aggregate</code> and <code>select</code>.</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a><span class="p p-Indicator">-</span><span class="w"> </span><span class="nt">name</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">count_where_age_gte_35</span>
+<a id="__codelineno-2-2" name="__codelineno-2-2" href="#__codelineno-2-2"></a><span class="w">  </span><span class="nt">query_type</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">count</span>
+<a id="__codelineno-2-3" name="__codelineno-2-3" href="#__codelineno-2-3"></a><span class="w">  </span><span class="nt">where</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">{</span><span class="nt">conditions</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">[{</span><span class="nt">field</span><span class="p">:</span><span class="w"> </span><span class="nv">age</span><span class="p p-Indicator">,</span><span class="nt"> op</span><span class="p">:</span><span class="w"> </span><span class="s">'&gt;='</span><span class="p p-Indicator">,</span><span class="nt"> values</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">[</span><span class="nv">35</span><span class="p p-Indicator">]}]}</span>
+<a id="__codelineno-2-4" name="__codelineno-2-4" href="#__codelineno-2-4"></a><span class="w">  </span><span class="nt">expected_sql</span><span class="p">:</span><span class="w"> </span><span class="s">'SELECT</span><span class="nv"> </span><span class="s">COUNT(*)</span><span class="nv"> </span><span class="s">FROM</span><span class="nv"> </span><span class="s">"person"</span><span class="nv"> </span><span class="s">WHERE</span><span class="nv"> </span><span class="s">"age"</span><span class="nv"> </span><span class="s">&gt;=</span><span class="nv"> </span><span class="s">?'</span>
+<a id="__codelineno-2-5" name="__codelineno-2-5" href="#__codelineno-2-5"></a><span class="w">  </span><span class="nt">expected</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">{</span><span class="nt">int_val</span><span class="p">:</span><span class="w"> </span><span class="nv">11</span><span class="p p-Indicator">}</span>
+</code></pre></div>
+<ul>
+<li><code>sql()</code> is backend-independent for most statements (placeholders stay <code>?</code>), so one string covers both
+  backends. Where the text differs (<code>NULLS FIRST/LAST</code> after ORDER BY, <code>LIMIT ALL</code> vs <code>LIMIT -1</code> for an
+  OFFSET without a LIMIT) a case gives <strong>both</strong> <code>expected_sql_sqlite</code> and <code>expected_sql_pg</code> (#844):</li>
+</ul>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a><span class="p p-Indicator">-</span><span class="w"> </span><span class="nt">name</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">dialect_sql_order_by_asc_nulls_first</span>
+<a id="__codelineno-3-2" name="__codelineno-3-2" href="#__codelineno-3-2"></a><span class="w">  </span><span class="nt">model</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">simple</span>
+<a id="__codelineno-3-3" name="__codelineno-3-3" href="#__codelineno-3-3"></a><span class="w">  </span><span class="nt">query_type</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">select</span>
+<a id="__codelineno-3-4" name="__codelineno-3-4" href="#__codelineno-3-4"></a><span class="w">  </span><span class="nt">dataset</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">empty</span>
+<a id="__codelineno-3-5" name="__codelineno-3-5" href="#__codelineno-3-5"></a><span class="w">  </span><span class="nt">order_by</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">[{</span><span class="nt">field</span><span class="p">:</span><span class="w"> </span><span class="nv">name</span><span class="p p-Indicator">,</span><span class="nt"> direction</span><span class="p">:</span><span class="w"> </span><span class="nv">ASC</span><span class="p p-Indicator">}]</span>
+<a id="__codelineno-3-6" name="__codelineno-3-6" href="#__codelineno-3-6"></a><span class="w">  </span><span class="nt">expected_sql_sqlite</span><span class="p">:</span><span class="w"> </span><span class="s">'SELECT</span><span class="nv"> </span><span class="s">"id",</span><span class="nv"> </span><span class="s">"name",</span><span class="nv"> </span><span class="s">"value"</span><span class="nv"> </span><span class="s">FROM</span><span class="nv"> </span><span class="s">"simplerecord"</span><span class="nv"> </span><span class="s">ORDER</span><span class="nv"> </span><span class="s">BY</span><span class="nv"> </span><span class="s">"name"</span><span class="nv"> </span><span class="s">ASC'</span>
+<a id="__codelineno-3-7" name="__codelineno-3-7" href="#__codelineno-3-7"></a><span class="w">  </span><span class="nt">expected_sql_pg</span><span class="p">:</span><span class="w"> </span><span class="s">'SELECT</span><span class="nv"> </span><span class="s">"id",</span><span class="nv"> </span><span class="s">"name",</span><span class="nv"> </span><span class="s">"value"</span><span class="nv"> </span><span class="s">FROM</span><span class="nv"> </span><span class="s">"simplerecord"</span><span class="nv"> </span><span class="s">ORDER</span><span class="nv"> </span><span class="s">BY</span><span class="nv"> </span><span class="s">"name"</span><span class="nv"> </span><span class="s">ASC</span><span class="nv"> </span><span class="s">NULLS</span><span class="nv"> </span><span class="s">FIRST'</span>
+<a id="__codelineno-3-8" name="__codelineno-3-8" href="#__codelineno-3-8"></a><span class="w">  </span><span class="nt">expected</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">{</span><span class="nt">count</span><span class="p">:</span><span class="w"> </span><span class="nv">0</span><span class="p p-Indicator">}</span>
+</code></pre></div>
+<p>A case sets <code>expected_sql</code>, or both dialect keys, <strong>never both forms, never one dialect alone</strong> (the other
+  backend would run with no SQL check). <code>TestCase::expected_sql_well_formed()</code> / the <code>WellFormedExpectedSql</code>
+  concept reject it at compile time and <code>split_unified_cases.py</code> rejects it earlier; <code>expected_sql_for(pg)</code>
+  picks the text. <code>scripts/ci/tests/test_split_unified_cases.py</code> covers the script's rules.
+- Write the string from the case, not by pasting the code's output — a pinned wrong string passes forever.
+- The capacity is <code>EXPECTED_SQL_CAPACITY</code> (256, raised from 160 for set-op chains in #870) in <code>tests/test_parser.hpp</code>, mirrored in
+  <code>scripts/split_unified_cases.py</code>, which fails the build on a string of 256 or more characters (the C++ parser
+  rejects every over-long case at compile time too, #845; the script keeps its check so the error names the case and the key), on non-printable or non-ASCII text, and on <code>expected_sql</code> in a category whose
+  runner does not read it yet (it would pass without ever comparing SQL). The parser unescapes <code>\"</code> and <code>\\</code>, which is how the quoted identifiers survive the JSON hop.
+- The write runners do not pin SQL: the conditional UPDATE / DELETE proxies have only <code>to_sql()</code>, which
+  inlines the bound values, so a write's SQL text is still pinned by C++ tests. A write case checks its effect
+  on the table instead (#871, below).
+- <strong>Build cost</strong> (Release, warm, aggregate TU, 3 runs each): 25.5–27.3 s before, 26.9–27.0 s after
+  (about +1 s, +4%, at the edge of run-to-run noise); the select TU, which carries no <code>expected_sql</code> but whose
+  <code>TestCase</code> grew by 160 bytes, is unchanged (28.7–29.2 s vs 28.7–29.2 s).</p>
+<h2 id="how-a-yaml-case-reaches-the-query-api-834">How a YAML case reaches the query API (#834)<a class="headerlink" href="#how-a-yaml-case-reaches-the-query-api-834" title="Permanent link">&para;</a></h2>
+<p>The runners (<code>tests/test_select_runner.h</code>, <code>tests/test_unified_yaml_body.h</code>) have no branch per model,
+aggregate or field. Names in the YAML are resolved by reflection at compile time:</p>
+<ul>
+<li><strong><code>model:</code></strong> looks up <code>YAML_MODELS</code> in <code>tests/test_yaml_models.h</code> (<code>person</code>, <code>message</code>, <code>simple</code>, <code>extended</code>; and,
+  since #869, the relation models <code>student</code>, <code>member</code>, <code>pupil</code>, <code>author</code>, <code>reporter</code>, <code>bug</code>), and the
+  type is spliced into whichever runner the <code>query_type</code> picks. To support a new model, add one row there. An
+  unknown name is a compile error (<code>KnownYamlModel</code>). Before #834 a missing branch silently ran nothing:
+  three <code>message</code> cases (<code>select_join_where_*</code>, <code>distinct_join_where_like_o</code>) never executed, and two of
+  them had lost their <code>LIKE</code> patterns unnoticed.</li>
+<li><strong>Aggregates</strong> — <code>query_type</code> (<code>count</code>, <code>sum</code>, <code>avg</code>, <code>min</code>, <code>max</code>, <code>count_distinct</code>; <code>count_field</code> →
+  <code>count</code>), the <code>group_&lt;func&gt;</code> suffix, and each chain <code>func:</code> are the <strong>method names</strong> themselves.
+  <code>member_function_named&lt;Q&gt;(name)</code> finds the member function template, and <code>call_query_method</code> splices it with
+  the step's field pack: none (<code>COUNT(*)</code>, and only <code>count</code> may omit it), one, or several. Both live in
+  <code>shared/query_builder.hpp</code> (#835; since #869 the by-name resolvers live in its part
+  <code>query_builder_resolve.hpp</code> and the typed values in <code>query_builder_values.hpp</code>, both included by it). Since #868 the tests run the builder's own pipeline:
+  <code>AggregateRunner</code> calls <code>QueryBuilder::build_terminal</code>, which builds the chain by recursion over
+  <code>spec.aggregations</code> (<code>apply_aggregations</code>, one step per entry), so the tests and
+  <code>benchmarks/query_benchmark.cppm</code> build an aggregate the same way. <code>ValidAggregate</code> is the allow-list of
+  names a YAML <code>func</code> may reach on every step.</li>
+<li><strong>Aggregate steps (#868).</strong> <code>aggregations:</code> is a list of <code>{func, field | fields, result}</code>, at most 5 steps of
+  at most 3 fields each (<code>BenchmarkTest::MAX_AGGREGATIONS</code>, <code>AggregateSpec::fields</code> = <code>CappedFields&lt;3&gt;</code>); both
+  counts go past their caps, so an over-long list does not compile. <code>aggregate: {func, field}</code> is the one-step
+  shorthand; writing both forms does not compile either. <code>field:</code> is a one-element <code>fields:</code>, an empty <code>field</code>
+  is no field (<code>COUNT(*)</code>) and so is an empty name inside <code>fields:</code> (skipped, so <code>["", a]</code> is <code>[a]</code>), and when
+  both keys are written the later one wins (<code>scripts/ci/check_yaml_duplicates.py</code> reads a step the same way).
+  Several fields are ONE operand, <code>func(a + b)</code> — so <code>SUM</code> of a string field
+  is a compile error (the existing <code>NumericAggregateSelectors</code>, #475), not a coerced sum. A <code>chain</code> case may
+  also <code>group_by</code> (with <code>having</code>, <code>where</code>, <code>order_by</code>, <code>limit</code>): the rows are <code>tuple&lt;key, a1, ..., aN&gt;</code>, and
+  each step's <code>result.groups: [v0, ...]</code> lists its value per group in ascending key order, beside
+  <code>expected.group_keys</code>. The <code>group_agg_*</code> arrays still serve the single-aggregate <code>group_&lt;func&gt;</code> cases.
+  <code>result</code> reads <code>value</code> and <code>groups</code> only (the old <code>type</code> key was never read and is gone from the corpus;
+  any other key is skipped). A key the runner would not read does not compile
+  (<code>TestCase::aggregate_results_well_formed</code>): <code>value</code> on a grouped step, <code>groups</code> on an ungrouped one, or
+  <code>groups</code> without <code>expected.groups_count</code> / <code>group_keys</code> to line up with. <code>QueryBuilder</code> itself rejects a
+  <code>group_by</code> with no aggregation and a step other than <code>count</code> with no field (<code>SpecAggregatesWellFormed</code>, a
+  class constraint, so the shared <code>Buildable&lt;...&gt;</code> asserts in <code>test_spec_limits_aggregates.cpp</code> see it).
+  <strong>Known limits:</strong> a grouped chain has ONE <code>expected.group_agg_null</code> row for all its steps, not one per step;
+  a grouped <code>chain</code> case cannot pin <code>expected_sql</code> (<code>split_unified_cases.py</code> rejects it on chain cases); and the
+  two new benchmarks have no raw-SQLite anchor (unanchored, tracked in #780); and a <code>result:</code> inside the
+  <code>aggregate:</code> shorthand is skipped, not read (that form takes its value from <code>expected</code>).
+  <code>benchmark_tests.yaml</code> (via <code>benchmarks/scripts/yaml_to_json.py</code>, which now rejects a key it does not know
+  instead of dropping it; <code>scripts/ci/tests/test_yaml_to_json.py</code> pins that and converts the real corpus) has one case of each shape: <code>aggregate_avg_two_fields</code> and <code>group_by_chain_count_sum_avg</code>.</li>
+<li><strong>Projections and terminals (#867)</strong> — <code>query_type: values</code> plus <code>values: {fields: [...]}</code> (1..4 fields, like
+  <code>distinct:</code>) runs <code>values&lt;f...&gt;()</code>: one field yields <code>plf::hive&lt;T&gt;</code>, several <code>plf::hive&lt;std::tuple&lt;...&gt;&gt;</code>.
+  <code>expected.rows: [[a, b], ...]</code> lists every result row, one typed cell per field (each cell is checked like an
+  <code>expected.first</code> value, so <code>null</code> and the #844 typed values work); it must agree with <code>count</code>, has at most 8 rows
+  of 4 cells, and more than one row needs an <code>order_by</code> because rows are compared in result order. <code>where</code>,
+  <code>order_by</code>, <code>limit</code> / <code>offset</code> and <code>join</code> compose with it. <code>query_type: rows</code> iterates <code>rows()</code> (every row must
+  be <code>has_value()</code>, <code>count</code> is checked, <code>expected.first</code> is checked on the first row). <code>first</code> / <code>one</code> run on
+  <code>select</code> shapes (where, order, offset, inner / left join); the projection, aggregate, group and set-op
+  statements have no <code>first()</code> / <code>get()</code> in the API, so there is nothing to spell. A case names ONE result shape
+  (set-op, aggregate or group, distinct, values): two would silently run the first one in <code>build_terminal</code>, so
+  <code>BenchmarkTest::within_limits()</code> is false and the case does not compile.</li>
+<li><strong>Set operations (#870)</strong> — <code>query_type: setop</code> plus <code>setop: {operands: [...]}</code> runs a chain of 2..4
+  SELECTs over the case's model (<code>SetOpRunner</code>, in the select slice). The first operand is <code>{where}</code>, each
+  later one <code>{op, where}</code> with <code>op</code> one of <code>union</code> / <code>union_all</code> / <code>except</code> / <code>intersect</code> (the member names
+  <code>union_</code> / <code>union_all</code> / <code>except_</code> / <code>intersect_</code>, resolved by <code>set_op_member</code> + <code>member_function_named</code>;
+  <code>ValidSetOp</code> is the allow-list). An operand without <code>where</code> is the whole table; <code>where</code> is the same tree as
+  the case's own (shorthand, <code>conditions</code> + <code>combine</code>), built by <code>build_where_node</code> and value-checked like it.
+  The operand trees are stored in the case's own <code>where</code> pool (<code>BenchmarkTest::where</code>, left disabled), each
+  operand keeping only its root (<code>SetOpOperandSpec::root</code>), so together they share the WHERE caps of 7 nodes
+  and 10 values and are checked as one forest (<code>WhereSpec::is_forest_well_formed</code>: no node dropped or shared).
+  A first cut stored a <code>WhereSpec</code> per operand; that made every <code>TestCase</code> of the corpus about 8 KB larger and
+  the YAML TUs roughly 1.5–3x slower to compile (up to 12x for the spec-limit TUs), cases with no set
+  operation included. <strong>Build cost of the pool layout</strong> (Debug, warm, min of 3, HEAD and this change
+  interleaved twice on a quiet machine): crud 4.41/4.99 s → 4.36/4.57 s, aggregate 7.97/8.45 s →
+  8.35/9.04 s, grouped 12.93/15.07 s → 13.19/14.20 s, i.e. within run-to-run noise (aggregate perhaps +5%);
+  the select TU, which also gains the 21 set-op cases, 13.0 s → 16.3 s. <code>order_by</code> (up to 2 terms, applied in ONE <code>SetOpBuilder::order_by</code> call: unlike a
+  QuerySet, a SetOpBuilder keeps only its last <code>order_by</code>) and <code>limit</code> / <code>offset</code> apply to the combined
+  result. Each of these is a compile error rather than a silent fallback (the old builder ran INTERSECT for
+  any unknown type): fewer than 2 or more than 4 operands, an <code>op</code> on the first operand, a later operand
+  without one, an unknown <code>op</code>, an unknown key in <code>setop:</code> or an operand (the old <code>type:</code> among them), a
+  top-level <code>where:</code> / <code>join:</code> beside <code>setop:</code> (it would not say which operand it filters), and a chain with
+  an <code>intersect</code> after any other operator. That last rule is about <strong>portability</strong>: Storm emits the
+  compound SELECT without parentheses; SQLite evaluates it left to right, PostgreSQL binds <code>INTERSECT</code>
+  tighter, so <code>A UNION B INTERSECT C</code> returns different rows per backend (pinned by
+  <code>SetOpTest.IntersectAfterUnionFollowsEachBackendsPrecedence</code> in <code>tests/query/test_setop.cpp</code>). An
+  <code>INTERSECT</code>-only prefix (<code>A INTERSECT B INTERSECT C UNION D</code>) reads the same on both. <code>expected_sql</code> is
+  accepted; <code>expected.first</code> over several rows needs an <code>order_by</code> (asserted by the runner).</li>
+<li><strong>Conditional writes and upsert (#871)</strong> — five query types in the crud slice, all on SQLite and
+  PostgreSQL (<code>tests/test_cases/writes.yaml</code>):</li>
+</ul>
+<table>
+<thead>
+<tr>
+<th><code>query_type</code></th>
+<th>Runs</th>
+<th>Needs</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>update_where</code></td>
+<td><code>where(...).update&lt;set: keys...&gt;(prototype)</code></td>
+<td><code>where</code> / <code>where_expr</code>, <code>set</code></td>
+</tr>
+<tr>
+<td><code>update_all</code></td>
+<td><code>update_all&lt;set: keys...&gt;(prototype)</code></td>
+<td><code>set</code>, no where</td>
+</tr>
+<tr>
+<td><code>erase_where</code></td>
+<td><code>where(...).erase()</code></td>
+<td><code>where</code> / <code>where_expr</code>, no <code>set</code></td>
+</tr>
+<tr>
+<td><code>upsert_update</code></td>
+<td><code>insert(prototype).on_conflict&lt;target...&gt;().update&lt;update...&gt;()</code></td>
+<td><code>set</code>, <code>on_conflict: {target, update}</code></td>
+</tr>
+<tr>
+<td><code>upsert_nothing</code></td>
+<td><code>insert(prototype).on_conflict&lt;target...&gt;().nothing()</code></td>
+<td><code>set</code>, <code>on_conflict: {target}</code></td>
+</tr>
+</tbody>
+</table>
+<p><code>set: {member: value, ...}</code> (at most 4) is the SET columns and their values, or the inserted row; it is read
+  like a WHERE operand, in each member's type (typed values, <code>null</code> on an optional member), and an unlisted
+  member keeps its default. <code>ConditionalWriteRunner</code> / <code>UpsertRunner</code> (<code>tests/test_write_runner.h</code>) check
+  the <strong>effect</strong>, not that the write ran: <code>expected.remaining</code> is the rows in the table afterwards, and
+  <code>expected.matching</code> (every type but <code>erase_where</code>) the rows equal to <code>set:</code> on every field it lists, counted
+  through the shared <code>QueryBuilder</code> with a WHERE built from <code>set:</code> (<code>set_match_spec</code>). Before the write the
+  runner asserts that no row equals <code>set:</code> yet, so <code>matching</code> counts exactly the rows the write produced: pick
+  values no seeded row holds. <code>erase_where</code> also checks that no row matches its where afterwards. An upsert's
+  returned id must be the key of the row whose <code>on_conflict.target</code> columns equal their <code>set:</code> values (DO UPDATE
+  may leave the other <code>set:</code> columns as they were), and DO NOTHING must report an id exactly when the row
+  count grew. A model whose key is not DB-generated returns <code>void</code> (#572), so it has no id to check.
+  <strong>Compile errors, not silent skips</strong> (<code>TestCase::write_shape_error()</code>, static_asserted by the fixture body with
+  the broken rule as the message; <code>tests/yaml/test_spec_limits_writes.cpp</code> pins every text): a where on
+  <code>update_all</code> / <code>upsert_*</code> or none on <code>update_where</code> / <code>erase_where</code>; <code>join</code> / <code>order_by</code> / <code>limit</code> (the
+  conditional writes ignore them) or any result shape on a write; a missing <code>expected.remaining</code>, or any other
+  <code>expected.*</code> key on a write (<code>count</code>, <code>first</code>, <code>rows</code>, <code>int_val</code>, <code>dbl_val</code>, <code>unchanged</code>, <code>group_*</code>, an unknown
+  key: none is read); a <code>set:</code> that is not a <code>{member: value}</code> mapping (on any query type); a missing <code>set</code> / <code>expected.matching</code>, or either on <code>erase_where</code>; an
+  <code>on_conflict</code> other than <code>{target: [...] (1..4), update: [...] (1..4, upsert_update only)}</code>, or a target
+  or update column with no <code>set:</code> value (it would conflict on, or write, the member's default); any of these keys
+  on a query type that would not read them; the batch counts on a write. A <code>set:</code> member the model lacks or a
+  value that does not fit it fails <code>SetSpecFits</code>; whether a target can be a conflict target and a column can be
+  set is the library's own <code>ConflictTargetUnique</code> / <code>UpsertSettable</code> / <code>update&lt;&gt;</code> constraints.
+  <strong>Known limits:</strong> a blob or duration cannot be in <code>set:</code> (no WHERE comparison to count the rows with, #863);
+  a value no seeded row holds must exist for the before-check; no case expects an error (an upsert that
+  violates a unique constraint other than its target, <code>update_where</code> without a where), these stay C++ tests;
+  <code>typed_value_as</code> moved from a <code>QueryBuilder</code> member to a free function in <code>query_builder_values.hpp</code> so the
+  runners can build the prototype. The benchmarks do not run these writes through the spec yet. Compile
+  time of the change was not measured.
+- <strong><code>expected.first:</code></strong> keys are row <strong>member names</strong>. Each is compared according to the member's C++ type
+  (string, bool, floating with a 0.01 tolerance, integer, and the typed values of #844 below). A key with no
+  matching member, or a value that does not fit the member (<code>ExpectedValueFits</code>), is a compile error. Before
+  #834 such a key was skipped.
+- Results are checked according to the C++ result type: <code>std::optional&lt;double&gt;</code> (MIN/MAX/AVG, #416) against
+  <code>dbl_val</code> / <code>result.value</code>, integers exactly. Per-group values (<code>group_keys</code>, <code>group_agg_*</code>) are now checked
+  for <code>having</code> cases too. They used to be ignored there.
+- <strong>WHERE/HAVING operators</strong> (#835) are resolved by name in <code>shared/query_builder.hpp</code>, with no branch per
+  operator and one resolver for the benchmark, the <code>QueryBuilder</code> and <code>QueryBuilder::build_where_node</code>
+  (<code>build_compare_expr&lt;field, op&gt;(values...)</code>). A symbolic operator (<code>&gt; &gt;= &lt; &lt;= == !=</code>) is the C++ operator's
+  own symbol (<code>operator_of</code> / <code>symbol_of</code>); a word operator is the member name with the case lowered and spaces
+  turned into <code>_</code> (<code>LIKE</code> → <code>like</code>, <code>IS NOT NULL</code> → <code>is_not_null</code>). A name can carry several templates
+  (<code>where::Field</code> has a real <code>operator==</code> and a <code>= delete</code>d composite-FK twin), and the reflection of a template
+  does not report it deleted, so candidates are judged by their specialization for the value types:
+  unsatisfied constraints and deleted ones are skipped, and exactly one must remain. The argument <em>shape</em>
+  (one string / two values / a pack / none) stays explicit in <code>build_where_leaf</code>, because that is behaviour.
+- <strong>Value counts</strong> are checked at compile time per operator, in <code>build_compare_expr</code> so every caller is covered (<code>ValidValueCount</code>): a comparison and <code>LIKE</code> take one
+  value, <code>BETWEEN</code> two, <code>IN</code> any number (an empty list is valid and matches no row, <code>1 = 0</code>), <code>IS [NOT] NULL</code> none. <code>values: []</code> on a <code>LIKE</code> used to read
+  <code>values[0]</code> and compile to <code>LIKE ''</code>. In the WHERE tree the leaves share one value pool, so the count a leaf CARRIES is
+  checked too (<code>WhereNode::operands_match_op</code>, via the <code>SpecWellFormed</code> constraint on <code>QueryBuilder</code>): a leaf short of
+  values would otherwise read the next leaf's operand, and extra values would be dropped silently (#843).
+- <strong><code>ILIKE</code></strong> (#814) resolves to <code>Field::ilike</code> like <code>LIKE</code> does: one string value. A WHERE leaf may carry <code>collate:</code>
+  (<code>NOCASE</code> / <code>BINARY</code> / <code>RTRIM</code>, built as <code>field.collate(...)</code>); it is not allowed on <code>LIKE</code> / <code>ILIKE</code> (<code>CollateApplies</code>,
+  SQLite's LIKE ignores collations) nor on an AND/OR node. (SQLite documents LIKE only as ASCII case-insensitive and controlled by <code>case_sensitive_like</code>; that a collation does not change it was checked with <code>sqlite3</code>, not taken from its docs. <code>CollatedField</code> has no <code>ilike</code>.) A collation exists on SQLite only, so a case using one
+  (WHERE leaf or <code>order_by[].collate</code>) must say <code>backends: [sqlite]</code>: that is the only accepted list, anything else is
+  a compile error, and the case is not registered for PostgreSQL at all (absent from that suite, not a pass).
+  A <code>where_expr:</code> leaf takes <code>values: [...]</code> like the flat form, so <code>BETWEEN</code> / <code>IN</code> / <code>LIKE</code> work inside the tree.
+- <strong><code>order_by[].collate</code></strong> is an enumerator name of <code>Collate</code> (other than <code>None</code>) matched case-insensitively (<code>NOCASE</code> → <code>NoCase</code>);
+  an unknown name is a compile error (<code>ValidCollate</code>) instead of falling back to <code>NoCase</code>.
+- <strong><code>distinct.fields</code></strong> takes any number of fields through one path (<code>QueryBuilder::build_distinct_stmt</code>); a
+  third entry used to be ignored (<code>distinct_dept_age_name_three_fields</code>).
+- Still explicit: the set-operation keyword (<code>union</code> → <code>union_</code>, <code>set_op_member</code>), the JOIN type, <code>typed_value_as</code>, <code>apply_limit</code>
+  and the terminal choice. Their branches differ in behaviour, not only in a name.</p>
+<h3 id="runner-structure-837">Runner structure (#837)<a class="headerlink" href="#runner-structure-837" title="Permanent link">&para;</a></h3>
+<ul>
+<li><strong>No base class.</strong> Every runner (<code>SelectRunner</code>, <code>ValuesRunner</code>, <code>SetOpRunner</code>, <code>AggregateRunner</code>, <code>DistinctRunner</code>,
+  <code>InsertRunner</code>, <code>UpdateRunner</code>, <code>EraseRunner</code>, <code>ConditionalWriteRunner</code>, <code>UpsertRunner</code>) is a stateless class with a
+  <code>static run&lt;Tc&gt;()</code>. The two helpers the old <code>QueryRunnerBase</code> mixed are free functions:
+  <code>base_query&lt;Tc, Model, Conn&gt;()</code> (the case's filtered/joined <code>QuerySet</code>) and
+  <code>seed_records&lt;Tc, Model, Conn&gt;()</code> (insert the dataset). The query is a local, not runner state.</li>
+<li><strong>One WHERE tree (#843).</strong> Every WHERE form fills one <code>WhereSpec</code> tree of <code>WhereNode</code>s
+  (<code>benchmarks/schema.cppm</code>): <code>where:</code> is its leaves joined left to right by <code>combine</code> (AND when absent), and the
+  test-only <code>where_expr:</code> is written as the tree itself (nodes numbered in pre-order from the root). <code>QueryBuilder</code>
+  builds the tree (<code>build_where_node</code>), and every leaf goes through the shared <code>build_compare_expr</code> resolver, so an
+  unknown or ill-typed operator is a compile error. The operands of all leaves live in one pool
+  (<code>WhereSpec::values</code>), typed by the key that wrote them: <code>value_dbl: 0.0</code> is a double, not the int 0. A leaf also takes the general
+  <code>value:</code> key, read by the same <code>parse_typed_value</code> as <code>where:</code> (so <code>null</code>, int64, strings, UUIDs and dates work in
+  the tree too, #853). A case that
+  writes both <code>where:</code> and <code>where_expr:</code> does not compile (two trees cannot share one set of nodes).</li>
+<li><strong>FK by member name.</strong> <code>QueryBuilder</code>'s <code>fk_resolver</code> defaults to <code>member_name_resolver&lt;Model&gt;</code>, so a
+  <code>join.fk:</code> is a member name on the model. The benchmark still passes its own (<code>registry::resolve_fk_field</code>).
+  The test runners pass <code>yaml_join_resolver&lt;Model&gt;</code> (<code>tests/test_yaml_models.h</code>, #869), which also reads
+  <code>&lt;yaml model&gt;.&lt;member&gt;</code> as a cross-model FK selector.</li>
+<li><strong>JOIN over relations (#869).</strong> <code>tests/test_cases/join.yaml</code>, dataset <code>relations</code>: the models of
+  <code>tests/test_relation_models.h</code> (BStudent auto m2m — the m2m benchmark's own model from <code>benchmarks/m2m_models.hpp</code> —, BMember two auto m2m, BPupil m2m through BEnrollment, BAuthor
+  reverse_fk of BPost, BBug two FKs to BReporter), created by <code>relations::create_tables</code> and seeded by
+  <code>relations::seed</code> (<code>tests/test_relations_dataset.h</code>; rows looked up by name, since a PostgreSQL IDENTITY does not
+  restart; auto-junction rows are raw INSERTs, Storm has no write API for them). Spellings: <code>join.fk: courses</code>
+  (an FK, m2m or reverse_fk member of the case's model), <code>join.fks: [courses, clubs]</code> (several of ONE kind in one
+  <code>join&lt;&gt;</code> call — <code>JoinableFields</code> rejects a mix or a duplicate), <code>join.fk: bug.author</code> (cross-model FK selector,
+  valid on aggregate / filter chains). In <code>expected.first</code> an m2m / reverse_fk member is checked by its <strong>size</strong>
+  (a non-negative int; <code>RelationSizeExpected</code>). Every case runs on SQLite and PostgreSQL; select, <code>first</code>, <code>one</code>,
+  <code>rows</code>, aggregates (which count (base, related) pairs, cartesian tuples for several relations), <code>group_*</code> and
+  <code>distinct</code> all compose with a relation join.
+  <strong>Compile errors, not silent fallbacks:</strong> <code>join.type</code> other than <code>inner</code> / <code>left</code> (it used to build an inner
+  join), <code>fk</code> and <code>fks</code> together or neither (one used to be dropped; a one-entry <code>fks</code> used to be ignored for an
+  empty <code>fk</code>) — <code>JoinSpec::is_well_formed</code>, in <code>SpecWellFormed</code>; a member name the resolver cannot find
+  (<code>QueryBuilder::join_member</code>'s <code>static_assert</code>); a relation model without <code>dataset: relations</code>
+  (<code>YamlModelDatasetMatches</code>). <code>tests/yaml/test_spec_limits_join.cpp</code> pins these.
+  <strong>Known limits:</strong> relation contents are checked by size only, not element by element; <code>join.related</code> is
+  parsed but not read by anything (informational); and no <code>benchmark_tests.yaml</code> case runs an m2m / reverse_fk
+  join yet (the m2m benchmark stays hand-written in <code>benchmarks/register.cpp</code>).
+  <strong>Build cost</strong> (Debug, warm, single TU, min of 3 runs before / 4 after, machine under outside load so read
+  ±1 s as noise): the existing slices are unchanged — select 15.3 → 13.6 s, grouped 13.9 → 13.5 s, aggregate
+  9.0 → 9.5 s, crud 4.4 → 4.8 s; the new join slice (28 cases) is 10.8 s and runs in parallel with them.
+  Release <code>register.cpp</code> (where the benchmark instantiates <code>QueryBuilder</code>) 15.9 → 15.7 s.
+  <strong>Inputs of the join slice beyond <code>tests/</code>:</strong> <code>benchmarks/m2m_models.hpp</code> (BStudent / BCourse) and
+  <code>shared/query_builder*.hpp</code>. <code>commit.sh</code>'s local smart-skip does not count those as test inputs, so an edit
+  that touches only them skips the local test run; CI still runs the suite.</li>
+<li><strong>Models &amp; key shapes (#872).</strong> <code>tests/test_cases/models.yaml</code>, dataset <code>keys</code>: one model per key shape a
+  query or a write treats differently — <code>UuidPkModel</code> (<code>storm::UUID</code> key) and <code>TimestampedRecord</code>
+  (<code>auto_create</code> / <code>auto_update</code>) from <code>shared/models/</code>, plus the test-only models of <code>tests/test_key_models.h</code>
+  (<code>KStock</code> composite key int + text, <code>KShipment</code> composite FK to it, <code>KUuidRef</code> FK to the UUID key, <code>KTicket</code>
+  <code>primary_assigned</code> key; test-only so <code>storm_bench</code> is untouched). Tables and rows come from <code>keys::create_tables</code>
+  / <code>keys::seed</code> (<code>tests/test_keys_dataset.h</code>, which also specialises <code>make_record</code> / <code>make_updated_record</code> /
+  <code>is_original_record</code> for the write cases, with keys that never collide with the seeded ones). YAML names:
+  <code>uuid_pk</code>, <code>uuid_ref</code>, <code>timestamped</code>, <code>stock</code>, <code>shipment</code>, <code>ticket</code>; plus <code>course</code> (the m2m benchmark's related
+  model, on dataset <code>relations</code>). The other field types (<code>ExtendedTypes</code>, <code>Color</code>) are covered by <code>typed_values.yaml</code>
+  (#844). A write case's expected counts include the seeded rows.
+  <strong>Compile errors, not silent fallbacks</strong> (<code>tests/yaml/test_spec_limits_models.cpp</code>): a key-shape model without
+  <code>dataset: keys</code>; a WHERE value not of the key's type (an int or an upper-case text on the UUID key, a string on an
+  int key part, a date alone on a <code>time_point</code>); an <code>expected.first</code> value on an FK member (a whole related row); a
+  write case on <code>KShipment</code> / <code>KUuidRef</code> (no <code>make_record</code>: their records need an FK target row).
+  <strong>Fixed on the way:</strong> <code>QueryBuilder::apply_order_by</code> applied each <code>order_by:</code> term in its own <code>order_by&lt;&gt;()</code>
+  call, and <code>QuerySet::order_by()</code> replaces the clause, so a multi-term <code>order_by:</code> silently sorted by its last
+  term only (also in <code>storm_bench</code>'s <code>ORDER_BY_MULTI</code> cases, which are not in the <code>bench-ratio</code> matrix). The terms
+  are now collected into one call; <code>keys_composite_pk_where_in_order_both_parts</code> pins the two-term SQL.
+  <strong>Build cost:</strong> not measured (skipped on request).</li>
+<li><strong>One value check.</strong> <code>expect_agg_value(actual, expected, expect_null, what)</code> is chosen by result type
+  (<code>std::optional&lt;double&gt;</code> → near / <code>nullopt</code>, floating → near, integer → exact) and used by
+  <code>AggregateRunner</code>; <code>verify_groups</code> checks <code>group_keys</code> and every step's <code>result.groups</code> (or <code>group_agg_*</code> for a
+  single step), sorted by key.</li>
+<li><strong>One aggregate pipeline (#841).</strong> <code>AggregateRunner</code> runs scalar, <code>chain</code> and <code>group_&lt;func&gt;</code> cases as
+  <code>base_query → [group_by + having] → aggregates 1..N → check</code>. The parser (<code>normalise_aggregate_case</code> in
+  <code>test_parser.hpp</code>) rewrites a scalar case (<code>int_val</code> / <code>dbl_val</code>) and a <code>group_&lt;func&gt;</code> case into one
+  aggregation: the func is the query_type's, the fields the <code>aggregate:</code> shorthand's (or none), and
+  <code>results[0].value</code> the int or double value, so the YAML corpus is unchanged. Such a case is exactly ONE
+  aggregation (<code>TestCase::aggregate_shape_well_formed</code>, asserted by <code>AggregateRunner::run</code>): a second step in
+  <code>aggregations:</code> is a <code>chain</code> case, an explicit <code>func</code> must agree with the query_type (<code>count_field</code> accepts
+  <code>count</code> and <code>count_field</code>), and the value comes from <code>expected</code>, not a step's <code>result.value</code> — each of these
+  was silently overwritten or dropped before.
+  The check follows the result shape: a scalar value, a tuple (chain), or the grouped rows.</li>
+<li><strong><code>query_type</code> → runner</strong> is the <code>YAML_RUNNERS</code> table in <code>test_unified_yaml_body.h</code> (<code>{name, is_prefix,
+  ^^Runner}</code>), spliced with <code>template [:runner:]&lt;Model, Conn&gt;::template run&lt;tc&gt;()</code>. A <code>query_type</code> missing from the
+  table fails <code>KnownYamlQueryType</code> at compile time. To add a runner, add its rows there.</li>
+</ul>
+<h3 id="typed-values-and-one-null-spelling-844">Typed values and one null spelling (#844)<a class="headerlink" href="#typed-values-and-one-null-spelling-844" title="Permanent link">&para;</a></h3>
+<p>A YAML value is read in the <strong>type of the field it is compared with</strong> (WHERE operands) or the member it is
+checked against (<code>expected.first</code>). The parser only records what was written, as a <code>TypedValue</code> kind: <code>Null</code>
+(<code>null</code>), <code>Int</code> (fits 32 bits), <code>Int64</code> (wider; the one rule is <code>TypedValue::of_integer</code>), <code>Double</code>, <code>Bool</code>,
+<code>String</code>. A value that does not fit its field is a <strong>compile error, never a coercion</strong> (<code>SpecValuesFit</code> for
+WHERE, <code>ExpectedValueFits</code> for <code>expected.first</code>; both are <code>value_fits&lt;FieldType&gt;</code>, once, in
+<code>shared/query_builder.hpp</code>). <code>typed_value_as</code> itself is constrained by the same predicate (<code>ValueFits</code>, #848),
+so it can never read a member the value did not set (a Double or Bool on an integer or optional field, or a null):</p>
+<table>
+<thead>
+<tr>
+<th>Field type</th>
+<th>Written as</th>
+<th>Rejected</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>nullable (<code>std::optional&lt;T&gt;</code>)</td>
+<td><code>null</code> with <code>==</code> / <code>!=</code> (WHERE) or as the expected value</td>
+<td><code>null</code> on a NOT NULL column; with any other operator; inside <code>IN</code>; <code>IS NULL</code> / <code>IS NOT NULL</code></td>
+</tr>
+<tr>
+<td>integer / floating</td>
+<td>a number (an int64 literal needs a 64-bit field; a fraction needs a floating field; an integer written for a <code>float</code> must be exact in it: <code>16777217</code> is rejected)</td>
+<td>out of range for the field, a string</td>
+</tr>
+<tr>
+<td>bool</td>
+<td><code>true</code> / <code>false</code>, or the integer <code>0</code> / <code>1</code></td>
+<td>any other integer (<code>7</code>), a string</td>
+</tr>
+<tr>
+<td><code>std::chrono::duration</code></td>
+<td>an integer in the range of the duration's <code>rep</code>, <code>Int</code> or <code>Int64</code> alike (<code>expected.first</code> only, see below)</td>
+<td>out of range for the <code>rep</code>, a fraction, a string</td>
+</tr>
+<tr>
+<td><code>storm::UUID</code></td>
+<td><code>'550e8400-e29b-41d4-a716-446655440000'</code> (8-4-4-4-12 <strong>lower-case</strong> hex)</td>
+<td>upper-case hex (<code>storm::UUID</code> keeps its text verbatim: SQLite compares TEXT case-sensitively, PostgreSQL returns lower case), any other string or a number</td>
+</tr>
+<tr>
+<td><code>std::chrono::year_month_day</code></td>
+<td><code>'2024-01-15'</code> (ISO date; the day must exist)</td>
+<td><code>'2023-02-29'</code>, words, a number</td>
+</tr>
+<tr>
+<td><code>std::chrono::system_clock::time_point</code></td>
+<td><code>'2024-01-15T10:30:00'</code> (UTC)</td>
+<td>an out-of-range time, a number</td>
+</tr>
+<tr>
+<td>enum</td>
+<td>the enumerator <strong>name</strong> (<code>Green</code>)</td>
+<td>an unknown name, a number</td>
+</tr>
+<tr>
+<td><code>std::vector&lt;std::byte&gt;</code> / <code>&lt;uint8_t&gt;</code></td>
+<td>hex (<code>'DEADBEEF'</code>, even length)</td>
+<td>odd length, non-hex</td>
+</tr>
+</tbody>
+</table>
+<ul>
+<li><strong><code>null</code> is the one spelling of a null check.</strong> <code>== null</code> / <code>!= null</code> lower to <code>IS NULL</code> / <code>IS NOT NULL</code>, the
+  same rule as <code>== std::nullopt</code> in the C++ API. <code>op: IS NULL</code> / <code>IS NOT NULL</code> are no longer YAML operators (a
+  compile error). The six corpus cases and the two <code>benchmark_tests.yaml</code> cases (<code>where_is_null</code>,
+  <code>where_is_not_null</code>) were migrated; the SQL they produce is unchanged.</li>
+<li><strong>Quote the operator <code>&gt;</code></strong> in YAML (<code>op: '&gt;'</code>): a bare <code>&gt;</code> is a block-scalar indicator and the operator would
+  silently read as empty.</li>
+<li><strong>Dataset <code>extended</code></strong> (<code>model: extended</code> = <code>ExtendedTypes</code>): three rows, <code>alpha</code> / <code>beta</code> / <code>gamma</code>, defined in
+  <code>extended_dataset()</code> in <code>test_unified_yaml_body.h</code> and tabulated in the comment above the <code>typed_*</code> cases in
+  <code>typed_values.yaml</code>. Quote hex and numeric-looking strings (<code>'0102'</code>, or YAML reads an int).</li>
+<li><strong>A blob or a duration is checked in <code>expected.first</code> only</strong> (#853). <code>ExpressionVariant</code> has no <code>ComparisonExpr</code>
+  arm for either, so a WHERE on such a column cannot be built: the constraint rejects it (<code>NoWhereComparison</code>,
+  <code>where_leaf_fits</code>) instead of failing deep inside <code>make_shared</code>. Engine support is tracked in #863.</li>
+<li><strong>A joined WHERE</strong> is not checked against the base model by <code>QueryBuilder</code>'s class constraint (the WHERE may target
+  the related model, whose field of the same name can have another type); <code>apply_where</code>'s per-<code>WhereModel</code>
+  <code>static_assert</code> is the check that knows which model it is.</li>
+<li><strong>Unquoted dates</strong> (<code>2024-01-15</code>) are read by PyYAML as a date, not text: <code>split_unified_cases.py</code> rejects them
+  naming the case and key. <code>0102</code> and a bare time of day (<code>10:30:00</code>) are not detectable after loading (PyYAML reads them as the octal 66 and the base-60 integer 37800), so quote them.</li>
+<li><strong>HAVING is the WHERE tree (#868).</strong> <code>group_by.having</code> is a <code>WhereSpec</code> (<code>HavingSpec</code> is an alias): the same
+  <code>conditions</code> / <code>combine</code> YAML, operators, typed values and limits (7 nodes, 10 values) as <code>where</code>, built by
+  <code>QueryBuilder::with_having</code> through the same <code>build_where_node</code>. GROUP BY takes up to 4 fields (more is a
+  compile error); a case with more than one field pins <code>expected.count</code> only, because <code>group_keys</code> /
+  <code>group_agg_*</code> are per single key. A HAVING condition compares fields, not aggregates (a Storm limit).</li>
+<li>Write values (<code>set:</code>, #871) are read by the same rule; see "Conditional writes and upsert" above.</li>
+<li><strong>Build cost of #868</strong> (Debug, one TU touched and rebuilt alone, 3 runs each, load average 3-8, so read
+  ±1 s): aggregate 11.1–11.2 s → 13.0–13.5 s, grouped 17.8–18.0 s → 20.1–22.0 s. The machinery alone (the
+  same TUs with the corpus at <code>HEAD</code>) is aggregate 11.7–11.9 s and grouped ~18.5 s, so the five
+  multi-field aggregate cases (~0.3 s each) and the four grouped chain cases (~0.4 s each) are most of it. A
+  <code>verify_groups</code> that sorted the rows themselves cost ~2 s on the grouped TU (one <code>std::sort</code> per row
+  type, i.e. per case); it sorts <code>(key, row index)</code> pairs instead, one instantiation for every case.</li>
+<li><strong>Build cost</strong> (Debug, one TU touched and rebuilt alone, 3 runs each, quiet machine, <code>a4a11fc</code> vs #844):
+  select 9.5–9.7 s → 14.2–14.9 s (+51%), aggregate 9.4–9.5 → 10.5–10.6 s (+12%), grouped 13.9–14.4 → 15.2–15.3 s
+  (+8%), crud 6.1–6.4 → 6.9–7.0 s (+11%), measured with the first 22 cases. Where it goes (CPU seconds, select
+  TU): 10.8 s without the new cases, 14.9 s with them, so the cases are almost all of it. A new case costs about
+  what an old one does (~160 ms, #561: every case instantiates its own query type; the lever is #798), the
+  dialect cases ~250 ms each (4 when measured, 3 remain). The check that values fit (<code>SpecValuesFit</code>) is not measurable. Five overlapping
+  cases were dropped afterwards (17 remain). Creating the <code>ExtendedTypes</code> table only in the select TU was tried
+  and reverted: it moved the other three TUs by less than the measurement noise, so the ~1 s they gained is not
+  the fixture (unexplained).</li>
+</ul>
+<h3 id="one-spec-parser-845">One spec parser (#845)<a class="headerlink" href="#one-spec-parser-845" title="Permanent link">&para;</a></h3>
+<p>There is one JSON spec parser, <code>storm_benchmark_parser</code> (<code>benchmarks/parser.cppm</code>). It reads every key a
+<code>BenchmarkTest</code> holds, with each accepted alias listed once: <code>test_name</code> / <code>name</code>, <code>test_category</code> / <code>category</code>,
+<code>init_dataset_size</code> / <code>dataset_size</code>. <code>tests/test_parser.hpp</code> adds only the test-only keys (<code>query_type</code>,
+<code>dataset</code>, <code>expected</code>, <code>expected_sql</code>, <code>expected_sql_sqlite</code>, <code>expected_sql_pg</code>, <code>where_expr</code>,
+<code>insert_count</code> / <code>update_count</code> / <code>erase_count</code>, <code>set</code> / <code>on_conflict</code> (#871), and each aggregation's <code>result</code>) and passes every other key to
+<code>parse_bench_field</code> — <code>aggregations</code> itself is read by the shared <code>parse_aggregations</code>, which hands the test
+parser every step key it does not know (#868), so no key is
+parsed in two places. Add a shared key in <code>parse_bench_field</code> / <code>parse_bench_scalar</code>; a test-only key in
+<code>parse_test_only_field</code>.</p>
+<ul>
+<li><strong>No corpus in the parser header.</strong> <code>test_parser.hpp</code> holds no <code>#embed</code>; the corpus driver
+  (<code>load_unified_tests()</code>) and the <code>STORM_UNIFIED_CASES_FILE</code> <code>#error</code> (#582) live in <code>test_unified_yaml_body.h</code>,
+  which only the five slice TUs include. A parser-only TU (<code>test_spec_limits_test_parser.cpp</code>) includes
+  <code>test_parser.hpp</code> alone.</li>
+<li><strong><code>combine</code> is <code>and</code> or <code>or</code></strong>, exactly and case-sensitively (<code>WhereSpec::combine_of</code>). Any other spelling,
+  <code>OR</code> included, makes the spec ill-formed, so the case does not compile (<code>SpecWellFormed</code>, #847), also when the
+  <code>where:</code> has a single condition. A non-string <code>combine</code> (<code>combine: null</code>, a number) is rejected the same way.
+  <code>yaml_to_json.py</code> and <code>split_unified_cases.py</code> pass the YAML value through unchanged.</li>
+<li><strong>Strings.</strong> A brace or bracket inside a string is text: skipping a <code>{...}</code> / <code>[...]</code> value steps over its
+  strings whole (escapes included), so <code>split_unified_cases.py</code> no longer rejects <code>{ } [ ]</code> in pinned SQL. A
+  string longer than its buffer keeps what fits, is still read to its closing quote, and is counted in
+  <code>BenchmarkTest::truncated_strings</code>, so <code>within_limits()</code> rejects the case like an over-long array. A value that is not a string where a string belongs (<code>"model": 5</code>) is consumed whole and leaves the field
+  empty; a string cut off by the end of the input after a backslash stops at the end of the input.</li>
+<li><strong>Why the raw-pointer primitives.</strong> The parser indexes a <code>const char*</code>, not <code>std::string_view::operator[]</code>:
+  each call is constexpr steps. Measured by bisecting <code>-fconstexpr-steps</code> on a probe TU per corpus (the #582
+  method; clang's default limit is 1,048,576):</li>
+</ul>
+<table>
+<thead>
+<tr>
+<th>Corpus</th>
+<th>string_view parser (before)</th>
+<th>raw-pointer test parser (before)</th>
+<th>one parser (after)</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>grouped slice</td>
+<td>756,670 ¹</td>
+<td>328,364</td>
+<td>343,186</td>
+</tr>
+<tr>
+<td>select slice</td>
+<td>770,488 ¹</td>
+<td>316,287</td>
+<td>329,288</td>
+</tr>
+<tr>
+<td>aggregate slice</td>
+<td>571,967 ¹</td>
+<td>210,589</td>
+<td>216,883</td>
+</tr>
+<tr>
+<td>crud slice</td>
+<td>267,513 ¹</td>
+<td>94,231</td>
+<td>94,718</td>
+</tr>
+<tr>
+<td><code>benchmark_tests.json</code></td>
+<td>863,276</td>
+<td>377,373 ¹</td>
+<td>341,492</td>
+</tr>
+</tbody>
+</table>
+<p>¹ that parser skipped the keys it did not know, so it parsed fewer keys than the "after" column. The test slices
+  cost 0.5–4.5% more than the old test parser: the dispatcher knows the benchmark keys too, a skipped value
+  steps over its strings, and an over-long string is read to its end. The benchmark corpus, which was at 82% of
+  the default limit, is at 33%. No <code>-fconstexpr-steps</code> flag is needed.
+- <strong>Where the steps go</strong> (grouped / crud, bisected one change at a time): <code>jkey_eq</code> is written out in full rather
+  than forwarding to a helper (−4.4% / −4.6%: one call per candidate key is the dispatch's cost, the length is
+  already compared first); <code>parse_str</code> copies in one loop and reads an over-long tail in a second one, so a
+  string that fits pays no per-character overflow test (−3% / −4%); skipping strings inside a skipped value
+  costs 0.4%. Dispatching keys on a <code>switch</code> on their length was tried and dropped: −2% on grouped, +4% on crud
+  and the benchmark corpus.
+- <strong>Every case is checked against the caps.</strong> <code>UnifiedYamlBody</code> static_asserts <code>TestCase::within_limits()</code>, so a
+  case that does not build a <code>QueryBuilder</code> (a write) is rejected too. It is a separate constant evaluation: the
+  real crud TU's step maximum is still the parse (94,718), and its compile time moved within noise.
+  <code>load_benchmark_tests()</code> (<code>benchmarks/benchmark_tests.hpp</code>) static_asserts the same over <code>BENCHMARK_TESTS</code>
+  (<code>all_within_limits</code>), so a benchmark write case is held to the string buffers as well; <code>register.cpp</code>'s
+  Release compile time moved within noise (21.4 s either way).</p>
+<h3 id="spec-limits-are-compile-errors-843">Spec limits are compile errors (#843)<a class="headerlink" href="#spec-limits-are-compile-errors-843" title="Permanent link">&para;</a></h3>
+<p>A few spec arrays are capped (<code>BenchmarkTest::MAX_ORDER_BY</code>, <code>JoinSpec::MAX_FKS</code>, <code>GroupBySpec::MAX_FIELDS</code>,
+<code>DistinctSpec::MAX_FIELDS</code>, <code>WhereSpec::MAX_NODES</code> = 7 and <code>WhereSpec::MAX_VALUES</code> = 10, <code>BenchmarkTest::MAX_AGGREGATIONS</code> = 5 steps of <code>AggregateSpec::fields</code> = 3, #868). A case that lists more entries than the cap <strong>does not compile</strong>; before #843 the parsers
+dropped the extra entries and the case passed while checking less than it said.</p>
+<ul>
+<li><strong>Counting is in the schema.</strong> <code>benchmarks/schema.cppm</code> owns the rule, once, in <code>add_capped</code>: <code>add_order_by</code>,
+  <code>add_fk</code> and <code>add_field</code> count every entry and store only what fits. The parser (<code>benchmarks/parser.cppm</code>)
+  calls them and still reads an over-long array to its end, so the key after it is parsed.
+  An element of the wrong kind (a number in a list of names) is skipped, not counted, and a repeated key replaces
+  the first instead of adding to it.</li>
+<li><strong>The check is one concept.</strong> <code>BenchmarkTest::within_limits()</code> is false when any count passed its cap;
+  <code>storm::orm::query_builder::SpecWithinLimits&lt;spec&gt;</code> is the constraint on <code>QueryBuilder&lt;Model, spec, ...&gt;</code>, so an
+  over-cap case fails at the <code>QueryBuilder</code> use site (<code>BuilderFor</code> in <code>test_select_runner.h</code>).</li>
+<li><strong>To raise a limit</strong>, change the <code>MAX_*</code> constant next to its struct and keep the current corpus maximum plus headroom;
+  every slot costs compile time per case (~190 ms/case, #561).</li>
+<li><strong>Tested once, run through both entry points.</strong> <code>tests/test_spec_limits.h</code> holds the cases;
+  <code>tests/yaml/test_spec_limits_benchmark_parser.cpp</code> (<code>parse_test_object</code>) and <code>test_spec_limits_test_parser.cpp</code>
+  (<code>parse_test_case_into</code>, which forwards every shared key) each pass their entry point to it. There is one parser
+  since #845; the second TU checks that the test-side extension hands every shared key on.</li>
+<li><strong>WHERE.</strong> 7 nodes is 4 conditions (4 leaves + 3 joins); the value pool of 10 is shared by the whole tree. The
+  corpus needs at most 5 nodes and 3 values. A repeated <code>conditions</code> or <code>values</code> key replaces the first; a
+  non-condition element is skipped, and a stray <code>}</code> inside an array is stepped over so the parse ends.
+  <code>TestCase::within_limits()</code> adds each step's <code>result.groups</code> cap (20) to the spec's, which holds the chain
+  caps since #868 (<code>test_spec_limits_aggregates.h</code>, run by both entry points, plus
+  <code>tests/yaml/test_spec_limits_aggregates.cpp</code> for the test-only <code>result</code> and the <code>QueryBuilder</code> rejection). Separately from the caps, <code>SpecWellFormed</code> rejects a
+  tree that cannot be built: a leaf with the wrong number of values for its operator, a join missing a child or
+  carrying a field of its own, an empty tree, or a node the root cannot reach (a subtree that would be dropped).</li>
+</ul>
+<h2 id="writing-new-tests">Writing New Tests<a class="headerlink" href="#writing-new-tests" title="Permanent link">&para;</a></h2>
+<ol>
+<li><strong>Create test file</strong>: <code>tests/&lt;category&gt;/test_&lt;feature&gt;.cpp</code></li>
+<li><strong>Include dependencies</strong>:
+   <div class="highlight"><pre><span></span><code><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a><span class="cp">#include</span><span class="w"> </span><span class="cpf">&lt;gtest/gtest.h&gt;</span>
+<a id="__codelineno-4-2" name="__codelineno-4-2" href="#__codelineno-4-2"></a><span class="k">import</span><span class="w"> </span><span class="n">storm</span><span class="p">;</span>
+</code></pre></div></li>
+<li><strong>Follow AAA pattern</strong>: Arrange, Act, Assert</li>
+<li><strong>Test edge cases</strong>: Empty input, null values, boundary conditions</li>
+<li><strong>Verify error handling</strong>: Check <code>std::expected</code> error cases</li>
+<li><strong>Add performance tests</strong>: If feature impacts performance</li>
+</ol>
+<h2 id="test-maintenance">Test Maintenance<a class="headerlink" href="#test-maintenance" title="Permanent link">&para;</a></h2>
+<ul>
+<li>Run tests before committing: <code>./commit.sh</code> (or <code>./build/debug/tests/storm_tests</code> directly — see <a href="#local-test-suite-speed">Local Test Suite Speed</a>)</li>
+<li>Update tests when changing APIs</li>
+<li>Add regression tests for fixed bugs</li>
+<li>Keep tests fast (use in-memory database)</li>
+<li>Document test intent with clear names</li>
+</ul>
+
+
+
+
+
+
+
+
+
+
+
+
+                
+              </article>
+            </div>
+          
+          
+<script>var target=document.getElementById(location.hash.slice(1));target&&target.name&&(target.checked=target.name.startsWith("__tabbed_"))</script>
+        </div>
+        
+          <button type="button" class="md-top md-icon" data-md-component="top" hidden>
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M13 20h-2V8l-5.5 5.5-1.42-1.42L12 4.16l7.92 7.92-1.42 1.42L13 8z"/></svg>
+  Back to top
+</button>
+        
+      </main>
+      
+        <footer class="md-footer">
+  
+  <div class="md-footer-meta md-typeset">
+    <div class="md-footer-meta__inner md-grid">
+      <div class="md-copyright">
+  
+  
+    Made with
+    <a href="https://squidfunk.github.io/mkdocs-material/" target="_blank" rel="noopener">
+      Material for MkDocs
+    </a>
+  
+</div>
+      
+    </div>
+  </div>
+</footer>
+      
+    </div>
+    <div class="md-dialog" data-md-component="dialog">
+      <div class="md-dialog__inner md-typeset"></div>
+    </div>
+    
+    
+    
+      
+      
+      <script id="__config" type="application/json">{"annotate": null, "base": "../../..", "features": ["navigation.sections", "navigation.expand", "navigation.top", "search.suggest", "search.highlight", "content.code.copy"], "search": "../../../assets/javascripts/workers/search.a7633da7.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
+    
+    
+      <script src="../../../assets/javascripts/bundle.a5f9d56c.min.js"></script>
+      
+    
+  </body>
+</html>
