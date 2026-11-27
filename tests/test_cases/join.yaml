@@ -440,3 +440,16 @@
     fk: courses
   expected:
     count: 2
+
+# --- the related model of the m2m relations, on its own (#872) ------------------------------------
+- name: join_course_related_model_select
+  model: course
+  query_type: select
+  dataset: relations
+  order_by:
+  - field: title
+    direction: ASC
+  expected:
+    count: 3
+    first:
+      title: Chemistry

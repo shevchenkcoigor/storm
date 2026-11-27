@@ -2,7 +2,7 @@
 
 /**
  * @file test_yaml_models.h
- * @brief The YAML `model:` table of the unified corpus, and the JOIN member resolver (#834, #869).
+ * @brief The YAML `model:` table of the unified corpus, and the JOIN member resolver (#834, #869, #872).
  *
  * The YAML names a model and, in `join.fk` / `join.fks`, the members to join on. Both are resolved
  * here, at compile time, by reflection: a model through YAML_MODELS, a member by its identifier on
@@ -26,6 +26,7 @@
 #include "../shared/models/message.h"
 #include "../shared/models/person.h"
 #include "../shared/models/simple_record.h"
+#include "test_key_models.h"      // needs <meta>, <string> (above)
 #include "test_relation_models.h" // needs <meta>, <string>, <vector> (above)
 
 namespace storm::test {
@@ -41,6 +42,8 @@ struct YamlModel {
 
 // The relation models of dataset `relations` (tests/test_relation_models.h).
 inline constexpr std::string_view RELATIONS_DATASET = "relations";
+// The key-shape models of dataset `keys` (tests/test_key_models.h, #872).
+inline constexpr std::string_view KEYS_DATASET = "keys";
 
 inline constexpr std::array YAML_MODELS{
     YamlModel{.name = "person", .type = ^^Person},
@@ -48,11 +51,18 @@ inline constexpr std::array YAML_MODELS{
     YamlModel{.name = "simple", .type = ^^SimpleRecord},
     YamlModel{.name = "extended", .type = ^^ExtendedTypes},
     YamlModel{.name = "student", .type = ^^storm::benchmark::m2m::BStudent, .dataset = RELATIONS_DATASET},
+    YamlModel{.name = "course", .type = ^^storm::benchmark::m2m::BCourse, .dataset = RELATIONS_DATASET},
     YamlModel{.name = "member", .type = ^^storm::test::relation_models::BMember, .dataset = RELATIONS_DATASET},
     YamlModel{.name = "pupil", .type = ^^storm::test::relation_models::BPupil, .dataset = RELATIONS_DATASET},
     YamlModel{.name = "author", .type = ^^storm::test::relation_models::BAuthor, .dataset = RELATIONS_DATASET},
     YamlModel{.name = "reporter", .type = ^^storm::test::relation_models::BReporter, .dataset = RELATIONS_DATASET},
     YamlModel{.name = "bug", .type = ^^storm::test::relation_models::BBug, .dataset = RELATIONS_DATASET},
+    YamlModel{.name = "uuid_pk", .type = ^^UuidPkModel, .dataset = KEYS_DATASET},
+    YamlModel{.name = "uuid_ref", .type = ^^storm::test::key_models::KUuidRef, .dataset = KEYS_DATASET},
+    YamlModel{.name = "timestamped", .type = ^^TimestampedRecord, .dataset = KEYS_DATASET},
+    YamlModel{.name = "stock", .type = ^^storm::test::key_models::KStock, .dataset = KEYS_DATASET},
+    YamlModel{.name = "shipment", .type = ^^storm::test::key_models::KShipment, .dataset = KEYS_DATASET},
+    YamlModel{.name = "ticket", .type = ^^storm::test::key_models::KTicket, .dataset = KEYS_DATASET},
 };
 
 consteval auto yaml_model_index(std::string_view name) -> std::size_t {
@@ -63,7 +73,8 @@ consteval auto yaml_model_index(std::string_view name) -> std::size_t {
 }
 
 // True when YAML model `model` exists and may run on `dataset` (#869): a model tied to one dataset
-// (the relation models, whose tables only dataset `relations` creates) needs that dataset.
+// (the relation models, whose tables only dataset `relations` creates; the key-shape models of
+// dataset `keys`, #872) needs that dataset.
 consteval auto yaml_model_dataset_matches(std::string_view model, std::string_view dataset) -> bool {
     const std::size_t i = yaml_model_index(model);
     return i < YAML_MODELS.size() && (YAML_MODELS[i].dataset.empty() || YAML_MODELS[i].dataset == dataset);

@@ -1,0 +1,458 @@
+# ---------------------------------------------------------------------------------------------
+# Models & key shapes (#872, Phase 8 of #838). Every case here uses dataset `keys` (the models of
+# tests/test_key_models.h, YAML names in tests/test_yaml_models.h), which puts it in the `models`
+# slice whatever its query_type. The seeded rows, in insertion order:
+#   uuid_pk     (UuidPkModel, storm::UUID key)
+#               00000000-0000-4000-8000-000000000001 one / ...002 two / ...003 three
+#   uuid_ref    (KUuidRef, FK `owner` to uuid_pk)   r1 -> one   r2 -> one   r3 -> two
+#   timestamped (TimestampedRecord, auto_create / auto_update)   first   second   third
+#               (stamped at insert: the cases compare against 2000-01-01, the value they never hold)
+#   stock       (KStock, composite key warehouse + sku)
+#               (1, apple, 10)   (1, pear, 0)   (2, apple, 5)   (2, plum, 7)
+#   shipment    (KShipment, composite FK `stock`)   (1, apple) 3   (1, apple) 4   (2, plum) 1
+#   ticket      (KTicket, primary_assigned key)   10 alpha   20 beta   30 gamma
+# A write case adds its own init_dataset_size / insert_count records ON TOP of these rows, so its
+# expected counts include them. shipment / uuid_ref take no write case: their records need FK targets.
+# ---------------------------------------------------------------------------------------------
+- name: keys_uuid_pk_where_eq
+  model: uuid_pk
+  query_type: select
+  dataset: keys
+  where:
+    conditions:
+    - field: id
+      op: ==
+      values:
+      - 00000000-0000-4000-8000-000000000002
+  expected:
+    count: 1
+    first:
+      name: two
+      id: 00000000-0000-4000-8000-000000000002
+- name: keys_uuid_pk_where_ne
+  model: uuid_pk
+  query_type: select
+  dataset: keys
+  where:
+    conditions:
+    - field: id
+      op: '!='
+      values:
+      - 00000000-0000-4000-8000-000000000001
+  order_by:
+  - field: name
+    direction: DESC
+  expected:
+    count: 2
+    first:
+      name: two
+- name: keys_uuid_pk_where_in
+  model: uuid_pk
+  query_type: select
+  dataset: keys
+  where:
+    conditions:
+    - field: id
+      op: IN
+      values:
+      - 00000000-0000-4000-8000-000000000001
+      - 00000000-0000-4000-8000-000000000003
+  order_by:
+  - field: name
+    direction: ASC
+  expected:
+    count: 2
+    first:
+      name: one
+      id: 00000000-0000-4000-8000-000000000001
+- name: keys_uuid_pk_order_limit_offset
+  model: uuid_pk
+  query_type: select
+  dataset: keys
+  order_by:
+  - field: name
+    direction: ASC
+  limit:
+    value: 1
+    offset: 1
+  expected:
+    count: 1
+    first:
+      name: three
+      id: 00000000-0000-4000-8000-000000000003
+- name: keys_uuid_pk_get_by_key
+  model: uuid_pk
+  query_type: one
+  dataset: keys
+  where:
+    conditions:
+    - field: id
+      op: ==
+      values:
+      - 00000000-0000-4000-8000-000000000003
+  expected:
+    count: 1
+    first:
+      name: three
+- name: keys_uuid_pk_count
+  model: uuid_pk
+  query_type: count
+  dataset: keys
+  aggregate:
+    func: count
+    field: ''
+  expected_sql: SELECT COUNT(*) FROM "uuidpkmodel"
+  expected:
+    int_val: 3
+- name: keys_uuid_pk_insert_one
+  model: uuid_pk
+  query_type: insert_one
+  dataset: keys
+  expected:
+    count: 4
+- name: keys_uuid_pk_insert_batch
+  model: uuid_pk
+  query_type: insert_batch
+  dataset: keys
+  insert_count: 5
+  expected:
+    count: 8
+- name: keys_uuid_pk_update_batch
+  model: uuid_pk
+  query_type: update_batch
+  dataset: keys
+  init_dataset_size: 3
+  update_count: 2
+  expected:
+    unchanged: 4
+- name: keys_uuid_pk_erase_batch
+  model: uuid_pk
+  query_type: erase_batch
+  dataset: keys
+  init_dataset_size: 2
+  erase_count: 3
+  expected:
+    remaining: 2
+- name: keys_uuid_fk_join_inner
+  model: uuid_ref
+  query_type: select
+  dataset: keys
+  join:
+    type: inner
+    fk: owner
+  order_by:
+  - field: value
+    direction: ASC
+  expected:
+    count: 3
+    first:
+      value: r1
+- name: keys_uuid_fk_join_left_where
+  model: uuid_ref
+  query_type: select
+  dataset: keys
+  where:
+    conditions:
+    - field: value
+      op: ==
+      values:
+      - r3
+  join:
+    type: left
+    fk: owner
+  expected:
+    count: 1
+    first:
+      value: r3
+- name: keys_timestamped_created_after_2000
+  model: timestamped
+  query_type: select
+  dataset: keys
+  where:
+    conditions:
+    - field: created_at
+      op: '>'
+      values:
+      - '2000-01-01T00:00:00'
+  order_by:
+  - field: name
+    direction: ASC
+  expected:
+    count: 3
+    first:
+      name: first
+- name: keys_timestamped_updated_before_2000
+  model: timestamped
+  query_type: select
+  dataset: keys
+  where:
+    conditions:
+    - field: updated_at
+      op: <
+      values:
+      - '2000-01-01T00:00:00'
+  expected:
+    count: 0
+- name: keys_timestamped_created_between
+  model: timestamped
+  query_type: select
+  dataset: keys
+  where:
+    conditions:
+    - field: created_at
+      op: BETWEEN
+      values:
+      - '2000-01-01T00:00:00'
+      - '2999-12-31T23:59:59'
+  order_by:
+  - field: name
+    direction: DESC
+  expected:
+    count: 3
+    first:
+      name: third
+- name: keys_timestamped_insert_one
+  model: timestamped
+  query_type: insert_one
+  dataset: keys
+  expected:
+    count: 4
+- name: keys_timestamped_update_batch
+  model: timestamped
+  query_type: update_batch
+  dataset: keys
+  init_dataset_size: 2
+  update_count: 2
+  expected:
+    unchanged: 3
+- name: keys_composite_pk_select_sql
+  model: stock
+  query_type: select
+  dataset: keys
+  expected_sql: SELECT "warehouse", "sku", "quantity" FROM "kstock"
+  expected:
+    count: 4
+- name: keys_composite_pk_where_one_part
+  model: stock
+  query_type: select
+  dataset: keys
+  where:
+    conditions:
+    - field: warehouse
+      op: ==
+      values:
+      - 1
+  order_by:
+  - field: sku
+    direction: ASC
+  expected:
+    count: 2
+    first:
+      warehouse: 1
+      sku: apple
+      quantity: 10
+- name: keys_composite_pk_where_both_parts
+  model: stock
+  query_type: select
+  dataset: keys
+  where:
+    conditions:
+    - field: warehouse
+      op: ==
+      values:
+      - 2
+    - field: sku
+      op: ==
+      values:
+      - plum
+  expected:
+    count: 1
+    first:
+      warehouse: 2
+      sku: plum
+      quantity: 7
+- name: keys_composite_pk_where_in_order_both_parts
+  model: stock
+  query_type: select
+  dataset: keys
+  # Two ORDER BY terms in one clause: the shared QueryBuilder used to keep only the last one (#872).
+  expected_sql_sqlite: SELECT "warehouse", "sku", "quantity" FROM "kstock" WHERE "sku" IN (?, ?) ORDER BY "warehouse" DESC, "sku" ASC
+  expected_sql_pg: SELECT "warehouse", "sku", "quantity" FROM "kstock" WHERE "sku" IN (?, ?) ORDER BY "warehouse" DESC NULLS LAST, "sku" ASC NULLS FIRST
+  where:
+    conditions:
+    - field: sku
+      op: IN
+      values:
+      - apple
+      - plum
+  order_by:
+  - field: warehouse
+    direction: DESC
+  - field: sku
+    direction: ASC
+  expected:
+    count: 3
+    first:
+      warehouse: 2
+      sku: apple
+      quantity: 5
+- name: keys_composite_pk_sum
+  model: stock
+  query_type: sum
+  dataset: keys
+  aggregate:
+    func: sum
+    field: quantity
+  expected_sql: SELECT SUM("quantity") FROM "kstock"
+  expected:
+    int_val: 22
+- name: keys_composite_pk_group_count
+  model: stock
+  query_type: group_count
+  dataset: keys
+  group_by:
+    fields:
+    - warehouse
+  expected:
+    count: 2
+    groups_count: 2
+    group_keys:
+    - 1
+    - 2
+    group_agg_int:
+    - 2
+    - 2
+- name: keys_composite_pk_distinct_text_part
+  model: stock
+  query_type: distinct
+  dataset: keys
+  distinct:
+    fields:
+    - sku
+  expected:
+    count: 3
+- name: keys_composite_pk_insert_batch
+  model: stock
+  query_type: insert_batch
+  dataset: keys
+  insert_count: 5
+  expected:
+    count: 9
+- name: keys_composite_pk_update_batch
+  model: stock
+  query_type: update_batch
+  dataset: keys
+  init_dataset_size: 3
+  update_count: 2
+  expected:
+    unchanged: 5
+- name: keys_composite_pk_erase_batch
+  model: stock
+  query_type: erase_batch
+  dataset: keys
+  init_dataset_size: 2
+  erase_count: 3
+  expected:
+    remaining: 3
+- name: keys_composite_pk_erase_all
+  model: stock
+  query_type: erase_all
+  dataset: keys
+  init_dataset_size: 2
+  expected:
+    remaining: 0
+- name: keys_composite_fk_select_sql
+  model: shipment
+  query_type: select
+  dataset: keys
+  expected_sql: SELECT "id", "stock_warehouse", "stock_sku", "amount" FROM "kshipment"
+  expected:
+    count: 3
+- name: keys_composite_fk_join_inner
+  model: shipment
+  query_type: select
+  dataset: keys
+  join:
+    type: inner
+    fk: stock
+  order_by:
+  - field: amount
+    direction: ASC
+  expected:
+    count: 3
+    first:
+      amount: 1
+- name: keys_composite_fk_join_left_where
+  model: shipment
+  query_type: select
+  dataset: keys
+  where:
+    conditions:
+    - field: amount
+      op: '>'
+      values:
+      - 3
+  join:
+    type: left
+    fk: stock
+  expected:
+    count: 1
+    first:
+      amount: 4
+- name: keys_assigned_pk_where_eq
+  model: ticket
+  query_type: select
+  dataset: keys
+  where:
+    conditions:
+    - field: id
+      op: ==
+      values:
+      - 20
+  expected:
+    count: 1
+    first:
+      id: 20
+      title: beta
+- name: keys_assigned_pk_where_between
+  model: ticket
+  query_type: select
+  dataset: keys
+  where:
+    conditions:
+    - field: id
+      op: BETWEEN
+      values:
+      - 15
+      - 35
+  order_by:
+  - field: id
+    direction: ASC
+  expected:
+    count: 2
+    first:
+      id: 20
+      title: beta
+- name: keys_assigned_pk_insert_batch
+  model: ticket
+  query_type: insert_batch
+  dataset: keys
+  insert_count: 3
+  expected:
+    count: 6
+- name: keys_assigned_pk_update_batch
+  model: ticket
+  query_type: update_batch
+  dataset: keys
+  init_dataset_size: 2
+  update_count: 3
+  expected:
+    unchanged: 2
+- name: keys_assigned_pk_erase_batch
+  model: ticket
+  query_type: erase_batch
+  dataset: keys
+  init_dataset_size: 1
+  erase_count: 2
+  expected:
+    remaining: 2

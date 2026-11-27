@@ -157,13 +157,14 @@ total, measured alongside [Local Test Suite Speed](#local-test-suite-speed):
 ## YAML-driven cases and `expected_sql` (#818)
 
 The corpus is the topic files `tests/test_cases/*.yaml` (`select`, `where`, `order_limit`, `aggregates`,
-`group_by`, `chain`, `distinct`, `writes`, `typed_values`, `join`; #846, #869). They are authoring groups only: a case spans
+`group_by`, `chain`, `distinct`, `writes`, `typed_values`, `join`, `models`; #846, #869, #872). They are authoring groups only: a case spans
 several topics and a topic spans several runners, so a case in the "wrong" file is not an error, and a new
 topic file is picked up by a CMake glob with no edit. `scripts/split_unified_cases.py` reads all of them, buckets
 every case by `query_type` into one JSON per category (`select` / `grouped` / `aggregate` / `crud`, the compile
 slices -- unchanged; plus `join`, #869: every case on `dataset: relations`, whatever its `query_type`, so only
 `test_unified_yaml_join.cpp` creates the relation tables and instantiates statements on those models — which SQL
-such a case may pin is still decided by its runner group), and rejects an unknown `query_type` or a case name repeated anywhere in the corpus. It
+such a case may pin is still decided by its runner group; and `models`, #872: the same for `dataset: keys`, owned by
+`test_unified_yaml_models.cpp`), and rejects an unknown `query_type` or a case name repeated anywhere in the corpus. It
 rewrites only a JSON whose bytes changed, so editing one case recompiles one slice. The JSONs are
 `#embed`ded into `tests/yaml/test_unified_yaml_*.cpp` and run on SQLite and PostgreSQL. A case
 checks **results** (`expected:`). SQL text is pinned separately in C++ (`test_sql_verify.cpp`,
@@ -388,6 +389,25 @@ aggregate or field. Names in the YAML are resolved by reflection at compile time
   **Inputs of the join slice beyond `tests/`:** `benchmarks/m2m_models.hpp` (BStudent / BCourse) and
   `shared/query_builder*.hpp`. `commit.sh`'s local smart-skip does not count those as test inputs, so an edit
   that touches only them skips the local test run; CI still runs the suite.
+- **Models & key shapes (#872).** `tests/test_cases/models.yaml`, dataset `keys`: one model per key shape a
+  query or a write treats differently — `UuidPkModel` (`storm::UUID` key) and `TimestampedRecord`
+  (`auto_create` / `auto_update`) from `shared/models/`, plus the test-only models of `tests/test_key_models.h`
+  (`KStock` composite key int + text, `KShipment` composite FK to it, `KUuidRef` FK to the UUID key, `KTicket`
+  `primary_assigned` key; test-only so `storm_bench` is untouched). Tables and rows come from `keys::create_tables`
+  / `keys::seed` (`tests/test_keys_dataset.h`, which also specialises `make_record` / `make_updated_record` /
+  `is_original_record` for the write cases, with keys that never collide with the seeded ones). YAML names:
+  `uuid_pk`, `uuid_ref`, `timestamped`, `stock`, `shipment`, `ticket`; plus `course` (the m2m benchmark's related
+  model, on dataset `relations`). The other field types (`ExtendedTypes`, `Color`) are covered by `typed_values.yaml`
+  (#844). A write case's expected counts include the seeded rows.
+  **Compile errors, not silent fallbacks** (`tests/yaml/test_spec_limits_models.cpp`): a key-shape model without
+  `dataset: keys`; a WHERE value not of the key's type (an int or an upper-case text on the UUID key, a string on an
+  int key part, a date alone on a `time_point`); an `expected.first` value on an FK member (a whole related row); a
+  write case on `KShipment` / `KUuidRef` (no `make_record`: their records need an FK target row).
+  **Fixed on the way:** `QueryBuilder::apply_order_by` applied each `order_by:` term in its own `order_by<>()`
+  call, and `QuerySet::order_by()` replaces the clause, so a multi-term `order_by:` silently sorted by its last
+  term only (also in `storm_bench`'s `ORDER_BY_MULTI` cases, which are not in the `bench-ratio` matrix). The terms
+  are now collected into one call; `keys_composite_pk_where_in_order_both_parts` pins the two-term SQL.
+  **Build cost:** not measured (skipped on request).
 - **One value check.** `expect_agg_value(actual, expected, expect_null, what)` is chosen by result type
   (`std::optional<double>` → near / `nullopt`, floating → near, integer → exact) and used by
   `AggregateRunner`; `verify_groups` checks `group_keys` and every step's `result.groups` (or `group_agg_*` for a
