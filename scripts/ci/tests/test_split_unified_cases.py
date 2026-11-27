@@ -354,6 +354,17 @@ class MultiFileTest(unittest.TestCase):
             self.assertEqual(names["join"], ["b_join"])
             self.assertEqual(names["models"], ["b_keys"])
 
+    def test_the_conditional_write_and_upsert_types_are_bucketed_crud(self):
+        # #871: ConditionalWriteRunner / UpsertRunner live in the crud slice.
+        write_types = ("update_where", "update_all", "erase_where", "upsert_update", "upsert_nothing")
+        tmp, out_dir, _, completed = run_on_files(
+            {"all.yaml": BASE_CASES, "w.yaml": [case(f"w_{qt}", {"query_type": qt}) for qt in write_types]}
+        )
+        with tmp:
+            self.assertEqual(completed.returncode, 0, completed.stderr)
+            names = [c["name"] for c in read_slices(out_dir)["crud"]]
+            self.assertEqual(names, ["base_crud"] + [f"w_{qt}" for qt in write_types])
+
     def test_a_topic_file_may_feed_one_slice_only(self):
         tmp, _, _, completed = run_on_files(
             {

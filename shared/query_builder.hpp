@@ -120,53 +120,7 @@ namespace storm::orm::query_builder {
                  SpecSetOpShape<spec> && SpecSetOpNoTopLevelFilter<spec> && SpecSetOpOpsKnown<spec> &&
                  SpecSetOpPortable<spec>
     class QueryBuilder {
-        // ----------------------------------------------------------------
-        // typed_value_as
-        // ----------------------------------------------------------------
-        // The value in the field's type (an optional field reads as its inner type), chosen by the
-        // KIND the value was written as (#843, #844): `1` for a bool field is true, and an integer
-        // for a floating field is that number. ValueFits (the check SpecValuesFit runs per leaf) is
-        // also this function's constraint, and a null has no member to read, so it never reads a
-        // member the value did not set. Not consteval: a UUID or a blob owns heap memory, which
-        // cannot leave a constant expression.
-        template <typename FieldType, auto tv>
-            requires ValueFits<FieldType, tv> && (tv.kind != decltype(tv.kind)::Null)
-        static auto typed_value_as() {
-            using T               = orm::utilities::optional_inner_type_t<FieldType>;
-            constexpr bool is_int = tv.kind == decltype(tv.kind)::Int;
-            constexpr bool is_i64 = tv.kind == decltype(tv.kind)::Int64;
-            constexpr auto text   = tv.as_string.view();
-            if constexpr (std::is_same_v<T, bool>) {
-                if constexpr (is_int)
-                    return tv.as_int != 0;
-                else
-                    return bool{tv.as_bool};
-            } else if constexpr (std::is_floating_point_v<T>) {
-                if constexpr (is_int)
-                    return static_cast<T>(tv.as_int);
-                else if constexpr (is_i64)
-                    return static_cast<T>(tv.as_int64);
-                else
-                    return T{tv.as_double};
-            } else if constexpr (std::is_enum_v<T>) {
-                constexpr auto enumerator = find_enumerator<T>(text);
-                return [:enumerator:];
-            } else if constexpr (std::is_same_v<T, orm::utilities::UUID>) {
-                return orm::utilities::UUID{text};
-            } else if constexpr (std::is_same_v<T, std::chrono::year_month_day>) {
-                return *iso_date_of(text);
-            } else if constexpr (std::is_same_v<T, std::chrono::system_clock::time_point>) {
-                return *iso_datetime_of(text);
-            } else if constexpr (BlobType<T>) {
-                return blob_from_hex<T>(text);
-            } else if constexpr (tv.kind == decltype(tv.kind)::String) {
-                return std::string{text};
-            } else if constexpr (is_i64) {
-                return static_cast<T>(tv.as_int64);
-            } else {
-                return T{tv.as_int};
-            }
-        }
+        // typed_value_as (a value in its field's type) is a free function in query_builder_values.hpp (#871).
 
         // ----------------------------------------------------------------
         // WHERE — one tree of WhereNodes (#843)

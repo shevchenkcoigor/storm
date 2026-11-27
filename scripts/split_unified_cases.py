@@ -46,11 +46,23 @@ import sys
 import yaml  # PyYAML required
 
 # query_type -> category, grouping the YAML_RUNNERS rows by runner:
-#   InsertRunner/UpdateRunner/EraseRunner -> crud
+#   InsertRunner/UpdateRunner/EraseRunner/ConditionalWriteRunner/UpsertRunner -> crud
 #   SelectRunner / ValuesRunner / SetOpRunner -> select
 #   AggregateRunner (chain, group_<func>) / DistinctRunner -> grouped
 #   AggregateRunner (scalar aggregates)   -> aggregate
-WRITE_OPS = {"insert_one", "insert_batch", "update_batch", "erase_all", "erase_batch"}
+WRITE_OPS = {
+    "insert_one",
+    "insert_batch",
+    "update_batch",
+    "erase_all",
+    "erase_batch",
+    # ConditionalWriteRunner / UpsertRunner (#871)
+    "update_where",
+    "update_all",
+    "erase_where",
+    "upsert_update",
+    "upsert_nothing",
+}
 SELECT_OPS = {"select", "first", "one", "rows", "values", "setop"}
 GROUPED_OPS = {
     "chain",
